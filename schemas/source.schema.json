@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Source",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source_id", "title", "authors", "year"],
+  "properties": {
+    "source_id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "doi": {
+      "type": "string"
+    },
+    "authors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "journal": {
+      "type": "string"
+    },
+    "year": {
+      "type": "integer"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "abstract": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "task_id": "task-hanlon-001",
+  "schema_version": "0.1",
+  "miner_id": "demo-miner-001",
+  "source": {
+    "source_id": "hanlon-2025-jama",
+    "title": "Effectiveness of glucose-lowering drugs in older adults with type 2 diabetes: a network meta-analysis",
+    "doi": "10.1001/jama.2024.27402",
+    "authors": [
+      "Hanlon et al."
+    ],
+    "journal": "JAMA",
+    "year": 2025,
+    "domain": "biomedicine",
+    "abstract": "Illustrative source metadata used for the Claims subnet RFC demo."
+  },
+  "chunks": [
+    {
+      "chunk_id": "chunk-001",
+      "source_id": "hanlon-2025-jama",
+      "section": "results",
+      "char_start": 0,
+      "char_end": 190,
+      "text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c in adults with type 2 diabetes. The magnitude of the effect was smaller at older ages."
+    }
+  ],
+  "claim_records": [
+    {
+      "claim": {
+        "claim_id": "claim-402774b0207f",
+        "claim_text": "SGLT2 inhibitors reduce HbA1c in adults with type 2 diabetes.",
+        "subject": {
+          "value": "SGLT2 inhibitors"
+        },
+        "predicate": {
+          "value": "reduce"
+        },
+        "object": {
+          "value": "HbA1c in adults with type 2 diabetes"
+        },
+        "claim_type": "causal",
+        "epistemic_status": "supported",
+        "source_chunk_ids": [
+          "chunk-001"
+        ],
+        "context": {
+          "population": "adults with type 2 diabetes"
+        }
+      },
+      "evidence": [
+        {
+          "evidence_id": "evidence-support-001",
+          "summary_text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c.",
+          "relation_to_claim": "supports",
+          "evidence_type": "meta_analysis",
+          "source_chunk_ids": [
+            "chunk-missing-001"
+          ],
+          "details": {
+            "study_count": 592
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MetaAssertion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "assertion_id",
+    "target_claim_id",
+    "assertion_type",
+    "summary",
+    "confidence"
+  ],
+  "properties": {
+    "assertion_id": {
+      "type": "string"
+    },
+    "target_claim_id": {
+      "type": "string"
+    },
+    "assertion_type": {
+      "type": "string",
+      "enum": [
+        "consensus_candidate",
+        "contradiction_flag",
+        "ontology_ready",
+        "needs_review"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  }
+}

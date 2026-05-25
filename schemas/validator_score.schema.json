@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ValidatorScore",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "validator_id",
+    "miner_id",
+    "accepted",
+    "score_total",
+    "score_components",
+    "notes"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string"
+    },
+    "validator_id": {
+      "type": "string"
+    },
+    "miner_id": {
+      "type": "string"
+    },
+    "accepted": {
+      "type": "boolean"
+    },
+    "score_total": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "score_components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_validity",
+        "structure",
+        "grounding",
+        "relations",
+        "ontology"
+      ],
+      "properties": {
+        "schema_validity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "structure": { "type": "number", "minimum": 0, "maximum": 1 },
+        "grounding": { "type": "number", "minimum": 0, "maximum": 1 },
+        "relations": { "type": "number", "minimum": 0, "maximum": 1 },
+        "ontology": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -1,0 +1,136 @@
+{
+  "task_id": "task-hanlon-001",
+  "schema_version": "0.1",
+  "miner_id": "demo-miner-001",
+  "source": {
+    "source_id": "hanlon-2025-jama",
+    "title": "Effectiveness of glucose-lowering drugs in older adults with type 2 diabetes: a network meta-analysis",
+    "doi": "10.1001/jama.2024.27402",
+    "authors": [
+      "Hanlon et al."
+    ],
+    "journal": "JAMA",
+    "year": 2025,
+    "domain": "biomedicine",
+    "abstract": "Illustrative source metadata used for the Claims subnet RFC demo."
+  },
+  "chunks": [
+    {
+      "chunk_id": "chunk-001",
+      "source_id": "hanlon-2025-jama",
+      "section": "results",
+      "char_start": 0,
+      "char_end": 190,
+      "text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c in adults with type 2 diabetes. The magnitude of the effect was smaller at older ages."
+    }
+  ],
+  "claim_records": [
+    {
+      "claim": {
+        "claim_id": "claim-402774b0207f",
+        "claim_text": "SGLT2 inhibitors reduce HbA1c in adults with type 2 diabetes.",
+        "subject": {
+          "value": "SGLT2 inhibitors",
+          "normalized_value": "SGLT2 inhibitors",
+          "selected_mapping": {
+            "ontology_source": "demo_biomed",
+            "ontology_id": "DB:0001",
+            "ontology_label": "SGLT2 inhibitors",
+            "confidence": 0.98
+          },
+          "candidate_mappings": [
+            {
+              "ontology_source": "demo_biomed",
+              "ontology_id": "DB:0001",
+              "ontology_label": "SGLT2 inhibitors",
+              "confidence": 0.98
+            }
+          ]
+        },
+        "predicate": {
+          "value": "reduce",
+          "normalized_value": "reduce",
+          "selected_mapping": {
+            "ontology_source": "demo_relation",
+            "ontology_id": "REL:decrease",
+            "ontology_label": "decrease",
+            "confidence": 0.99
+          },
+          "candidate_mappings": [
+            {
+              "ontology_source": "demo_relation",
+              "ontology_id": "REL:decrease",
+              "ontology_label": "decrease",
+              "confidence": 0.99
+            }
+          ]
+        },
+        "object": {
+          "value": "HbA1c in adults with type 2 diabetes",
+          "normalized_value": "HbA1c in adults with type 2 diabetes",
+          "selected_mapping": {
+            "ontology_source": "demo_biomed",
+            "ontology_id": "DB:0002",
+            "ontology_label": "HbA1c in adults with type 2 diabetes",
+            "confidence": 0.95
+          },
+          "candidate_mappings": [
+            {
+              "ontology_source": "demo_biomed",
+              "ontology_id": "DB:0002",
+              "ontology_label": "HbA1c in adults with type 2 diabetes",
+              "confidence": 0.95
+            }
+          ]
+        },
+        "claim_type": "causal",
+        "epistemic_status": "supported",
+        "source_chunk_ids": [
+          "chunk-001"
+        ],
+        "context": {
+          "population": "adults with type 2 diabetes",
+          "study_scope": "network meta-analysis"
+        }
+      },
+      "evidence": [
+        {
+          "evidence_id": "evidence-support-001",
+          "summary_text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c.",
+          "relation_to_claim": "supports",
+          "evidence_type": "meta_analysis",
+          "source_chunk_ids": [
+            "chunk-001"
+          ],
+          "details": {
+            "study_count": 592,
+            "sample_size": 309503,
+            "outcome_name": "HbA1c"
+          }
+        },
+        {
+          "evidence_id": "evidence-qualifier-001",
+          "summary_text": "The magnitude of the effect was smaller at older ages.",
+          "relation_to_claim": "qualifies",
+          "evidence_type": "meta_analysis",
+          "source_chunk_ids": [
+            "chunk-001"
+          ],
+          "details": {
+            "effect_modifier": "age",
+            "outcome_name": "HbA1c"
+          }
+        }
+      ]
+    }
+  ],
+  "meta_assertions": [
+    {
+      "assertion_id": "meta-001",
+      "target_claim_id": "claim-402774b0207f",
+      "assertion_type": "ontology_ready",
+      "summary": "The core entities are normalized strongly enough for graph merge review.",
+      "confidence": 0.93
+    }
+  ]
+}

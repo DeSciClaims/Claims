@@ -1,0 +1,17 @@
+{
+  "task_id": "task-hanlon-001",
+  "validator_id": "demo-validator-001",
+  "miner_id": "demo-miner-001",
+  "accepted": true,
+  "score_total": 1.0,
+  "score_components": {
+    "schema_validity": 1.0,
+    "structure": 1.0,
+    "grounding": 1.0,
+    "relations": 1.0,
+    "ontology": 1.0
+  },
+  "notes": [
+    "Payload passed the demo validator checks."
+  ]
+}

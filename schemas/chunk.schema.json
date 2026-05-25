@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Chunk",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["chunk_id", "source_id", "section", "text"],
+  "properties": {
+    "chunk_id": {
+      "type": "string"
+    },
+    "source_id": {
+      "type": "string"
+    },
+    "section": {
+      "type": "string"
+    },
+    "char_start": {
+      "type": "integer"
+    },
+    "char_end": {
+      "type": "integer"
+    },
+    "text": {
+      "type": "string"
+    }
+  }
+}

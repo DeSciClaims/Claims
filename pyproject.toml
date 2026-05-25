@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claims-subnet-rfc"
+version = "0.1.0"
+description = "Documentation-first RFC and simulator for the Claims subnet concept."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
