@@ -4,22 +4,18 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "task_id",
+    "paper_id",
     "validator_id",
-    "miner_id",
     "accepted",
     "score_total",
     "score_components",
     "notes"
   ],
   "properties": {
-    "task_id": {
+    "paper_id": {
       "type": "string"
     },
     "validator_id": {
-      "type": "string"
-    },
-    "miner_id": {
       "type": "string"
     },
     "accepted": {

@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvidenceItem",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_id",
+    "paper_id",
+    "role",
+    "summary_text",
+    "evidence_method",
+    "source_span_ids"
+  ],
+  "properties": {
+    "evidence_id": {
+      "type": "string"
+    },
+    "paper_id": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "supports",
+        "contradicts",
+        "qualifies",
+        "backgrounds"
+      ]
+    },
+    "summary_text": {
+      "type": "string"
+    },
+    "evidence_method": {
+      "$ref": "#/$defs/semantic_field"
+    },
+    "outcome_type": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/semantic_field"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "presentation_type": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/semantic_field"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "source_span_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/semantic_field"
+      }
+    },
+    "details": {
+      "type": "object"
+    },
+    "ontology": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ontology_annotation"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "ontology_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ontology_source", "ontology_id", "ontology_label"],
+      "properties": {
+        "ontology_source": {
+          "type": "string"
+        },
+        "ontology_id": {
+          "type": "string"
+        },
+        "ontology_label": {
+          "type": "string"
+        },
+        "match_type": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number"
+        }
+      }
+    },
+    "ontology_annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "annotation_type",
+        "mapping_status",
+        "candidate_mappings",
+        "selected_mapping",
+        "mapping_method"
+      ],
+      "properties": {
+        "annotation_type": {
+          "type": "string",
+          "enum": ["mapping", "classification"]
+        },
+        "raw_text": {
+          "type": "string"
+        },
+        "normalized_text": {
+          "type": "string"
+        },
+        "mapping_status": {
+          "type": "string",
+          "enum": ["mapped", "ambiguous", "unresolved", "rejected"]
+        },
+        "candidate_mappings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ontology_candidate"
+          }
+        },
+        "selected_mapping": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ontology_candidate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mapping_method": {
+          "type": "string"
+        }
+      }
+    },
+    "semantic_field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": {
+          "type": "string"
+        },
+        "entity_type": {
+          "type": "string"
+        },
+        "ontology": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ontology_annotation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

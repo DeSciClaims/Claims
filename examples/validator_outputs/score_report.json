@@ -1,7 +1,6 @@
 {
-  "task_id": "task-hanlon-001",
+  "paper_id": "paper_hanlon_2025_jama",
   "validator_id": "demo-validator-001",
-  "miner_id": "demo-miner-001",
   "accepted": true,
   "score_total": 1.0,
   "score_components": {

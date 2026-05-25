@@ -2,64 +2,48 @@
 
 ## Core Objects
 
-This repo uses six simplified schema files.
+This repo uses the canonical object names from the prototype claim graph schema.
 
-### `source.schema.json`
+### `paper.schema.json`
 
-Paper-level metadata:
+`Paper` is the source document object.
 
-- title
-- DOI
-- authors
-- year
+### `span.schema.json`
 
-### `chunk.schema.json`
+`Span` is the provenance anchor object.
 
-A chunk is a small excerpt from the source paper:
+### `claim.schema.json`
 
-- chunk id
-- source id
-- section
-- text
+`Claim` is the paper-specific assertion with a queryable subject-predicate-object core plus epistemic metadata.
 
-### `claimframe.schema.json`
+### `evidence_item.schema.json`
 
-An atomic claim with:
+`EvidenceItem` is the first-class evidence object linked to source spans.
 
-- subject
-- predicate
-- object
-- claim type
-- epistemic status
-- source chunk ids
+### `claim_evidence_link.schema.json`
+
+`ClaimEvidenceLink` is the explicit relation between a `Claim` and an `EvidenceItem`.
 
 ### `extraction.schema.json`
 
-A miner output containing:
+This is the transport bundle used in the demo repo. It groups:
 
-- task metadata
-- source
-- chunks
-- claim records
-- optional meta assertions
-
-### `meta_assertion.schema.json`
-
-A higher-level assertion about the extraction output, such as:
-
-- consensus candidate
-- contradiction flag
-- ontology readiness
+- one `Paper`
+- zero or more `Span` objects
+- zero or more `Claim` objects
+- zero or more `EvidenceItem` objects
+- zero or more `ClaimEvidenceLink` objects
 
 ### `validator_score.schema.json`
 
 A simple validator report containing:
 
-- total score
+- a paper identifier
+- a total score
 - score components
-- acceptance decision
+- an acceptance decision
 - notes
 
 ## Guiding Principle
 
-The public schema should show the conceptual shape of the subnet while staying easy to read.
+The public schema should use the prototype claim graph vocabulary consistently and avoid parallel naming systems.

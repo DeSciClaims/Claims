@@ -1,136 +1,222 @@
 {
-  "task_id": "task-hanlon-001",
-  "schema_version": "0.1",
-  "miner_id": "demo-miner-001",
-  "source": {
-    "source_id": "hanlon-2025-jama",
-    "title": "Effectiveness of glucose-lowering drugs in older adults with type 2 diabetes: a network meta-analysis",
+  "paper": {
+    "paper_id": "paper_hanlon_2025_jama",
     "doi": "10.1001/jama.2024.27402",
+    "title": "Effectiveness of glucose-lowering drugs in older adults with type 2 diabetes: a network meta-analysis",
     "authors": [
       "Hanlon et al."
     ],
     "journal": "JAMA",
     "year": 2025,
-    "domain": "biomedicine",
-    "abstract": "Illustrative source metadata used for the Claims subnet RFC demo."
+    "source_type": "journal_article",
+    "open_access": true
   },
-  "chunks": [
+  "spans": [
     {
-      "chunk_id": "chunk-001",
-      "source_id": "hanlon-2025-jama",
-      "section": "results",
+      "span_id": "span_001",
+      "paper_id": "paper_hanlon_2025_jama",
+      "section_type": "RESULTS",
+      "section_name": "Glycemic outcomes",
+      "page": 1,
       "char_start": 0,
       "char_end": 190,
-      "text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c in adults with type 2 diabetes. The magnitude of the effect was smaller at older ages."
+      "text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c in adults with type 2 diabetes. The magnitude of the effect was smaller at older ages.",
+      "table_id": null,
+      "figure_id": null,
+      "caption_id": null
     }
   ],
-  "claim_records": [
+  "claims": [
     {
-      "claim": {
-        "claim_id": "claim-402774b0207f",
-        "claim_text": "SGLT2 inhibitors reduce HbA1c in adults with type 2 diabetes.",
-        "subject": {
-          "value": "SGLT2 inhibitors",
-          "normalized_value": "SGLT2 inhibitors",
-          "selected_mapping": {
-            "ontology_source": "demo_biomed",
-            "ontology_id": "DB:0001",
-            "ontology_label": "SGLT2 inhibitors",
-            "confidence": 0.98
-          },
+      "claim_id": "claim-48b77d266b70",
+      "paper_id": "paper_hanlon_2025_jama",
+      "claim_text": "SGLT2 inhibitors reduced HbA1c in adults with type 2 diabetes.",
+      "subject": {
+        "value": "SGLT2 inhibitors",
+        "entity_type": "chemical",
+        "ontology": {
+          "annotation_type": "mapping",
+          "raw_text": "SGLT2 inhibitors",
+          "normalized_text": "SGLT2 inhibitors",
+          "mapping_status": "mapped",
           "candidate_mappings": [
             {
               "ontology_source": "demo_biomed",
               "ontology_id": "DB:0001",
               "ontology_label": "SGLT2 inhibitors",
+              "match_type": "exact",
               "confidence": 0.98
             }
-          ]
-        },
-        "predicate": {
-          "value": "reduce",
-          "normalized_value": "reduce",
+          ],
           "selected_mapping": {
-            "ontology_source": "demo_relation",
-            "ontology_id": "REL:decrease",
-            "ontology_label": "decrease",
-            "confidence": 0.99
+            "ontology_source": "demo_biomed",
+            "ontology_id": "DB:0001",
+            "ontology_label": "SGLT2 inhibitors",
+            "match_type": "exact",
+            "confidence": 0.98
           },
+          "mapping_method": "dictionary_plus_context"
+        }
+      },
+      "predicate": {
+        "value": "reduced",
+        "entity_type": "predicate",
+        "ontology": {
+          "annotation_type": "mapping",
+          "raw_text": "reduced",
+          "normalized_text": "decreases",
+          "mapping_status": "mapped",
           "candidate_mappings": [
             {
               "ontology_source": "demo_relation",
-              "ontology_id": "REL:decrease",
-              "ontology_label": "decrease",
+              "ontology_id": "REL:decreases",
+              "ontology_label": "decreases",
+              "match_type": "exact",
               "confidence": 0.99
             }
-          ]
-        },
-        "object": {
-          "value": "HbA1c in adults with type 2 diabetes",
-          "normalized_value": "HbA1c in adults with type 2 diabetes",
+          ],
           "selected_mapping": {
-            "ontology_source": "demo_biomed",
-            "ontology_id": "DB:0002",
-            "ontology_label": "HbA1c in adults with type 2 diabetes",
-            "confidence": 0.95
+            "ontology_source": "demo_relation",
+            "ontology_id": "REL:decreases",
+            "ontology_label": "decreases",
+            "match_type": "exact",
+            "confidence": 0.99
           },
+          "mapping_method": "normalization_rule"
+        }
+      },
+      "object": {
+        "value": "HbA1c in adults with type 2 diabetes",
+        "entity_type": "clinical_measure",
+        "ontology": {
+          "annotation_type": "mapping",
+          "raw_text": "HbA1c in adults with type 2 diabetes",
+          "normalized_text": "HbA1c in adults with type 2 diabetes",
+          "mapping_status": "mapped",
           "candidate_mappings": [
             {
               "ontology_source": "demo_biomed",
               "ontology_id": "DB:0002",
               "ontology_label": "HbA1c in adults with type 2 diabetes",
+              "match_type": "exact",
               "confidence": 0.95
             }
-          ]
-        },
-        "claim_type": "causal",
-        "epistemic_status": "supported",
-        "source_chunk_ids": [
-          "chunk-001"
-        ],
-        "context": {
-          "population": "adults with type 2 diabetes",
-          "study_scope": "network meta-analysis"
+          ],
+          "selected_mapping": {
+            "ontology_source": "demo_biomed",
+            "ontology_id": "DB:0002",
+            "ontology_label": "HbA1c in adults with type 2 diabetes",
+            "match_type": "exact",
+            "confidence": 0.95
+          },
+          "mapping_method": "dictionary_plus_context"
         }
       },
-      "evidence": [
-        {
-          "evidence_id": "evidence-support-001",
-          "summary_text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c.",
-          "relation_to_claim": "supports",
-          "evidence_type": "meta_analysis",
-          "source_chunk_ids": [
-            "chunk-001"
-          ],
-          "details": {
-            "study_count": 592,
-            "sample_size": 309503,
-            "outcome_name": "HbA1c"
-          }
-        },
-        {
-          "evidence_id": "evidence-qualifier-001",
-          "summary_text": "The magnitude of the effect was smaller at older ages.",
-          "relation_to_claim": "qualifies",
-          "evidence_type": "meta_analysis",
-          "source_chunk_ids": [
-            "chunk-001"
-          ],
-          "details": {
-            "effect_modifier": "age",
-            "outcome_name": "HbA1c"
-          }
+      "claim_kind": "result",
+      "epistemic_status": "empirical",
+      "support_origin": "own_results",
+      "source_span_ids": [
+        "span_001"
+      ],
+      "context": {
+        "population": {
+          "value": "adults with type 2 diabetes",
+          "entity_type": "population",
+          "ontology": null
         }
-      ]
+      },
+      "details": {},
+      "extractor_confidence": 0.94
     }
   ],
-  "meta_assertions": [
+  "evidence_items": [
     {
-      "assertion_id": "meta-001",
-      "target_claim_id": "claim-402774b0207f",
-      "assertion_type": "ontology_ready",
-      "summary": "The core entities are normalized strongly enough for graph merge review.",
-      "confidence": 0.93
+      "evidence_id": "ev_001",
+      "paper_id": "paper_hanlon_2025_jama",
+      "role": "supports",
+      "summary_text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c.",
+      "evidence_method": {
+        "value": "meta_analysis",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "clinical_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "span_001"
+      ],
+      "context": {
+        "population": {
+          "value": "adults with type 2 diabetes",
+          "entity_type": "population",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "HbA1c",
+        "study_count": 592,
+        "sample_size": 309503
+      },
+      "ontology": null
+    },
+    {
+      "evidence_id": "ev_002",
+      "paper_id": "paper_hanlon_2025_jama",
+      "role": "qualifies",
+      "summary_text": "The magnitude of the effect was smaller at older ages.",
+      "evidence_method": {
+        "value": "meta_analysis",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "clinical_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "span_001"
+      ],
+      "context": {
+        "population": {
+          "value": "older adults",
+          "entity_type": "population",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "HbA1c"
+      },
+      "ontology": null
+    }
+  ],
+  "claim_evidence_links": [
+    {
+      "link_id": "link_001",
+      "claim_id": "claim-48b77d266b70",
+      "evidence_id": "ev_001",
+      "relation": "supports",
+      "confidence": 0.97
+    },
+    {
+      "link_id": "link_002",
+      "claim_id": "claim-48b77d266b70",
+      "evidence_id": "ev_002",
+      "relation": "qualifies",
+      "confidence": 0.91
     }
   ]
 }

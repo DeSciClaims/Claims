@@ -5,21 +5,19 @@ from typing import Any
 
 VALID_RELATIONS = {
     "supports",
-    "relates_to",
     "contradicts",
     "qualifies",
-    "refines",
-    "replicates",
-    "fails_to_replicate",
+    "backgrounds",
 }
 
 
 def validate_against_schema(payload: dict[str, Any], schema_name: str) -> list[str]:
     validators = {
-        "source.schema.json": _validate_source,
-        "chunk.schema.json": _validate_chunk,
-        "claimframe.schema.json": _validate_claimframe,
-        "meta_assertion.schema.json": _validate_meta_assertion,
+        "paper.schema.json": _validate_paper,
+        "span.schema.json": _validate_span,
+        "claim.schema.json": _validate_claim,
+        "evidence_item.schema.json": _validate_evidence_item,
+        "claim_evidence_link.schema.json": _validate_claim_evidence_link,
         "extraction.schema.json": _validate_extraction,
         "validator_score.schema.json": _validate_validator_score,
     }
@@ -30,78 +28,84 @@ def validate_against_schema(payload: dict[str, Any], schema_name: str) -> list[s
 
 
 def structure_score(payload: dict[str, Any]) -> float:
-    claim_records = payload.get("claim_records", [])
-    if not claim_records:
+    claims = payload.get("claims", [])
+    evidence_items = payload.get("evidence_items", [])
+    links = payload.get("claim_evidence_links", [])
+    if not claims or not evidence_items or not links:
         return 0.0
-    has_claims = all("claim" in record for record in claim_records)
-    has_evidence = all(record.get("evidence") for record in claim_records)
-    return 1.0 if has_claims and has_evidence else 0.5
+    return 1.0
 
 
 def grounding_score(payload: dict[str, Any]) -> tuple[float, list[str]]:
     notes: list[str] = []
-    chunk_ids = {chunk["chunk_id"] for chunk in payload.get("chunks", [])}
+    span_ids = {span["span_id"] for span in payload.get("spans", [])}
     references = 0
     valid_references = 0
 
-    for record in payload.get("claim_records", []):
-        claim = record.get("claim", {})
-        for chunk_id in claim.get("source_chunk_ids", []):
+    for claim in payload.get("claims", []):
+        for span_id in claim.get("source_span_ids", []):
             references += 1
-            if chunk_id in chunk_ids:
+            if span_id in span_ids:
                 valid_references += 1
             else:
-                notes.append(f"Claim references unknown chunk id: {chunk_id}")
-        for evidence in record.get("evidence", []):
-            for chunk_id in evidence.get("source_chunk_ids", []):
-                references += 1
-                if chunk_id in chunk_ids:
-                    valid_references += 1
-                else:
-                    notes.append(
-                        f"Evidence {evidence.get('evidence_id', '<unknown>')} references unknown chunk id: {chunk_id}"
-                    )
+                notes.append(f"Claim references unknown span id: {span_id}")
+    for evidence_item in payload.get("evidence_items", []):
+        for span_id in evidence_item.get("source_span_ids", []):
+            references += 1
+            if span_id in span_ids:
+                valid_references += 1
+            else:
+                notes.append(
+                    f"EvidenceItem {evidence_item.get('evidence_id', '<unknown>')} references unknown span id: {span_id}"
+                )
 
     if references == 0:
-        return 0.0, ["No chunk grounding references were found."]
+        return 0.0, ["No span grounding references were found."]
     return valid_references / references, notes
 
 
 def relation_score(payload: dict[str, Any]) -> tuple[float, list[str]]:
     notes: list[str] = []
-    evidence_items = [
-        evidence
-        for record in payload.get("claim_records", [])
-        for evidence in record.get("evidence", [])
-    ]
-    if not evidence_items:
-        return 0.0, ["No evidence items were found."]
-
+    scored = 0
     valid = 0
-    for evidence in evidence_items:
-        relation = evidence.get("relation_to_claim")
+
+    for evidence_item in payload.get("evidence_items", []):
+        role = evidence_item.get("role")
+        scored += 1
+        if role in VALID_RELATIONS:
+            valid += 1
+        else:
+            notes.append(
+                f"EvidenceItem {evidence_item.get('evidence_id', '<unknown>')} uses invalid role: {role}"
+            )
+
+    for link in payload.get("claim_evidence_links", []):
+        relation = link.get("relation")
+        scored += 1
         if relation in VALID_RELATIONS:
             valid += 1
         else:
             notes.append(
-                f"Evidence {evidence.get('evidence_id', '<unknown>')} uses invalid relation: {relation}"
+                f"ClaimEvidenceLink {link.get('link_id', '<unknown>')} uses invalid relation: {relation}"
             )
-    return valid / len(evidence_items), notes
+    if scored == 0:
+        return 0.0, ["No relations were found."]
+    return valid / scored, notes
 
 
 def ontology_score(payload: dict[str, Any]) -> float:
-    claim_records = payload.get("claim_records", [])
-    if not claim_records:
+    claims = payload.get("claims", [])
+    if not claims:
         return 0.0
 
     fields_seen = 0
     fields_mapped = 0
-    for record in claim_records:
-        claim = record.get("claim", {})
+    for claim in claims:
         for field_name in ["subject", "predicate", "object"]:
             field = claim.get(field_name, {})
             fields_seen += 1
-            if field.get("selected_mapping"):
+            ontology = field.get("ontology")
+            if isinstance(ontology, dict) and ontology.get("selected_mapping"):
                 fields_mapped += 1
     if fields_seen == 0:
         return 0.0
@@ -149,24 +153,24 @@ def _require_fields(payload: dict[str, Any], required: list[str], label: str) ->
     return errors
 
 
-def _validate_source(payload: dict[str, Any]) -> list[str]:
+def _validate_paper(payload: dict[str, Any]) -> list[str]:
     if not isinstance(payload, dict):
-        return ["Source payload must be an object."]
-    errors = _require_fields(payload, ["source_id", "title", "authors", "year"], "Source")
+        return ["Paper payload must be an object."]
+    errors = _require_fields(payload, ["paper_id", "title", "authors", "year"], "Paper")
     if "authors" in payload and not isinstance(payload["authors"], list):
-        errors.append("Source.authors must be a list.")
+        errors.append("Paper.authors must be a list.")
     if "year" in payload and not isinstance(payload["year"], int):
-        errors.append("Source.year must be an integer.")
+        errors.append("Paper.year must be an integer.")
     return errors
 
 
-def _validate_chunk(payload: dict[str, Any]) -> list[str]:
+def _validate_span(payload: dict[str, Any]) -> list[str]:
     if not isinstance(payload, dict):
-        return ["Chunk payload must be an object."]
-    errors = _require_fields(payload, ["chunk_id", "source_id", "section", "text"], "Chunk")
-    for field in ["chunk_id", "source_id", "section", "text"]:
+        return ["Span payload must be an object."]
+    errors = _require_fields(payload, ["span_id", "paper_id", "text"], "Span")
+    for field in ["span_id", "paper_id", "text"]:
         if field in payload and not isinstance(payload[field], str):
-            errors.append(f"Chunk.{field} must be a string.")
+            errors.append(f"Span.{field} must be a string.")
     return errors
 
 
@@ -175,63 +179,85 @@ def _validate_semantic_field(payload: dict[str, Any], label: str) -> list[str]:
         return [f"{label} must be an object."]
     if "value" not in payload or not isinstance(payload["value"], str):
         return [f"{label}.value must be a string."]
+    if "entity_type" in payload and not isinstance(payload["entity_type"], str):
+        return [f"{label}.entity_type must be a string."]
     return []
 
 
-def _validate_claimframe(payload: dict[str, Any]) -> list[str]:
+def _validate_context_map(payload: dict[str, Any], label: str) -> list[str]:
     if not isinstance(payload, dict):
-        return ["ClaimFrame payload must be an object."]
+        return [f"{label} must be an object."]
+    errors: list[str] = []
+    for key, value in payload.items():
+        errors.extend(_validate_semantic_field(value, f"{label}.{key}"))
+    return errors
+
+
+def _validate_claim(payload: dict[str, Any]) -> list[str]:
+    if not isinstance(payload, dict):
+        return ["Claim payload must be an object."]
     errors = _require_fields(
         payload,
         [
             "claim_id",
+            "paper_id",
             "claim_text",
             "subject",
             "predicate",
             "object",
-            "claim_type",
+            "claim_kind",
             "epistemic_status",
-            "source_chunk_ids",
+            "support_origin",
+            "source_span_ids",
         ],
-        "ClaimFrame",
+        "Claim",
     )
     if "subject" in payload:
-        errors.extend(_validate_semantic_field(payload["subject"], "ClaimFrame.subject"))
+        errors.extend(_validate_semantic_field(payload["subject"], "Claim.subject"))
     if "predicate" in payload:
-        errors.extend(_validate_semantic_field(payload["predicate"], "ClaimFrame.predicate"))
+        errors.extend(_validate_semantic_field(payload["predicate"], "Claim.predicate"))
     if "object" in payload:
-        errors.extend(_validate_semantic_field(payload["object"], "ClaimFrame.object"))
-    if "source_chunk_ids" in payload and not isinstance(payload["source_chunk_ids"], list):
-        errors.append("ClaimFrame.source_chunk_ids must be a list.")
+        errors.extend(_validate_semantic_field(payload["object"], "Claim.object"))
+    if "source_span_ids" in payload and not isinstance(payload["source_span_ids"], list):
+        errors.append("Claim.source_span_ids must be a list.")
+    if "context" in payload:
+        errors.extend(_validate_context_map(payload["context"], "Claim.context"))
+    if "details" in payload and not isinstance(payload["details"], dict):
+        errors.append("Claim.details must be an object.")
     return errors
 
 
-def _validate_meta_assertion(payload: dict[str, Any]) -> list[str]:
+def _validate_evidence_item(payload: dict[str, Any]) -> list[str]:
     if not isinstance(payload, dict):
-        return ["MetaAssertion payload must be an object."]
+        return ["EvidenceItem payload must be an object."]
     errors = _require_fields(
         payload,
-        ["assertion_id", "target_claim_id", "assertion_type", "summary", "confidence"],
-        "MetaAssertion",
+        ["evidence_id", "paper_id", "role", "summary_text", "evidence_method", "source_span_ids"],
+        "EvidenceItem",
     )
-    confidence = payload.get("confidence")
-    if confidence is not None and not isinstance(confidence, (int, float)):
-        errors.append("MetaAssertion.confidence must be numeric.")
+    if payload.get("role") not in VALID_RELATIONS:
+        errors.append("EvidenceItem.role must be one of the supported relation labels.")
+    if "evidence_method" in payload:
+        errors.extend(_validate_semantic_field(payload["evidence_method"], "EvidenceItem.evidence_method"))
+    if "outcome_type" in payload and payload["outcome_type"] is not None:
+        errors.extend(_validate_semantic_field(payload["outcome_type"], "EvidenceItem.outcome_type"))
+    if "presentation_type" in payload and payload["presentation_type"] is not None:
+        errors.extend(_validate_semantic_field(payload["presentation_type"], "EvidenceItem.presentation_type"))
+    if "source_span_ids" in payload and not isinstance(payload["source_span_ids"], list):
+        errors.append("EvidenceItem.source_span_ids must be a list.")
+    if "context" in payload:
+        errors.extend(_validate_context_map(payload["context"], "EvidenceItem.context"))
+    if "details" in payload and not isinstance(payload["details"], dict):
+        errors.append("EvidenceItem.details must be an object.")
     return errors
 
 
-def _validate_evidence(payload: dict[str, Any], label: str) -> list[str]:
+def _validate_claim_evidence_link(payload: dict[str, Any]) -> list[str]:
     if not isinstance(payload, dict):
-        return [f"{label} must be an object."]
-    errors = _require_fields(
-        payload,
-        ["evidence_id", "summary_text", "relation_to_claim", "evidence_type", "source_chunk_ids"],
-        label,
-    )
-    if payload.get("relation_to_claim") not in VALID_RELATIONS:
-        errors.append(f"{label}.relation_to_claim must be one of the supported relation labels.")
-    if "source_chunk_ids" in payload and not isinstance(payload["source_chunk_ids"], list):
-        errors.append(f"{label}.source_chunk_ids must be a list.")
+        return ["ClaimEvidenceLink payload must be an object."]
+    errors = _require_fields(payload, ["link_id", "claim_id", "evidence_id", "relation"], "ClaimEvidenceLink")
+    if payload.get("relation") not in VALID_RELATIONS:
+        errors.append("ClaimEvidenceLink.relation must be one of the supported relation labels.")
     return errors
 
 
@@ -240,46 +266,35 @@ def _validate_extraction(payload: dict[str, Any]) -> list[str]:
         return ["Extraction payload must be an object."]
     errors = _require_fields(
         payload,
-        ["task_id", "schema_version", "miner_id", "source", "chunks", "claim_records"],
+        ["paper", "spans", "claims", "evidence_items", "claim_evidence_links"],
         "Extraction",
     )
-    if "source" in payload:
-        errors.extend(_validate_source(payload["source"]))
-    if "chunks" in payload:
-        if not isinstance(payload["chunks"], list) or not payload["chunks"]:
-            errors.append("Extraction.chunks must be a non-empty list.")
+    if "paper" in payload:
+        errors.extend(_validate_paper(payload["paper"]))
+    if "spans" in payload:
+        if not isinstance(payload["spans"], list) or not payload["spans"]:
+            errors.append("Extraction.spans must be a non-empty list.")
         else:
-            for chunk in payload["chunks"]:
-                errors.extend(_validate_chunk(chunk))
-    if "claim_records" in payload:
-        if not isinstance(payload["claim_records"], list) or not payload["claim_records"]:
-            errors.append("Extraction.claim_records must be a non-empty list.")
+            for span in payload["spans"]:
+                errors.extend(_validate_span(span))
+    if "claims" in payload:
+        if not isinstance(payload["claims"], list) or not payload["claims"]:
+            errors.append("Extraction.claims must be a non-empty list.")
         else:
-            for index, record in enumerate(payload["claim_records"]):
-                if not isinstance(record, dict):
-                    errors.append(f"Extraction.claim_records[{index}] must be an object.")
-                    continue
-                if "claim" not in record:
-                    errors.append(f"Extraction.claim_records[{index}] is missing claim.")
-                else:
-                    errors.extend(_validate_claimframe(record["claim"]))
-                evidence = record.get("evidence")
-                if not isinstance(evidence, list) or not evidence:
-                    errors.append(f"Extraction.claim_records[{index}].evidence must be a non-empty list.")
-                else:
-                    for evidence_index, item in enumerate(evidence):
-                        errors.extend(
-                            _validate_evidence(
-                                item,
-                                f"Extraction.claim_records[{index}].evidence[{evidence_index}]",
-                            )
-                        )
-    if "meta_assertions" in payload:
-        if not isinstance(payload["meta_assertions"], list):
-            errors.append("Extraction.meta_assertions must be a list.")
+            for claim in payload["claims"]:
+                errors.extend(_validate_claim(claim))
+    if "evidence_items" in payload:
+        if not isinstance(payload["evidence_items"], list) or not payload["evidence_items"]:
+            errors.append("Extraction.evidence_items must be a non-empty list.")
         else:
-            for item in payload["meta_assertions"]:
-                errors.extend(_validate_meta_assertion(item))
+            for evidence_item in payload["evidence_items"]:
+                errors.extend(_validate_evidence_item(evidence_item))
+    if "claim_evidence_links" in payload:
+        if not isinstance(payload["claim_evidence_links"], list) or not payload["claim_evidence_links"]:
+            errors.append("Extraction.claim_evidence_links must be a non-empty list.")
+        else:
+            for link in payload["claim_evidence_links"]:
+                errors.extend(_validate_claim_evidence_link(link))
     return errors
 
 
@@ -288,7 +303,7 @@ def _validate_validator_score(payload: dict[str, Any]) -> list[str]:
         return ["ValidatorScore payload must be an object."]
     errors = _require_fields(
         payload,
-        ["task_id", "validator_id", "miner_id", "accepted", "score_total", "score_components", "notes"],
+        ["paper_id", "validator_id", "accepted", "score_total", "score_components", "notes"],
         "ValidatorScore",
     )
     components = payload.get("score_components")

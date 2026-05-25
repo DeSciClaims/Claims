@@ -7,18 +7,30 @@ The Claims subnet is proposed as a market for extracting machine-readable scient
 This repository captures the shape of that idea in a way that is easy to inspect:
 
 - a task envelope
-- a miner response
+- a miner response bundle
 - a validator score report
-- a minimal ontology-linking layer
+- a minimal ontology-enhancement layer
 
 ## Why This Exists
 
 Scientific AI systems still struggle with structured reasoning over the literature. The missing layer is not just retrieval. It is claim-level structure:
 
 - atomic claims
-- evidence linked to source text
+- evidence linked to source spans
 - explicit support or contradiction relations
-- provenance preserved at the chunk level
+- provenance preserved at the span level
+
+## Canonical Terms
+
+This repo uses the canonical object names from `claims_subnet/PROTOTYPE_CLAIM_GRAPH_SCHEMA.md`:
+
+- `Paper`
+- `Span`
+- `Claim`
+- `EvidenceItem`
+- `ClaimEvidenceLink`
+- `SemanticField`
+- `OntologyAnnotation`
 
 ## Repo Philosophy
 

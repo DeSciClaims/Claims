@@ -1,18 +1,24 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Chunk",
+  "title": "Span",
   "type": "object",
   "additionalProperties": false,
-  "required": ["chunk_id", "source_id", "section", "text"],
+  "required": ["span_id", "paper_id", "text"],
   "properties": {
-    "chunk_id": {
+    "span_id": {
       "type": "string"
     },
-    "source_id": {
+    "paper_id": {
       "type": "string"
     },
-    "section": {
+    "section_type": {
       "type": "string"
+    },
+    "section_name": {
+      "type": "string"
+    },
+    "page": {
+      "type": "integer"
     },
     "char_start": {
       "type": "integer"
@@ -21,6 +27,15 @@
       "type": "integer"
     },
     "text": {
+      "type": "string"
+    },
+    "table_id": {
+      "type": "string"
+    },
+    "figure_id": {
+      "type": "string"
+    },
+    "caption_id": {
       "type": "string"
     }
   }

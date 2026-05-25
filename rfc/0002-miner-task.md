@@ -2,14 +2,14 @@
 
 ## Summary
 
-A validator sends a miner a source document task.
+A validator sends a miner a paper-level extraction task.
 
-The miner returns a structured extraction payload that includes:
+The miner returns a structured extraction artifact that includes:
 
-- the source metadata
-- one or more source chunks
-- one or more `ClaimRecord` objects
-- optional meta assertions
+- one or more `Span` objects
+- one or more `Claim` objects
+- one or more `EvidenceItem` objects
+- one or more `ClaimEvidenceLink` objects
 
 ## Minimal Task Envelope
 
@@ -18,17 +18,18 @@ The miner returns a structured extraction payload that includes:
   "task_id": "task-hanlon-001",
   "task_family": "claim_extraction",
   "schema_version": "0.1",
-  "source_id": "hanlon-2025-jama",
+  "paper_id": "paper_hanlon_2025_jama",
   "expected_output": "extraction"
 }
 ```
 
 ## Minimal Miner Responsibilities
 
-1. Read the source and chunk text.
-2. Extract one or more atomic claims.
-3. Link each claim to evidence grounded in the provided chunks.
-4. Return structured JSON conforming to the schema.
+1. Read the paper and span text.
+2. Extract one or more atomic `Claim` objects.
+3. Extract one or more `EvidenceItem` objects grounded in the provided `Span` objects.
+4. Link claims to evidence with `ClaimEvidenceLink`.
+5. Return structured JSON conforming to the schema.
 
 ## Non-Goals In This Demo Repo
 

@@ -8,8 +8,8 @@ This demo repo uses a very simple scoring sketch:
 
 - schema validity
 - structural completeness
-- grounding to known chunk ids
-- relation-label validity
+- grounding to known span ids
+- role and relation-label validity
 - ontology-link completeness
 
 ## Demo Scoring Principle
@@ -17,7 +17,7 @@ This demo repo uses a very simple scoring sketch:
 The validator should reward outputs that are:
 
 - well-formed
-- grounded in the supplied source chunks
+- grounded in the supplied spans
 - semantically legible
 - easy to merge with other miner outputs
 

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ClaimEvidenceLink",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["link_id", "claim_id", "evidence_id", "relation"],
+  "properties": {
+    "link_id": {
+      "type": "string"
+    },
+    "claim_id": {
+      "type": "string"
+    },
+    "evidence_id": {
+      "type": "string"
+    },
+    "relation": {
+      "type": "string",
+      "enum": [
+        "supports",
+        "contradicts",
+        "qualifies",
+        "backgrounds"
+      ]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  }
+}

@@ -17,4 +17,4 @@ class ValidatorScoringTests(unittest.TestCase):
         payload = load_json(EXAMPLES_DIR / "miner_outputs" / "extraction.bad_span.json")
         report = score_payload(payload)
         self.assertLess(report["score_components"]["grounding"], 1.0)
-        self.assertTrue(any("unknown chunk id" in note for note in report["notes"]))
+        self.assertTrue(any("unknown span id" in note for note in report["notes"]))

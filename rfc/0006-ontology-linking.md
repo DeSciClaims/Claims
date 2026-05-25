@@ -4,7 +4,7 @@
 
 Claims are more useful when their subject and object fields can be mapped to normalized concepts.
 
-This demo repo includes a minimal hard-coded ontology mapping layer to show the role this step plays:
+This demo repo includes a minimal hard-coded ontology enhancement layer to show the role this step plays:
 
 - normalize repeated entity mentions
 - improve mergeability across miners
@@ -12,15 +12,14 @@ This demo repo includes a minimal hard-coded ontology mapping layer to show the 
 
 ## Minimal Model
 
-Each semantic field may include:
+Each `SemanticField` may include:
 
-- raw text
-- normalized text
-- a small list of candidate mappings
-- an optional selected mapping
+- raw text via `value`
+- an `entity_type`
+- an optional `OntologyAnnotation`
 
 ## Why It Matters
 
 Without normalization, two miners may return semantically identical claims in forms that are hard to align.
 
-Ontology linking is therefore not the whole product, but it is one of the pieces that makes the canonical graph composable.
+Ontology enhancement is therefore not the whole product, but it is one of the pieces that makes the canonical graph composable.

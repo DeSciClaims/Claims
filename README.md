@@ -1,20 +1,20 @@
-# Scientific Claims Subnet RFC
+# Claims Subnet RFC
 
 This repository is a lightweight, public-facing guide to the proposed Claims subnet.
 
 It is intentionally not a production codebase. The goal is to make the shape of the subnet easy to understand for reviewers, partners, and potential miners or validators:
 
-- What a source-paper task looks like
+- What a paper-level task looks like
 - What a miner is expected to return
 - How a validator might score that output
-- How claims, evidence, and ontology links fit together
+- How the prototype claim graph objects fit together
 
 The examples and scripts are deliberately minimal and hard-coded. They are meant to illustrate protocol shape, not implementation detail.
 
 ## What Is In This Repo
 
 - Short RFC notes describing the proposed subnet
-- Simplified JSON Schemas for source, chunk, claim, extraction, and validator outputs
+- Simplified JSON Schemas for the prototype claim graph objects
 - Mock miner and validator scripts that run on example JSON files
 - Example payloads for valid and invalid miner outputs
 - Small tests that validate the repo's demonstration flow
@@ -46,18 +46,15 @@ claims-subnet-rfc/
 
 ## Core Idea
 
-The subnet treats a scientific paper as input and a set of structured `ClaimRecord` objects as output.
+The canonical object model in this repo follows `claims_subnet/PROTOTYPE_CLAIM_GRAPH_SCHEMA.md`.
 
-Each `ClaimRecord` has:
+- `Paper`
+- `Span`
+- `Claim`
+- `EvidenceItem`
+- `ClaimEvidenceLink`
 
-- a `claim`:
-  an atomic subject-predicate-object statement with provenance
-- one or more `evidence` items:
-  structured support, contradiction, qualification, or replication records linked back to source chunks
-- optional `meta_assertions`:
-  higher-level statements such as consensus status, conflict flags, or ontology readiness
-
-Validators score miner outputs for shape, grounding, and basic consistency, then use accepted records to help build a canonical claim-evidence graph.
+The miner demo returns an extraction artifact containing those objects. Validators score the artifact for shape, grounding to spans, and relation consistency.
 
 ## Quickstart
 
@@ -87,9 +84,10 @@ python -m unittest discover -s tests
 
 ## Design Notes
 
-- The schema is simplified from the internal prototype used by the team.
+- The canonical terms in this repo come from `claims_subnet/PROTOTYPE_CLAIM_GRAPH_SCHEMA.md`.
+- The public demo keeps the prototype object model small and readable.
 - The example domain is biomedical, but the shape is domain-agnostic.
-- Ontology linking is shown as a simple mapping layer, not as a full service.
+- Ontology enhancement uses the same `SemanticField` and `OntologyAnnotation` pattern everywhere.
 
 ## Suggested Reading Order
 

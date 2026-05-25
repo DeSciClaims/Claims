@@ -1,262 +1,45 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "ExtractionPayload",
+  "title": "ExtractionArtifact",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "task_id",
-    "schema_version",
-    "miner_id",
-    "source",
-    "chunks",
-    "claim_records"
+    "paper",
+    "spans",
+    "claims",
+    "evidence_items",
+    "claim_evidence_links"
   ],
   "properties": {
-    "task_id": {
-      "type": "string"
+    "paper": {
+      "$ref": "paper.schema.json"
     },
-    "schema_version": {
-      "type": "string"
-    },
-    "miner_id": {
-      "type": "string"
-    },
-    "source": {
-      "$ref": "#/$defs/source"
-    },
-    "chunks": {
+    "spans": {
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/chunk"
+        "$ref": "span.schema.json"
       }
     },
-    "claim_records": {
+    "claims": {
       "type": "array",
       "minItems": 1,
       "items": {
-        "$ref": "#/$defs/claim_record"
+        "$ref": "claim.schema.json"
       }
     },
-    "meta_assertions": {
+    "evidence_items": {
       "type": "array",
+      "minItems": 1,
       "items": {
-        "$ref": "#/$defs/meta_assertion"
-      }
-    }
-  },
-  "$defs": {
-    "source": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["source_id", "title", "authors", "year"],
-      "properties": {
-        "source_id": { "type": "string" },
-        "title": { "type": "string" },
-        "doi": { "type": "string" },
-        "authors": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "journal": { "type": "string" },
-        "year": { "type": "integer" },
-        "domain": { "type": "string" },
-        "abstract": { "type": "string" }
+        "$ref": "evidence_item.schema.json"
       }
     },
-    "chunk": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["chunk_id", "source_id", "section", "text"],
-      "properties": {
-        "chunk_id": { "type": "string" },
-        "source_id": { "type": "string" },
-        "section": { "type": "string" },
-        "char_start": { "type": "integer" },
-        "char_end": { "type": "integer" },
-        "text": { "type": "string" }
-      }
-    },
-    "ontology_candidate": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["ontology_source", "ontology_id", "ontology_label"],
-      "properties": {
-        "ontology_source": { "type": "string" },
-        "ontology_id": { "type": "string" },
-        "ontology_label": { "type": "string" },
-        "confidence": { "type": "number" }
-      }
-    },
-    "semantic_field": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["value"],
-      "properties": {
-        "value": { "type": "string" },
-        "normalized_value": { "type": "string" },
-        "selected_mapping": {
-          "$ref": "#/$defs/ontology_candidate"
-        },
-        "candidate_mappings": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/ontology_candidate"
-          }
-        }
-      }
-    },
-    "claim": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "claim_id",
-        "claim_text",
-        "subject",
-        "predicate",
-        "object",
-        "claim_type",
-        "epistemic_status",
-        "source_chunk_ids"
-      ],
-      "properties": {
-        "claim_id": { "type": "string" },
-        "claim_text": { "type": "string" },
-        "subject": { "$ref": "#/$defs/semantic_field" },
-        "predicate": { "$ref": "#/$defs/semantic_field" },
-        "object": { "$ref": "#/$defs/semantic_field" },
-        "claim_type": {
-          "type": "string",
-          "enum": [
-            "causal",
-            "correlational",
-            "comparative",
-            "prevalence",
-            "methodological",
-            "definitional",
-            "null_result"
-          ]
-        },
-        "epistemic_status": {
-          "type": "string",
-          "enum": [
-            "reported",
-            "supported",
-            "qualified",
-            "contradicted",
-            "uncertain"
-          ]
-        },
-        "source_chunk_ids": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string" }
-        },
-        "context": {
-          "type": "object",
-          "additionalProperties": {
-            "type": ["string", "number", "boolean"]
-          }
-        }
-      }
-    },
-    "evidence": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "evidence_id",
-        "summary_text",
-        "relation_to_claim",
-        "evidence_type",
-        "source_chunk_ids"
-      ],
-      "properties": {
-        "evidence_id": { "type": "string" },
-        "summary_text": { "type": "string" },
-        "relation_to_claim": {
-          "type": "string",
-          "enum": [
-            "supports",
-            "relates_to",
-            "contradicts",
-            "qualifies",
-            "refines",
-            "replicates",
-            "fails_to_replicate"
-          ]
-        },
-        "evidence_type": {
-          "type": "string",
-          "enum": [
-            "theoretical_argument",
-            "laboratory_experiment",
-            "randomized_controlled_trial",
-            "meta_analysis",
-            "cohort_study",
-            "case_control",
-            "computational",
-            "descriptive_observation",
-            "correlational"
-          ]
-        },
-        "source_chunk_ids": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "type": "string" }
-        },
-        "details": {
-          "type": "object",
-          "additionalProperties": {
-            "type": ["string", "number", "boolean"]
-          }
-        }
-      }
-    },
-    "claim_record": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["claim", "evidence"],
-      "properties": {
-        "claim": {
-          "$ref": "#/$defs/claim"
-        },
-        "evidence": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/evidence"
-          }
-        }
-      }
-    },
-    "meta_assertion": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "assertion_id",
-        "target_claim_id",
-        "assertion_type",
-        "summary",
-        "confidence"
-      ],
-      "properties": {
-        "assertion_id": { "type": "string" },
-        "target_claim_id": { "type": "string" },
-        "assertion_type": {
-          "type": "string",
-          "enum": [
-            "consensus_candidate",
-            "contradiction_flag",
-            "ontology_ready",
-            "needs_review"
-          ]
-        },
-        "summary": { "type": "string" },
-        "confidence": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1
-        }
+    "claim_evidence_links": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "claim_evidence_link.schema.json"
       }
     }
   }

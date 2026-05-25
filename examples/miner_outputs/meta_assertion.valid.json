@@ -1,7 +1,0 @@
-{
-  "assertion_id": "meta-001",
-  "target_claim_id": "claim-402774b0207f",
-  "assertion_type": "ontology_ready",
-  "summary": "The core entities are normalized strongly enough for graph merge review.",
-  "confidence": 0.93
-}

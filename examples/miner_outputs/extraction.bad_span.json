@@ -1,66 +1,111 @@
 {
-  "task_id": "task-hanlon-001",
-  "schema_version": "0.1",
-  "miner_id": "demo-miner-001",
-  "source": {
-    "source_id": "hanlon-2025-jama",
-    "title": "Effectiveness of glucose-lowering drugs in older adults with type 2 diabetes: a network meta-analysis",
+  "paper": {
+    "paper_id": "paper_hanlon_2025_jama",
     "doi": "10.1001/jama.2024.27402",
+    "title": "Effectiveness of glucose-lowering drugs in older adults with type 2 diabetes: a network meta-analysis",
     "authors": [
       "Hanlon et al."
     ],
     "journal": "JAMA",
     "year": 2025,
-    "domain": "biomedicine",
-    "abstract": "Illustrative source metadata used for the Claims subnet RFC demo."
+    "source_type": "journal_article",
+    "open_access": true
   },
-  "chunks": [
+  "spans": [
     {
-      "chunk_id": "chunk-001",
-      "source_id": "hanlon-2025-jama",
-      "section": "results",
+      "span_id": "span_001",
+      "paper_id": "paper_hanlon_2025_jama",
+      "section_type": "RESULTS",
+      "section_name": "Glycemic outcomes",
+      "page": 1,
       "char_start": 0,
       "char_end": 190,
-      "text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c in adults with type 2 diabetes. The magnitude of the effect was smaller at older ages."
+      "text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c in adults with type 2 diabetes. The magnitude of the effect was smaller at older ages.",
+      "table_id": null,
+      "figure_id": null,
+      "caption_id": null
     }
   ],
-  "claim_records": [
+  "claims": [
     {
-      "claim": {
-        "claim_id": "claim-402774b0207f",
-        "claim_text": "SGLT2 inhibitors reduce HbA1c in adults with type 2 diabetes.",
-        "subject": {
-          "value": "SGLT2 inhibitors"
-        },
-        "predicate": {
-          "value": "reduce"
-        },
-        "object": {
-          "value": "HbA1c in adults with type 2 diabetes"
-        },
-        "claim_type": "causal",
-        "epistemic_status": "supported",
-        "source_chunk_ids": [
-          "chunk-001"
-        ],
-        "context": {
-          "population": "adults with type 2 diabetes"
+      "claim_id": "claim-48b77d266b70",
+      "paper_id": "paper_hanlon_2025_jama",
+      "claim_text": "SGLT2 inhibitors reduced HbA1c in adults with type 2 diabetes.",
+      "subject": {
+        "value": "SGLT2 inhibitors",
+        "entity_type": "chemical",
+        "ontology": null
+      },
+      "predicate": {
+        "value": "reduced",
+        "entity_type": "predicate",
+        "ontology": null
+      },
+      "object": {
+        "value": "HbA1c in adults with type 2 diabetes",
+        "entity_type": "clinical_measure",
+        "ontology": null
+      },
+      "claim_kind": "result",
+      "epistemic_status": "empirical",
+      "support_origin": "own_results",
+      "source_span_ids": [
+        "span_001"
+      ],
+      "context": {
+        "population": {
+          "value": "adults with type 2 diabetes",
+          "entity_type": "population",
+          "ontology": null
         }
       },
-      "evidence": [
-        {
-          "evidence_id": "evidence-support-001",
-          "summary_text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c.",
-          "relation_to_claim": "supports",
-          "evidence_type": "meta_analysis",
-          "source_chunk_ids": [
-            "chunk-missing-001"
-          ],
-          "details": {
-            "study_count": 592
-          }
+      "details": {}
+    }
+  ],
+  "evidence_items": [
+    {
+      "evidence_id": "ev_001",
+      "paper_id": "paper_hanlon_2025_jama",
+      "role": "supports",
+      "summary_text": "Across 592 randomized clinical trials including 309,503 participants, SGLT2 inhibitors reduced HbA1c.",
+      "evidence_method": {
+        "value": "meta_analysis",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "clinical_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "span_missing_001"
+      ],
+      "context": {
+        "population": {
+          "value": "adults with type 2 diabetes",
+          "entity_type": "population",
+          "ontology": null
         }
-      ]
+      },
+      "details": {
+        "study_count": 592
+      },
+      "ontology": null
+    }
+  ],
+  "claim_evidence_links": [
+    {
+      "link_id": "link_001",
+      "claim_id": "claim-48b77d266b70",
+      "evidence_id": "ev_001",
+      "relation": "supports",
+      "confidence": 0.97
     }
   ]
 }

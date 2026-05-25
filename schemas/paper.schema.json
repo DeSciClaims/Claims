@@ -1,17 +1,20 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Source",
+  "title": "Paper",
   "type": "object",
   "additionalProperties": false,
-  "required": ["source_id", "title", "authors", "year"],
+  "required": ["paper_id", "title", "authors", "year"],
   "properties": {
-    "source_id": {
-      "type": "string"
-    },
-    "title": {
+    "paper_id": {
       "type": "string"
     },
     "doi": {
+      "type": "string"
+    },
+    "pmid": {
+      "type": "string"
+    },
+    "title": {
       "type": "string"
     },
     "authors": {
@@ -26,11 +29,11 @@
     "year": {
       "type": "integer"
     },
-    "domain": {
+    "source_type": {
       "type": "string"
     },
-    "abstract": {
-      "type": "string"
+    "open_access": {
+      "type": "boolean"
     }
   }
 }
