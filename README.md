@@ -1,8 +1,8 @@
-# Claims Subnet RFC
+# Claims Subnet
 
 This repository is a lightweight, public-facing guide to the Claims subnet.
 
-It is intentionally not a production codebase. The goal is to make the shape of the subnet easy to understand for reviewers, partners, and potential miners or validators:
+The goal is to make the shape of the subnet easy to understand for reviewers, partners, and potential miners or validators:
 
 - What a paper-level task looks like
 - What a miner is expected to return
@@ -46,8 +46,6 @@ claims-subnet-rfc/
 
 ## Core Idea
 
-The canonical object model in this repo follows `claims_subnet/PROTOTYPE_CLAIM_GRAPH_SCHEMA.md`.
-
 - `Paper`
 - `Span`
 - `Claim`
@@ -84,7 +82,6 @@ python -m unittest discover -s tests
 
 ## Design Notes
 
-- The canonical terms in this repo come from `claims_subnet/PROTOTYPE_CLAIM_GRAPH_SCHEMA.md`.
 - The public demo keeps the prototype object model small and readable.
 - The example domain is biomedical, but the shape is domain-agnostic.
 - Ontology enhancement uses the same `SemanticField` and `OntologyAnnotation` pattern everywhere.
