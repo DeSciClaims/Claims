@@ -1,6 +1,6 @@
 # Claims Subnet RFC
 
-This repository is a lightweight, public-facing guide to the proposed Claims subnet.
+This repository is a lightweight, public-facing guide to the Claims subnet.
 
 It is intentionally not a production codebase. The goal is to make the shape of the subnet easy to understand for reviewers, partners, and potential miners or validators:
 
