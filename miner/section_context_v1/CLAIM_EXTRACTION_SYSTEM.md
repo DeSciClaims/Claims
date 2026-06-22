@@ -335,6 +335,9 @@ A normal extraction run writes:
 
 If input came through TEI or PDF+GROBID, the run can also write:
 
+Official GROBID setup guide:
+https://grobid.readthedocs.io/en/latest/Grobid-docker/
+
 - `tei.xml`
 
 ### `section_context_v1_output.json`

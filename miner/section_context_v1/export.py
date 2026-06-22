@@ -106,6 +106,7 @@ def write_manifest(output_path: Path, payload: Any) -> None:
 def write_extraction_rows(
     output_path: Path,
     *,
+    sections: list[dict[str, Any]],
     claims: list[Claim],
     evidence_items: list[EvidenceItem],
     links: list[ClaimEvidenceLink],
@@ -113,6 +114,12 @@ def write_extraction_rows(
 ) -> None:
     claim_links = [link.model_dump(mode="json") for link in links]
     evidence_by_id = {item.evidence_id: item for item in evidence_items}
+    section_by_span_id: dict[str, dict[str, Any]] = {}
+    for section in sections:
+        for span_id in section.get("span_ids", []) or []:
+            span_key = str(span_id).strip()
+            if span_key and span_key not in section_by_span_id:
+                section_by_span_id[span_key] = section
     rows: list[dict[str, Any]] = []
     for claim in claims:
         linked_ids = linked_evidence_ids_for_claim(claim.claim_id, claim_links)
@@ -121,11 +128,12 @@ def write_extraction_rows(
             for link in links
             if link.claim_id == claim.claim_id and link.evidence_id in evidence_by_id
         ]
+        section = _section_for_claim(claim, section_by_span_id)
         row = {
             "paper_id": claim.paper_id,
-            "section_id": claim.source_span_ids[0] if claim.source_span_ids else "",
-            "section_name": "",
-            "section_type": "",
+            "section_id": str((section or {}).get("section_id", "")).strip(),
+            "section_name": str((section or {}).get("section_name", "")).strip(),
+            "section_type": str((section or {}).get("section_type", "")).strip(),
             "claim_id": claim.claim_id,
             "claim_text": claim.claim_text,
             "subject": claim.subject.value,
@@ -145,6 +153,14 @@ def write_extraction_rows(
         }
         rows.append(row)
     write_reviewer_rows(rows, output_path, EXTRACTION_ROW_FIELDS, xlsx=xlsx)
+
+
+def _section_for_claim(claim: Claim, section_by_span_id: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    for span_id in claim.source_span_ids:
+        span_key = str(span_id).strip()
+        if span_key and span_key in section_by_span_id:
+            return section_by_span_id[span_key]
+    return None
 
 
 def write_evaluation_rows(

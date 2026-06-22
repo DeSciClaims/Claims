@@ -170,6 +170,7 @@ class SectionContextV1Runner:
         write_json(final_output_dir / "section_context_v1_output.json", payload)
         write_extraction_rows(
             final_output_dir / "extracted_claims.csv",
+            sections=[item.model_dump(mode="json") for item in sections],
             claims=claims,
             evidence_items=evidence_items,
             links=links,

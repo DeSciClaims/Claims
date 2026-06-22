@@ -25,6 +25,9 @@ Set up env vars from `.env.example`. The miner needs `OPENROUTER_API_KEY`. For
 PDF ingestion with TEI extraction it also expects a running GROBID instance at
 `GROBID_URL`.
 
+Official GROBID setup guide:
+https://grobid.readthedocs.io/en/latest/Grobid-docker/
+
 ## Run
 
 Mine directly from a PDF with GROBID:

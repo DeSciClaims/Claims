@@ -53,7 +53,8 @@ pip install -r requirements.txt
 ```
 
 Copy `.env.example` to `.env` and fill in `OPENROUTER_API_KEY`. If you want PDF
-ingest through TEI, run GROBID and set `GROBID_URL`.
+ingest through TEI, run GROBID and set `GROBID_URL`. Official setup guide:
+https://grobid.readthedocs.io/en/latest/Grobid-docker/
 
 Run the miner on a PDF:
 
