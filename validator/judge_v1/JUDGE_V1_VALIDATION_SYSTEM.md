@@ -109,8 +109,8 @@ This is the currently rendered `judge v3` instruction block built from:
 
 - the fixed `judge v3` rubric and decision policy
 - reviewer-note summaries from `claims_subnet/data/gold_set_templates/reviewed_files/v0`
-- Philipp’s general comments
-- Sina’s comments
+- reviewer general comments
+- reviewer general comments
 
 Important:
 
@@ -136,7 +136,7 @@ Use the following inputs holistically when they are available:
 - peer extracted claims from the same paper
 - paper-level evidence registry
 
-Paper-aware judging lessons from human review:
+Paper-aware judging lessons from reviewer review:
 - Do not assume every scientific qualifier must be squeezed into one atomic claim sentence.
 - Check whether the missing context is already preserved elsewhere in the extracted claim object or elsewhere in the paper-level extraction packet.
 - Separate 'correct claim but missing evidence link' from 'wrong claim'.
@@ -219,13 +219,13 @@ Representative reviewer notes from the CSVs:
 - 2x reviewer note: important condition was missing
 - 2x reviewer note: discussion
 
-Philipp's general comments:
+reviewer general comments:
 - Many failure modes are caused by weak understanding of English semantics and scientific phrasing.
 - Do not collapse non-linear or piecewise relationships into a single monotonic claim. A U-shaped or threshold relationship often needs multiple claims.
 - Do not throw away important context, qualifiers, conditions, comparison groups, or effect-size details.
 - One sentence can contain several distinct claims, and correct extraction may require context beyond the isolated sentence.
 
-Sina's comments:
+reviewer general comments:
 - Handle compound subjects and compound objects, including conjunction subjects and conjunction objects.
 - Handle predicates with conjunctions rather than flattening them into one vague relation.
 - Avoid overly weak predicates such as 'is' or 'are' when the source states a more specific relation.
