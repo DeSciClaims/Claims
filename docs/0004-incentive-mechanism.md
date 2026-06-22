@@ -1,4 +1,4 @@
-# RFC 0005: Incentive Mechanism
+# RFC 0004: Incentive Mechanism
 
 ## Status
 

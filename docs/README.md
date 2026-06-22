@@ -1,15 +1,15 @@
-# RFC 0001: Overview
+# Docs Overview
 
 ## Table of Contents
 
-- [RFC 0001: Overview](./0001-overview.md)
-- [RFC 0002: Miner Task](./0002-miner-task.md)
-- [RFC 0003: Validator Scoring](./0003-validator-scoring.md)
-- [RFC 0004: Schema](./0004-schema.md)
-- [RFC 0005: Incentive Mechanism](./0005-incentive-mechanism.md)
-- [RFC 0006: Ontology Linking](./0006-ontology-linking.md)
-- [RFC 0007: Schema Epistemic Ontology](./0007-schema-epistemic-ontology.md)
-- [RFC 0008: Roadmap To Subnet](./0008-roadmap-to-subnet.md)
+- [Docs Overview](./README.md)
+- [RFC 0001: Miner Task](./0001-miner-task.md)
+- [RFC 0002: Validator Scoring](./0002-validator-scoring.md)
+- [RFC 0003: Schema](./0003-schema.md)
+- [RFC 0004: Incentive Mechanism](./0004-incentive-mechanism.md)
+- [RFC 0005: Ontology Linking](./0005-ontology-linking.md)
+- [RFC 0006: Schema Epistemic Ontology](./0006-schema-epistemic-ontology.md)
+- [RFC 0007: Roadmap To Subnet](./0007-roadmap-to-subnet.md)
 
 ## Purpose
 

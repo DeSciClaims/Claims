@@ -95,10 +95,10 @@ python -m validator.judge_v1 \
 
 ## Suggested Reading Order
 
-1. `docs/0001-overview.md`
-2. `docs/0002-miner-task.md`
-3. `docs/0003-validator-scoring.md`
-4. `docs/0004-schema.md`
+1. `docs/README.md`
+2. `docs/0001-miner-task.md`
+3. `docs/0002-validator-scoring.md`
+4. `docs/0003-schema.md`
 5. `miner/section_context_v1/runner.py`
 6. `validator/judge_v1/runner.py`
 

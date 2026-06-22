@@ -1,4 +1,4 @@
-# Controlled Vocabulary For The General Schema V1
+# RFC 0006: Schema Epistemic Ontology
 
 This document defines the current controlled-vocabulary layer for the general
 `claims_subnet` schema.
