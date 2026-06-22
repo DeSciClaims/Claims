@@ -11,10 +11,8 @@ This is the schema-level reference, separate from prompts.
 
 ## Scope
 
-This document covers the shared schema objects implemented in:
-
-- [models.py](/Users/ogbanugot/Workspace/desci/ml-llm-benchmark/claims_subnet/schemas/models.py)
-- [profiles.py](/Users/ogbanugot/Workspace/desci/ml-llm-benchmark/claims_subnet/schemas/profiles.py)
+This document covers the shared schema objects used across the public Claims
+schema.
 
 The main schema objects are:
 
@@ -180,7 +178,7 @@ Recommended values:
 
 These keys are semi-controlled.
 
-Base allowed keys from [profiles.py](/Users/ogbanugot/Workspace/desci/ml-llm-benchmark/claims_subnet/schemas/profiles.py):
+Base allowed keys in the current schema vocabulary:
 
 - `population`
 - `species`
@@ -208,7 +206,7 @@ Project extensions already used in profile work:
 
 These keys are semi-controlled.
 
-Base allowed keys from [profiles.py](/Users/ogbanugot/Workspace/desci/ml-llm-benchmark/claims_subnet/schemas/profiles.py):
+Base allowed keys in the current schema vocabulary:
 
 - `effect_size`
 - `statistical_significance`
@@ -263,7 +261,7 @@ Recommended values:
 
 This is the main closed vocabulary controller for evidence items.
 
-Current controlled set from [profiles.py](/Users/ogbanugot/Workspace/desci/ml-llm-benchmark/claims_subnet/schemas/profiles.py):
+Current controlled set in the schema vocabulary:
 
 - `randomized_controlled_trial`
 - `laboratory_experiment`
@@ -281,7 +279,7 @@ Current controlled set from [profiles.py](/Users/ogbanugot/Workspace/desci/ml-ll
 
 ### `outcome_type`
 
-Closed vocabulary from [profiles.py](/Users/ogbanugot/Workspace/desci/ml-llm-benchmark/claims_subnet/schemas/profiles.py):
+Closed vocabulary in the schema:
 
 - `clinical_outcome`
 - `behavioral_outcome`
@@ -296,7 +294,7 @@ Closed vocabulary from [profiles.py](/Users/ogbanugot/Workspace/desci/ml-llm-ben
 
 ### `presentation_type`
 
-Closed vocabulary from [profiles.py](/Users/ogbanugot/Workspace/desci/ml-llm-benchmark/claims_subnet/schemas/profiles.py):
+Closed vocabulary in the schema:
 
 - `text`
 - `table`
@@ -431,10 +429,3 @@ If you are filling the schema:
   are appropriate
 - use `claim_profile` to decide which claim `context` and `details` keys are
   appropriate
-
-## Related Docs
-
-- [CLAIM_PROFILE_VOCAB_V1.md](/Users/ogbanugot/Workspace/desci/ml-llm-benchmark/claims_subnet/CLAIM_PROFILE_VOCAB_V1.md)
-- [ONTOLOGY_MAPPING_V1.md](/Users/ogbanugot/Workspace/desci/ml-llm-benchmark/claims_subnet/ONTOLOGY_MAPPING_V1.md)
-- [models.py](/Users/ogbanugot/Workspace/desci/ml-llm-benchmark/claims_subnet/schemas/models.py)
-- [profiles.py](/Users/ogbanugot/Workspace/desci/ml-llm-benchmark/claims_subnet/schemas/profiles.py)

@@ -102,6 +102,11 @@ python -m validator.judge_v1 \
 5. `miner/section_context_v1/runner.py`
 6. `validator/judge_v1/runner.py`
 
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md)
+for the expected workflow and the current pipeline-scoped contribution model.
+
 ## Status
 
 This repository is still documentation-first. The miner and validator folders
