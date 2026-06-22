@@ -1,0 +1,6 @@
+dspy-ai
+lxml
+pydantic>=2
+pypdf
+python-dotenv
+requests
