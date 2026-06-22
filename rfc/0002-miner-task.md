@@ -29,7 +29,9 @@ The miner returns a structured extraction artifact that includes:
 2. Extract one or more atomic `Claim` objects.
 3. Extract one or more `EvidenceItem` objects grounded in the provided `Span` objects.
 4. Link claims to evidence with `ClaimEvidenceLink`.
-5. Return structured JSON conforming to the schema.
+5. When possible, assign a `claim_profile` to each claim so expected
+   `context` and `details` fields are easier to validate downstream.
+6. Return structured JSON conforming to the schema.
 
 ## Non-Goals In This Demo Repo
 

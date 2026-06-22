@@ -113,6 +113,7 @@
         }
       },
       "claim_kind": "result",
+      "claim_profile": "intervention_effect_result",
       "epistemic_status": "empirical",
       "support_origin": "own_results",
       "source_span_ids": [

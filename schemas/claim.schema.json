@@ -47,6 +47,9 @@
         "descriptive"
       ]
     },
+    "claim_profile": {
+      "type": "string"
+    },
     "epistemic_status": {
       "type": "string",
       "enum": [
