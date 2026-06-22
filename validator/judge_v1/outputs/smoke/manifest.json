@@ -1,0 +1,9 @@
+{
+  "output_dir": "validator/judge_v1/outputs/smoke",
+  "judge_version": "none",
+  "judge_mode": "intrinsic",
+  "group_count": 0,
+  "claim_count": 0,
+  "mode": "intrinsic",
+  "extraction_output_json_path": "../ml-llm-benchmark/claims_subnet/outputs/section_context_v1__run_v1_spo_focus/Rietveld_et_al_2013_Science/section_context_v1_output.json"
+}

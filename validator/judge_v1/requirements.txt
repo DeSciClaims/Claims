@@ -1,0 +1,4 @@
+dspy-ai
+openpyxl
+pydantic>=2
+python-dotenv
