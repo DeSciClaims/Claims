@@ -6,8 +6,10 @@ material plus self-contained runnable packages for:
 - `miner`
 - `validator`
 
-Those folders now vendor the actual `section_context_v1` mining and judging code
-from the benchmark project, instead of only carrying a toy scaffold.
+Those folders are ongoing work areas. The current public implementation scope is
+pipeline-version packages, with `miner/section_context_v1` and
+`validator/judge_v1` vendoring the actual benchmark-derived code instead of only
+carrying a toy scaffold.
 
 ## Repository Layout
 
@@ -86,10 +88,10 @@ python -m validator.judge_v1 \
 
 ## Public Structure
 
-- `miner/` is the public miner root.
-- `miner/section_context_v1/` is a self-contained miner pipeline folder.
-- `validator/` is the public validator root.
-- `validator/judge_v1/` is a self-contained validator judge folder.
+- `miner/` is the public miner root and will grow as more pipeline versions are published.
+- `miner/section_context_v1/` is the current self-contained miner pipeline package.
+- `validator/` is the public validator root and is likewise currently scoped to packaged judge versions.
+- `validator/judge_v1/` is the current self-contained validator judge package.
 
 ## Suggested Reading Order
 
@@ -102,5 +104,6 @@ python -m validator.judge_v1 \
 
 ## Status
 
-This repository is still documentation-first, but the miner and validator
-folders now contain runnable benchmark-derived code rather than placeholders.
+This repository is still documentation-first. The miner and validator folders
+now contain runnable benchmark-derived code, but they should still be read as
+ongoing pipeline-version work rather than a finished top-level framework.

@@ -1,5 +1,16 @@
 # RFC 0001: Overview
 
+## Table of Contents
+
+- [RFC 0001: Overview](./0001-overview.md)
+- [RFC 0002: Miner Task](./0002-miner-task.md)
+- [RFC 0003: Validator Scoring](./0003-validator-scoring.md)
+- [RFC 0004: Schema](./0004-schema.md)
+- [RFC 0005: Incentive Mechanism](./0005-incentive-mechanism.md)
+- [RFC 0006: Ontology Linking](./0006-ontology-linking.md)
+- [RFC 0007: Schema Epistemic Ontology](./0007-schema-epistemic-ontology.md)
+- [RFC 0008: Roadmap To Subnet](./0008-roadmap-to-subnet.md)
+
 ## Purpose
 
 The Claims subnet is proposed as a market for extracting machine-readable scientific claims from source papers and linking those claims to evidence.
