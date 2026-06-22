@@ -1,31 +1,13 @@
 # Claims Subnet
 
-This repository is a lightweight, public-facing guide to the Claims subnet.
+This repository is the public Claims subnet repo. It includes the docs
+material plus self-contained runnable packages for:
 
-The goal is to make the shape of the subnet easy to understand for reviewers, partners, and potential miners or validators:
+- `miner`
+- `validator`
 
-- What a paper-level task looks like
-- What a miner is expected to return
-- How a validator might score that output
-- How the prototype claim graph objects fit together
-
-The examples and scripts are deliberately minimal and hard-coded. They are meant to illustrate protocol shape, not implementation detail.
-
-## What Is In This Repo
-
-- Short RFC notes describing the proposed subnet
-- Simplified JSON Schemas for the prototype claim graph objects
-- Mock miner and validator scripts that run on example JSON files
-- Example payloads for valid and invalid miner outputs
-- Small tests that validate the repo's demonstration flow
-
-## What Is Not In This Repo
-
-- Full extraction pipelines
-- Production networking or storage layers
-- Model-serving infrastructure
-- Customer-specific ontology systems
-- Economic mechanism implementation beyond a simple sketch
+Those folders now vendor the actual `section_context_v1` mining and judging code
+from the benchmark project, instead of only carrying a toy scaffold.
 
 ## Repository Layout
 
@@ -36,15 +18,20 @@ claims-subnet-rfc/
 ├── pyproject.toml
 ├── requirements.txt
 ├── .env.example
-├── rfc/
+├── docs/
 ├── schemas/
-├── simulator/
-├── examples/
-├── tests/
-└── scripts/
+├── miner/
+│   └── section_context_v1/
+│       ├── README.md
+│       └── requirements.txt
+├── validator/
+│   └── judge_v1/
+│       ├── README.md
+│       └── requirements.txt
+└── examples/
 ```
 
-## Core Idea
+## Core Objects
 
 - `Paper`
 - `Span`
@@ -52,48 +39,68 @@ claims-subnet-rfc/
 - `EvidenceItem`
 - `ClaimEvidenceLink`
 
-The miner demo returns an extraction artifact containing those objects. Validators score the artifact for shape, grounding to spans, and relation consistency.
+The miner produces a paper-level extraction packet built from those objects. The
+validator judges that packet either intrinsically or against reviewed gold data.
 
 ## Quickstart
 
-Run the end-to-end demo:
+Install dependencies from the `Claims/` directory:
 
 ```bash
-python scripts/run_demo.py
+pip install -r requirements.txt
 ```
 
-Validate an example payload:
+Copy `.env.example` to `.env` and fill in `OPENROUTER_API_KEY`. If you want PDF
+ingest through TEI, run GROBID and set `GROBID_URL`.
+
+Run the miner on a PDF:
 
 ```bash
-python scripts/validate_payload.py examples/miner_outputs/extraction.valid.json schemas/extraction.schema.json
+python -m miner.section_context_v1 --pdf /path/to/paper.pdf
 ```
 
-Score an example miner output:
+Run the validator intrinsically on the miner output:
 
 ```bash
-python scripts/score_payload.py examples/miner_outputs/extraction.valid.json
+python -m validator.judge_v1 \
+  --extraction-output-json miner/section_context_v1/outputs/section_context_v1/<paper_id>/section_context_v1_output.json \
+  --mode intrinsic
 ```
 
-Run tests:
+Run the validator without the LLM for a local smoke test:
 
 ```bash
-python -m unittest discover -s tests
+python -m validator.judge_v1 \
+  --extraction-output-json /path/to/section_context_v1_output.json \
+  --mode intrinsic \
+  --judge-version none
 ```
 
 ## Design Notes
 
-- The public demo keeps the prototype object model small and readable.
+- The public repo keeps the miner and validator packages self-contained.
 - The example domain is biomedical, but the shape is domain-agnostic.
 - Ontology enhancement uses the same `SemanticField` and `OntologyAnnotation` pattern everywhere.
+- `judge_v1` is the first public judge release. It is derived from the benchmark's internal judge-v3 logic, but renamed for the public package.
+- Each runnable folder owns its own helpers, prompts, docs, and requirements instead of depending on a shared internal package layer.
+
+## Public Structure
+
+- `miner/` is the public miner root.
+- `miner/section_context_v1/` is a self-contained miner pipeline folder.
+- `validator/` is the public validator root.
+- `validator/judge_v1/` is a self-contained validator judge folder.
 
 ## Suggested Reading Order
 
-1. `rfc/0001-overview.md`
-2. `rfc/0002-miner-task.md`
-3. `rfc/0003-validator-scoring.md`
-4. `rfc/0004-schema.md`
-5. `scripts/run_demo.py`
+1. `docs/0001-overview.md`
+2. `docs/0002-miner-task.md`
+3. `docs/0003-validator-scoring.md`
+4. `docs/0004-schema.md`
+5. `miner/section_context_v1/runner.py`
+6. `validator/judge_v1/runner.py`
 
 ## Status
 
-This repository is a communication artifact for early review. It should be read as an RFC and demo scaffold, not as a final subnet spec.
+This repository is still documentation-first, but the miner and validator
+folders now contain runnable benchmark-derived code rather than placeholders.

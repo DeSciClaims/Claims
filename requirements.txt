@@ -1,1 +1,7 @@
-# No external runtime dependencies are required for this demo repo.
+dspy-ai
+lxml
+openpyxl
+pydantic>=2
+pypdf
+python-dotenv
+requests

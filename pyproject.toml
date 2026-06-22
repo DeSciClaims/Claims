@@ -5,7 +5,18 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "claims-subnet-rfc"
 version = "0.1.0"
-description = "Documentation-first RFC and simulator for the Claims subnet concept."
+description = "Public Claims subnet repo with self-contained section_context_v1 miner and judge_v1 validator packages."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "dspy-ai",
+    "lxml",
+    "openpyxl",
+    "pydantic>=2",
+    "pypdf",
+    "python-dotenv",
+    "requests",
+]
+
+[tool.setuptools.packages.find]
+include = ["miner*", "validator*"]
