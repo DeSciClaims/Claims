@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "JudgeV1Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "paper_id",
+    "validator_id",
+    "judge_version",
+    "decision",
+    "accepted",
+    "overall_score",
+    "diagnostics",
+    "dimension_scores",
+    "dimension_reasons",
+    "score_components",
+    "notes",
+    "feedback"
+  ],
+  "properties": {
+    "paper_id": { "type": "string" },
+    "validator_id": { "type": "string" },
+    "judge_version": { "const": "judge_v1" },
+    "decision": {
+      "type": "string",
+      "enum": ["accept", "revise", "reject"]
+    },
+    "accepted": { "type": "boolean" },
+    "overall_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "primary_failure": { "type": "string" },
+    "secondary_failures": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "error_tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": { "type": "boolean" }
+    },
+    "dimension_scores": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      }
+    },
+    "dimension_reasons": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "context_location_assessment": { "type": "string" },
+    "support_assessment": { "type": "string" },
+    "missing_elements": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "score_components": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_validity",
+        "structure",
+        "grounding",
+        "relations",
+        "ontology"
+      ],
+      "properties": {
+        "schema_validity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "structure": { "type": "number", "minimum": 0, "maximum": 1 },
+        "grounding": { "type": "number", "minimum": 0, "maximum": 1 },
+        "relations": { "type": "number", "minimum": 0, "maximum": 1 },
+        "ontology": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "feedback": { "type": "string" }
+  }
+}
+

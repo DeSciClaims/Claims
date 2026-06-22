@@ -1,0 +1,55 @@
+{
+  "paper_id": "paper_hanlon_2025_jama",
+  "validator_id": "demo-validator-001",
+  "judge_version": "judge_v1",
+  "decision": "accept",
+  "accepted": true,
+  "overall_score": 1.0,
+  "primary_failure": "none",
+  "secondary_failures": [],
+  "error_tags": [],
+  "diagnostics": {
+    "is_meaningful_claim": true,
+    "claim_text_faithful": true,
+    "claim_is_self_consistent": true,
+    "local_context_sufficient": true,
+    "context_supported_elsewhere_in_paper": true,
+    "supporting_evidence_present_somewhere": true,
+    "evidence_links_complete": true,
+    "spo_graph_compatible": true
+  },
+  "dimension_scores": {
+    "claim_target_selection": 1.0,
+    "claim_faithfulness": 1.0,
+    "local_context_capture": 1.0,
+    "paper_context_alignment": 1.0,
+    "details_quality": 1.0,
+    "spo_graph_quality": 1.0,
+    "evidence_support_presence": 1.0,
+    "evidence_linking_completeness": 1.0
+  },
+  "dimension_reasons": {
+    "claim_target_selection": "The extraction includes a concrete paper-specific claim rather than scaffold prose.",
+    "claim_faithfulness": "Claim text and SPO fields are internally coherent.",
+    "local_context_capture": "The claim packet keeps relevant context or details close to the claim.",
+    "paper_context_alignment": "Every referenced span resolves cleanly inside the paper packet.",
+    "details_quality": "The extraction includes useful supporting details for review.",
+    "spo_graph_quality": "The SPO projection is complete enough for graph use.",
+    "evidence_support_presence": "Supporting evidence is present and grounded for the extracted claims.",
+    "evidence_linking_completeness": "Claims are linked directly to evidence items."
+  },
+  "context_location_assessment": "distributed_in_claim_object",
+  "support_assessment": "locally_supported",
+  "missing_elements": [],
+  "score_components": {
+    "schema_validity": 1.0,
+    "structure": 1.0,
+    "grounding": 1.0,
+    "relations": 1.0,
+    "ontology": 1.0
+  },
+  "notes": [
+    "Payload passed the public judge_v1 checks."
+  ],
+  "feedback": "The extraction is faithful, grounded, and linked clearly enough for public review."
+}
