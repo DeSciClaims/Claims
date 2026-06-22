@@ -261,21 +261,72 @@ Recommended values:
 
 This is the main closed vocabulary controller for evidence items.
 
-Current controlled set in the schema vocabulary:
+It is a **two-level hierarchy**: each evidence method belongs to exactly one
+top-level category that groups methods by epistemic mode. The method `id` is the
+canonical machine value stored in the schema; `label` is the human-readable form.
 
-- `randomized_controlled_trial`
-- `laboratory_experiment`
-- `field_experiment`
-- `quasi_experimental_estimate`
-- `regression_estimate`
-- `correlation_estimate`
-- `observation`
-- `simulation`
-- `replication`
-- `meta_analysis`
-- `literature_review`
-- `theoretical_argument`
-- `mathematical_derivation`
+```yaml
+evidence_method:
+  formal:
+    label: Formal
+    methods:
+      - { id: theorem,    label: "Theorem" }
+      - { id: proof,      label: "Proof" }
+      - { id: derivation, label: "Derivation" }
+  theoretical:
+    label: Theoretical
+    methods:
+      - { id: verbal_argument,   label: "Verbal argument" }
+      - { id: mechanistic_model, label: "Mechanistic model" }
+      - { id: analytical_model,  label: "Analytical model" }
+  empirical_observational:
+    label: Empirical Observational
+    methods:
+      - { id: case_study,            label: "Case study" }
+      - { id: cross_sectional,       label: "Cross-sectional" }
+      - { id: case_control,          label: "Case-control" }
+      - { id: longitudinal,          label: "Longitudinal" }
+      - { id: panel,                 label: "Panel" }
+      - { id: descriptive_statistic, label: "Descriptive statistic" }
+  empirical_correlational:
+    label: Empirical Correlational
+    methods:
+      - { id: comparison,       label: "Comparison" }
+      - { id: correlation,      label: "Correlation" }
+      - { id: regression,       label: "Regression" }
+      - { id: data_aggregation, label: "Data aggregation" }
+  empirical_quasi_experimental:
+    label: Empirical Quasi-Experimental
+    methods:
+      - { id: instrumental_variable,    label: "Instrumental variable" }
+      - { id: regression_discontinuity, label: "Regression discontinuity" }
+      - { id: difference_in_difference, label: "Difference-in-difference" }
+      - { id: natural_experiment,       label: "Natural experiment" }
+  empirical_experimental:
+    label: Empirical Experimental
+    methods:
+      - { id: laboratory_experiment,       label: "Laboratory experiment" }
+      - { id: field_experiment,            label: "Field experiment" }
+      - { id: randomized_controlled_trial, label: "Randomized controlled trial" }
+  computational:
+    label: Computational
+    methods:
+      - { id: simulation,             label: "Simulation" }
+      - { id: agent_based_model,      label: "Agent-based model" }
+      - { id: machine_learning_model, label: "Machine-learning model" }
+  synthetic:
+    label: Synthetic
+    methods:
+      - { id: literature_review,    label: "Literature review" }
+      - { id: meta_analysis,        label: "Meta-analysis" }
+      - { id: replication_analysis, label: "Replication analysis" }
+  citation_based:
+    label: Citation-Based
+    methods:
+      - { id: cites_supporting_work,     label: "Cites supporting work" }
+      - { id: cites_conflicting_work,    label: "Cites conflicting work" }
+      - { id: cites_methodological_work, label: "Cites methodological work" }
+```
 
 ### `outcome_type`
 
