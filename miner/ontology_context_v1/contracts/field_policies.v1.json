@@ -1,0 +1,119 @@
+{
+  "version": "field_policies.v1",
+  "claim_field_roles": {
+    "claim.subject": "ontology-target",
+    "claim.predicate": "ontology-target",
+    "claim.object": "ontology-target",
+    "claim.context.population": "ontology-target",
+    "claim.context.species": "ontology-target",
+    "claim.context.setting": "ontology-target",
+    "claim.context.timepoint": "prose-qualifier",
+    "claim.context.comparator": "ontology-target",
+    "claim.context.cohort": "prose-qualifier",
+    "claim.context.condition": "prose-qualifier",
+    "claim.context.modality": "prose-qualifier",
+    "claim.context.threshold": "prose-qualifier",
+    "claim.context.subset": "prose-qualifier",
+    "claim.context.analysis_context": "ontology-target",
+    "claim.context.phenotype_context": "ontology-target",
+    "claim.context.intervention": "ontology-target",
+    "claim.context.citation_context": "prose-qualifier",
+    "claim.context.ancestry": "ontology-target",
+    "claim.context.replication_stage": "prose-qualifier",
+    "claim.context.subgroup": "prose-qualifier",
+    "claim.context.mechanism": "prose-qualifier",
+    "claim.details.effect_size": "structured-payload",
+    "claim.details.statistical_significance": "structured-payload",
+    "claim.details.count": "structured-payload",
+    "claim.details.sample_size": "structured-payload",
+    "claim.details.study_count": "structured-payload",
+    "claim.details.model_type": "ontology-target",
+    "claim.details.confidence_qualifier": "prose-qualifier",
+    "claim.details.directionality_note": "prose-qualifier",
+    "claim.details.estimator": "ontology-target",
+    "claim.details.p_value": "structured-payload",
+    "claim.details.ci_low": "structured-payload",
+    "claim.details.ci_high": "structured-payload",
+    "claim.details.variance_explained": "structured-payload",
+    "claim.details.lag": "structured-payload",
+    "claim.details.constraint_note": "prose-qualifier"
+  },
+  "evidence_field_roles": {
+    "evidence.evidence_method": "ontology-target",
+    "evidence.outcome_type": "ontology-target",
+    "evidence.presentation_type": "ontology-target",
+    "evidence.context.population": "ontology-target",
+    "evidence.context.species": "ontology-target",
+    "evidence.context.setting": "ontology-target",
+    "evidence.context.timepoint": "prose-qualifier",
+    "evidence.context.condition": "prose-qualifier",
+    "evidence.context.cohort": "prose-qualifier",
+    "evidence.context.phenotype_context": "ontology-target",
+    "evidence.context.section_type": "prose-qualifier",
+    "evidence.details.outcome_name": "ontology-target",
+    "evidence.details.value": "structured-payload",
+    "evidence.details.unit": "structured-payload",
+    "evidence.details.sample_size": "structured-payload",
+    "evidence.details.observation_type": "prose-qualifier",
+    "evidence.details.measurement_type": "ontology-target",
+    "evidence.details.estimator": "ontology-target",
+    "evidence.details.effect_size": "structured-payload",
+    "evidence.details.model_type": "ontology-target",
+    "evidence.details.p_value": "structured-payload",
+    "evidence.details.ci_low": "structured-payload",
+    "evidence.details.ci_high": "structured-payload",
+    "evidence.details.study_count": "structured-payload",
+    "evidence.ontology": "ontology-target"
+  },
+  "profile_field_role_overrides": {
+    "gwas_association_result": {
+      "claim.subject": "ontology-target",
+      "claim.object": "ontology-target",
+      "claim.context.cohort": "prose-qualifier",
+      "claim.details.variance_explained": "structured-payload"
+    },
+    "intervention_effect_result": {
+      "claim.context.dose": "prose-qualifier",
+      "claim.details.outcome_name": "ontology-target"
+    },
+    "meta_analysis_result": {
+      "claim.context.setting": "ontology-target",
+      "claim.details.study_count": "structured-payload"
+    },
+    "theoretical_proposition": {
+      "claim.context.setting": "prose-qualifier",
+      "claim.context.condition": "prose-qualifier",
+      "claim.object": "prose-qualifier"
+    }
+  },
+  "evidence_method_field_role_overrides": {
+    "meta_analysis": {
+      "evidence.context.setting": "ontology-target"
+    },
+    "theoretical_argument": {
+      "evidence.context.setting": "prose-qualifier"
+    }
+  },
+  "normalization_rule_sets": {
+    "claim.subject": "subject_object",
+    "claim.object": "subject_object",
+    "claim.predicate": "predicate",
+    "claim.context.population": "population",
+    "claim.context.setting": "setting",
+    "claim.context.cohort": "cohort",
+    "claim.context.condition": "condition",
+    "claim.context.ancestry": "ancestry",
+    "claim.context.phenotype_context": "phenotype",
+    "claim.details.model_type": "model_type",
+    "claim.details.estimator": "estimator",
+    "evidence.evidence_method": "evidence_method",
+    "evidence.outcome_type": "outcome_type",
+    "evidence.presentation_type": "presentation_type",
+    "evidence.context.population": "population",
+    "evidence.context.setting": "setting",
+    "evidence.context.cohort": "cohort",
+    "evidence.details.measurement_type": "measurement_type",
+    "evidence.details.estimator": "estimator",
+    "evidence.details.outcome_name": "phenotype"
+  }
+}

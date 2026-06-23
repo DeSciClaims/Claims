@@ -1,0 +1,167 @@
+{
+  "version": "claim_profiles.v1",
+  "default_claim_profile": "generic_result",
+  "profiles": {
+    "generic_result": {
+      "description": "Fallback profile for result claims when a more specific profile is not yet inferred.",
+      "allowed_context_keys": [
+        "population",
+        "species",
+        "setting",
+        "timepoint",
+        "comparator",
+        "cohort",
+        "condition",
+        "modality",
+        "threshold",
+        "subset",
+        "analysis_context",
+        "phenotype_context",
+        "intervention",
+        "citation_context",
+        "ancestry",
+        "replication_stage",
+        "subgroup",
+        "mechanism"
+      ],
+      "allowed_details_keys": [
+        "effect_size",
+        "statistical_significance",
+        "count",
+        "sample_size",
+        "study_count",
+        "model_type",
+        "confidence_qualifier",
+        "directionality_note",
+        "estimator",
+        "p_value",
+        "ci_low",
+        "ci_high",
+        "variance_explained",
+        "lag",
+        "constraint_note"
+      ],
+      "required_context_keys": [],
+      "required_details_keys": [],
+      "forbidden_context_keys": [],
+      "forbidden_details_keys": []
+    },
+    "gwas_association_result": {
+      "description": "A variant, locus, genotype feature, or score is associated with a phenotype or outcome.",
+      "allowed_context_keys": [
+        "population",
+        "cohort",
+        "ancestry",
+        "setting",
+        "phenotype_context",
+        "replication_stage",
+        "subgroup",
+        "condition"
+      ],
+      "allowed_details_keys": [
+        "variant_id",
+        "locus",
+        "gene_symbol",
+        "estimator",
+        "effect_size",
+        "p_value",
+        "ci_low",
+        "ci_high",
+        "sample_size",
+        "model_type",
+        "variance_explained",
+        "directionality_note"
+      ],
+      "required_context_keys": [
+        "population"
+      ],
+      "required_details_keys": [
+        "effect_size",
+        "sample_size"
+      ],
+      "forbidden_context_keys": [],
+      "forbidden_details_keys": []
+    },
+    "intervention_effect_result": {
+      "description": "An intervention, exposure, or treatment changes an outcome.",
+      "allowed_context_keys": [
+        "population",
+        "species",
+        "dose",
+        "timepoint",
+        "comparator",
+        "setting",
+        "subgroup",
+        "condition"
+      ],
+      "allowed_details_keys": [
+        "outcome_name",
+        "estimator",
+        "effect_size",
+        "unit",
+        "p_value",
+        "ci_low",
+        "ci_high",
+        "sample_size",
+        "model_type",
+        "directionality_note"
+      ],
+      "required_context_keys": [
+        "population"
+      ],
+      "required_details_keys": [
+        "effect_size"
+      ],
+      "forbidden_context_keys": [],
+      "forbidden_details_keys": []
+    },
+    "meta_analysis_result": {
+      "description": "A meta-analysis or systematic evidence synthesis reports an effect.",
+      "allowed_context_keys": [
+        "population",
+        "setting",
+        "comparator",
+        "timepoint",
+        "phenotype_context"
+      ],
+      "allowed_details_keys": [
+        "outcome_name",
+        "estimator",
+        "effect_size",
+        "unit",
+        "p_value",
+        "ci_low",
+        "ci_high",
+        "study_count",
+        "sample_size",
+        "directionality_note"
+      ],
+      "required_context_keys": [],
+      "required_details_keys": [
+        "effect_size"
+      ],
+      "forbidden_context_keys": [],
+      "forbidden_details_keys": []
+    },
+    "theoretical_proposition": {
+      "description": "A conceptual, equilibrium, or mathematical proposition.",
+      "allowed_context_keys": [
+        "setting",
+        "condition",
+        "timepoint",
+        "subset",
+        "mechanism",
+        "modality"
+      ],
+      "allowed_details_keys": [
+        "constraint_note",
+        "model_type",
+        "lag"
+      ],
+      "required_context_keys": [],
+      "required_details_keys": [],
+      "forbidden_context_keys": [],
+      "forbidden_details_keys": []
+    }
+  }
+}

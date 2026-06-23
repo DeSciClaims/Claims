@@ -1,0 +1,152 @@
+{
+  "version": "ontology_routes.v1",
+  "claim_field_routes": {
+    "claim.subject": [
+      "EFO"
+    ],
+    "claim.object": [
+      "EFO"
+    ],
+    "claim.context.phenotype_context": [
+      "EFO"
+    ],
+    "claim.context.population": [
+      "EFO"
+    ],
+    "claim.context.setting": [
+      "OBI",
+      "EFO"
+    ],
+    "claim.context.analysis_context": [
+      "STATO"
+    ],
+    "claim.context.ancestry": [
+      "EFO"
+    ],
+    "claim.details.model_type": [
+      "STATO"
+    ],
+    "claim.details.estimator": [
+      "STATO"
+    ]
+  },
+  "evidence_field_routes": {
+    "evidence.evidence_method": [
+      "OBI",
+      "STATO"
+    ],
+    "evidence.outcome_type": [
+      "STATO",
+      "EFO"
+    ],
+    "evidence.presentation_type": [
+      "ECO"
+    ],
+    "evidence.context.population": [
+      "EFO"
+    ],
+    "evidence.context.setting": [
+      "OBI",
+      "EFO"
+    ],
+    "evidence.details.estimator": [
+      "STATO"
+    ],
+    "evidence.details.measurement_type": [
+      "EFO"
+    ],
+    "evidence.ontology": [
+      "ECO"
+    ]
+  },
+  "entity_type_fallback_routes": {
+    "phenotype": [
+      "EFO"
+    ],
+    "trait": [
+      "EFO"
+    ],
+    "disease": [
+      "EFO"
+    ],
+    "measurement": [
+      "EFO"
+    ],
+    "outcome": [
+      "EFO"
+    ],
+    "population": [
+      "EFO"
+    ],
+    "cohort": [
+      "EFO"
+    ],
+    "condition": [
+      "EFO"
+    ],
+    "setting": [
+      "OBI",
+      "EFO"
+    ],
+    "evidence_method": [
+      "OBI",
+      "STATO"
+    ],
+    "assay": [
+      "OBI"
+    ],
+    "study_design": [
+      "OBI"
+    ],
+    "investigation": [
+      "OBI"
+    ],
+    "statistic": [
+      "STATO"
+    ],
+    "statistical_model": [
+      "STATO"
+    ],
+    "effect_size": [
+      "STATO"
+    ]
+  },
+  "profile_field_routes": {
+    "gwas_association_result": {
+      "claim.context.phenotype_context": [
+        "EFO"
+      ],
+      "claim.details.model_type": [
+        "STATO"
+      ],
+      "claim.details.estimator": [
+        "STATO"
+      ]
+    },
+    "intervention_effect_result": {
+      "claim.context.population": [
+        "EFO"
+      ],
+      "claim.context.setting": [
+        "OBI",
+        "EFO"
+      ],
+      "claim.details.estimator": [
+        "STATO"
+      ]
+    },
+    "meta_analysis_result": {
+      "claim.context.setting": [
+        "OBI"
+      ],
+      "claim.details.estimator": [
+        "STATO"
+      ]
+    },
+    "theoretical_proposition": {
+      "claim.context.setting": [
+        "OBI"
+      ]
+    }
+  }
+}
