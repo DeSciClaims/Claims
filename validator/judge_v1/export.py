@@ -24,6 +24,7 @@ class Claim:  # pragma: no cover - typing helper for exported rows
     claim_id: str
     paper_id: str
     claim_text: str
+    claim_profile: str | None
     subject: object
     predicate: object
     object: object
@@ -46,6 +47,7 @@ EXTRACTION_ROW_FIELDS = [
     "section_name",
     "section_type",
     "claim_id",
+    "claim_profile",
     "claim_text",
     "subject",
     "predicate",
@@ -67,6 +69,7 @@ INTRINSIC_EVALUATION_ROW_FIELDS = [
     "section_name",
     "section_text",
     "claim_id",
+    "claim_profile",
     "claim_text",
     "subject",
     "predicate",
@@ -96,6 +99,7 @@ GOLD_EVALUATION_ROW_FIELDS = [
     "section_name",
     "match_score",
     "claim_id",
+    "claim_profile",
     "claim_text",
     "subject",
     "predicate",
@@ -150,6 +154,7 @@ def write_extraction_rows(
             "section_name": "",
             "section_type": "",
             "claim_id": claim.claim_id,
+            "claim_profile": getattr(claim, "claim_profile", "") or "",
             "claim_text": claim.claim_text,
             "subject": claim.subject.value,
             "predicate": claim.predicate.value,
@@ -190,6 +195,7 @@ def write_evaluation_rows(
             "section_id": row.get("matched_section_id", ""),
             "section_name": row.get("matched_section_name", "") or row.get("section_title", ""),
             "claim_id": row.get("claim_id", ""),
+            "claim_profile": row.get("claim_profile", ""),
             "claim_text": row.get("selected_claim_text", ""),
             "subject": row.get("selected_subject", ""),
             "predicate": row.get("selected_predicate", ""),
