@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .models import PaperSummaryRecord, SectionExtractionDecision, SectionRecord, SectionSummaryRecord
+from .profiles import validate_claim_against_profile
 
 if TYPE_CHECKING:
     from .dspy_runtime import SectionContextV1DSPyRuntime
 
 
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "section_claim_gating_instructions.md"
+logger = logging.getLogger(__name__)
 
 RESULTISH_SECTION_TYPES = {"RESULTS", "DISCUSSION", "OTHER", "TABLE"}
 RESULTISH_SECTION_ROLES = {"results", "discussion", "mixed", "supplement"}
@@ -113,11 +116,19 @@ def gate_section_local_claims(
     for idx, claim in enumerate(claims):
         context = claim.get("context") if isinstance(claim, dict) else {}
         details = claim.get("details") if isinstance(claim, dict) else {}
+        validation_errors = validate_claim_against_profile(claim) if isinstance(claim, dict) else ["invalid_claim"]
         if idx not in linked_claim_indexes:
             continue
         if not isinstance(context, dict) or not context:
             continue
         if not isinstance(details, dict) or not details:
+            continue
+        if validation_errors:
+            logger.info(
+                "section_context_v1: dropping claim index %s for profile validation errors: %s",
+                idx,
+                ", ".join(validation_errors),
+            )
             continue
         claim_index_map[idx] = len(gated_claims)
         gated_claims.append(claim)
@@ -173,11 +184,19 @@ def _gate_with_id_links(
         claim_id = str(claim.get("claim_id", "")).strip() if isinstance(claim, dict) else ""
         context = claim.get("context") if isinstance(claim, dict) else {}
         details = claim.get("details") if isinstance(claim, dict) else {}
+        validation_errors = validate_claim_against_profile(claim) if isinstance(claim, dict) else ["invalid_claim"]
         if not claim_id or claim_id not in linked_claim_ids:
             continue
         if not isinstance(context, dict) or not context:
             continue
         if not isinstance(details, dict) or not details:
+            continue
+        if validation_errors:
+            logger.info(
+                "section_context_v1: dropping claim `%s` for profile validation errors: %s",
+                claim_id,
+                ", ".join(validation_errors),
+            )
             continue
         kept_claim_ids.add(claim_id)
         gated_claims.append(claim)

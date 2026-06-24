@@ -7,16 +7,20 @@ from typing import TYPE_CHECKING, Any
 
 from .id_factory import stable_id
 from .reviewer_export_utils import (
-    normalize_context_payload,
-    normalize_details_payload,
     normalize_evidence_context_payload,
     normalize_evidence_details_payload,
+    normalize_claim_payload_parts,
 )
 from .profiles import (
     CLAIM_PROFILE,
     EVIDENCE_METHOD_PROFILES,
     OUTCOME_TYPE_PROFILES,
     PRESENTATION_TYPE_PROFILES,
+    claim_profile_prompt_json,
+    evidence_method_prompt_json,
+    infer_claim_profile,
+    normalize_claim_profile,
+    validate_claim_against_profile,
 )
 from .schema_models import (
     Claim,
@@ -46,6 +50,7 @@ def create_section_claim_extractor_program(dspy_module, *, instructions: str):
         section_name: str = dspy_module.InputField()
         section_type: str = dspy_module.InputField()
         section_text: str = dspy_module.InputField()
+        validation_feedback_json: str = dspy_module.InputField()
         json_output: str = dspy_module.OutputField()
 
     predictor = dspy_module.Predict(SectionClaimExtractionSignature)
@@ -72,6 +77,8 @@ def load_section_claim_extraction_instructions() -> str:
     return (
         template.replace("__CLAIM_CONTEXT_KEYS__", ", ".join(CLAIM_PROFILE["allowed_context_keys"]))
         .replace("__CLAIM_DETAIL_KEYS__", ", ".join(CLAIM_PROFILE["allowed_details_keys"]))
+        .replace("__CLAIM_PROFILE_SPECS__", claim_profile_prompt_json())
+        .replace("__EVIDENCE_METHOD_SPECS__", evidence_method_prompt_json())
         .replace("__EVIDENCE_METHOD_VALUES__", ", ".join(EVIDENCE_METHOD_PROFILES.keys()))
         .replace("__OUTCOME_TYPE_VALUES__", ", ".join(OUTCOME_TYPE_PROFILES.keys()))
         .replace("__PRESENTATION_TYPE_VALUES__", ", ".join(PRESENTATION_TYPE_PROFILES.keys()))
@@ -89,6 +96,45 @@ def extract_section_claims(
     section_summary: SectionSummaryRecord,
 ) -> tuple[list[Claim], list[EvidenceItem], list[ClaimEvidenceLink], dict[str, Any]]:
     predictor = runtime.section_claim_extractor_program
+    raw_output = _predict_section_claims(
+        predictor=predictor,
+        paper_title=paper_title,
+        paper_summary=paper_summary,
+        section=section,
+        section_summary=section_summary,
+        validation_feedback={},
+    )
+    claims = _materialize_claims(section, raw_output.get("claims", []))
+    validation_feedback = _build_validation_feedback(claims, raw_output.get("claims", []))
+    if validation_feedback.get("invalid_claims"):
+        logger.info(
+            "section_context_v1: retrying section `%s` extraction with %s validation errors",
+            section.section_name or section.section_id,
+            len(validation_feedback["invalid_claims"]),
+        )
+        raw_output = _predict_section_claims(
+            predictor=predictor,
+            paper_title=paper_title,
+            paper_summary=paper_summary,
+            section=section,
+            section_summary=section_summary,
+            validation_feedback=validation_feedback,
+        )
+        claims = _materialize_claims(section, raw_output.get("claims", []))
+    evidence_items = _materialize_evidence_items(section, raw_output.get("evidence_items", []))
+    links = _materialize_links(claims, evidence_items, raw_output.get("claim_evidence_links", []))
+    return claims, evidence_items, links, raw_output
+
+
+def _predict_section_claims(
+    *,
+    predictor: Any,
+    paper_title: str,
+    paper_summary: PaperSummaryRecord,
+    section: SectionRecord,
+    section_summary: SectionSummaryRecord,
+    validation_feedback: dict[str, Any],
+) -> dict[str, Any]:
     prediction = predictor(
         paper_title=paper_title,
         paper_summary_json=json.dumps(paper_summary.model_dump(mode="json"), ensure_ascii=False),
@@ -96,12 +142,9 @@ def extract_section_claims(
         section_name=section.section_name,
         section_type=section.section_type,
         section_text=section.text,
+        validation_feedback_json=json.dumps(validation_feedback, ensure_ascii=False),
     )
-    raw_output = _safe_json_loads(getattr(prediction, "json_output", ""))
-    claims = _materialize_claims(section, raw_output.get("claims", []))
-    evidence_items = _materialize_evidence_items(section, raw_output.get("evidence_items", []))
-    links = _materialize_links(claims, evidence_items, raw_output.get("claim_evidence_links", []))
-    return claims, evidence_items, links, raw_output
+    return _safe_json_loads(getattr(prediction, "json_output", ""))
 
 
 def _safe_json_loads(raw_output: str) -> dict[str, Any]:
@@ -114,6 +157,39 @@ def _safe_json_loads(raw_output: str) -> dict[str, Any]:
     return parsed
 
 
+def _build_validation_feedback(claims: list[Claim], raw_claims: list[Any]) -> dict[str, Any]:
+    invalid_claims: list[dict[str, Any]] = []
+    for index, claim in enumerate(claims):
+        materialized = claim.model_dump(mode="json")
+        errors = validate_claim_against_profile(materialized)
+        if not errors:
+            continue
+        raw_claim = raw_claims[index] if index < len(raw_claims) and isinstance(raw_claims[index], dict) else {}
+        invalid_claims.append(
+            {
+                "claim_index": index,
+                "errors": errors,
+                "claim_text": materialized.get("claim_text"),
+                "claim_profile": materialized.get("claim_profile"),
+                "subject": materialized.get("subject"),
+                "predicate": materialized.get("predicate"),
+                "object": materialized.get("object"),
+                "details": materialized.get("details"),
+                "raw_claim": raw_claim,
+            }
+        )
+    if not invalid_claims:
+        return {}
+    return {
+        "instruction": (
+            "The previous extraction attempt failed validation. Re-read the raw section text and return a full corrected "
+            "JSON object with claims, evidence_items, and claim_evidence_links. Do not patch individual fields mechanically; "
+            "re-extract valid profile-shaped claims. Skip claims that cannot be made valid from the raw section text."
+        ),
+        "invalid_claims": invalid_claims,
+    }
+
+
 def _materialize_claims(section: SectionRecord, raw_claims: list[Any]) -> list[Claim]:
     claims: list[Claim] = []
     for index, raw in enumerate(raw_claims or []):
@@ -122,24 +198,42 @@ def _materialize_claims(section: SectionRecord, raw_claims: list[Any]) -> list[C
         claim_text = str(raw.get("claim_text", "")).strip()
         if not claim_text:
             continue
+        raw_claim_profile = raw.get("claim_profile")
+        claim_profile = normalize_claim_profile(raw_claim_profile)
+        if not str(raw_claim_profile or "").strip():
+            claim_profile = infer_claim_profile(
+                claim_text=claim_text,
+                subject=raw.get("subject"),
+                predicate=raw.get("predicate"),
+                object_=raw.get("object"),
+                context=raw.get("context"),
+                details=raw.get("details"),
+            )
+        normalized_context, normalized_details, _ = normalize_claim_payload_parts(
+            context=raw.get("context"),
+            details=raw.get("details"),
+            claim_profile=claim_profile,
+            subject=raw.get("subject"),
+            predicate=raw.get("predicate"),
+            object_=raw.get("object"),
+        )
+        subject = _semantic_field(raw.get("subject"), default_entity_type="entity", field_path="claim.subject", claim_profile=claim_profile)
+        predicate = _semantic_field(raw.get("predicate"), default_entity_type="predicate", field_path="claim.predicate", claim_profile=claim_profile)
+        object_field = _semantic_field(raw.get("object"), default_entity_type="entity", field_path="claim.object", claim_profile=claim_profile)
         claim = Claim(
             claim_id=stable_id("claim", section.paper_id, section.section_id, str(index), claim_text),
             paper_id=section.paper_id,
             claim_text=claim_text,
-            subject=_semantic_field(raw.get("subject"), default_entity_type="entity"),
-            predicate=_semantic_field(raw.get("predicate"), default_entity_type="predicate"),
-            object=_semantic_field(raw.get("object"), default_entity_type="entity"),
+            subject=subject,
+            predicate=predicate,
+            object=object_field,
             claim_kind=str(raw.get("claim_kind", "result")).strip() or "result",
+            claim_profile=claim_profile,
             epistemic_status=str(raw.get("epistemic_status", "empirical")).strip() or "empirical",
             support_origin=str(raw.get("support_origin", "own_results")).strip() or "own_results",
             source_span_ids=list(section.span_ids),
-            context=normalize_context_payload(raw.get("context")),
-            details=normalize_details_payload(
-                raw.get("details"),
-                subject=raw.get("subject"),
-                predicate=raw.get("predicate"),
-                object_=raw.get("object"),
-            ),
+            context=normalized_context,
+            details=normalized_details,
             extractor_confidence=_coerce_float(raw.get("extractor_confidence")),
         )
         claims.append(claim)
@@ -234,14 +328,26 @@ def _coerce_float(value: object) -> float | None:
         return None
 
 
-def _semantic_field(value: Any, *, default_entity_type: str) -> SemanticField:
-    if isinstance(value, dict):
-        return SemanticField(
-            value=str(value.get("value", "")).strip(),
-            entity_type=str(value.get("entity_type", "")).strip() or default_entity_type,
-            ontology=_ontology_annotation(value.get("ontology")),
-        )
-    return SemanticField(value=str(value or "").strip(), entity_type=default_entity_type, ontology=None)
+def _semantic_field(
+    value: Any,
+    *,
+    default_entity_type: str,
+    field_path: str | None = None,
+    claim_profile: str | None = None,
+) -> SemanticField:
+    from .reviewer_export_utils import normalize_semantic_field
+
+    normalized = normalize_semantic_field(
+        value,
+        default_entity_type=default_entity_type,
+        field_path=field_path,
+        claim_profile=claim_profile,
+    )
+    return SemanticField(
+        value=normalized["value"],
+        entity_type=normalized["entity_type"],
+        ontology=_ontology_annotation(normalized.get("ontology")),
+    )
 
 
 def _ontology_annotation(value: Any) -> OntologyAnnotation | dict[str, Any] | None:

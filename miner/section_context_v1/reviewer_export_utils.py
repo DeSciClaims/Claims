@@ -5,12 +5,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .profiles import CLAIM_PROFILE, EVIDENCE_METHOD_PROFILES
+from .profiles import CLAIM_PROFILE, CLAIM_PROFILES, EVIDENCE_METHOD_PROFILES, FIELD_POLICIES, normalize_claim_profile
 
 
 COLUMN_WIDTHS = {
     "paper_id": 18,
     "claim_id": 24,
+    "claim_profile": 28,
     "section_title": 28,
     "source_quote": 100,
     "extracted_claim_text": 60,
@@ -153,9 +154,19 @@ def serialize_export_value(value: Any) -> str:
     if isinstance(value, str):
         return value
     try:
-        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        return json.dumps(_jsonable(value), ensure_ascii=False, sort_keys=True)
     except Exception:
         return str(value)
+
+
+def _jsonable(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    if isinstance(value, dict):
+        return {str(key): _jsonable(raw) for key, raw in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(raw) for raw in value]
+    return value
 
 
 def linked_evidence_ids_for_claim(claim_id: str, links: list[dict[str, Any]]) -> str:
@@ -173,7 +184,9 @@ def summarize_context(context: Any) -> str:
         return ""
     parts: list[str] = []
     for key, value in context.items():
-        if isinstance(value, dict):
+        if hasattr(value, "model_dump"):
+            text = str(value.model_dump(mode="json").get("value", "")).strip()
+        elif isinstance(value, dict):
             text = str(value.get("value", "")).strip()
         else:
             text = str(value).strip()
@@ -220,28 +233,81 @@ def summarize_evidence_items(evidence_items: list[dict[str, Any]]) -> str:
     return " | ".join(parts)
 
 
-def normalize_semantic_field(value: Any, *, default_entity_type: str = "entity") -> dict[str, Any]:
+NUMERIC_PAYLOAD_KEYS = {
+    "effect_size",
+    "effect_direction",
+    "statistical_significance",
+    "count",
+    "sample_size",
+    "study_count",
+    "p_value",
+    "ci_low",
+    "ci_high",
+    "variance_explained",
+    "lag",
+    "correlation_value",
+    "value",
+}
+
+
+def _short_concept_phrase(text: str) -> str:
+    cleaned = " ".join(str(text or "").replace("\n", " ").split()).strip(" .;:")
+    if len(cleaned.split()) > 10:
+        return ""
+    if any(token in cleaned for token in ("=", "<", ">", "%")):
+        return ""
+    if cleaned.replace(".", "", 1).isdigit():
+        return ""
+    return cleaned
+
+
+def _field_role(path: str, *, claim_profile: str | None = None, evidence_method: str | None = None) -> str:
+    if claim_profile:
+        override = FIELD_POLICIES.get("profile_field_role_overrides", {}).get(claim_profile, {}).get(path)
+        if override:
+            return str(override)
+    if evidence_method:
+        override = FIELD_POLICIES.get("evidence_method_field_role_overrides", {}).get(evidence_method, {}).get(path)
+        if override:
+            return str(override)
+    return str(FIELD_POLICIES.get("claim_field_roles", {}).get(path) or FIELD_POLICIES.get("evidence_field_roles", {}).get(path) or "")
+
+
+def normalize_semantic_field(
+    value: Any,
+    *,
+    default_entity_type: str = "entity",
+    field_path: str | None = None,
+    claim_profile: str | None = None,
+    evidence_method: str | None = None,
+) -> dict[str, Any]:
     if isinstance(value, dict):
+        raw_text = str(value.get("value", "")).strip()
+        role = _field_role(field_path or "", claim_profile=claim_profile, evidence_method=evidence_method)
+        text = _short_concept_phrase(raw_text) if role == "ontology-target" else raw_text
         return {
-            "value": str(value.get("value", "")).strip(),
+            "value": text,
             "entity_type": str(value.get("entity_type", "")).strip() or default_entity_type,
             "ontology": value.get("ontology"),
         }
+    raw_text = str(value or "").strip()
+    role = _field_role(field_path or "", claim_profile=claim_profile, evidence_method=evidence_method)
     return {
-        "value": str(value or "").strip(),
+        "value": _short_concept_phrase(raw_text) if role == "ontology-target" else raw_text,
         "entity_type": default_entity_type,
         "ontology": None,
     }
 
 
-def normalize_context_payload(context: Any) -> dict[str, Any]:
-    normalized_context, _, _ = normalize_claim_payload_parts(context=context, details=None)
+def normalize_context_payload(context: Any, *, claim_profile: str | None = None) -> dict[str, Any]:
+    normalized_context, _, _ = normalize_claim_payload_parts(context=context, details=None, claim_profile=claim_profile)
     return normalized_context
 
 
 def normalize_details_payload(
     details: Any,
     *,
+    claim_profile: str | None = None,
     subject: Any | None = None,
     predicate: Any | None = None,
     object_: Any | None = None,
@@ -249,6 +315,7 @@ def normalize_details_payload(
     _, normalized_details, _ = normalize_claim_payload_parts(
         context=None,
         details=details,
+        claim_profile=claim_profile,
         subject=subject,
         predicate=predicate,
         object_=object_,
@@ -259,6 +326,7 @@ def normalize_details_payload(
 def normalize_extractor_metadata_payload(
     details: Any,
     *,
+    claim_profile: str | None = None,
     subject: Any | None = None,
     predicate: Any | None = None,
     object_: Any | None = None,
@@ -266,6 +334,7 @@ def normalize_extractor_metadata_payload(
     _, _, metadata = normalize_claim_payload_parts(
         context=None,
         details=details,
+        claim_profile=claim_profile,
         subject=subject,
         predicate=predicate,
         object_=object_,
@@ -305,12 +374,19 @@ def normalize_claim_payload_parts(
     *,
     context: Any,
     details: Any,
+    claim_profile: str | None = None,
     subject: Any | None = None,
     predicate: Any | None = None,
     object_: Any | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     raw_context = context if isinstance(context, dict) else {}
     raw_details = details if isinstance(details, dict) else {}
+    profile_name = normalize_claim_profile(claim_profile)
+    profile = CLAIM_PROFILES.get(profile_name, CLAIM_PROFILES["generic_result"])
+    allowed_context_keys = set(profile.get("allowed_context_keys", [])) or CLAIM_CONTEXT_KEYS
+    allowed_detail_keys = set(profile.get("allowed_details_keys", [])) or CLAIM_DETAIL_KEYS
+    forbidden_context_keys = set(profile.get("forbidden_context_keys", []))
+    forbidden_detail_keys = set(profile.get("forbidden_details_keys", []))
 
     normalized_context: dict[str, Any] = {}
     normalized_details: dict[str, Any] = {}
@@ -320,10 +396,21 @@ def normalize_claim_payload_parts(
         key = _canonicalize_claim_key(raw_key, raw_value)
         if not key:
             continue
-        if key in CLAIM_DETAIL_KEYS:
-            normalized_details[key] = _normalize_detail_value(raw_value)
-        elif key in CLAIM_CONTEXT_KEYS:
-            normalized_context[key] = normalize_semantic_field(raw_value, default_entity_type=key)
+        if key in allowed_detail_keys and key not in forbidden_detail_keys:
+            normalized_details[key] = _normalize_detail_value(
+                raw_value,
+                field_path=f"claim.details.{key}",
+                claim_profile=profile_name,
+            )
+        elif key in forbidden_context_keys:
+            extractor_metadata.setdefault("forbidden_context", {})[str(raw_key)] = raw_value
+        elif key in allowed_context_keys:
+            normalized_context[key] = normalize_semantic_field(
+                raw_value,
+                default_entity_type=key,
+                field_path=f"claim.context.{key}",
+                claim_profile=profile_name,
+            )
         else:
             extractor_metadata.setdefault("legacy_context", {})[str(raw_key)] = raw_value
 
@@ -336,16 +423,16 @@ def normalize_claim_payload_parts(
 
     if any([graph_subject, graph_predicate, graph_object]):
         extractor_metadata["graph_projection"] = {
-            "subject": normalize_semantic_field(graph_subject or subject, default_entity_type="entity"),
-            "predicate": normalize_semantic_field(graph_predicate or predicate, default_entity_type="predicate"),
-            "object": normalize_semantic_field(graph_object or object_, default_entity_type="entity"),
+            "subject": normalize_semantic_field(graph_subject or subject, default_entity_type="entity", field_path="claim.subject", claim_profile=profile_name),
+            "predicate": normalize_semantic_field(graph_predicate or predicate, default_entity_type="predicate", field_path="claim.predicate", claim_profile=profile_name),
+            "object": normalize_semantic_field(graph_object or object_, default_entity_type="entity", field_path="claim.object", claim_profile=profile_name),
         }
 
     if any([surface_subject, surface_predicate, surface_object]):
         extractor_metadata["surface_form"] = {
-            "subject": normalize_semantic_field(surface_subject or subject, default_entity_type="entity"),
-            "predicate": normalize_semantic_field(surface_predicate or predicate, default_entity_type="predicate"),
-            "object": normalize_semantic_field(surface_object or object_, default_entity_type="entity"),
+            "subject": normalize_semantic_field(surface_subject or subject, default_entity_type="entity", field_path="claim.subject", claim_profile=profile_name),
+            "predicate": normalize_semantic_field(surface_predicate or predicate, default_entity_type="predicate", field_path="claim.predicate", claim_profile=profile_name),
+            "object": normalize_semantic_field(surface_object or object_, default_entity_type="entity", field_path="claim.object", claim_profile=profile_name),
         }
 
     candidate_scoring_keys = {
@@ -380,10 +467,21 @@ def normalize_claim_payload_parts(
         if raw_key in used_keys:
             continue
         key = _canonicalize_claim_key(raw_key, raw_value)
-        if key in CLAIM_DETAIL_KEYS:
-            normalized_details[key] = _normalize_detail_value(raw_value)
-        elif key in CLAIM_CONTEXT_KEYS and key not in normalized_context:
-            normalized_context[key] = normalize_semantic_field(raw_value, default_entity_type=key)
+        if key in forbidden_detail_keys:
+            extractor_metadata.setdefault("forbidden_details", {})[raw_key] = raw_value
+        elif key in allowed_detail_keys:
+            normalized_details[key] = _normalize_detail_value(
+                raw_value,
+                field_path=f"claim.details.{key}",
+                claim_profile=profile_name,
+            )
+        elif key in allowed_context_keys and key not in normalized_context:
+            normalized_context[key] = normalize_semantic_field(
+                raw_value,
+                default_entity_type=key,
+                field_path=f"claim.context.{key}",
+                claim_profile=profile_name,
+            )
         else:
             extractor_metadata.setdefault("extra", {})[raw_key] = raw_value
 
@@ -417,26 +515,62 @@ def normalize_evidence_payload_parts(
         if not key:
             continue
         if key in allowed_detail_keys:
-            normalized_details[key] = _normalize_detail_value(raw_value)
+            normalized_details[key] = _normalize_detail_value(
+                raw_value,
+                field_path=f"evidence.details.{key}",
+                evidence_method=evidence_method_value,
+            )
         elif key in allowed_context_keys:
-            normalized_context[key] = normalize_semantic_field(raw_value, default_entity_type=key)
+            normalized_context[key] = normalize_semantic_field(
+                raw_value,
+                default_entity_type=key,
+                field_path=f"evidence.context.{key}",
+                evidence_method=evidence_method_value,
+            )
 
     for raw_key, raw_value in raw_details.items():
         key = _canonicalize_claim_key(raw_key, raw_value)
         if not key:
             continue
         if key in allowed_context_keys and key not in normalized_context:
-            normalized_context[key] = normalize_semantic_field(raw_value, default_entity_type=key)
+            normalized_context[key] = normalize_semantic_field(
+                raw_value,
+                default_entity_type=key,
+                field_path=f"evidence.context.{key}",
+                evidence_method=evidence_method_value,
+            )
         elif key in allowed_detail_keys:
-            normalized_details[key] = _normalize_detail_value(raw_value)
+            normalized_details[key] = _normalize_detail_value(
+                raw_value,
+                field_path=f"evidence.details.{key}",
+                evidence_method=evidence_method_value,
+            )
 
     return normalized_context, normalized_details
 
 
-def _normalize_detail_value(value: Any) -> Any:
+def _normalize_detail_value(
+    value: Any,
+    *,
+    field_path: str | None = None,
+    claim_profile: str | None = None,
+    evidence_method: str | None = None,
+) -> Any:
     if not isinstance(value, dict):
+        role = _field_role(field_path or "", claim_profile=claim_profile, evidence_method=evidence_method)
+        if role == "ontology-target" and isinstance(value, str):
+            return _short_concept_phrase(value)
         return value
-    return {str(key): _normalize_detail_value(raw) for key, raw in value.items() if str(key).strip()}
+    return {
+        str(key): _normalize_detail_value(
+            raw,
+            field_path=f"{field_path}.{key}" if field_path else str(key),
+            claim_profile=claim_profile,
+            evidence_method=evidence_method,
+        )
+        for key, raw in value.items()
+        if str(key).strip()
+    }
 
 
 def _canonicalize_claim_key(raw_key: Any, raw_value: Any) -> str:
@@ -463,6 +597,7 @@ def build_prototype_claim_payload(
     predicate: Any,
     object_: Any,
     claim_kind: str = "",
+    claim_profile: str | None = None,
     epistemic_status: str = "",
     support_origin: str = "",
     source_span_ids: list[str] | None = None,
@@ -473,6 +608,7 @@ def build_prototype_claim_payload(
     normalized_context, normalized_details, _ = normalize_claim_payload_parts(
         context=context,
         details=details,
+        claim_profile=claim_profile,
         subject=subject,
         predicate=predicate,
         object_=object_,
@@ -481,10 +617,26 @@ def build_prototype_claim_payload(
         "claim_id": claim_id,
         "paper_id": paper_id,
         "claim_text": claim_text,
-        "subject": normalize_semantic_field(subject, default_entity_type="entity"),
-        "predicate": normalize_semantic_field(predicate, default_entity_type="predicate"),
-        "object": normalize_semantic_field(object_, default_entity_type="entity"),
+        "subject": normalize_semantic_field(
+            subject,
+            default_entity_type="entity",
+            field_path="claim.subject",
+            claim_profile=claim_profile,
+        ),
+        "predicate": normalize_semantic_field(
+            predicate,
+            default_entity_type="predicate",
+            field_path="claim.predicate",
+            claim_profile=claim_profile,
+        ),
+        "object": normalize_semantic_field(
+            object_,
+            default_entity_type="entity",
+            field_path="claim.object",
+            claim_profile=claim_profile,
+        ),
         "claim_kind": claim_kind,
+        "claim_profile": normalize_claim_profile(claim_profile),
         "epistemic_status": epistemic_status,
         "support_origin": support_origin,
         "source_span_ids": list(source_span_ids or []),

@@ -86,6 +86,8 @@ class SectionContextV1Runner:
         ingest_artifacts: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         paper = artifact.paper
+        final_output_dir = output_dir or (self.config.output_dir / paper.paper_id)
+        _assert_output_dir_compatible(final_output_dir, paper)
         runtime = self._get_runtime()
         sections = build_section_inventory(
             artifact.spans,
@@ -161,7 +163,6 @@ class SectionContextV1Runner:
             "claim_evidence_links": [item.model_dump(mode="json") for item in links],
             "raw_section_outputs": raw_section_outputs,
         }
-        final_output_dir = output_dir or (self.config.output_dir / paper.paper_id)
         final_output_dir.mkdir(parents=True, exist_ok=True)
         if ingest_artifacts:
             for filename, contents in ingest_artifacts.items():
@@ -231,3 +232,35 @@ def _paper_id_from_tei_path(tei_xml_path: Path) -> str:
     if name.endswith(".xml"):
         return name[: -len(".xml")]
     return tei_xml_path.stem
+
+
+def _assert_output_dir_compatible(output_dir: Path, paper: Paper) -> None:
+    for filename in ("artifact.json", "section_context_v1_output.json", "manifest.json"):
+        path = output_dir / filename
+        if not path.exists():
+            continue
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        existing_paper = existing.get("paper") if isinstance(existing.get("paper"), dict) else existing
+        existing_paper_id = str(existing_paper.get("paper_id") or "").strip()
+        existing_title = str(existing_paper.get("title") or existing.get("paper_title") or "").strip()
+        existing_doi = str(existing_paper.get("doi") or "").strip()
+        incoming_title = str(paper.title or "").strip()
+        incoming_doi = str(paper.doi or "").strip()
+        if existing_paper_id and existing_paper_id != paper.paper_id:
+            raise RuntimeError(
+                f"Output directory `{output_dir}` already contains {filename} for paper_id `{existing_paper_id}`, "
+                f"but this run is for `{paper.paper_id}`. Use a new output directory or clean the stale output."
+            )
+        if existing_title and incoming_title and existing_title != incoming_title:
+            raise RuntimeError(
+                f"Output directory `{output_dir}` already contains {filename} with title `{existing_title}`, "
+                f"but this run is for `{incoming_title}`. Use a new run/output directory or clean the stale output."
+            )
+        if existing_doi and incoming_doi and existing_doi != incoming_doi:
+            raise RuntimeError(
+                f"Output directory `{output_dir}` already contains {filename} with DOI `{existing_doi}`, "
+                f"but this run is for `{incoming_doi}`. Use a new run/output directory or clean the stale output."
+            )
