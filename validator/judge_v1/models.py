@@ -69,6 +69,7 @@ class EvaluatedClaimMatch(BaseModel):
     matched_section_name: str | None = None
     match_score: float = 0.0
     claim_id: str | None = None
+    claim_profile: str = ""
     selected_claim_text: str = ""
     selected_subject: str = ""
     selected_predicate: str = ""

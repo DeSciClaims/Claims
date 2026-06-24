@@ -190,6 +190,7 @@ def match_group_to_claim(group: ReviewedQuoteGroup, paper_output: dict[str, Any]
                 "matched_section_name": _section_name_for_id(section_id, sections),
                 "match_score": round(score, 4),
                 "claim_id": claim_id,
+                "claim_profile": str(claim.get("claim_profile", "")),
                 "selected_claim_text": str(claim.get("claim_text", "")),
                 "selected_subject": _semantic_value(claim.get("subject")),
                 "selected_predicate": _semantic_value(claim.get("predicate")),
@@ -354,6 +355,7 @@ def build_intrinsic_claim_rows(paper_output: dict[str, Any]) -> list[dict[str, A
                 "matched_section_name": section_name or None,
                 "match_score": 1.0 if section_text else 0.0,
                 "claim_id": claim_id,
+                "claim_profile": str(claim.get("claim_profile", "")),
                 "selected_claim_text": str(claim.get("claim_text", "")),
                 "selected_subject": _semantic_value(claim.get("subject")),
                 "selected_predicate": _semantic_value(claim.get("predicate")),
@@ -503,6 +505,7 @@ def _simplify_claim_for_registry(
 ) -> dict[str, Any]:
     return {
         "claim_id": str(claim.get("claim_id", "")).strip(),
+        "claim_profile": str(claim.get("claim_profile", "")).strip(),
         "claim_text": str(claim.get("claim_text", "")).strip(),
         "subject": _semantic_value(claim.get("subject")),
         "predicate": _semantic_value(claim.get("predicate")),
