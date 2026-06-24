@@ -1,0 +1,9 @@
+{
+  "output_dir": "miner/section_context_v1/outputs/section_context_v1__run_profile_schema_v3/Rietveld_et_al_2013_Science/judge_intrinsic_v1",
+  "judge_version": "v1",
+  "judge_mode": "intrinsic",
+  "group_count": 7,
+  "claim_count": 7,
+  "mode": "intrinsic",
+  "extraction_output_json_path": "miner/section_context_v1/outputs/section_context_v1__run_profile_schema_v3/Rietveld_et_al_2013_Science/section_context_v1_output.json"
+}
