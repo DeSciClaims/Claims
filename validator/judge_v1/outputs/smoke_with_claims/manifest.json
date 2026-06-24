@@ -1,9 +1,0 @@
-{
-  "output_dir": "validator/judge_v1/outputs/smoke_with_claims",
-  "judge_version": "none",
-  "judge_mode": "intrinsic",
-  "group_count": 8,
-  "claim_count": 8,
-  "mode": "intrinsic",
-  "extraction_output_json_path": "../ml-llm-benchmark/claims_subnet/outputs/section_context_v1_manual_runs/Daviet_et_al_2022_Nature_Communications_from_pdf/section_context_v1_output.json"
-}
