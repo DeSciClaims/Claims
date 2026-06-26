@@ -114,14 +114,8 @@ def gate_section_local_claims(
     gated_claims = []
     claim_index_map: dict[int, int] = {}
     for idx, claim in enumerate(claims):
-        context = claim.get("context") if isinstance(claim, dict) else {}
-        details = claim.get("details") if isinstance(claim, dict) else {}
         validation_errors = validate_claim_against_profile(claim) if isinstance(claim, dict) else ["invalid_claim"]
         if idx not in linked_claim_indexes:
-            continue
-        if not isinstance(context, dict) or not context:
-            continue
-        if not isinstance(details, dict) or not details:
             continue
         if validation_errors:
             logger.info(
@@ -135,10 +129,7 @@ def gate_section_local_claims(
     gated_evidence = []
     evidence_index_map: dict[int, int] = {}
     for idx, evidence in enumerate(evidence_items):
-        details = evidence.get("details") if isinstance(evidence, dict) else {}
         if idx not in linked_evidence_indexes:
-            continue
-        if not isinstance(details, dict) or not details:
             continue
         evidence_index_map[idx] = len(gated_evidence)
         gated_evidence.append(evidence)
@@ -182,14 +173,8 @@ def _gate_with_id_links(
     kept_claim_ids: set[str] = set()
     for claim in claims:
         claim_id = str(claim.get("claim_id", "")).strip() if isinstance(claim, dict) else ""
-        context = claim.get("context") if isinstance(claim, dict) else {}
-        details = claim.get("details") if isinstance(claim, dict) else {}
         validation_errors = validate_claim_against_profile(claim) if isinstance(claim, dict) else ["invalid_claim"]
         if not claim_id or claim_id not in linked_claim_ids:
-            continue
-        if not isinstance(context, dict) or not context:
-            continue
-        if not isinstance(details, dict) or not details:
             continue
         if validation_errors:
             logger.info(
@@ -205,10 +190,7 @@ def _gate_with_id_links(
     kept_evidence_ids: set[str] = set()
     for evidence in evidence_items:
         evidence_id = str(evidence.get("evidence_id", "")).strip() if isinstance(evidence, dict) else ""
-        details = evidence.get("details") if isinstance(evidence, dict) else {}
         if not evidence_id or evidence_id not in linked_evidence_ids:
-            continue
-        if not isinstance(details, dict) or not details:
             continue
         kept_evidence_ids.add(evidence_id)
         gated_evidence.append(evidence)
