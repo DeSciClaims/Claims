@@ -1,0 +1,10 @@
+{
+  "output_dir": "miner/section_context_v1/outputs/section_context_v1__run_profile_schema_v3/Rietveld_et_al_2013_Science/judge_intrinsic_audit_v2",
+  "audit_version": "v2",
+  "audit_mode": "intrinsic_audit",
+  "audit_method": "llm",
+  "extraction_output_json_path": "miner/section_context_v1/outputs/section_context_v1__run_profile_schema_v3/Rietveld_et_al_2013_Science/section_context_v1_output.json",
+  "extraction_run_id": "section_context_v1__run_profile_schema_v3",
+  "paper_id": "Rietveld_et_al_2013_Science",
+  "record_count": 7
+}
