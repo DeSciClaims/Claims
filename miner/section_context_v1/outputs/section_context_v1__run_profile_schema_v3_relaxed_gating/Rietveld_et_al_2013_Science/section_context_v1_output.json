@@ -1,0 +1,1843 @@
+{
+  "paper": {
+    "paper_id": "Rietveld_et_al_2013_Science",
+    "doi": "10.1126/science.1235488",
+    "pmid": null,
+    "title": "GWAS of 126,559 Individuals Identifies Genetic Variants Associated with Educational Attainment",
+    "authors": [],
+    "journal": null,
+    "year": 2013,
+    "source_type": "journal_article",
+    "open_access": null
+  },
+  "sections": [
+    {
+      "section_id": "section_997b1c34041edf8b",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "section_name": "fallback_section_001",
+      "section_type": "OTHER",
+      "section_source": "fallback_chunk",
+      "section_title_quality": "low",
+      "original_section_name": "T",
+      "page_numbers": [],
+      "span_ids": [
+        "Rietveld_et_al_2013_Science-span-0001",
+        "Rietveld_et_al_2013_Science-span-0002",
+        "Rietveld_et_al_2013_Science-span-0003",
+        "Rietveld_et_al_2013_Science-span-0004"
+      ],
+      "text": "win and family studies suggest that a broad range of psychological traits (1) , economic preferences (2) (3) (4) , and social and economic outcomes (5) are moderately heritable. Discovery of genetic variants associated with such traits may lead to insights regarding the biological pathways underlying human behavior. If the predictive power of a set of genetic variants considered jointly is sufficiently large, then a \"risk score\" that aggregates their effects could be useful to control for genetic factors that are otherwise unobserved, or to identify populations with certain genetic propensities, for example in the context of medical intervention (6) . To date, however, few if any robust associations between specific genetic variants and social-scientific outcomes have been identified probably because existing work [for a review, see (7) ] has relied on samples that are too small [for discussion, see (4, 6, 8, 9) ]. In this paper, we apply to a complex behavioral trait-educational attainment-an approach to gene discovery that has been successfully applied to medical and physical phenotypes (10) , namely meta-analyzing data from multiple samples. The phenotype of educational attainment is available in many samples with genotyped participants (5) . Educational attainment is influenced by many known environmental factors, including public policies. Educational attainment is strongly associated with social outcomes, and there is a well-documented health-education gradient (5, 11) . Estimates suggest that around 40% of the variance in educational attainment is explained by genetic factors (5) . Furthermore, educational attainment is moderately correlated with other heritable characteristics (1) , including cognitive function (12) and personality traits related to persistence and self-discipline (13) . To create a harmonized measure of educational attainment, we coded study-specific measures using the International Standard Classification of Education (1997) scale ( 14 ). We analyzed a quantitative variable defined as an individual's years of schooling (\"EduYears\") and a binary variable for College completion (\"College\"). College may be more comparable across countries, whereas EduYears contains more information about individual differences within countries.",
+      "token_count": 329,
+      "char_count": 2291
+    },
+    {
+      "section_id": "section_5489b634fe7ae2d5",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "section_name": "fallback_section_002",
+      "section_type": "OTHER",
+      "section_source": "fallback_chunk",
+      "section_title_quality": "low",
+      "original_section_name": "T",
+      "page_numbers": [],
+      "span_ids": [
+        "Rietveld_et_al_2013_Science-span-0005",
+        "Rietveld_et_al_2013_Science-span-0006",
+        "Rietveld_et_al_2013_Science-span-0007",
+        "Rietveld_et_al_2013_Science-span-0008"
+      ],
+      "text": "A genome-wide association study (GWAS) meta-analysis was performed across 42 cohorts in the discovery phase. The overall discovery sample comprises 101,069 individuals for EduYears and 95,427 for College. Analyses were performed at the cohort level according to a prespecified analysis plan, which restricted the sample to Caucasians (to help reduce stratification concerns). Educational attainment was measured at an age at which participants were very likely to have completed their education [more than 95% of the sample was at least 30 (5) ]. On average, participants have 13.3 years of schooling, and 23.1% have a College degree. To enable pooling of GWAS results, all studies conducted analyses with data imputed to the HapMap 2 CEU (r22.b36) reference set. To guard against population stratification, the first four principal components of the genotypic data were included as controls in all the cohortlevel analyses. All study-specific GWAS results were quality controlled, cross-checked, and metaanalyzed using single genomic control and a sample-size weighting scheme at three independent analysis centers. At the cohort level, there is little evidence of general inflation of P values. As in previous GWA studies of complex traits (15) , the Q-Q plot of the meta-analysis exhibits strong inflation. This inflation is not driven by specific cohorts and is expected for a highly polygenic phenotype even in the absence of population stratification (16) . From the discovery stage, we identified one genome-wide-significant locus (rs9320913, P = 4.2 × 10 -9 ) and three suggestive loci (defined as P < 10 -6 ) for EduYears. For College, we identified two genome-wide-significant loci (rs11584700, P = 2.1 × 10 -9 , and rs4851266, P = 2.2 × 10 -9 ) and an additional four suggestive loci (Table 1 ). We conducted replication analyses in 12 additional, independent cohorts that became available after the completion of the discovery meta-analysis, using the same pre-specified analysis plan. For both EduYears and College, the replication sample comprises 25,490 individuals. For each of the 10 loci that reached at least suggestive significance, we brought forward for replication the single-nucleotide polymorphism (SNP) with the lowest P value. The three genomewide-significant SNPs replicate at the Bonferroniadjusted 5% level, with point estimates of the same sign and similar magnitude (Fig. 1 and Table 1 ). The seven loci that did not reach genomewide significance did not replicate (the effect went in the anticipated direction in five out of seven cases). The meta-analytic findings are not driven by extreme results in a small number of cohorts (see P het in Table 1 ), by cohorts from a specific geographic region (figs. S7 to S15), or by a single sex (figs. S3 to S6). Given the high correlation between EduYears and College (5) , it is unsurprising that the set of SNPs with low P values exhibit considerable overlap in the two analyses (tables S8 and S9).",
+      "token_count": 473,
+      "char_count": 2976
+    },
+    {
+      "section_id": "section_705338484555bbd7",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "section_name": "fallback_section_003",
+      "section_type": "OTHER",
+      "section_source": "fallback_chunk",
+      "section_title_quality": "low",
+      "original_section_name": "T",
+      "page_numbers": [],
+      "span_ids": [
+        "Rietveld_et_al_2013_Science-span-0009",
+        "Rietveld_et_al_2013_Science-span-0010",
+        "Rietveld_et_al_2013_Science-span-0011",
+        "Rietveld_et_al_2013_Science-span-0012"
+      ],
+      "text": "The observed effect sizes of the three replicated individual SNPs are small [see (5) for discussion]. For EduYears, the strongest effect identified (rs9320913) explains 0.022% of phenotypic variance in the replication sample. This coefficient of determination R 2 corresponds to a difference of ≈1 month of schooling per allele. For College completion, the SNP with the strongest estimated effect (rs11584700) has an odds ratio of 0.912 in the replication sample, equivalent to a 1.8 percentage-point difference per allele in the frequency of completing College. We subsequently conducted a \"combined stage\" meta-analysis, including both the discovery and replication samples. This analysis revealed additional genome-wide-significant SNPs: four for EduYears and three for College. Three of these SNPs (rs1487441, rs11584700, rs4851264) are in linkage disequilibrium with the replicated SNPs. The remaining four are located in different loci and warrant replication attempts in future research: rs7309, a 3′ untranslated region (3′UTR) variant in TANK; rs11687170, close to GBX2; rs1056667, a 3′UTR variant in BTN1A1; and rs13401104 in ASB18. Using the results of the combined metaanalyses of discovery and replication cohorts, we conducted a series of complementary and exploratory supplemental analyses to aid in interpreting and contextualizing the results: genebased association tests, expression quantitative trait locus (eQTL) analyses of brain and blood tissue data, pathway analysis, functional annotation searches, enrichment analysis for cell-typespecific overlap with H3K4me3 chromatin marks, and predictions of likely gene function with the use of gene-expression data. Table S20 summarizes promising candidate loci identified through follow-up analyses (5) . Two regions, in particular, showed convergent evidence from functional annotation, blood cis-eQTL analyses, and gene-based tests: chromosome 1q32 (including LRRN2, MDM4, and PIK3C2B) and chromosome 6 near the major histocompatibility complex. We also find evidence that in anterior caudate cells, there is enrichment of H3K4me3 chromatin marks (believed to be more common in active regulatory regions) in the genomic regions implicated by our analyses (fig. S20 ). Many of the implicated genes have previously been associated with health, central nervous system, or cognitive-process phenotypes in either human GWAS or model-animal studies (table S22 ). Gene coexpression analysis revealed that several implicated genes (including BSN, GBX2, LRRN2, and PIK3C2B) are probably involved in pathways related to cognitive processes (such as learning and long-term memory) and neuronal development or function (table S21 ). Although the effects of individual SNPs on educational attainment are small, many of their potential uses in social science depend on their combined explanatory power. To evaluate the combined explanatory power, we constructed a linear polygenic score (5) for each of our two education measures using the meta-analysis results (combining discovery and replication), excluding one cohort. We tested these scores for association with educational attainment in the Table 1 . The results of the GWAS meta-analysis for the independent signals reaching",
+      "token_count": 459,
+      "char_count": 3236
+    },
+    {
+      "section_id": "section_61b6ce3ac1a2ff5e",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "section_name": "fallback_section_004",
+      "section_type": "OTHER",
+      "section_source": "fallback_chunk",
+      "section_title_quality": "low",
+      "original_section_name": "T",
+      "page_numbers": [],
+      "span_ids": [
+        "Rietveld_et_al_2013_Science-span-0013"
+      ],
+      "text": "in the discovery stage. The rows in bold are the independent signals reaching P < 5 × 10 -8 in the discovery stage. \"Frequency\" refers to allele-frequency in the combined-stage meta-analysis. \"Beta/OR\" refers to the effect size in the EduYears analysis and to the odds ratio in the College analysis. All P values are from the sample-size-weighted meta-analysis (fixed effects). The P value in the replication-stage meta-analysis was calculated from a one-sided test. I 2 represents the percent heterogeneity of effect size between the discovery-stage studies. P het is the heterogeneity P value. bp, base pair. excluded cohort. We constructed the scores using SNPs whose nominal P values fall below a certain threshold, ranging from 5 × 10 -8 (only the genome-wide-significant SNPs were included) to 1 (all SNPs were included).",
+      "token_count": 131,
+      "char_count": 827
+    },
+    {
+      "section_id": "section_03c29f5a900e06dc",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "section_name": "fallback_section_005",
+      "section_type": "OTHER",
+      "section_source": "fallback_chunk",
+      "section_title_quality": "low",
+      "original_section_name": "SNP",
+      "page_numbers": [],
+      "span_ids": [
+        "Rietveld_et_al_2013_Science-span-0014",
+        "Rietveld_et_al_2013_Science-span-0015",
+        "Rietveld_et_al_2013_Science-span-0016",
+        "Rietveld_et_al_2013_Science-span-0017"
+      ],
+      "text": "We replicated this procedure with two of the largest cohorts in the study, both of which are family-based samples [Queensland Institute of Medical Research (QIMR) and Swedish Twin Registry (STR)]. The results suggest that educational attainment is a highly polygenic trait (Fig. 2 and table S23 ): the amount of variance accounted for increases as the P value threshold becomes less conservative (i.e., includes more SNPs). The linear polygenic score from all measured SNPs accounts for ≈2% (P = 1.0 × 10 -29 ) of the variance in EduYears in the STR sample and ≈3% (P = 7.1 × 10 -24 ) in the QIMR sample. To explore one of the many potential mediating endophenotypes, we examined how much the same polygenic scores (constructed to explain EduYears or College) could explain individual differences in cognitive function. Though it would have been preferable to explore a richer set of mediators, this variable was available in STR, a data set where we had access to the individual-level genotypic data. The Swedish Enlistment Battery (used for conscription) had previously been administered to measure cognitive function in a subset of males (5, 17) . The estimated R 2 ≈ 2.5% (P < 1.0 × 10 -8 ) for cognitive function is actually slightly larger than the fraction of variance in educational attainment captured by the score in the STR sample. One possible interpretation is that some of the SNPs used to construct the score matter for education through their stronger, more direct effects on cognitive function (5) . A mediation analysis (table S24 ) provides tentative evidence consistent with this interpretation. The polygenic score remains associated with educational attainment and cognitive function in within-family analyses (table S25 ). Thus, these results appear robust to possible population stratification. If the size of the training sample used to estimate the linear polygenic score increased, the explanatory power of the score in the prediction sample would be larger, because the coefficients used for constructing the score would be estimated with less error. In ( 5 ), we report projections of this increase. We also assess, at various levels of explanatory power, the benefits from using the score as a control variable in a randomized educational intervention ( 5 ). An asymptotic upper bound for the explanatory power of a linear polygenic score is the additive ge-netic variance across individuals captured by current SNP microarrays. Using combined data from STR and QIMR, we estimate that this upper bound is 22.4% (SE = 4.2%) in these samples (5) (table S12 ).",
+      "token_count": 422,
+      "char_count": 2587
+    },
+    {
+      "section_id": "section_65c7d7d1cce53dfc",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "section_name": "fallback_section_006",
+      "section_type": "OTHER",
+      "section_source": "fallback_chunk",
+      "section_title_quality": "low",
+      "original_section_name": "SNP",
+      "page_numbers": [],
+      "span_ids": [
+        "Rietveld_et_al_2013_Science-span-0018",
+        "Rietveld_et_al_2013_Science-span-0019",
+        "Rietveld_et_al_2013_Science-span-0020"
+      ],
+      "text": "Placed in the context of the GWAS literature (10), our largest estimated SNP effect size of 0.02% is more than an order of magnitude smaller than those observed for height and body mass index (BMI): 0.4% (15) and 0.3% (18) , respectively. For comparison with the R 2 value of 2% from our linear polygenic score for education, estimated from a sample of 120,000, a score for height reached 10%, estimated from a sample of 180,000 (15) , and a score for BMI, using only the top 32 SNPs, reached 1.4% (18) . Taken together, our findings suggest that the genetic architecture of complex behavioral traits is far more diffuse than that of complex physical traits. Existing claims of \"candidate gene\" associations with complex social-science traits have reported widely varying effect sizes, many with R 2 values more than 100 times larger than those we have found (4, 6) . For complex social-science phenotypes that are likely to have a genetic architecture similar to educational attainment, our estimate of 0.02% can serve as a benchmark for conducting power analyses and evaluating the plausibility of existing findings in the literature. The few GWAS studies conducted to date in social-science genetics have not found genomewide-significant SNPs that replicate consistently (19, 20) . One commonly proposed solution is to gather better measures of the phenotypes in more environmentally homogenous samples. Our findings demonstrate the feasibility of a complementary approach: identify a phenotype that, although more distal from genetic influences, is available in a much larger sample [see (5) for a simple theoretical framework and power analysis]. The genetic variants uncovered by this \"proxyphenotype\" methodology can then serve as a set of empirically-based candidate genes in follow-up work, such as tests for associations with wellmeasured endophenotypes (e.g., personality, cognitive function), research on gene-environment interactions, or explorations of biological pathways. In social-science genetics, researchers must be especially vigilant to avoid misinterpretations. One of the many concerns is that a genetic association will be mischaracterized as \"the gene for X,\" encouraging misperceptions that genetically influenced phenotypes are immune to environmental intervention [for rebuttals, see (21, 22) ] and misperceptions that individual SNPs have large effects (which our evidence contradicts). If properly interpreted, identifying SNPs and constructing polygenic scores are steps toward usefully incorporating genetic data into social-science research.",
+      "token_count": 382,
+      "char_count": 2575
+    }
+  ],
+  "section_summaries": [
+    {
+      "section_id": "section_997b1c34041edf8b",
+      "section_name": "fallback_section_001",
+      "section_type": "OTHER",
+      "summary_text": "This section discusses the heritability of various psychological traits and economic outcomes, emphasizing the potential for discovering genetic variants that influence educational attainment. It highlights the moderate heritability of educational achievement and its correlation with other traits, suggesting that genetic factors account for about 40% of the variance in educational attainment. The authors describe their method for analyzing educational attainment through a harmonized coding system and the significance of such analysis in understanding behavioral traits.",
+      "section_role": "background",
+      "key_entities": [
+        "psychological traits",
+        "economic preferences",
+        "social and economic outcomes",
+        "educational attainment",
+        "genetic variants",
+        "risk score",
+        "International Standard Classification of Education"
+      ],
+      "key_findings": [
+        "40% of the variance in educational attainment is explained by genetic factors",
+        "educational attainment is moderately correlated with cognitive function and personality traits",
+        "harmonized measure of educational attainment was created"
+      ],
+      "extractability_assessment": "This section contains foundational information that supports the understanding of the broader research context, but claims regarding specific genetic variants and their association with traits are not yet established.",
+      "locality_confidence": 0.7
+    },
+    {
+      "section_id": "section_5489b634fe7ae2d5",
+      "section_name": "fallback_section_002",
+      "section_type": "OTHER",
+      "summary_text": "This section details the methodology and findings from a genome-wide association study (GWAS) meta-analysis examining educational attainment across 42 cohorts. The analysis included over 101,000 individuals and was aimed specifically at Caucasian participants to mitigate population stratification. The study identified several significant and suggestive loci related to educational years and college attainment, and included a replication phase that confirmed the findings with a substantial sample size, supporting the robustness of the results.",
+      "section_role": "mixed",
+      "key_entities": [
+        "EduYears",
+        "College",
+        "GWAS",
+        "Caucasians",
+        "SNP",
+        "rs9320913",
+        "rs11584700",
+        "rs4851266"
+      ],
+      "key_findings": [
+        "One genome-wide-significant locus for EduYears (rs9320913, P = 4.2 × 10 -9 )",
+        "Two genome-wide-significant loci for College (rs11584700, P = 2.1 × 10 -9 and rs4851266, P = 2.2 × 10 -9 )",
+        "Replication of significant SNPs at Bonferroni-adjusted 5% level",
+        "Seven loci did not replicate despite anticipated directional effects"
+      ],
+      "extractability_assessment": "This section contains self-contained findings that are supported by local data and analyses.",
+      "locality_confidence": 0.8
+    },
+    {
+      "section_id": "section_705338484555bbd7",
+      "section_name": "fallback_section_003",
+      "section_type": "OTHER",
+      "summary_text": "This section discusses the effect sizes of replicated SNPs associated with educational attainment, providing details on individual SNPs' contributions to phenotypic variance and their impact on college completion rates. A combined meta-analysis revealed additional significant SNPs, and various analyses were conducted to interpret the results further, including gene-based tests and eQTL analyses. The findings highlight several genes linked to cognitive processes and educational outcomes, despite the individual effects of SNPs being small.",
+      "section_role": "results",
+      "key_entities": [
+        "rs9320913",
+        "rs11584700",
+        "rs1487441",
+        "rs4851264",
+        "TANK",
+        "GBX2",
+        "BTN1A1",
+        "ASB18",
+        "LRRN2",
+        "MDM4",
+        "PIK3C2B"
+      ],
+      "key_findings": [
+        "Strongest SNP for EduYears explains 0.022% of variance.",
+        "SNP rs11584700 has an odds ratio of 0.912 for College completion.",
+        "Combined analysis revealed additional genome-wide-significant SNPs.",
+        "Certain loci showed convergent evidence from functional analyses.",
+        "Gene coexpression suggests involvement in cognitive processes."
+      ],
+      "extractability_assessment": "This section contains detailed evidence and results, making it suitable for extracting claims about genetic contributions to educational attainment.",
+      "locality_confidence": 0.85
+    },
+    {
+      "section_id": "section_61b6ce3ac1a2ff5e",
+      "section_name": "fallback_section_004",
+      "section_type": "OTHER",
+      "summary_text": "This section describes the methodology used to analyze genetic variants associated with educational attainment during the discovery stage of the study. It details the significance thresholds for independent signals, the measure of effect size, and the statistical methods applied in the meta-analysis. Key statistical metrics, including allele frequency and heterogeneity, are also discussed.",
+      "section_role": "methods",
+      "key_entities": [
+        "P value",
+        "meta-analysis",
+        "SNPs",
+        "effect size",
+        "EduYears",
+        "College",
+        "I2"
+      ],
+      "key_findings": [
+        "Independent signals reaching P < 5 × 10^-8 were identified",
+        "Effect sizes were calculated for the EduYears and College analyses",
+        "Heterogeneity of effect size was measured"
+      ],
+      "extractability_assessment": "This section contains self-contained, locally supported claims related to the methods used in the study.",
+      "locality_confidence": 0.8
+    },
+    {
+      "section_id": "section_03c29f5a900e06dc",
+      "section_name": "fallback_section_005",
+      "section_type": "OTHER",
+      "summary_text": "This section discusses the replication of polygenic score analyses using two large family-based cohorts, QIMR and STR, highlighting that educational attainment is a highly polygenic trait. The findings indicate that the constructed polygenic scores account for approximately 2% to 3% of the variance in educational attainment, with cognitive function explaining slightly more variance. The section further discusses the robustness of these findings and the potential for increased explanatory power with larger training samples.",
+      "section_role": "results",
+      "key_entities": [
+        "Queensland Institute of Medical Research (QIMR)",
+        "Swedish Twin Registry (STR)",
+        "polygenic score",
+        "SNPs",
+        "cognitive function",
+        "Swedish Enlistment Battery"
+      ],
+      "key_findings": [
+        "Educational attainment is a highly polygenic trait.",
+        "The linear polygenic score accounts for ≈2% to 3% of the variance in educational attainment.",
+        "Cognitive function explains a slightly larger variance than educational attainment in the STR sample.",
+        "The polygenic score shows robustness in within-family analyses.",
+        "The asymptotic upper bound for the explanatory power of the polygenic score is estimated at 22.4%."
+      ],
+      "extractability_assessment": "This section contains self-contained findings and results supported by data, making it suitable for claim extraction.",
+      "locality_confidence": 0.8
+    },
+    {
+      "section_id": "section_65c7d7d1cce53dfc",
+      "section_name": "fallback_section_006",
+      "section_type": "OTHER",
+      "summary_text": "This section compares the effect size of genetic variants associated with educational attainment with those linked to physical traits such as height and body mass index (BMI). The authors argue that the genetic architecture of social-science traits is more diffuse than that of physical traits, proposing that their findings can serve as a benchmark for future research. They also highlight the importance of careful interpretation of genetic associations to avoid misconceptions about the nature of genetic influence on social-science phenotypes.",
+      "section_role": "discussion",
+      "key_entities": [
+        "SNP",
+        "height",
+        "body mass index",
+        "educational attainment",
+        "proxyphenotype",
+        "social-science genetics"
+      ],
+      "key_findings": [
+        "The largest SNP effect size for educational attainment is 0.02%, significantly smaller than for height (0.4%) and BMI (0.3%).",
+        "The R2 value for educational attainment is 2%, compared to 10% for height and 1.4% for BMI.",
+        "The genetic architecture of complex behavioral traits is more diffuse than that of complex physical traits.",
+        "Existing candidate gene associations have reported effect sizes larger than those found in this study.",
+        "Misinterpretations of genetic associations in social science must be guarded against."
+      ],
+      "extractability_assessment": "This section contains claims and findings that are locally supported and interpretable, making it suitable for extraction.",
+      "locality_confidence": 0.8
+    }
+  ],
+  "paper_summary": {
+    "paper_id": "Rietveld_et_al_2013_Science",
+    "paper_title": "GWAS of 126,559 Individuals Identifies Genetic Variants Associated with Educational Attainment",
+    "paper_summary": "This study presents a genome-wide association study (GWAS) identifying genetic variants associated with educational attainment, emphasizing the heritability of educational achievement and the role of multiple genetic loci in determining educational success, particularly in Caucasian populations.",
+    "main_findings": [
+      "40% of variance in educational attainment explained by genetic factors.",
+      "Identified significant loci for educational years and college attainment.",
+      "Strongest SNP (rs9320913) explains 0.022% of variance in educational years.",
+      "Polygenic scores account for 2% to 3% of the variance in educational attainment.",
+      "The genetic architecture of educational attainment is more diffuse compared to physical traits."
+    ],
+    "limitations": [
+      "Effects of individual SNPs are small.",
+      "Replication of some loci was unsuccessful despite predicted effects.",
+      "Polygenic scores currently account for only a small portion of variance."
+    ],
+    "evidence_map": [
+      "Background section provides context on heritability and genetic influence.",
+      "Methodology section details statistical methods and significance thresholds.",
+      "Results sections report on SNP effect sizes and analyses supporting key findings.",
+      "Discussion compares educational attainment genetics to physical traits."
+    ]
+  },
+  "section_extraction_plan": [
+    {
+      "section_id": "section_997b1c34041edf8b",
+      "should_extract": false,
+      "reason": "The section primarily provides background information and foundational concepts without establishing specific claims about genetic variants or their associations.",
+      "expected_claim_types": [],
+      "expected_evidence_types": [],
+      "likely_claim_density": "none",
+      "likely_evidence_density": "none",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_5489b634fe7ae2d5",
+      "should_extract": true,
+      "reason": "The section contains specific findings from the GWAS, including significant loci and statistical values related to educational attainment.",
+      "expected_claim_types": [
+        "statistical significance",
+        "genetic loci associations",
+        "replication findings"
+      ],
+      "expected_evidence_types": [
+        "P-values",
+        "loci details",
+        "effect sizes"
+      ],
+      "likely_claim_density": "high",
+      "likely_evidence_density": "high",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_705338484555bbd7",
+      "should_extract": true,
+      "reason": "The section contains detailed evidence and results regarding SNPs and their contributions to educational attainment.",
+      "expected_claim_types": [
+        "statistical significance",
+        "effect size",
+        "association between SNPs and college completion"
+      ],
+      "expected_evidence_types": [
+        "odds ratios",
+        "variance explained",
+        "meta-analysis results"
+      ],
+      "likely_claim_density": "high",
+      "likely_evidence_density": "high",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_61b6ce3ac1a2ff5e",
+      "should_extract": true,
+      "reason": "This section contains specific methodological details and statistical metrics that support localized claims about the analysis of genetic variants.",
+      "expected_claim_types": [
+        "statistical thresholds",
+        "effect size measures",
+        "methodological details"
+      ],
+      "expected_evidence_types": [
+        "P values",
+        "effect sizes",
+        "statistical metrics"
+      ],
+      "likely_claim_density": "medium",
+      "likely_evidence_density": "medium",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_03c29f5a900e06dc",
+      "should_extract": true,
+      "reason": "The section contains specific results and localized qualifiers supported by data.",
+      "expected_claim_types": [
+        "trait polygenicity",
+        "variance explanation",
+        "robustness of findings"
+      ],
+      "expected_evidence_types": [
+        "percentage of variance explained",
+        "within-family analysis results",
+        "comparison of cognitive function"
+      ],
+      "likely_claim_density": "medium",
+      "likely_evidence_density": "medium",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_65c7d7d1cce53dfc",
+      "should_extract": true,
+      "reason": "This section contains specific findings and comparisons regarding genetic variants and their effect sizes related to educational attainment, supported by localized evidence.",
+      "expected_claim_types": [
+        "effect size comparison",
+        "interpretation of genetic architecture",
+        "importance of careful interpretation"
+      ],
+      "expected_evidence_types": [
+        "statistical effect sizes",
+        "R2 values",
+        "comparisons with physical traits"
+      ],
+      "likely_claim_density": "high",
+      "likely_evidence_density": "medium",
+      "likely_context_completeness": "good"
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "claim_e2d9b5cc66fdf7c4",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "claim_text": "rs9320913 is genome-wide significant for EduYears with a P value of 4.2 × 10 -9.",
+      "subject": {
+        "value": "rs9320913",
+        "entity_type": "SNP",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "genetic variant",
+          "normalized_text": "genetic variant",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "predicate": {
+        "value": "is_associated_with",
+        "entity_type": "relation",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "association",
+          "normalized_text": "association",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "object": {
+        "value": "EduYears",
+        "entity_type": "phenotype",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "educational attainment",
+          "normalized_text": "educational attainment",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "claim_kind": "result",
+      "claim_profile": "gwas_association_result",
+      "epistemic_status": "empirical",
+      "support_origin": "own_results",
+      "source_span_ids": [
+        "Rietveld_et_al_2013_Science-span-0005",
+        "Rietveld_et_al_2013_Science-span-0006",
+        "Rietveld_et_al_2013_Science-span-0007",
+        "Rietveld_et_al_2013_Science-span-0008"
+      ],
+      "context": {},
+      "details": {
+        "p_value": "4.2 × 10 -9"
+      },
+      "extractor_confidence": null
+    },
+    {
+      "claim_id": "claim_2e13a177db9c9dc0",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "claim_text": "rs11584700 is genome-wide significant for College with a P value of 2.1 × 10 -9.",
+      "subject": {
+        "value": "rs11584700",
+        "entity_type": "SNP",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "genetic variant",
+          "normalized_text": "genetic variant",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "predicate": {
+        "value": "is_associated_with",
+        "entity_type": "relation",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "association",
+          "normalized_text": "association",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "object": {
+        "value": "College",
+        "entity_type": "phenotype",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "educational attainment",
+          "normalized_text": "educational attainment",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "claim_kind": "result",
+      "claim_profile": "gwas_association_result",
+      "epistemic_status": "empirical",
+      "support_origin": "own_results",
+      "source_span_ids": [
+        "Rietveld_et_al_2013_Science-span-0005",
+        "Rietveld_et_al_2013_Science-span-0006",
+        "Rietveld_et_al_2013_Science-span-0007",
+        "Rietveld_et_al_2013_Science-span-0008"
+      ],
+      "context": {},
+      "details": {
+        "p_value": "2.1 × 10 -9"
+      },
+      "extractor_confidence": null
+    },
+    {
+      "claim_id": "claim_780053a910defd3d",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "claim_text": "rs4851266 is genome-wide significant for College with a P value of 2.2 × 10 -9.",
+      "subject": {
+        "value": "rs4851266",
+        "entity_type": "SNP",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "genetic variant",
+          "normalized_text": "genetic variant",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "predicate": {
+        "value": "is_associated_with",
+        "entity_type": "relation",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "association",
+          "normalized_text": "association",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "object": {
+        "value": "College",
+        "entity_type": "phenotype",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "educational attainment",
+          "normalized_text": "educational attainment",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "claim_kind": "result",
+      "claim_profile": "gwas_association_result",
+      "epistemic_status": "empirical",
+      "support_origin": "own_results",
+      "source_span_ids": [
+        "Rietveld_et_al_2013_Science-span-0005",
+        "Rietveld_et_al_2013_Science-span-0006",
+        "Rietveld_et_al_2013_Science-span-0007",
+        "Rietveld_et_al_2013_Science-span-0008"
+      ],
+      "context": {},
+      "details": {
+        "p_value": "2.2 × 10 -9"
+      },
+      "extractor_confidence": null
+    },
+    {
+      "claim_id": "claim_12072b40e5088b12",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "claim_text": "The effect size in the EduYears analysis is represented as Beta/OR.",
+      "subject": {
+        "value": "effect size in the EduYears analysis",
+        "entity_type": "concept",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "effect size",
+          "normalized_text": "effect size",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": null
+        }
+      },
+      "predicate": {
+        "value": "is represented as",
+        "entity_type": "relation",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "representation",
+          "normalized_text": "representation",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": null
+        }
+      },
+      "object": {
+        "value": "Beta/OR",
+        "entity_type": "statistical measure",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "statistical metric",
+          "normalized_text": "statistical metric",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": null
+        }
+      },
+      "claim_kind": "result",
+      "claim_profile": "generic_result",
+      "epistemic_status": "empirical",
+      "support_origin": "own_results",
+      "source_span_ids": [
+        "Rietveld_et_al_2013_Science-span-0013"
+      ],
+      "context": {},
+      "details": {},
+      "extractor_confidence": null
+    }
+  ],
+  "evidence_items": [
+    {
+      "evidence_id": "evidence_d23d469e4693fa36",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "role": "supporting",
+      "summary_text": "Identified one genome-wide-significant locus for EduYears (rs9320913, P = 4.2 × 10 -9).",
+      "evidence_method": {
+        "value": "meta_analysis",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "phenotype",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "Rietveld_et_al_2013_Science-span-0005",
+        "Rietveld_et_al_2013_Science-span-0006",
+        "Rietveld_et_al_2013_Science-span-0007",
+        "Rietveld_et_al_2013_Science-span-0008"
+      ],
+      "context": {},
+      "details": {
+        "outcome_name": "EduYears",
+        "p_value": "4.2 × 10 -9"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "genetic findings",
+        "normalized_text": "genetic findings",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_9035feffe58ef705",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "role": "supporting",
+      "summary_text": "Identified two genome-wide-significant loci for College (rs11584700, P = 2.1 × 10 -9 and rs4851266, P = 2.2 × 10 -9).",
+      "evidence_method": {
+        "value": "meta_analysis",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "phenotype",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "Rietveld_et_al_2013_Science-span-0005",
+        "Rietveld_et_al_2013_Science-span-0006",
+        "Rietveld_et_al_2013_Science-span-0007",
+        "Rietveld_et_al_2013_Science-span-0008"
+      ],
+      "context": {},
+      "details": {
+        "outcome_name": "College",
+        "p_value": "2.1 × 10 -9"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "genetic findings",
+        "normalized_text": "genetic findings",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_993d9f81f148a486",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "role": "methodology description",
+      "summary_text": "The discovery stage focused on identifying independent signals with statistical significance thresholds.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "quantitative_measure",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "Rietveld_et_al_2013_Science-span-0013"
+      ],
+      "context": {},
+      "details": {
+        "outcome_name": "independent signals",
+        "value": "P < 5 × 10^-8"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "methodology",
+        "normalized_text": "methodology",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_2372dda2614a12ac",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "role": "methodology details",
+      "summary_text": "Effect sizes were assessed through Beta/OR calculations.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "quantitative_measure",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "Rietveld_et_al_2013_Science-span-0013"
+      ],
+      "context": {},
+      "details": {
+        "outcome_name": "effect size",
+        "value": "Beta/OR"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "methodology",
+        "normalized_text": "methodology",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_9fb521e76fa34f98",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "role": "P value analysis",
+      "summary_text": "P values were calculated using a sample-size-weighted meta-analysis approach.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "quantitative_measure",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "Rietveld_et_al_2013_Science-span-0013"
+      ],
+      "context": {},
+      "details": {
+        "outcome_name": "P values",
+        "value": "sample-size-weighted meta-analysis"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "methodology",
+        "normalized_text": "methodology",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_e4133af8b5fb820e",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "role": "claim_evidence_support",
+      "summary_text": "The largest estimated SNP effect size of 0.02% is reported in the context of height (0.4%) and BMI (0.3%).",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "quantitative_measure",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "Rietveld_et_al_2013_Science-span-0018",
+        "Rietveld_et_al_2013_Science-span-0019",
+        "Rietveld_et_al_2013_Science-span-0020"
+      ],
+      "context": {
+        "population": {
+          "value": "educational attainment",
+          "entity_type": "population",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "SNP effect size",
+        "value": "0.02%"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "effect_size",
+        "normalized_text": "effect_size",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_4bcc00b0903fe9a8",
+      "paper_id": "Rietveld_et_al_2013_Science",
+      "role": "claim_evidence_support",
+      "summary_text": "The R2 value for educational attainment is noted as 2%, compared to 10% for height and 1.4% for BMI.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "quantitative_measure",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "Rietveld_et_al_2013_Science-span-0018",
+        "Rietveld_et_al_2013_Science-span-0019",
+        "Rietveld_et_al_2013_Science-span-0020"
+      ],
+      "context": {
+        "population": {
+          "value": "educational attainment",
+          "entity_type": "population",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "R2 value",
+        "value": "2%"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "statistical_measure",
+        "normalized_text": "statistical_measure",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    }
+  ],
+  "claim_evidence_links": [
+    {
+      "link_id": "claim_evidence_link_5dff1ebf7893df0d",
+      "claim_id": "claim_e2d9b5cc66fdf7c4",
+      "evidence_id": "evidence_d23d469e4693fa36",
+      "relation": "supports",
+      "confidence": 0.8
+    },
+    {
+      "link_id": "claim_evidence_link_3b8f0c413b0b8e7e",
+      "claim_id": "claim_2e13a177db9c9dc0",
+      "evidence_id": "evidence_9035feffe58ef705",
+      "relation": "supports",
+      "confidence": 0.8
+    },
+    {
+      "link_id": "claim_evidence_link_e53c692f635bea2b",
+      "claim_id": "claim_780053a910defd3d",
+      "evidence_id": "evidence_9035feffe58ef705",
+      "relation": "supports",
+      "confidence": 0.8
+    },
+    {
+      "link_id": "claim_evidence_link_14634efa86915d85",
+      "claim_id": "claim_12072b40e5088b12",
+      "evidence_id": "evidence_2372dda2614a12ac",
+      "relation": "supports",
+      "confidence": 0.8
+    }
+  ],
+  "raw_section_outputs": [
+    {
+      "section": {
+        "section_id": "section_5489b634fe7ae2d5",
+        "paper_id": "Rietveld_et_al_2013_Science",
+        "section_name": "fallback_section_002",
+        "section_type": "OTHER",
+        "section_source": "fallback_chunk",
+        "section_title_quality": "low",
+        "original_section_name": "T",
+        "page_numbers": [],
+        "span_ids": [
+          "Rietveld_et_al_2013_Science-span-0005",
+          "Rietveld_et_al_2013_Science-span-0006",
+          "Rietveld_et_al_2013_Science-span-0007",
+          "Rietveld_et_al_2013_Science-span-0008"
+        ],
+        "text": "A genome-wide association study (GWAS) meta-analysis was performed across 42 cohorts in the discovery phase. The overall discovery sample comprises 101,069 individuals for EduYears and 95,427 for College. Analyses were performed at the cohort level according to a prespecified analysis plan, which restricted the sample to Caucasians (to help reduce stratification concerns). Educational attainment was measured at an age at which participants were very likely to have completed their education [more than 95% of the sample was at least 30 (5) ]. On average, participants have 13.3 years of schooling, and 23.1% have a College degree. To enable pooling of GWAS results, all studies conducted analyses with data imputed to the HapMap 2 CEU (r22.b36) reference set. To guard against population stratification, the first four principal components of the genotypic data were included as controls in all the cohortlevel analyses. All study-specific GWAS results were quality controlled, cross-checked, and metaanalyzed using single genomic control and a sample-size weighting scheme at three independent analysis centers. At the cohort level, there is little evidence of general inflation of P values. As in previous GWA studies of complex traits (15) , the Q-Q plot of the meta-analysis exhibits strong inflation. This inflation is not driven by specific cohorts and is expected for a highly polygenic phenotype even in the absence of population stratification (16) . From the discovery stage, we identified one genome-wide-significant locus (rs9320913, P = 4.2 × 10 -9 ) and three suggestive loci (defined as P < 10 -6 ) for EduYears. For College, we identified two genome-wide-significant loci (rs11584700, P = 2.1 × 10 -9 , and rs4851266, P = 2.2 × 10 -9 ) and an additional four suggestive loci (Table 1 ). We conducted replication analyses in 12 additional, independent cohorts that became available after the completion of the discovery meta-analysis, using the same pre-specified analysis plan. For both EduYears and College, the replication sample comprises 25,490 individuals. For each of the 10 loci that reached at least suggestive significance, we brought forward for replication the single-nucleotide polymorphism (SNP) with the lowest P value. The three genomewide-significant SNPs replicate at the Bonferroniadjusted 5% level, with point estimates of the same sign and similar magnitude (Fig. 1 and Table 1 ). The seven loci that did not reach genomewide significance did not replicate (the effect went in the anticipated direction in five out of seven cases). The meta-analytic findings are not driven by extreme results in a small number of cohorts (see P het in Table 1 ), by cohorts from a specific geographic region (figs. S7 to S15), or by a single sex (figs. S3 to S6). Given the high correlation between EduYears and College (5) , it is unsurprising that the set of SNPs with low P values exhibit considerable overlap in the two analyses (tables S8 and S9).",
+        "token_count": 473,
+        "char_count": 2976
+      },
+      "decision": {
+        "section_id": "section_5489b634fe7ae2d5",
+        "should_extract": true,
+        "reason": "The section contains specific findings from the GWAS, including significant loci and statistical values related to educational attainment.",
+        "expected_claim_types": [
+          "statistical significance",
+          "genetic loci associations",
+          "replication findings"
+        ],
+        "expected_evidence_types": [
+          "P-values",
+          "loci details",
+          "effect sizes"
+        ],
+        "likely_claim_density": "high",
+        "likely_evidence_density": "high",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_5489b634fe7ae2d5",
+        "section_name": "fallback_section_002",
+        "section_type": "OTHER",
+        "summary_text": "This section details the methodology and findings from a genome-wide association study (GWAS) meta-analysis examining educational attainment across 42 cohorts. The analysis included over 101,000 individuals and was aimed specifically at Caucasian participants to mitigate population stratification. The study identified several significant and suggestive loci related to educational years and college attainment, and included a replication phase that confirmed the findings with a substantial sample size, supporting the robustness of the results.",
+        "section_role": "mixed",
+        "key_entities": [
+          "EduYears",
+          "College",
+          "GWAS",
+          "Caucasians",
+          "SNP",
+          "rs9320913",
+          "rs11584700",
+          "rs4851266"
+        ],
+        "key_findings": [
+          "One genome-wide-significant locus for EduYears (rs9320913, P = 4.2 × 10 -9 )",
+          "Two genome-wide-significant loci for College (rs11584700, P = 2.1 × 10 -9 and rs4851266, P = 2.2 × 10 -9 )",
+          "Replication of significant SNPs at Bonferroni-adjusted 5% level",
+          "Seven loci did not replicate despite anticipated directional effects"
+        ],
+        "extractability_assessment": "This section contains self-contained findings that are supported by local data and analyses.",
+        "locality_confidence": 0.8
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "rs9320913 is genome-wide significant for EduYears with a P value of 4.2 × 10 -9.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "rs9320913",
+              "entity_type": "SNP",
+              "ontology": "genetic variant"
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relation",
+              "ontology": "association"
+            },
+            "object": {
+              "value": "EduYears",
+              "entity_type": "phenotype",
+              "ontology": "educational attainment"
+            },
+            "context": {},
+            "details": {
+              "p_value": "4.2 × 10 -9"
+            }
+          },
+          {
+            "claim_text": "rs11584700 is genome-wide significant for College with a P value of 2.1 × 10 -9.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "rs11584700",
+              "entity_type": "SNP",
+              "ontology": "genetic variant"
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relation",
+              "ontology": "association"
+            },
+            "object": {
+              "value": "College",
+              "entity_type": "phenotype",
+              "ontology": "educational attainment"
+            },
+            "context": {},
+            "details": {
+              "p_value": "2.1 × 10 -9"
+            }
+          },
+          {
+            "claim_text": "rs4851266 is genome-wide significant for College with a P value of 2.2 × 10 -9.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "rs4851266",
+              "entity_type": "SNP",
+              "ontology": "genetic variant"
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relation",
+              "ontology": "association"
+            },
+            "object": {
+              "value": "College",
+              "entity_type": "phenotype",
+              "ontology": "educational attainment"
+            },
+            "context": {},
+            "details": {
+              "p_value": "2.2 × 10 -9"
+            }
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "supporting",
+            "summary_text": "Identified one genome-wide-significant locus for EduYears (rs9320913, P = 4.2 × 10 -9).",
+            "evidence_method": "meta_analysis",
+            "outcome_type": "phenotype",
+            "presentation_type": "text",
+            "context": {
+              "section_type": "OTHER"
+            },
+            "details": {
+              "outcome_name": "EduYears",
+              "p_value": "4.2 × 10 -9"
+            },
+            "ontology": "genetic findings"
+          },
+          {
+            "role": "supporting",
+            "summary_text": "Identified two genome-wide-significant loci for College (rs11584700, P = 2.1 × 10 -9 and rs4851266, P = 2.2 × 10 -9).",
+            "evidence_method": "meta_analysis",
+            "outcome_type": "phenotype",
+            "presentation_type": "text",
+            "context": {
+              "section_type": "OTHER"
+            },
+            "details": {
+              "outcome_name": "College",
+              "p_value": "2.1 × 10 -9"
+            },
+            "ontology": "genetic findings"
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.8
+          },
+          {
+            "claim_index": 1,
+            "evidence_index": 1,
+            "relation": "supports",
+            "confidence": 0.8
+          },
+          {
+            "claim_index": 2,
+            "evidence_index": 1,
+            "relation": "supports",
+            "confidence": 0.8
+          }
+        ]
+      },
+      "gated_claim_count": 3
+    },
+    {
+      "section": {
+        "section_id": "section_705338484555bbd7",
+        "paper_id": "Rietveld_et_al_2013_Science",
+        "section_name": "fallback_section_003",
+        "section_type": "OTHER",
+        "section_source": "fallback_chunk",
+        "section_title_quality": "low",
+        "original_section_name": "T",
+        "page_numbers": [],
+        "span_ids": [
+          "Rietveld_et_al_2013_Science-span-0009",
+          "Rietveld_et_al_2013_Science-span-0010",
+          "Rietveld_et_al_2013_Science-span-0011",
+          "Rietveld_et_al_2013_Science-span-0012"
+        ],
+        "text": "The observed effect sizes of the three replicated individual SNPs are small [see (5) for discussion]. For EduYears, the strongest effect identified (rs9320913) explains 0.022% of phenotypic variance in the replication sample. This coefficient of determination R 2 corresponds to a difference of ≈1 month of schooling per allele. For College completion, the SNP with the strongest estimated effect (rs11584700) has an odds ratio of 0.912 in the replication sample, equivalent to a 1.8 percentage-point difference per allele in the frequency of completing College. We subsequently conducted a \"combined stage\" meta-analysis, including both the discovery and replication samples. This analysis revealed additional genome-wide-significant SNPs: four for EduYears and three for College. Three of these SNPs (rs1487441, rs11584700, rs4851264) are in linkage disequilibrium with the replicated SNPs. The remaining four are located in different loci and warrant replication attempts in future research: rs7309, a 3′ untranslated region (3′UTR) variant in TANK; rs11687170, close to GBX2; rs1056667, a 3′UTR variant in BTN1A1; and rs13401104 in ASB18. Using the results of the combined metaanalyses of discovery and replication cohorts, we conducted a series of complementary and exploratory supplemental analyses to aid in interpreting and contextualizing the results: genebased association tests, expression quantitative trait locus (eQTL) analyses of brain and blood tissue data, pathway analysis, functional annotation searches, enrichment analysis for cell-typespecific overlap with H3K4me3 chromatin marks, and predictions of likely gene function with the use of gene-expression data. Table S20 summarizes promising candidate loci identified through follow-up analyses (5) . Two regions, in particular, showed convergent evidence from functional annotation, blood cis-eQTL analyses, and gene-based tests: chromosome 1q32 (including LRRN2, MDM4, and PIK3C2B) and chromosome 6 near the major histocompatibility complex. We also find evidence that in anterior caudate cells, there is enrichment of H3K4me3 chromatin marks (believed to be more common in active regulatory regions) in the genomic regions implicated by our analyses (fig. S20 ). Many of the implicated genes have previously been associated with health, central nervous system, or cognitive-process phenotypes in either human GWAS or model-animal studies (table S22 ). Gene coexpression analysis revealed that several implicated genes (including BSN, GBX2, LRRN2, and PIK3C2B) are probably involved in pathways related to cognitive processes (such as learning and long-term memory) and neuronal development or function (table S21 ). Although the effects of individual SNPs on educational attainment are small, many of their potential uses in social science depend on their combined explanatory power. To evaluate the combined explanatory power, we constructed a linear polygenic score (5) for each of our two education measures using the meta-analysis results (combining discovery and replication), excluding one cohort. We tested these scores for association with educational attainment in the Table 1 . The results of the GWAS meta-analysis for the independent signals reaching",
+        "token_count": 459,
+        "char_count": 3236
+      },
+      "decision": {
+        "section_id": "section_705338484555bbd7",
+        "should_extract": true,
+        "reason": "The section contains detailed evidence and results regarding SNPs and their contributions to educational attainment.",
+        "expected_claim_types": [
+          "statistical significance",
+          "effect size",
+          "association between SNPs and college completion"
+        ],
+        "expected_evidence_types": [
+          "odds ratios",
+          "variance explained",
+          "meta-analysis results"
+        ],
+        "likely_claim_density": "high",
+        "likely_evidence_density": "high",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_705338484555bbd7",
+        "section_name": "fallback_section_003",
+        "section_type": "OTHER",
+        "summary_text": "This section discusses the effect sizes of replicated SNPs associated with educational attainment, providing details on individual SNPs' contributions to phenotypic variance and their impact on college completion rates. A combined meta-analysis revealed additional significant SNPs, and various analyses were conducted to interpret the results further, including gene-based tests and eQTL analyses. The findings highlight several genes linked to cognitive processes and educational outcomes, despite the individual effects of SNPs being small.",
+        "section_role": "results",
+        "key_entities": [
+          "rs9320913",
+          "rs11584700",
+          "rs1487441",
+          "rs4851264",
+          "TANK",
+          "GBX2",
+          "BTN1A1",
+          "ASB18",
+          "LRRN2",
+          "MDM4",
+          "PIK3C2B"
+        ],
+        "key_findings": [
+          "Strongest SNP for EduYears explains 0.022% of variance.",
+          "SNP rs11584700 has an odds ratio of 0.912 for College completion.",
+          "Combined analysis revealed additional genome-wide-significant SNPs.",
+          "Certain loci showed convergent evidence from functional analyses.",
+          "Gene coexpression suggests involvement in cognitive processes."
+        ],
+        "extractability_assessment": "This section contains detailed evidence and results, making it suitable for extracting claims about genetic contributions to educational attainment.",
+        "locality_confidence": 0.85
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "The strongest SNP for EduYears (rs9320913) explains 0.022% of phenotypic variance in the replication sample.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "rs9320913",
+              "entity_type": "genetic_variant",
+              "ontology": "SNP"
+            },
+            "predicate": {
+              "value": "explains_variance_in",
+              "entity_type": "relation",
+              "ontology": "association"
+            },
+            "object": {
+              "value": "EduYears",
+              "entity_type": "phenotype",
+              "ontology": "educational attainment"
+            },
+            "context": {},
+            "details": {
+              "variance_explained": "0.022%"
+            }
+          },
+          {
+            "claim_text": "The SNP rs11584700 has an odds ratio of 0.912 for College completion.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "rs11584700",
+              "entity_type": "genetic_variant",
+              "ontology": "SNP"
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relation",
+              "ontology": "association"
+            },
+            "object": {
+              "value": "College completion",
+              "entity_type": "phenotype",
+              "ontology": "educational attainment"
+            },
+            "context": {},
+            "details": {
+              "odds_ratio": "0.912"
+            }
+          }
+        ],
+        "evidence_items": [],
+        "claim_evidence_links": []
+      },
+      "gated_claim_count": 0
+    },
+    {
+      "section": {
+        "section_id": "section_61b6ce3ac1a2ff5e",
+        "paper_id": "Rietveld_et_al_2013_Science",
+        "section_name": "fallback_section_004",
+        "section_type": "OTHER",
+        "section_source": "fallback_chunk",
+        "section_title_quality": "low",
+        "original_section_name": "T",
+        "page_numbers": [],
+        "span_ids": [
+          "Rietveld_et_al_2013_Science-span-0013"
+        ],
+        "text": "in the discovery stage. The rows in bold are the independent signals reaching P < 5 × 10 -8 in the discovery stage. \"Frequency\" refers to allele-frequency in the combined-stage meta-analysis. \"Beta/OR\" refers to the effect size in the EduYears analysis and to the odds ratio in the College analysis. All P values are from the sample-size-weighted meta-analysis (fixed effects). The P value in the replication-stage meta-analysis was calculated from a one-sided test. I 2 represents the percent heterogeneity of effect size between the discovery-stage studies. P het is the heterogeneity P value. bp, base pair. excluded cohort. We constructed the scores using SNPs whose nominal P values fall below a certain threshold, ranging from 5 × 10 -8 (only the genome-wide-significant SNPs were included) to 1 (all SNPs were included).",
+        "token_count": 131,
+        "char_count": 827
+      },
+      "decision": {
+        "section_id": "section_61b6ce3ac1a2ff5e",
+        "should_extract": true,
+        "reason": "This section contains specific methodological details and statistical metrics that support localized claims about the analysis of genetic variants.",
+        "expected_claim_types": [
+          "statistical thresholds",
+          "effect size measures",
+          "methodological details"
+        ],
+        "expected_evidence_types": [
+          "P values",
+          "effect sizes",
+          "statistical metrics"
+        ],
+        "likely_claim_density": "medium",
+        "likely_evidence_density": "medium",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_61b6ce3ac1a2ff5e",
+        "section_name": "fallback_section_004",
+        "section_type": "OTHER",
+        "summary_text": "This section describes the methodology used to analyze genetic variants associated with educational attainment during the discovery stage of the study. It details the significance thresholds for independent signals, the measure of effect size, and the statistical methods applied in the meta-analysis. Key statistical metrics, including allele frequency and heterogeneity, are also discussed.",
+        "section_role": "methods",
+        "key_entities": [
+          "P value",
+          "meta-analysis",
+          "SNPs",
+          "effect size",
+          "EduYears",
+          "College",
+          "I2"
+        ],
+        "key_findings": [
+          "Independent signals reaching P < 5 × 10^-8 were identified",
+          "Effect sizes were calculated for the EduYears and College analyses",
+          "Heterogeneity of effect size was measured"
+        ],
+        "extractability_assessment": "This section contains self-contained, locally supported claims related to the methods used in the study.",
+        "locality_confidence": 0.8
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "Independent genetic signals associated with educational attainment were identified at P < 5 × 10^-8.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "independent genetic signals",
+              "entity_type": "concept",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "educational attainment genetics",
+                "normalized_text": "educational attainment genetics",
+                "mapping_status": "unresolved"
+              }
+            },
+            "predicate": {
+              "value": "are identified at",
+              "entity_type": "relation",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "statistical association",
+                "normalized_text": "statistical association",
+                "mapping_status": "unresolved"
+              }
+            },
+            "object": {
+              "value": "P < 5 × 10^-8",
+              "entity_type": "statistical threshold",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "statistical significance",
+                "normalized_text": "statistical significance",
+                "mapping_status": "unresolved"
+              }
+            },
+            "context": {},
+            "details": {}
+          },
+          {
+            "claim_text": "The effect size in the EduYears analysis is represented as Beta/OR.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "effect size in the EduYears analysis",
+              "entity_type": "concept",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "effect size",
+                "normalized_text": "effect size",
+                "mapping_status": "unresolved"
+              }
+            },
+            "predicate": {
+              "value": "is represented as",
+              "entity_type": "relation",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "representation",
+                "normalized_text": "representation",
+                "mapping_status": "unresolved"
+              }
+            },
+            "object": {
+              "value": "Beta/OR",
+              "entity_type": "statistical measure",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "statistical metric",
+                "normalized_text": "statistical metric",
+                "mapping_status": "unresolved"
+              }
+            },
+            "context": {},
+            "details": {}
+          },
+          {
+            "claim_text": "All P values are derived from the sample-size-weighted meta-analysis.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "P values",
+              "entity_type": "concept",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "P value",
+                "normalized_text": "P value",
+                "mapping_status": "unresolved"
+              }
+            },
+            "predicate": {
+              "value": "are derived from",
+              "entity_type": "relation",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "derivation",
+                "normalized_text": "derivation",
+                "mapping_status": "unresolved"
+              }
+            },
+            "object": {
+              "value": "sample-size-weighted meta-analysis",
+              "entity_type": "methodology",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "meta-analysis",
+                "normalized_text": "meta-analysis",
+                "mapping_status": "unresolved"
+              }
+            },
+            "context": {},
+            "details": {}
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "methodology description",
+            "summary_text": "The discovery stage focused on identifying independent signals with statistical significance thresholds.",
+            "evidence_method": "observation",
+            "outcome_type": "quantitative_measure",
+            "presentation_type": "text",
+            "context": {
+              "section_type": "OTHER"
+            },
+            "details": {
+              "outcome_name": "independent signals",
+              "value": "P < 5 × 10^-8"
+            },
+            "ontology": "methodology"
+          },
+          {
+            "role": "methodology details",
+            "summary_text": "Effect sizes were assessed through Beta/OR calculations.",
+            "evidence_method": "observation",
+            "outcome_type": "quantitative_measure",
+            "presentation_type": "text",
+            "context": {
+              "section_type": "OTHER"
+            },
+            "details": {
+              "outcome_name": "effect size",
+              "value": "Beta/OR"
+            },
+            "ontology": "methodology"
+          },
+          {
+            "role": "P value analysis",
+            "summary_text": "P values were calculated using a sample-size-weighted meta-analysis approach.",
+            "evidence_method": "observation",
+            "outcome_type": "quantitative_measure",
+            "presentation_type": "text",
+            "context": {
+              "section_type": "OTHER"
+            },
+            "details": {
+              "outcome_name": "P values",
+              "value": "sample-size-weighted meta-analysis"
+            },
+            "ontology": "methodology"
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.8
+          },
+          {
+            "claim_index": 1,
+            "evidence_index": 1,
+            "relation": "supports",
+            "confidence": 0.8
+          },
+          {
+            "claim_index": 2,
+            "evidence_index": 2,
+            "relation": "supports",
+            "confidence": 0.8
+          }
+        ]
+      },
+      "gated_claim_count": 1
+    },
+    {
+      "section": {
+        "section_id": "section_03c29f5a900e06dc",
+        "paper_id": "Rietveld_et_al_2013_Science",
+        "section_name": "fallback_section_005",
+        "section_type": "OTHER",
+        "section_source": "fallback_chunk",
+        "section_title_quality": "low",
+        "original_section_name": "SNP",
+        "page_numbers": [],
+        "span_ids": [
+          "Rietveld_et_al_2013_Science-span-0014",
+          "Rietveld_et_al_2013_Science-span-0015",
+          "Rietveld_et_al_2013_Science-span-0016",
+          "Rietveld_et_al_2013_Science-span-0017"
+        ],
+        "text": "We replicated this procedure with two of the largest cohorts in the study, both of which are family-based samples [Queensland Institute of Medical Research (QIMR) and Swedish Twin Registry (STR)]. The results suggest that educational attainment is a highly polygenic trait (Fig. 2 and table S23 ): the amount of variance accounted for increases as the P value threshold becomes less conservative (i.e., includes more SNPs). The linear polygenic score from all measured SNPs accounts for ≈2% (P = 1.0 × 10 -29 ) of the variance in EduYears in the STR sample and ≈3% (P = 7.1 × 10 -24 ) in the QIMR sample. To explore one of the many potential mediating endophenotypes, we examined how much the same polygenic scores (constructed to explain EduYears or College) could explain individual differences in cognitive function. Though it would have been preferable to explore a richer set of mediators, this variable was available in STR, a data set where we had access to the individual-level genotypic data. The Swedish Enlistment Battery (used for conscription) had previously been administered to measure cognitive function in a subset of males (5, 17) . The estimated R 2 ≈ 2.5% (P < 1.0 × 10 -8 ) for cognitive function is actually slightly larger than the fraction of variance in educational attainment captured by the score in the STR sample. One possible interpretation is that some of the SNPs used to construct the score matter for education through their stronger, more direct effects on cognitive function (5) . A mediation analysis (table S24 ) provides tentative evidence consistent with this interpretation. The polygenic score remains associated with educational attainment and cognitive function in within-family analyses (table S25 ). Thus, these results appear robust to possible population stratification. If the size of the training sample used to estimate the linear polygenic score increased, the explanatory power of the score in the prediction sample would be larger, because the coefficients used for constructing the score would be estimated with less error. In ( 5 ), we report projections of this increase. We also assess, at various levels of explanatory power, the benefits from using the score as a control variable in a randomized educational intervention ( 5 ). An asymptotic upper bound for the explanatory power of a linear polygenic score is the additive ge-netic variance across individuals captured by current SNP microarrays. Using combined data from STR and QIMR, we estimate that this upper bound is 22.4% (SE = 4.2%) in these samples (5) (table S12 ).",
+        "token_count": 422,
+        "char_count": 2587
+      },
+      "decision": {
+        "section_id": "section_03c29f5a900e06dc",
+        "should_extract": true,
+        "reason": "The section contains specific results and localized qualifiers supported by data.",
+        "expected_claim_types": [
+          "trait polygenicity",
+          "variance explanation",
+          "robustness of findings"
+        ],
+        "expected_evidence_types": [
+          "percentage of variance explained",
+          "within-family analysis results",
+          "comparison of cognitive function"
+        ],
+        "likely_claim_density": "medium",
+        "likely_evidence_density": "medium",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_03c29f5a900e06dc",
+        "section_name": "fallback_section_005",
+        "section_type": "OTHER",
+        "summary_text": "This section discusses the replication of polygenic score analyses using two large family-based cohorts, QIMR and STR, highlighting that educational attainment is a highly polygenic trait. The findings indicate that the constructed polygenic scores account for approximately 2% to 3% of the variance in educational attainment, with cognitive function explaining slightly more variance. The section further discusses the robustness of these findings and the potential for increased explanatory power with larger training samples.",
+        "section_role": "results",
+        "key_entities": [
+          "Queensland Institute of Medical Research (QIMR)",
+          "Swedish Twin Registry (STR)",
+          "polygenic score",
+          "SNPs",
+          "cognitive function",
+          "Swedish Enlistment Battery"
+        ],
+        "key_findings": [
+          "Educational attainment is a highly polygenic trait.",
+          "The linear polygenic score accounts for ≈2% to 3% of the variance in educational attainment.",
+          "Cognitive function explains a slightly larger variance than educational attainment in the STR sample.",
+          "The polygenic score shows robustness in within-family analyses.",
+          "The asymptotic upper bound for the explanatory power of the polygenic score is estimated at 22.4%."
+        ],
+        "extractability_assessment": "This section contains self-contained findings and results supported by data, making it suitable for claim extraction.",
+        "locality_confidence": 0.8
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "The linear polygenic score from all measured SNPs accounts for ≈2% of the variance in educational years in the STR sample.",
+            "claim_profile": "polygenic_score_result",
+            "subject": {
+              "value": "linear polygenic score",
+              "entity_type": "measurement",
+              "ontology": "polygenic_score"
+            },
+            "predicate": {
+              "value": "explains_variance_in",
+              "entity_type": "relationship",
+              "ontology": "variance_explained"
+            },
+            "object": {
+              "value": "educational years",
+              "entity_type": "trait",
+              "ontology": "educational_attainment"
+            },
+            "context": {
+              "population": "STR sample"
+            },
+            "details": {
+              "variance_explained": "2%",
+              "p_value": "1.0 × 10 -29"
+            }
+          },
+          {
+            "claim_text": "The linear polygenic score from all measured SNPs accounts for ≈3% of the variance in educational years in the QIMR sample.",
+            "claim_profile": "polygenic_score_result",
+            "subject": {
+              "value": "linear polygenic score",
+              "entity_type": "measurement",
+              "ontology": "polygenic_score"
+            },
+            "predicate": {
+              "value": "explains_variance_in",
+              "entity_type": "relationship",
+              "ontology": "variance_explained"
+            },
+            "object": {
+              "value": "educational years",
+              "entity_type": "trait",
+              "ontology": "educational_attainment"
+            },
+            "context": {
+              "population": "QIMR sample"
+            },
+            "details": {
+              "variance_explained": "3%",
+              "p_value": "7.1 × 10 -24"
+            }
+          },
+          {
+            "claim_text": "The estimated R² for cognitive function is approximately 2.5%, which is larger than the variance in educational attainment captured by the score in the STR sample.",
+            "claim_profile": "polygenic_score_result",
+            "subject": {
+              "value": "linear polygenic score",
+              "entity_type": "measurement",
+              "ontology": "polygenic_score"
+            },
+            "predicate": {
+              "value": "explains_variance_in",
+              "entity_type": "relationship",
+              "ontology": "variance_explained"
+            },
+            "object": {
+              "value": "cognitive function",
+              "entity_type": "trait",
+              "ontology": "cognitive_function"
+            },
+            "context": {
+              "population": "STR sample"
+            },
+            "details": {
+              "variance_explained": "2.5%",
+              "p_value": "< 1.0 × 10 -8"
+            }
+          },
+          {
+            "claim_text": "An asymptotic upper bound for the explanatory power of the linear polygenic score is estimated at 22.4%.",
+            "claim_profile": "polygenic_score_result",
+            "subject": {
+              "value": "linear polygenic score",
+              "entity_type": "measurement",
+              "ontology": "polygenic_score"
+            },
+            "predicate": {
+              "value": "has_upper_bound_for_explanatory_power_of",
+              "entity_type": "relationship",
+              "ontology": "upper_bound"
+            },
+            "object": {
+              "value": "educational attainment",
+              "entity_type": "trait",
+              "ontology": "educational_attainment"
+            },
+            "details": {
+              "upper_bound": "22.4%",
+              "standard_error": "4.2%"
+            }
+          }
+        ],
+        "evidence_items": [],
+        "claim_evidence_links": []
+      },
+      "gated_claim_count": 0
+    },
+    {
+      "section": {
+        "section_id": "section_65c7d7d1cce53dfc",
+        "paper_id": "Rietveld_et_al_2013_Science",
+        "section_name": "fallback_section_006",
+        "section_type": "OTHER",
+        "section_source": "fallback_chunk",
+        "section_title_quality": "low",
+        "original_section_name": "SNP",
+        "page_numbers": [],
+        "span_ids": [
+          "Rietveld_et_al_2013_Science-span-0018",
+          "Rietveld_et_al_2013_Science-span-0019",
+          "Rietveld_et_al_2013_Science-span-0020"
+        ],
+        "text": "Placed in the context of the GWAS literature (10), our largest estimated SNP effect size of 0.02% is more than an order of magnitude smaller than those observed for height and body mass index (BMI): 0.4% (15) and 0.3% (18) , respectively. For comparison with the R 2 value of 2% from our linear polygenic score for education, estimated from a sample of 120,000, a score for height reached 10%, estimated from a sample of 180,000 (15) , and a score for BMI, using only the top 32 SNPs, reached 1.4% (18) . Taken together, our findings suggest that the genetic architecture of complex behavioral traits is far more diffuse than that of complex physical traits. Existing claims of \"candidate gene\" associations with complex social-science traits have reported widely varying effect sizes, many with R 2 values more than 100 times larger than those we have found (4, 6) . For complex social-science phenotypes that are likely to have a genetic architecture similar to educational attainment, our estimate of 0.02% can serve as a benchmark for conducting power analyses and evaluating the plausibility of existing findings in the literature. The few GWAS studies conducted to date in social-science genetics have not found genomewide-significant SNPs that replicate consistently (19, 20) . One commonly proposed solution is to gather better measures of the phenotypes in more environmentally homogenous samples. Our findings demonstrate the feasibility of a complementary approach: identify a phenotype that, although more distal from genetic influences, is available in a much larger sample [see (5) for a simple theoretical framework and power analysis]. The genetic variants uncovered by this \"proxyphenotype\" methodology can then serve as a set of empirically-based candidate genes in follow-up work, such as tests for associations with wellmeasured endophenotypes (e.g., personality, cognitive function), research on gene-environment interactions, or explorations of biological pathways. In social-science genetics, researchers must be especially vigilant to avoid misinterpretations. One of the many concerns is that a genetic association will be mischaracterized as \"the gene for X,\" encouraging misperceptions that genetically influenced phenotypes are immune to environmental intervention [for rebuttals, see (21, 22) ] and misperceptions that individual SNPs have large effects (which our evidence contradicts). If properly interpreted, identifying SNPs and constructing polygenic scores are steps toward usefully incorporating genetic data into social-science research.",
+        "token_count": 382,
+        "char_count": 2575
+      },
+      "decision": {
+        "section_id": "section_65c7d7d1cce53dfc",
+        "should_extract": true,
+        "reason": "This section contains specific findings and comparisons regarding genetic variants and their effect sizes related to educational attainment, supported by localized evidence.",
+        "expected_claim_types": [
+          "effect size comparison",
+          "interpretation of genetic architecture",
+          "importance of careful interpretation"
+        ],
+        "expected_evidence_types": [
+          "statistical effect sizes",
+          "R2 values",
+          "comparisons with physical traits"
+        ],
+        "likely_claim_density": "high",
+        "likely_evidence_density": "medium",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_65c7d7d1cce53dfc",
+        "section_name": "fallback_section_006",
+        "section_type": "OTHER",
+        "summary_text": "This section compares the effect size of genetic variants associated with educational attainment with those linked to physical traits such as height and body mass index (BMI). The authors argue that the genetic architecture of social-science traits is more diffuse than that of physical traits, proposing that their findings can serve as a benchmark for future research. They also highlight the importance of careful interpretation of genetic associations to avoid misconceptions about the nature of genetic influence on social-science phenotypes.",
+        "section_role": "discussion",
+        "key_entities": [
+          "SNP",
+          "height",
+          "body mass index",
+          "educational attainment",
+          "proxyphenotype",
+          "social-science genetics"
+        ],
+        "key_findings": [
+          "The largest SNP effect size for educational attainment is 0.02%, significantly smaller than for height (0.4%) and BMI (0.3%).",
+          "The R2 value for educational attainment is 2%, compared to 10% for height and 1.4% for BMI.",
+          "The genetic architecture of complex behavioral traits is more diffuse than that of complex physical traits.",
+          "Existing candidate gene associations have reported effect sizes larger than those found in this study.",
+          "Misinterpretations of genetic associations in social science must be guarded against."
+        ],
+        "extractability_assessment": "This section contains claims and findings that are locally supported and interpretable, making it suitable for extraction.",
+        "locality_confidence": 0.8
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "The largest SNP effect size for educational attainment is 0.02%.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "SNP effect size for educational attainment",
+              "entity_type": "SNP",
+              "ontology": "genetic_variant"
+            },
+            "predicate": {
+              "value": "is_smaller_than",
+              "entity_type": "relation",
+              "ontology": "comparison"
+            },
+            "object": {
+              "value": "SNP effect sizes for height and BMI",
+              "entity_type": "SNP",
+              "ontology": "genetic_variant"
+            },
+            "context": {
+              "analysis_context": "GWAS literature",
+              "population": "educational attainment"
+            },
+            "details": {
+              "effect_size": "0.02%"
+            }
+          },
+          {
+            "claim_text": "The R2 value for educational attainment is 2%.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "R2 value for educational attainment",
+              "entity_type": "statistic",
+              "ontology": "statistical_measure"
+            },
+            "predicate": {
+              "value": "is_less_than",
+              "entity_type": "relation",
+              "ontology": "comparison"
+            },
+            "object": {
+              "value": "R2 values for height and BMI",
+              "entity_type": "statistic",
+              "ontology": "statistical_measure"
+            },
+            "context": {
+              "analysis_context": "GWAS literature",
+              "population": "educational attainment"
+            },
+            "details": {
+              "R2_value": "2%"
+            }
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "claim_evidence_support",
+            "summary_text": "The largest estimated SNP effect size of 0.02% is reported in the context of height (0.4%) and BMI (0.3%).",
+            "evidence_method": "observation",
+            "outcome_type": "quantitative_measure",
+            "presentation_type": "text",
+            "context": {
+              "analysis_context": "GWAS literature",
+              "population": "educational attainment"
+            },
+            "details": {
+              "outcome_name": "SNP effect size",
+              "value": "0.02%"
+            },
+            "ontology": "effect_size"
+          },
+          {
+            "role": "claim_evidence_support",
+            "summary_text": "The R2 value for educational attainment is noted as 2%, compared to 10% for height and 1.4% for BMI.",
+            "evidence_method": "observation",
+            "outcome_type": "quantitative_measure",
+            "presentation_type": "text",
+            "context": {
+              "analysis_context": "GWAS literature",
+              "population": "educational attainment"
+            },
+            "details": {
+              "outcome_name": "R2 value",
+              "value": "2%"
+            },
+            "ontology": "statistical_measure"
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.8
+          },
+          {
+            "claim_index": 1,
+            "evidence_index": 1,
+            "relation": "supports",
+            "confidence": 0.8
+          }
+        ]
+      },
+      "gated_claim_count": 0
+    }
+  ]
+}
