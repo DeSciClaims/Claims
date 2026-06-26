@@ -1,0 +1,11 @@
+{
+  "paper_id": "Roessler_Koellinger_2012",
+  "paper_title": "Entrepreneurship and organization design",
+  "output_dir": "/Users/ogbanugot/Workspace/claims/Claims/miner/section_context_v1/outputs/section_context_v1__run_profile_schema_v3/Roessler_Koellinger_2012",
+  "claim_count": 4,
+  "evidence_item_count": 18,
+  "link_count": 2,
+  "input_source": "pdf",
+  "input_pdf_path": "/Users/ogbanugot/Workspace/claims/ml-llm-benchmark/data/Roessler_Koellinger_2012.pdf",
+  "pdf_extraction_method": "grobid"
+}
