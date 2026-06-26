@@ -464,14 +464,14 @@ EVIDENCE_METHOD_PROFILES = {
     "theoretical_argument": {
         "description": "Evidence derived from conceptual or theoretical reasoning.",
         "allowed_context_keys": ["section_type", "setting", "condition", "equilibrium_scope", "source_scope"],
-        "allowed_details_keys": ["argument_type", "assumptions", "constraint_note"],
+        "allowed_details_keys": ["argument_type", "assumptions", "constraint_note", "outcome_name", "value", "effect_direction"],
         "required_context_keys": [],
         "required_details_keys": [],
     },
     "derivation": {
         "description": "Evidence derived from formal or mathematical derivation.",
         "allowed_context_keys": ["section_type", "setting", "condition"],
-        "allowed_details_keys": ["derivation_kind", "equation_refs", "assumptions", "constraint_note"],
+        "allowed_details_keys": ["derivation_kind", "equation_refs", "assumptions", "constraint_note", "outcome_name", "value", "effect_direction"],
         "required_context_keys": [],
         "required_details_keys": [],
     },
