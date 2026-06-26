@@ -22,6 +22,35 @@ class OntologyAnnotation(BaseModel):
     selected_mapping: Optional[OntologyCandidate] = None
     mapping_method: Optional[str] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_model_enum_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        normalized = dict(data)
+        annotation_type = str(normalized.get("annotation_type") or "").strip().lower()
+        if annotation_type not in {"mapping", "classification"}:
+            annotation_type = "classification"
+        normalized["annotation_type"] = annotation_type
+
+        mapping_status = str(normalized.get("mapping_status") or "").strip().lower()
+        status_aliases = {
+            "mapped": "mapped",
+            "match": "mapped",
+            "matched": "mapped",
+            "resolved": "mapped",
+            "ambiguous": "ambiguous",
+            "uncertain": "ambiguous",
+            "unresolved": "unresolved",
+            "unknown": "unresolved",
+            "": "unresolved",
+            "rejected": "rejected",
+            "reject": "rejected",
+        }
+        normalized["mapping_status"] = status_aliases.get(mapping_status, "unresolved")
+        return normalized
+
 
 class SemanticField(BaseModel):
     value: str
