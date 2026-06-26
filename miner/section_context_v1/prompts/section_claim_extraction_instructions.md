@@ -25,8 +25,8 @@ For each claim:
 - require non-empty `claim_text`
 - require `claim_profile`, selected from the claim profile specs below
 - require non-empty `subject`, `predicate`, and `object`
-- require non-empty `context`
-- require non-empty `details`
+- include `context`; it may be empty only when the raw section text contains no grounded qualifier that belongs in a profile-allowed context key
+- include `details`; it may be empty only when the raw section text contains no grounded structured payload that belongs in a profile-allowed details key
 - `subject`, `predicate`, and `object` must be `SemanticField` objects with:
   - `value`
   - `entity_type`
@@ -46,6 +46,7 @@ For each claim:
 - If a qualifier is really a context field, put it in `context`, not `details`.
 - If a field is not supported by the raw section text, omit it rather than inventing it.
 - If sign, polarity, direction, modality, temporal lag, mechanism, source scope, equilibrium scope, or role assignment is meaning-critical and grounded in the raw text, preserve it in profile-allowed `context` or `details`.
+- If the claim text contains mechanism/pathway language such as "due to", "because of", "through", "via", "by", "mediated by", or "as a result of", preserve that qualifier in `context.mechanism` or the nearest profile-allowed context key. Do not leave relation-explaining mechanism text only in `claim_text`.
 - The SPO core must not flip subject/object roles or become more categorical than the source sentence.
 - For `gwas_association_result`, prefer the genetic variant/locus/SNP as `subject` and the phenotype/trait/outcome as `object`; preserve this explicitly in `details.subject_role` and `details.object_role` when needed.
 - For `gwas_association_result`, do not put p-values, odds ratios, effect sizes, or variance explained in `subject`, `predicate`, or `object`; put them in `details.p_value`, `details.odds_ratio`, `details.effect_size`, or `details.variance_explained`.
@@ -98,7 +99,7 @@ __CLAIM_PROFILE_SPECS__
 
 For each evidence item:
 - require a concrete `summary_text`
-- require concrete `details`
+- include `details`; it may be empty for conceptual, theoretical, or narrative evidence when the raw text provides no structured payload, but preserve measured or estimated payload when present
 - keep provenance local to this section
 - include:
   - `role`
@@ -136,6 +137,7 @@ For links:
 
 Important distinctions:
 - `claim.context` = qualifiers for where the claim applies
+- `claim.context.mechanism` = mechanism/pathway qualifiers that explain why or how the SPO relation holds, such as "due to employee turnover" or "through stronger effects on cognitive function"
 - `claim.details` = structured claim-side payload such as count/effect/statistical qualifier/model qualifier
 - `evidence.context` = qualifiers for the evidence conditions such as population, assay_type, timepoint, comparator, setting
 - `evidence.details` = measured or estimated result payload such as outcome_name, effect_size, unit, p_value, ci_low, ci_high, sample_size
