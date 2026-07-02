@@ -6,10 +6,26 @@ from typing import Any
 
 from validator.judge_v1.config import JudgeV1Config
 from validator.judge_v1.review_data import group_rows_by_quote, load_reviewed_claim_rows_from_file
-from validator.judge_v1.runner import build_intrinsic_claim_rows, match_group_to_claim
 
-from .audit import build_audit_records, write_audit_records
+from .audit import (
+    CANDIDATE_MISSING_FIELDNAMES,
+    EXTRA_EXTRACTED_FIELDNAMES,
+    MISSING_GOLD_FIELDNAMES,
+    WEAK_OR_UNSUPPORTED_FIELDNAMES,
+    build_audit_records,
+    build_run_audit_record,
+    write_audit_records,
+    write_diagnostic_records,
+    write_run_audit_record,
+)
 from .dspy_runtime import JudgeV2DSPyRuntime
+from .gold_runner import build_gold_mode_summary, build_gold_source_rows
+from .intrinsic_runner import (
+    build_candidate_missing_claim_rows,
+    build_intrinsic_mode_summary,
+    build_intrinsic_source_rows,
+    build_weak_or_unsupported_claim_rows,
+)
 from .llm_adapter import JudgeV2LLMAdapter
 
 
@@ -39,22 +55,37 @@ class JudgeV2Runner:
         normalized_mode = _normalize_mode(mode)
         final_output_dir = output_dir or (extraction_output_json_path.parent / f"judge_{normalized_mode}_{audit_version}")
         run_id = extraction_run_id or _derive_extraction_run_id(extraction_output_json_path)
+        diagnostics: dict[str, list[dict[str, Any]]] = {}
 
         if normalized_mode == "intrinsic_audit":
-            source_rows = build_intrinsic_claim_rows(paper_output)
+            source_rows = build_intrinsic_source_rows(paper_output)
         else:
             if gold_reviewed_file is None:
                 raise SystemExit("`--gold-reviewed-file` is required for gold_comparison mode.")
             quote_groups = group_rows_by_quote(load_reviewed_claim_rows_from_file(gold_reviewed_file))
             if paper_id:
                 quote_groups = [group for group in quote_groups if group.paper_id == paper_id]
-            source_rows = [_with_gold_fields(match_group_to_claim(group, paper_output), group) for group in quote_groups]
+            source_rows, missing_gold_rows, extra_extracted_rows = build_gold_source_rows(
+                paper_output=paper_output,
+                quote_groups=quote_groups,
+            )
+            diagnostics["missing_gold_claims"] = missing_gold_rows
+            diagnostics["extra_extracted_claims"] = extra_extracted_rows
+
+        for row in source_rows:
+            row["extraction_run_id"] = run_id
+        for rows in diagnostics.values():
+            for row in rows:
+                row["extraction_run_id"] = run_id
 
         normalized_method = _normalize_audit_method(audit_method)
         llm_audits = None
+        missing_claims_audit = None
         if normalized_method == "llm":
             adapter = JudgeV2LLMAdapter(runtime=self._get_runtime())
             llm_audits = [adapter.audit_row(row, audit_mode=normalized_mode) for row in source_rows]
+            if normalized_mode == "intrinsic_audit":
+                missing_claims_audit = adapter.discover_missing_claims(paper_output)
 
         audit_rows = build_audit_records(
             source_rows,
@@ -64,8 +95,51 @@ class JudgeV2Runner:
             audit_version=audit_version,
             llm_audits=llm_audits,
         )
+        if normalized_mode == "intrinsic_audit":
+            candidate_missing_rows = build_candidate_missing_claim_rows(
+                paper_output=paper_output,
+                audit_rows=audit_rows,
+                llm_audits=llm_audits,
+                missing_claims_audit=missing_claims_audit,
+            )
+            for row in candidate_missing_rows:
+                row["extraction_run_id"] = run_id
+            weak_or_unsupported_rows = build_weak_or_unsupported_claim_rows(
+                audit_rows=audit_rows,
+                source_rows=source_rows,
+            )
+            for row in weak_or_unsupported_rows:
+                row["extraction_run_id"] = run_id
+            diagnostics["candidate_missing_claims"] = candidate_missing_rows
+            diagnostics["weak_or_unsupported_claims"] = weak_or_unsupported_rows
+            mode_summary = build_intrinsic_mode_summary(
+                audit_rows=audit_rows,
+                source_rows=source_rows,
+                candidate_missing_rows=candidate_missing_rows,
+                weak_or_unsupported_rows=weak_or_unsupported_rows,
+                missing_claims_audit=missing_claims_audit,
+            )
+        else:
+            mode_summary = build_gold_mode_summary(
+                audit_rows=audit_rows,
+                source_rows=source_rows,
+                missing_gold_rows=diagnostics.get("missing_gold_claims", []),
+                extra_extracted_rows=diagnostics.get("extra_extracted_claims", []),
+            )
+        run_audit = build_run_audit_record(
+            audit_rows,
+            paper_id=paper_id,
+            audit_mode=normalized_mode,
+            audit_method=normalized_method,
+            extraction_run_id=run_id,
+            audit_version=audit_version,
+            mode_summary=mode_summary,
+        )
         output_path = final_output_dir / "claim_audit_records.csv"
+        run_output_path = final_output_dir / "run_audit_record.csv"
         write_audit_records(output_path, audit_rows)
+        write_run_audit_record(run_output_path, run_audit)
+        diagnostic_paths = _write_diagnostics(final_output_dir, diagnostics)
         manifest = {
             "output_dir": str(final_output_dir),
             "audit_version": audit_version,
@@ -75,11 +149,21 @@ class JudgeV2Runner:
             "extraction_run_id": run_id,
             "paper_id": paper_id,
             "record_count": len(audit_rows),
+            "claim_audit_records_path": str(output_path),
+            "run_audit_record_path": str(run_output_path),
+            "diagnostic_paths": {key: str(path) for key, path in diagnostic_paths.items()},
         }
         if gold_reviewed_file is not None:
             manifest["gold_reviewed_file"] = str(gold_reviewed_file)
         _write_manifest(final_output_dir / "manifest.json", manifest)
-        return {"audit_rows": audit_rows, "output_path": output_path, "manifest": manifest}
+        return {
+            "audit_rows": audit_rows,
+            "run_audit": run_audit,
+            "output_path": output_path,
+            "run_output_path": run_output_path,
+            "diagnostic_paths": diagnostic_paths,
+            "manifest": manifest,
+        }
 
     def _get_runtime(self) -> JudgeV2DSPyRuntime:
         if self._runtime is None:
@@ -109,31 +193,20 @@ def _normalize_audit_method(method: str) -> str:
     return normalized
 
 
-def _with_gold_fields(row: dict[str, Any], group: Any) -> dict[str, Any]:
-    updated = dict(row)
-    target_claims = []
-    for reviewed in group.rows:
-        target_claims.append(
-            {
-                "claim_text": reviewed.gold_claim_text,
-                "subject": reviewed.gold_subject,
-                "predicate": reviewed.gold_predicate,
-                "object": reviewed.gold_object,
-                "reviewer_decision": reviewed.reviewer_decision,
-                "reviewer_notes": reviewed.reviewer_notes,
-            }
-        )
-    primary = next(
-        (
-            claim
-            for claim in target_claims
-            if claim["reviewer_decision"] in {"accept", "revise"}
-        ),
-        target_claims[0] if target_claims else {},
-    )
-    updated["gold_claim_json"] = primary
-    updated["gold_claims_json"] = target_claims
-    return updated
+def _write_diagnostics(output_dir: Path, diagnostics: dict[str, list[dict[str, Any]]]) -> dict[str, Path]:
+    specs = {
+        "missing_gold_claims": ("missing_gold_claims.csv", MISSING_GOLD_FIELDNAMES),
+        "extra_extracted_claims": ("extra_extracted_claims.csv", EXTRA_EXTRACTED_FIELDNAMES),
+        "candidate_missing_claims": ("candidate_missing_claims.csv", CANDIDATE_MISSING_FIELDNAMES),
+        "weak_or_unsupported_claims": ("weak_or_unsupported_claims.csv", WEAK_OR_UNSUPPORTED_FIELDNAMES),
+    }
+    paths: dict[str, Path] = {}
+    for key, rows in diagnostics.items():
+        filename, fieldnames = specs[key]
+        path = output_dir / filename
+        write_diagnostic_records(path, rows, fieldnames)
+        paths[key] = path
+    return paths
 
 
 def _derive_extraction_run_id(extraction_output_json_path: Path) -> str:

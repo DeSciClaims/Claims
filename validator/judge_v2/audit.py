@@ -4,6 +4,7 @@ import csv
 import difflib
 import json
 import re
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -40,7 +41,93 @@ AUDIT_FIELDNAMES = [
     "gold_group_id",
     "gold_source_quote",
     "gold_match_score",
+    "gold_match_status",
+    "gold_claim_text",
+    "gold_subject",
+    "gold_predicate",
+    "gold_object",
+    "source_support_status",
+    "source_support_comment",
     "created_at",
+]
+
+RUN_AUDIT_FIELDNAMES = [
+    "paper_id",
+    "extraction_run_id",
+    "audit_source",
+    "audit_mode",
+    "audit_method",
+    "audit_version",
+    "audit_status",
+    "n_claims",
+    "n_accepted",
+    "n_needs_correction",
+    "n_rejected",
+    "n_gold_claims",
+    "n_gold_claims_matched",
+    "n_gold_claims_missing",
+    "n_extra_extracted_claims",
+    "n_candidate_missing_claims",
+    "n_weak_or_unsupported_claims",
+    "overall_score",
+    "complete_coverage_score",
+    "complete_coverage_comment",
+    "accurate_extraction_score",
+    "accurate_extraction_comment",
+    "evidence_evaluation_score",
+    "evidence_evaluation_comment",
+    "primary_issue",
+    "issue_tags",
+    "missing_elements",
+    "comments",
+    "created_at",
+]
+
+MISSING_GOLD_FIELDNAMES = [
+    "paper_id",
+    "extraction_run_id",
+    "gold_group_id",
+    "gold_claim_text",
+    "gold_subject",
+    "gold_predicate",
+    "gold_object",
+    "gold_source_quote",
+    "importance",
+    "missing_reason",
+]
+
+EXTRA_EXTRACTED_FIELDNAMES = [
+    "paper_id",
+    "extraction_run_id",
+    "claim_id",
+    "claim_text",
+    "subject",
+    "predicate",
+    "object",
+    "best_gold_match_score",
+    "extra_reason",
+]
+
+CANDIDATE_MISSING_FIELDNAMES = [
+    "paper_id",
+    "extraction_run_id",
+    "candidate_claim_text",
+    "candidate_subject",
+    "candidate_predicate",
+    "candidate_object",
+    "source_span_ids",
+    "confidence",
+    "missing_reason",
+]
+
+WEAK_OR_UNSUPPORTED_FIELDNAMES = [
+    "paper_id",
+    "extraction_run_id",
+    "claim_id",
+    "claim_text",
+    "source_span_ids",
+    "source_support_status",
+    "support_comment",
 ]
 
 
@@ -51,6 +138,23 @@ def write_audit_records(output_path: Path, rows: list[dict[str, Any]]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow({key: _csv_value(row.get(key, "")) for key in AUDIT_FIELDNAMES})
+
+
+def write_run_audit_record(output_path: Path, row: dict[str, Any]) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=RUN_AUDIT_FIELDNAMES, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerow({key: _csv_value(row.get(key, "")) for key in RUN_AUDIT_FIELDNAMES})
+
+
+def write_diagnostic_records(output_path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: _csv_value(row.get(key, "")) for key in fieldnames})
 
 
 def build_audit_records(
@@ -75,6 +179,98 @@ def build_audit_records(
     ]
 
 
+def build_run_audit_record(
+    audit_rows: list[dict[str, Any]],
+    *,
+    paper_id: str,
+    audit_mode: str,
+    audit_method: str,
+    extraction_run_id: str,
+    audit_version: str = "v2",
+    mode_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    created_at = datetime.now(timezone.utc).isoformat()
+    summary = mode_summary or {}
+    if not audit_rows:
+        return {
+            "paper_id": paper_id,
+            "extraction_run_id": extraction_run_id,
+            "audit_source": "validator",
+            "audit_mode": audit_mode,
+            "audit_method": audit_method,
+            "audit_version": audit_version,
+            "audit_status": "rejected",
+            "n_claims": 0,
+            "n_accepted": 0,
+            "n_needs_correction": 0,
+            "n_rejected": 0,
+            "n_gold_claims": summary.get("n_gold_claims", ""),
+            "n_gold_claims_matched": summary.get("n_gold_claims_matched", ""),
+            "n_gold_claims_missing": summary.get("n_gold_claims_missing", ""),
+            "n_extra_extracted_claims": summary.get("n_extra_extracted_claims", ""),
+            "n_candidate_missing_claims": summary.get("n_candidate_missing_claims", ""),
+            "n_weak_or_unsupported_claims": summary.get("n_weak_or_unsupported_claims", ""),
+            "overall_score": 0.0,
+            "complete_coverage_score": 0.0,
+            "complete_coverage_comment": "No extracted claims were available to audit.",
+            "accurate_extraction_score": 0.0,
+            "accurate_extraction_comment": "No extracted claims were available to audit.",
+            "evidence_evaluation_score": 0.0,
+            "evidence_evaluation_comment": "No extracted claims were available to audit.",
+            "primary_issue": "no_claims",
+            "issue_tags": ["no_claims"],
+            "missing_elements": ["claims"],
+            "comments": "Run-level audit rejected because no claim audit rows were produced.",
+            "created_at": created_at,
+        }
+
+    status_counts = Counter(str(row.get("audit_status") or "") for row in audit_rows)
+    summary_coverage_score = _coerce_float(summary.get("complete_coverage_score"))
+    coverage_score = summary_coverage_score
+    accuracy_score = _mean_score(row.get("accurate_extraction_score") for row in audit_rows)
+    evidence_score = _mean_score(row.get("evidence_evaluation_score") for row in audit_rows)
+    if _coerce_float(summary.get("accurate_extraction_score")) is not None:
+        accuracy_score = _coalesce_score(summary.get("accurate_extraction_score"), accuracy_score)
+    if _coerce_float(summary.get("evidence_evaluation_score")) is not None:
+        evidence_score = _coalesce_score(summary.get("evidence_evaluation_score"), evidence_score)
+    overall_score = _mean_score([coverage_score, accuracy_score, evidence_score])
+    issue_tags = _top_items(_flatten_list_field(row.get("issue_tags") for row in audit_rows))
+    missing_elements = _top_items(_flatten_list_field(row.get("missing_elements") for row in audit_rows))
+    primary_issue = issue_tags[0] if issue_tags else ""
+
+    return {
+        "paper_id": paper_id or str(audit_rows[0].get("paper_id", "")),
+        "extraction_run_id": extraction_run_id,
+        "audit_source": "validator",
+        "audit_mode": audit_mode,
+        "audit_method": audit_method,
+        "audit_version": audit_version,
+        "audit_status": _status_for_score(overall_score, primary_issue),
+        "n_claims": len(audit_rows),
+        "n_accepted": status_counts.get("accepted", 0),
+        "n_needs_correction": status_counts.get("needs_correction", 0),
+        "n_rejected": status_counts.get("rejected", 0),
+        "n_gold_claims": summary.get("n_gold_claims", ""),
+        "n_gold_claims_matched": summary.get("n_gold_claims_matched", ""),
+        "n_gold_claims_missing": summary.get("n_gold_claims_missing", ""),
+        "n_extra_extracted_claims": summary.get("n_extra_extracted_claims", ""),
+        "n_candidate_missing_claims": summary.get("n_candidate_missing_claims", ""),
+        "n_weak_or_unsupported_claims": summary.get("n_weak_or_unsupported_claims", ""),
+        "overall_score": overall_score,
+        "complete_coverage_score": coverage_score,
+        "complete_coverage_comment": summary.get("complete_coverage_comment") or _run_dimension_comment("coverage", coverage_score, audit_rows),
+        "accurate_extraction_score": accuracy_score,
+        "accurate_extraction_comment": summary.get("accurate_extraction_comment") or _run_dimension_comment("accuracy", accuracy_score, audit_rows),
+        "evidence_evaluation_score": evidence_score,
+        "evidence_evaluation_comment": summary.get("evidence_evaluation_comment") or _run_dimension_comment("evidence", evidence_score, audit_rows),
+        "primary_issue": primary_issue,
+        "issue_tags": issue_tags,
+        "missing_elements": missing_elements,
+        "comments": summary.get("comments") or _run_overall_comment(len(audit_rows), status_counts, issue_tags),
+        "created_at": created_at,
+    }
+
+
 def build_audit_record(
     row: dict[str, Any],
     *,
@@ -88,9 +284,11 @@ def build_audit_record(
     missing_elements: list[str] = []
     suggested_corrections: dict[str, Any] = {}
 
-    coverage_score, coverage_comment = _score_complete_coverage(row, missing_elements, issue_tags)
-    accuracy_score, accuracy_comment = _score_accuracy(row, issue_tags, suggested_corrections)
+    accuracy_score, accuracy_comment = _score_claim_extraction(row, missing_elements, issue_tags, suggested_corrections)
     evidence_score, evidence_comment = _score_evidence(row, issue_tags, missing_elements)
+    gold_match_status = str(row.get("gold_match_status") or "").strip()
+    coverage_score: float | None = None
+    coverage_comment = ""
 
     if audit_mode == "gold_comparison":
         gold_score, gold_comment, gold_issues, gold_corrections = _score_gold_alignment(row)
@@ -99,18 +297,27 @@ def build_audit_record(
         issue_tags.extend(gold_issues)
         if gold_corrections:
             suggested_corrections.update(gold_corrections)
+        if gold_match_status == "missing_gold":
+            accuracy_score = min(accuracy_score, 0.25)
+            evidence_score = 0.0
+            accuracy_comment = _join_comment(accuracy_comment, "No extracted claim matched this gold claim.")
+            evidence_comment = "No extracted evidence can be evaluated for a missing gold claim."
+            issue_tags.append("missing_gold_claim")
+            missing_elements.append("matched_extracted_claim")
+        elif gold_match_status == "extra_extracted":
+            accuracy_score = min(accuracy_score, 0.4)
+            accuracy_comment = _join_comment(accuracy_comment, "Extracted claim has no adequate gold match.")
+            issue_tags.append("extra_extracted_claim")
 
-    overall_score = round((coverage_score + accuracy_score + evidence_score) / 3, 3)
+    overall_score = round((accuracy_score + evidence_score) / 2, 3)
     primary_issue = issue_tags[0] if issue_tags else ""
     audit_status = _status_for_score(overall_score, primary_issue)
     if llm_audit:
-        coverage_score = _coalesce_score(llm_audit.get("complete_coverage_score"), coverage_score)
-        coverage_comment = str(llm_audit.get("complete_coverage_comment") or coverage_comment)
         accuracy_score = _coalesce_score(llm_audit.get("accurate_extraction_score"), accuracy_score)
         accuracy_comment = str(llm_audit.get("accurate_extraction_comment") or accuracy_comment)
         evidence_score = _coalesce_score(llm_audit.get("evidence_evaluation_score"), evidence_score)
         evidence_comment = str(llm_audit.get("evidence_evaluation_comment") or evidence_comment)
-        overall_score = _coalesce_score(llm_audit.get("overall_score"), round((coverage_score + accuracy_score + evidence_score) / 3, 3))
+        overall_score = _coalesce_score(llm_audit.get("overall_score"), round((accuracy_score + evidence_score) / 2, 3))
         audit_status = str(llm_audit.get("audit_status") or _status_for_score(overall_score, primary_issue))
         llm_primary_issue = str(llm_audit.get("primary_issue") or "").strip()
         if llm_primary_issue:
@@ -150,14 +357,22 @@ def build_audit_record(
         "gold_group_id": row.get("group_id", "") if audit_mode == "gold_comparison" else "",
         "gold_source_quote": row.get("source_quote", "") if audit_mode == "gold_comparison" else "",
         "gold_match_score": row.get("match_score", "") if audit_mode == "gold_comparison" else "",
+        "gold_match_status": gold_match_status if audit_mode == "gold_comparison" else "",
+        "gold_claim_text": _gold_value(row, "claim_text") if audit_mode == "gold_comparison" else "",
+        "gold_subject": _gold_value(row, "subject") if audit_mode == "gold_comparison" else "",
+        "gold_predicate": _gold_value(row, "predicate") if audit_mode == "gold_comparison" else "",
+        "gold_object": _gold_value(row, "object") if audit_mode == "gold_comparison" else "",
+        "source_support_status": _source_support_status(evidence_score, row),
+        "source_support_comment": evidence_comment,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
-def _score_complete_coverage(
+def _score_claim_extraction(
     row: dict[str, Any],
     missing_elements: list[str],
     issue_tags: list[str],
+    suggested_corrections: dict[str, Any],
 ) -> tuple[float, str]:
     checks = {
         "claim_text": bool(str(row.get("selected_claim_text", "")).strip()),
@@ -174,17 +389,6 @@ def _score_complete_coverage(
         if not present:
             missing_elements.append(key)
 
-    score = round(sum(1 for present in checks.values() if present) / len(checks), 3)
-    if score < 1:
-        issue_tags.append("incomplete_coverage")
-    return score, _coverage_comment(checks)
-
-
-def _score_accuracy(
-    row: dict[str, Any],
-    issue_tags: list[str],
-    suggested_corrections: dict[str, Any],
-) -> tuple[float, str]:
     claim = {
         "claim_profile": row.get("claim_profile", ""),
         "claim_text": row.get("selected_claim_text", ""),
@@ -198,8 +402,18 @@ def _score_accuracy(
     if errors:
         issue_tags.extend(f"profile_validation:{error}" for error in errors)
         suggested_corrections["profile_validation_errors"] = errors
-    score = max(0.0, round(1.0 - min(len(errors), 4) * 0.25, 3))
-    comment = "No profile-shape validation errors." if not errors else "Profile validation errors: " + "; ".join(errors)
+    missing_count = sum(1 for present in checks.values() if not present)
+    if missing_count:
+        issue_tags.append("claim_packet_field_missing")
+    score = max(0.0, round(1.0 - min(len(errors), 3) * 0.2 - min(missing_count, 4) * 0.1, 3))
+    comments = []
+    if errors:
+        comments.append("Profile validation errors: " + "; ".join(errors))
+    if missing_count:
+        comments.append(_coverage_comment(checks))
+    if not comments:
+        comments.append("No common claim extraction failure modes detected.")
+    comment = " ".join(comments)
     return score, comment
 
 
@@ -274,6 +488,25 @@ def _score_gold_alignment(row: dict[str, Any]) -> tuple[float, str, list[str], d
     return score, comment, issues, corrections
 
 
+def _gold_value(row: dict[str, Any], key: str) -> str:
+    gold = row.get("gold_claim_json")
+    if isinstance(gold, dict):
+        return str(gold.get(key, "") or "")
+    return ""
+
+
+def _source_support_status(evidence_score: float, row: dict[str, Any]) -> str:
+    if str(row.get("gold_match_status") or "") == "missing_gold":
+        return ""
+    if evidence_score >= 0.85:
+        return "supported"
+    if evidence_score >= 0.55:
+        return "partially_supported"
+    if evidence_score > 0:
+        return "uncertain"
+    return "unsupported"
+
+
 def _coverage_comment(checks: dict[str, bool]) -> str:
     missing = [key for key, present in checks.items() if not present]
     if not missing:
@@ -337,6 +570,65 @@ def _merge_unique(left: list[str], right: list[str]) -> list[str]:
         if item and item not in merged:
             merged.append(item)
     return merged
+
+
+def _mean_score(values: Any) -> float:
+    scores = [_coerce_float(value) for value in values]
+    present = [score for score in scores if score is not None]
+    if not present:
+        return 0.0
+    return round(sum(present) / len(present), 3)
+
+
+def _flatten_list_field(values: Any) -> list[str]:
+    flattened: list[str] = []
+    for value in values:
+        if isinstance(value, list):
+            items = value
+        elif isinstance(value, str) and value.strip():
+            try:
+                parsed = json.loads(value)
+                items = parsed if isinstance(parsed, list) else [value]
+            except json.JSONDecodeError:
+                items = re.split(r"[;,]", value)
+        else:
+            items = []
+        for item in items:
+            text = str(item).strip()
+            if text:
+                flattened.append(text)
+    return flattened
+
+
+def _top_items(items: list[str], *, limit: int = 12) -> list[str]:
+    counts = Counter(items)
+    return [item for item, _count in counts.most_common(limit)]
+
+
+def _run_dimension_comment(name: str, score: float, rows: list[dict[str, Any]]) -> str:
+    weak = [str(row.get("claim_id") or "") for row in rows if (_coerce_float(row.get(f"{_dimension_prefix(name)}_score")) or 0.0) < 0.7]
+    if not weak:
+        return f"Mean {name} score across {len(rows)} audited claims."
+    return f"Mean {name} score across {len(rows)} audited claims. Lower-scoring claims: {', '.join(weak[:8])}."
+
+
+def _dimension_prefix(name: str) -> str:
+    if name == "coverage":
+        return "complete_coverage"
+    if name == "accuracy":
+        return "accurate_extraction"
+    return "evidence_evaluation"
+
+
+def _run_overall_comment(claim_count: int, status_counts: Counter[str], issue_tags: list[str]) -> str:
+    status_summary = (
+        f"{status_counts.get('accepted', 0)} accepted, "
+        f"{status_counts.get('needs_correction', 0)} need correction, "
+        f"{status_counts.get('rejected', 0)} rejected"
+    )
+    if not issue_tags:
+        return f"Run-level audit over {claim_count} claims: {status_summary}; no recurring issues found."
+    return f"Run-level audit over {claim_count} claims: {status_summary}. Main recurring issues: {', '.join(issue_tags[:6])}."
 
 
 def _csv_value(value: Any) -> Any:

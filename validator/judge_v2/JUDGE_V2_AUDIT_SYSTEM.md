@@ -5,8 +5,6 @@ Return STRICT JSON ONLY with this shape:
 {
   "audit_status": "accepted | needs_correction | rejected | uncertain",
   "overall_score": 0.0,
-  "complete_coverage_score": 0.0,
-  "complete_coverage_comment": "",
   "accurate_extraction_score": 0.0,
   "accurate_extraction_comment": "",
   "evidence_evaluation_score": 0.0,
@@ -20,10 +18,12 @@ Return STRICT JSON ONLY with this shape:
 
 Scores must be numbers from 0.0 to 1.0.
 
-Audit dimensions:
-- complete_coverage_score: whether the extraction preserves meaning-critical claim parts, including qualifiers, modality, direction, mechanism, scope, numeric/statistical payload, subject/object role assignment, and source provenance.
-- accurate_extraction_score: whether the claim text, SPO, profile, context, and details are faithful to the source/gold target and internally coherent.
+Claim-level audit dimensions:
+- accurate_extraction_score: whether the claim text, SPO, profile, context, details, qualifiers, modality, direction, mechanism, scope, numeric/statistical payload, and subject/object role assignment are faithful to the source/gold target and internally coherent.
 - evidence_evaluation_score: whether evidence items and links directly support the claim and provide inspectable provenance.
+
+Do not score complete coverage for an individual claim. Complete coverage is a run-level audit dimension only.
+Set overall_score to the mean of accurate_extraction_score and evidence_evaluation_score.
 
 Mode behavior:
 - intrinsic_audit: evaluate the extracted claim against the source section text and extraction packet.

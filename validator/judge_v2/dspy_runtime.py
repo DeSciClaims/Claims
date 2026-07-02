@@ -6,6 +6,7 @@ from validator.judge_v1.config import JudgeV1Config
 
 
 PROMPT_PATH = Path(__file__).resolve().parent / "JUDGE_V2_AUDIT_SYSTEM.md"
+MISSING_CLAIMS_PROMPT_PATH = Path(__file__).resolve().parent / "JUDGE_V2_MISSING_CLAIMS_SYSTEM.md"
 
 
 class JudgeV2DSPyRuntime:
@@ -27,6 +28,10 @@ class JudgeV2DSPyRuntime:
             dspy_module,
             instructions=PROMPT_PATH.read_text(encoding="utf-8").strip(),
         )
+        self.missing_claims_program = create_missing_claims_program_v2(
+            dspy_module,
+            instructions=MISSING_CLAIMS_PROMPT_PATH.read_text(encoding="utf-8").strip(),
+        )
 
 
 def create_claim_audit_program_v2(dspy_module, *, instructions: str):
@@ -43,5 +48,18 @@ def create_claim_audit_program_v2(dspy_module, *, instructions: str):
         audit_json: str = dspy_module.OutputField()
 
     predictor = dspy_module.Predict(ClaimAuditV2Signature)
+    predictor.signature.instructions = instructions
+    return predictor
+
+
+def create_missing_claims_program_v2(dspy_module, *, instructions: str):
+    class MissingClaimsV2Signature(dspy_module.Signature):
+        """Find important paper claims missing from the extracted claim list. Return STRICT JSON ONLY."""
+
+        paper_json: str = dspy_module.InputField()
+        extracted_claims_json: str = dspy_module.InputField()
+        missing_claims_json: str = dspy_module.OutputField()
+
+    predictor = dspy_module.Predict(MissingClaimsV2Signature)
     predictor.signature.instructions = instructions
     return predictor
