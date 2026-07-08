@@ -1,0 +1,911 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Entrepreneurship and organization design</title>
+				<funder>
+					<orgName type="full">Brown</orgName>
+				</funder>
+				<funder ref="#_4drJCq2">
+					<orgName type="full">Erasmus Research Institute of Management</orgName>
+					<orgName type="abbreviated">ERIM</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher>Elsevier BV</publisher>
+				<availability status="unknown"><p>Copyright Elsevier BV</p>
+				</availability>
+				<date type="published" when="2012-03-01">1 March 2012</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Christian</forename><surname>Roessler</surname></persName>
+							<email>christian.roessler@univie.ac.at</email>
+							<affiliation key="aff0">
+								<orgName type="department">Department of Economics</orgName>
+								<orgName type="institution">University of Vienna</orgName>
+								<address>
+									<country key="AT">Austria</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Philipp</forename><surname>Koellinger</surname></persName>
+							<email>koellinger@ese.eur.nl</email>
+							<affiliation key="aff1">
+								<orgName type="department">Erasmus School of Economics</orgName>
+								<orgName type="institution">Erasmus University Rotterdam</orgName>
+								<address>
+									<country key="NL">Netherlands</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff2">
+								<orgName type="institution">Tinbergen Institute</orgName>
+								<address>
+									<country key="NL">Netherlands</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff3">
+								<orgName type="department">Erasmus School of Economics</orgName>
+								<orgName type="institution">Erasmus University Rotterdam</orgName>
+								<address>
+									<country key="NL">Netherlands</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Entrepreneurship and organization design</title>
+					</analytic>
+					<monogr>
+						<title level="j" type="main">European Economic Review</title>
+						<title level="j" type="abbrev">European Economic Review</title>
+						<idno type="ISSN">0014-2921</idno>
+						<imprint>
+							<publisher>Elsevier BV</publisher>
+							<biblScope unit="volume">56</biblScope>
+							<biblScope unit="issue">4</biblScope>
+							<biblScope unit="page" from="888" to="902"/>
+							<date type="published" when="2012-03-01">1 March 2012</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">FE4DA1E2B3013EDD9313A12A65834A6C</idno>
+					<idno type="DOI">10.1016/j.euroecorev.2012.02.014</idno>
+					<note type="submission">Received 26 July 2011 Accepted 17 February 2012 The literature on job matching (Crawford and Knoer, 1981; Kelso and Crawford, 1982; Roth, 1984; Hatfield and Milgrom, 2005</note>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-06-25T15:17+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>Entrepreneurship Organization design Wages Profits</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We model entrepreneurship and the emergence of firms as an outcome of simultaneous bidding for labor services among heterogeneous agents. What distinguishes our approach from prior work is that occupational choice and job matching are determined simultaneously, so that the opportunity costs of entrepreneurs are accounted for. Those who are relatively unmanageable, while possibly excellent managers themselves, become entrepreneurs. Entrepreneurs compete and create value by building efficient organizations and offering potentially well-paid jobs to others. While the entry of an additional entrepreneur typically reduces some individual wages, we show that it always raises the average wage and depresses the average income of incumbent entrepreneurs. This result may help explain the empirically low returns to entrepreneurship.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>sequential bidding process, where the productive contribution of a worker in a firm is unique and potentially depends on co-workers. However, what makes these models unattractive for studying entrepreneurship is that the firms and their technologies are taken as given, and assumptions (e.g. workers are substitutes) are imposed somewhat arbitrarily. One does not learn from these models who becomes an entrepreneur and how this affects the types of technologies that will actually be observed.</p><p>In this paper, we model occupational choice and job matching simultaneously: one becomes an entrepreneur if that is preferable to the best job offered by others who are becoming entrepreneurs. It is in any entrepreneur's interest to take advantage of the managerial skills of employees by creating a hierarchical organization structure. This is an important aspect of the opportunity cost of entrepreneurship: more talented individuals have better prospects as entrepreneurs, but also as employees. <ref type="bibr">1</ref> Hence we make the process by which entrepreneurs build organizations explicit. <ref type="bibr">2</ref> In equilibrium, the entrepreneurs are those who can create more value under self-management than under the management of someone else. This may reflect being relatively ''unmanageable'' more than being a business visionary or manager extraordinaire, although those types of entrepreneurs exist in our model as well. Whatever value entrepreneurs create, they do not have the option to earn a better income working for someone else. As in reality, this logic is consistent with low incomes for many entrepreneurs, who cannot attract good wage offers, given their characteristics.</p><p>The organizations that are going to be operated in equilibrium are uniquely determined by the individual characteristics of the entrepreneurs and their workforces. Both complement and substitute relationships between workers are possible. This can cause some of the expected supply-and-demand relationships in the labor market to fail. With fixed labor supply, an increase in the demand for labor would normally increase all wages. With complementarities between workers, this is no longer true: entry of an additional entrepreneur typically reduces some individual wages. However, we show that it still increases wages on average because the losses of some employees will always be compensated by the gains of others. This is not an obvious property unless one imposes a priori that workers are substitutes.</p><p>Occupational choices therefore determine how wages compare to entrepreneurial profits. The typical wage may well exceed the typical profit if many entrepreneurs are of the ''relatively unmanageable'' variety, i.e. they are motivated by poor employment options, rather than high expected profits. Their firms can nevertheless create good jobs for individuals who are valuable employees because they are easily managed. We illustrate this possibility with an example later in the paper and thereby offer one explanation for Hamilton's (2000) empirical results.</p><p>Literature that has allowed for complementarities in a two-sided matching or coalition-formation context has almost exclusively focused on the existence of stable outcomes (Sasaki and Toda, 1996; Dutta and Masso, 1997; Banerjee et al.,  2001; Ma, 2001; Echenique and Oviedo, 2004; Klaus and Klijn, 2005; Hatfield and Kojima, 2008; Kojima et al., 2010). The main exception we are aware of is Pycia (2011), who independently from us developed an example of the comparative statics under complementarity (where removing an agent from one side of a two-sided market makes an agent on the other side worse off, which cannot occur under substitutability). There are important differences between our model and Pycia's: his firms are exogenously given, and workers match to firms before they can bargain over the division of value among members. In our model, individuals join firms (or start firms themselves) conditional on wage offers, which is more similar to an actual labor market. Our result that wages rise with entrepreneurial entry on average is also new.</p><p>Another related literature considers the formation of clubs (Ellickson et al., 1999, 2001) and partnerships (Farrell and  Scotchmer, 1988). Although clubs are usually interpreted as groups that jointly consume a good, they are formally similar to partnerships, which engage in joint production. These papers contrast with ours in that they refer to coalitions of equal individuals with no internal structure and no notion of entrepreneurship. Zame (2007) introduces specific tasks into his general-equilibrium framework with firm formation. A firm type is defined by the roles its workers need to fill, a production technology, and a contract that allocates net output among the workers. A firm comes into existence when, in equilibrium, every role attracts an agent with appropriate skills. Hence, the agents coordinate on the equilibrium firm structure through their job choices, as in our model. But in Zame, there is no explicit mechanism through which coordination occurs-there is no active firm-building by entrepreneurs. <ref type="bibr">3</ref> On the other hand, Zame addresses moral hazard and adverse selection issues that we sidestep.</p><p>The next section describes the model and assumptions about primitives, as well as the nature of equilibrium. Then we discuss the unique membership and organization of equilibrium firms. They can be obtained from the primitives by a simple algorithm. Subsequently, we study the equilibrium payoff distribution between entrepreneurs and wage earners. We show that a greater number of entrepreneurs leads to (weakly) higher wages and (weakly) lower incomes for the incumbent entrepreneurs. When entrepreneurial entry is imitative (copies part of an existing organization structure), 1 Delegation leads to a departure from the logic in Lazear (2004, 2005), where more flexible individuals necessarily become entrepreneurs. In a model with organizations, one can benefit from managerial skills as an employee.</p><p>2 There has long been a literature on hierarchical firms, begun by Rosen (1982), but it does not account for labor market competition between entrepreneurs. Organization forms also arise endogenously in Legros and Newman (1996) as a response to moral hazard: their firms have a choice between investing in monitoring technology (M-firms) and writing incentive-compatible contracts (I-firms). We do not treat agency problems explicitly, and we refer to organization in another sense, as an assignment of employees to managers.</p><p>3 One can, however, link these models conceptually. If we view our firms from Zame's perspective, then ''entrepreneur'' is one of the roles each firm has to fill. The contract gives the entrepreneur a claim to all output, which can be valued at the equilibrium goods prices and treated as profit. In return, the entrepreneur transfers a sum to the other workers that is divided into wage payments for each role. Our firm types can be described as sets of skills/ actions that an entrepreneur may buy in the labor market, similar to the specific skill requirements of roles in Zame's firms.</p><p>these effects are strict. The possibility that entrepreneurial incomes fall short of the average wage is illustrated by a simple numerical example. Finally, we elaborate how complement and substitute relationships between workers arise endogenously. Proofs are collected in the appendix.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">A labor market auction model of entrepreneurship</head><p>1.1. Summary</p><p>Our model works as follows. For any pair of agents i and j, in a finite population N, there are conditional productivities (i) v ij and (ii) v ji that reflect (i) the output that j can create under i's management and (ii) the output that i can create under j's management. The value v ij is realized if j is assigned to i (''is managed by i'') in the organization structure their employer (the entrepreneur) implements. The entire matrix of conditional productivities</p><formula xml:id="formula_0">v 11 Á Á Á v 1n ^&amp; vn1 Á Á Á v nn 2 6 4 3 7 5</formula><p>is assumed to be commonly known. The i-th row lists what each individual in the economy could produce under manager i; the i-th column shows what i could produce under alternative managers.</p><p>A firm F DN is a set of individuals who are connected through managerial assignments: each member has a superior, who must be a member of F (and who could be oneself). Thus, an assignment function m : N Â 2 N -N for a firm F links each member j of F to another member i of F, producing assignments i ¼ mðj,FÞ, which are interpreted as ''i is the manager of j in firm F.'' Unlike the conditional productivities, the assignment function is not exogenous: it is chosen by the entrepreneur who employs the firm's members through successful wage offers in the labor market. If h is the entrepreneur who creates the firm in this sense, we label it F h , and the assignment function that h implements is denoted as m h .</p><p>The total output of the firm is the sum of individual outputs, given the assignments to managers. Hence, firm F h operates the production function <ref type="bibr">4</ref> X</p><formula xml:id="formula_1">j2F h v m h ðj,F h Þj :</formula><p>This value accrues to the entrepreneur, although some of it goes toward paying wages that were promised to employees. Entrepreneurs attract employees through wage bids, which they base on the value employees can create in the firm.</p><p>Clearly, the entrepreneur will want to make managerial assignments that maximize the value of the firm. The resulting organization determines what an employee will add and what the entrepreneur is willing to offer. Our labor market is a simultaneous auction where everyone submits wage offers to everyone, self included. Hiring oneself is what we mean by ''becoming an entrepreneur.'' Hence, everyone in our economy is a potential entrepreneur. Each individual ranks employers, depending on the wage offers she receives. We assume purely monetary preferences, which means that one of the high bids is always accepted (with the caveat that, in evaluating offers to self, one also needs to include the profit that could be earned after wage payments as an entrepreneur).</p><p>In calculating wage bids, one must take into account who else will join the firm and be available as a manager. In the perfect information environment that we study in this paper, it is possible to correctly anticipate this, but it involves thinking about three-part strategies. Part (1) is the assignment function: for any subset S that might accept individual i's offers, who should optimally manage whom in S? This determines the value of any firm i might run, and the incremental value of any employee i might hire. Part (2) is the set of wage offers that individual i will make. Part (3) is the employer choice function: for any set of wage offers individual i might receive, which would i accept? The equilibrium strategy profile yields occupational choices, firm memberships, organization structures and incomes endogenously. <ref type="bibr">4</ref> Our production function can be viewed as the reduced form of a Cobb-Douglas function with capital and a managed labor force</p><formula xml:id="formula_2">y h ¼ K a h X j2Fh v mh ðj,Fh Þj 0 @ 1 A 1Àa :</formula><p>If entrepreneurs obtain capital at interest rate r in a financial market, optimal borrowing implies</p><formula xml:id="formula_3">K h ¼ 1 r a 1=ð1ÀaÞ X j2Fh v mh ðj,Fh Þj , so that y h ÀrK h ¼ ð1ÀaÞ 1 r a a=ð1ÀaÞ X j2Fh v mh ðj,Fh Þj</formula><p>(the multiplier is immaterial to our analysis).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.2.">Conditional productivities and noncircularity</head><p>The conditional productivity v ij 2 R þ is the revenue (profit before wages) that j can generate for the firm F h if the entrepreneur (h) assigns i as j's manager. Since the conditional productivity is by assumption exogenous, it is not affected by how many, and which, other individuals i manages, or by who manages i. It also does not depend on the wage j is paid. This need not mean that there is no principal-agent problem. The conditional productivities may reflect, in addition to j's skill at the job and i's skill at designing tasks, how willingly j exerts effort and how well i monitors. If effort were unobservable, v ij could be interpreted as j's expected performance under the optimal contract. We rule out equal conditional productivities under different managers in the interest of efficient notation: v ik av kj for iak. (But employees may be equally productive under a particular manager, so it is possible that v ij ¼ v ik .) The restriction is plausible if the primitive values are drawn from a continuous distribution (that may have a spike at zero). Since v ij Z0 by assumption, this means also that for everyone there is some manager who elicits strictly positive productivity.</p><p>For the intended interpretation of the model, it is desirable that equilibrium assignments are hierarchical (there is no circular authority, such that i is both superior and subordinate to j). This allows to clearly identify the individual at the top of an organization as the entrepreneur and label firms accordingly. For organizations to have hierarchical, tree-like structures, conditional productivities need to satisfy an axiom that amounts to transitivity of managerial ability: if i is a superior manager for j (i.e. v ij Z v jj ), and j is a superior manager for k (i.e. v jk Zv kk ), then i should be more productive under self-management than under k (v ii Z v ki ). We extend this logic to arbitrary chains.</p><p>Axiom: noncircularity. Suppose that the members of S D N can be assigned ''manager ranks'' from 1 to n such that v 12 Z v 22 , v 23 Z v 33 , . . . ,v ðnÀ1Þn Zv nn . Then v n1 r v 11 , i.e. n does not rank above i.</p><p>One way to think about noncircularity at an intuitive level is to imagine that the population is divided into natural supervisors and natural supervisees, who are completely specialized in these roles. Then, v ij 4 v jj if i is a supervisor and j is a supervisee, v jj 4 v ij if roles are reversed, or v ij ¼ v jj if both are of the same type. These conditional productivities satisfy noncircularity. The axiom allows for more complex patterns that retain the flavor that a good manager for one individual tends to be a good manager for another. In particular, it could be restated as follows: suppose v jk Zv kk , then v kj rv jj ; moreover, v ki r v ii for all i such that v ij Zv jj ; moreover, v kh rv hh for all h such that v hi Z v ii , and so on. But noncircularity does not require one individual to be the best manager for everyone: v ij 4 v jj is consistent with v jk 4v ik .</p><p>A strengthening of noncircularity provides a simpler axiom that fits many of our intended applications. The following might be termed ''positive agency cost:'' for all i,j 2 N, v ii Z v ij , i.e. i can manage self more effectively than others. This statement implies noncircularity, e.g.</p><formula xml:id="formula_4">v ij Z v jj and v jk Z v kk lead to v ii Z v ij Z v jj Z v jk Z v kk Z v ki .</formula><p>Positive agency cost is plausible when management is top-down (i sets tasks for j without seeking j's advice), and delegation may result in a loss from communication barriers and partial effort. The role of j is then merely to carry out instructions as closely as possible.</p><p>In applications, it may be meaningful to infer conditional productivities from distances between points associated with the individuals. These points could be attributes in a social or professional characteristics space, where distances represent communication barriers or skill mismatch. Positive agency cost is satisfied by values that are spatial in the following sense: there exists a mapping f : N-R l and a distance metric d : N Â N-R such that, for all i,j,k 2 N, v ij Zv ik if and only if dðf ðiÞ,f ðjÞÞ r dðf ðiÞ,f ðkÞÞ. To verify that positive agency cost (and therefore noncircularity) holds, note simply that dðf ðiÞ,f ðiÞÞ ¼ 0 rdðf ðiÞ,f ðjÞÞ for all j 2 N, so that v ii Z v ij .<ref type="foot" target="#foot_0">5</ref> Since positive agency cost implies noncircularity, the conditional productivities we admit include anything that could be derived from a spatial model, where agents are associated with points in R n and the value one individual can create under another's management declines in the interpersonal distance.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.3.">Non-cooperative game</head><p>The conditional productivities are our economy's data. We define now strategy spaces and our equilibrium notion, which is a refinement of Nash's. The manager assignment is a function m i : N Â 2 N -N such that m i ðj,CÞ 2 C. It identifies whom (in C DN) i would assign to manage j 2 C.<ref type="foot" target="#foot_1">6</ref> Let M i be the set of such functions. Wage offers are a function w i : N-R þ that specifies a bid for everyone's labor services (including i's own). Let W i be the set of such functions. <ref type="bibr">7</ref> Employer choice is a function e i : R n þ -N which names, for every set of offers w 1 ðiÞ,w 2 ðiÞ, . . . ,w n ðiÞ to i, the bidder j 2 N whose offer is accepted (possibly i's own offer). Let E i be the set of such functions. <ref type="bibr">8</ref> Given a strategy profile s 2 Â i2N S i (where S i ¼ M i Â W i Â E i ), a firm F i ðsÞ consists of those individuals who select i as their employer:</p><p>F i ðsÞ ¼ fj 2 N s:t: e j ðwÞ ¼ ig:</p><p>(We use letters without subscripts to denote profiles, e.g. w fw i g i2N is the set of all wage offers.) Since everyone accepts exactly one wage offer, the collection of firms in the economy is a partition of N. Some firms may well be empty: if F i ðsÞ ¼ |, we will call i an employee; if F i ðsÞa|, i is an entrepreneur.</p><p>The profit that accrues to an entrepreneur i is the difference between value created (under the organization structure that is implemented by m i ) and wages paid:</p><formula xml:id="formula_5">p i ðsÞ ¼ X j2F i ðsÞ v m i ðj,F i ðsÞÞj À X j2F i ðsÞ w i ðjÞ:<label>ð1Þ</label></formula><p>Note that the income of entrepreneurs, i.e. i 2 F i ðsÞ, is invariant to the wages they pay themselves: w i ðiÞþp i ðsÞ is constant with respect to w i ðiÞ.</p><p>Definition: labor market. The labor market is a game</p><formula xml:id="formula_6">G ¼ ðN,fv ij g i,j2N ,Â i2N S i ,fu i g i2N Þ, with strategy space S i ¼ R i Â W i Â E i</formula><p>for each i 2 N, conditional productivities that satisfy noncircularity, and preferences represented by a utility function u i : R-R þ that increases monotonically in income w e i ðwÞ ðiÞþp i ðsÞ for all i 2 N.</p><p>We treat G as a normal-form game: strategies are chosen simultaneously; in particular, every i 2 N plans the internal structure of any firm i may run, makes wage offers to all j 2 N, and decides how to select among wage offers i will receive.</p><p>A solution of G is a Nash equilibrium in undominated pure strategies that leads to well-structured firms in a sense we will explain. Strategy s i 2 S i is undominated if there exists no s i 0 2 S i such that u i ðs i 0 ,s Ài Þ Z u i ðs i ,s Ài Þ for all s Ài 2 Â j2N\fig S j , and</p><formula xml:id="formula_7">u i ðs i 0 ,s Ài Þ 4 u i ðs i ,s Ài Þ for some s Ài 2 Â j2N\fig S j .</formula><p>That is, if s i is not weakly dominated by, and in some situation strictly worse than, another strategy.</p><p>The rationale for ruling out equilibria in (weakly) dominated strategies is that agents can otherwise offer wages they are not prepared to pay, knowing they will be outbid. In standard auctions with private-values, all bidders believe they have a positive probability of winning, and this prevents overbidding. But in a perfect information setting like ours, there is no risk of winning by accident. To illustrate why we rule out (weakly) dominated strategies, suppose the best manager for j is h, and h and i will both be entrepreneurs. Then i will bid less for j than v hj (since h is not available as a manager in F i ), but possibly more than j's maximal productivity in F i , because in equilibrium h must beat i's bid. Entrepreneurs might have to pay unreasonably high wages-but such equilibria seem unstable, since they depend on a bluff that is not called.</p><p>In principle, several employees of a firm could be assigned to manage themselves. This type of arrangement is problematic: no final authority exists to resolve coordination failures (admittedly, coordination is not required in the strict confines of our model). One might conjecture that i, as the designer of firm F i ðsÞ, would not adopt such a structure, unless it is strictly profitable to do so. Hence we focus on equilibria where, in each firm, only one individual reports to self. Moreover, in F i ðsÞ, it seems reasonable that this individual should be i. 9</p><p>Definition: Hierarchical assignment. The managerial assignment m i is hierarchical if, for all i,j 2 N, m i ðj,F i ðsÞÞ ¼ j only if i¼ j.</p><p>Hierarchical assignments are not an assumption, but a refinement property of equilibria. We eliminate no strategies and require solutions to be Nash equilibria on the full domain of the strategy space Â i2N S i . 10 Not joining F i ðsÞ or choosing a non-hierarchical assignment for F i ðsÞ, which are unilateral deviations for i, cannot be payoff-improving in an equilibrium for any i 2 N.</p><formula xml:id="formula_8">Definition: equilibrium. Strategy profile s n 2 Â i2N S i is an equilibrium of G if, for every i 2 N, s n i is undominated, m n i is hierarchical, and u i ðs n i ,s n Ài Þ Zu i ðs i 0 ,s n Ài Þ for all s i 0 2 S i .</formula><p>As we show next, the identities of the entrepreneurs, as well as the employees and organization structures of their firms, are determined uniquely in equilibrium. Because entrepreneurs have the power to make ultimatum wage offers in (footnote continued) relations may affect the benefits of a job. In our economy, social considerations are absent, job offers are evaluated only on wages. Holding multiple jobs is ruled out.</p><p>9 If we only impose that there is a unique individual, not necessarily i, who reports to self in F i , we get permutations of firm names. The membership and structure of F i migrate to F k in alternate equilibria. To elaborate, if someone other than i could be at the top of F i , then the naming of the firm becomes arbitrary. (We could have j 2 F i at the top of F i or i 2 F h at the top of F h and so forth.) This would lead to duplicate equilibria, where the firm memberships, managerial assignments and payoffs are the same, except the firms are named differently (i is at the top of a firm that in one equilibrium is called F i and in another equilibrium F j ). Since distinguishing these equilibria is not interesting -they are exactly the same except for naming -we eliminate the duplicates by making precise how firms are to be named. Since only one individual in a firm can self-manage, we can do this by imposing that only the person after whom the firm is named can self-manage. (This is the same as saying the firm must be named after whoever self-manages.) <ref type="bibr">10</ref> The reason is partly technical: since strict ordering requires i 2 F i ðsÞ or F i ðsÞ ¼ |, i could not make offers without committing to be an entrepreneur if the restriction were applied to the strategy space.</p><p>the labor market, their equilibrium incomes are determinate. The same is not true for individual wages, but since all equilibria divide income between entrepreneurs and the total workforce in the same way, the average wage is also unique.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Firms</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.1.">Equilibrium membership and organization</head><p>Associated with an equilibrium s n is a partition of N into firms F i ðs n Þ. In this section we derive the unique membership and organization of the equilibrium firms. The requirement that equilibrium play is undominated imposes a few specific constraints. First, entrepreneurs always assign the best available manager to each employee. Second, workers join the firm that makes the highest wage offer to them. 11 Lemma (P1). For all i 2 N, s i 2 S i is an undominated strategy only if:</p><p>(i) for all C DN and all j 2 C, m i ðj,CÞ ¼ h only if v hj Zv kj for all k 2 C; (ii) e i ðwÞ ¼ hai only if w h ðiÞ Z w k ðiÞ for all k 2 N\i. 12 Given hierarchical assignments, so that only entrepreneurs can manage themselves, they must join their own firms if they hire any employees in equilibrium.</p><formula xml:id="formula_9">Lemma (P2). For all i 2 N, if F i ðs n Þa|, then i 2 F i ðs n Þ.</formula><p>Now we introduce notation that greatly simplifies the characterization of equilibria. Intuitively, firms will be blocks of complementary individuals who can create value, i.e. effectively manage each other, independently of outsiders. Equilibrium firms can be characterized in terms of the set of individuals for whom i induces the highest productivity (is the ideal manager),</p><formula xml:id="formula_10">G i ¼ fj 2 N s:t: v ij Z v kj for all k 2 Ng and its transitive closure, G i ¼ j 2 N s:t: for some fk 1 ,k 2 , . . . ,kg D N, k 1 2 G i , k 2 2 G k 1 , . . . ,j 2 G k ( ) :</formula><p>The latter is the set of individuals whose ideal manager is someone whose ideal manager is someone . . . whose ideal manager is i. The ideal assignment of the entire population could be visualized as a group of trees, each branching out from an individual who is her own ideal manager (a likely entrepreneur) to members of ''upper management'' whose ideal manager is an entrepreneur, to members of ''middle management'' whose ideal manager is in upper management, etc. G i contains everyone ''under i,'' the subtree that begins with i.</p><p>Lemma (P3). For all i,j,j 0 2 N such that iajaj 0 ai,</p><formula xml:id="formula_11">(i) G i \ G j ¼ |; (ii) G i DG i ; (iii) if j 2 G i , then (a) i= 2G j , (b) i= 2G j , (c) j= 2G j , (d) G j &amp; G i ; (iv) G i \ G j ¼ | or G i &amp; G j or G j &amp; G i , and if j,j 0 2 G i , then G j \ G j 0 ¼ |; (v) G i [ S j2G i G j ¼ G i .</formula><p>If j belongs to the firm F i ðs n Þ (where possibly i ¼ j), then j's complementary block G j can create more value in F i ðs n Þ than anywhere else, since the ideal managers for members of G j are themselves in G j [ j. Hence, j's employer is able to make the highest bid for G j .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Lemma (P4). For all</head><formula xml:id="formula_12">i,j 2 N, if j 2 F i ðs n Þ, then G j DF i ðs n Þ.</formula><p>Then we can describe membership in equilibrium firms in terms of the complementary blocks.</p><p>11 That is, individuals accept the highest wage conditional on becoming workers. It must exceed a reservation level that reflects the option to be selfemployed and contribute to value creation in one's own firm. Else, they become entrepreneurs and then may pay themselves less than their ''market wage. <ref type="bibr">'' 12</ref> The function e i selects, for every possible set of wage offers i might receive, an employer. Hence, (ii) is not conditional on actual wage offers received in equilibrium. It requires i to commit to accept one of the highest offers (if there are several) whenever i does not become an entrepreneur. Ties are broken by e i . If i has equal offers, there are several best responses. In equilibrium, the offer of the firm with the highest valuation for the worker must be chosen, else we do not have an equilibrium strategy profile (since said firm has a profitable deviation -to increase its offer -given that i's strategy is to reject in case another firm makes an equal offer).</p><p>Proposition (P5). For all i 2 N, either</p><formula xml:id="formula_13">F i ðs n Þ ¼ | or F i ðs n Þ ¼ G i .</formula><p>Nothing in P5 prevents firms from being empty. In particular,</p><formula xml:id="formula_14">F i ðs n Þ ¼ | if i= 2G i , i.e. (by P3ii) if i= 2G i . The firms partition N since x 2 G i and i 2 G i imply x 2 G j only if G j &amp; G i (by inductive application of P3iiid).</formula><p>The structure of the complementary blocks suggests a simple algorithm to solve for equilibrium firms. We define a function f 0 : N-N that maps to i 2 N the individual under whose management i is most productive. f 0 ðiÞ ¼ j s:t: v ji Zv ki for all k 2 N:</p><formula xml:id="formula_15">Iterations f t þ 1 ðiÞ ¼ f ðf t<label>ðiÞÞ</label></formula><p>successively assign to i the ideal manager, the ideal manager of i's ideal manager, etc. The sequence ff t g t2N converges because N is finite and conditional productivities are noncircular. Its limit, f</p><formula xml:id="formula_16">1 ¼ f t such that f t ¼ f t þ 1 ,</formula><p>ranges over the set of individuals who are their own ideal managers. These are the entrepreneurs. One can express the firm run by i as</p><formula xml:id="formula_17">F i ðs n Þ ¼ fj 2 N s:t: f 1 ðjÞ ¼ ig:</formula><p>On the basis of P5, we can say more about the equilibrium organization of firms. Since j 2 F i ðs n Þ only if the largest complementary block that includes j is in F i ðs n Þ, j's ideal manager, k such that j 2 G k , is available. P1 says that k must then be chosen to manage j by all undominated strategies, hence in any equilibrium.</p><p>Proposition (P6). In any equilibrium, for all i 2 N and j 2</p><formula xml:id="formula_18">F i ðs n Þ, m n i ðj,F i ðs n ÞÞ ¼ k such that j 2 G k .</formula><p>This strengthens P1i (which entails that only assignments to the ideal manager within the firm are undominated) to the statement that, in equilibrium firms, employees are assigned to the ideal manager in the entire population. Hence, P6 ensures that equilibria are efficient: everyone is optimally assigned and creates the greatest possible value.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.2.">Equilibrium technology: complements vs. substitutes</head><p>In standard job matching models, workers are either substitutes or complements by assumption. In the salary adjustment process Kelso and Crawford (1982) proposed, the best offer to a given worker must be repeated in the following round, while others may raise their bids. The central premise behind this approach is that firms will not want to withdraw a successful offer to one worker when competition for other workers intensifies. Hence the worker's value to the firm must not be diminished if co-workers are lost. Earlier, Crawford and Knoer (1981) assumed that employee productivity is invariant to who else joins the firm. Kelso and Crawford (1982) generalized to the ''gross substitutes'' property, which is imposed in a number of subsequent studies. Workers are gross substitutes if higher salary offers to one do not adversely affect firms' willingness to hire the other.</p><p>Complementarity has been introduced through preferences over matches to other individuals (colleagues, club members, couples), economies of scale that depend only on the number of workers the firm employs (Farrell and  Scotchmer, 1988) and through supermodularity (Sherstyuk, 1999). <ref type="bibr">13</ref> A new hire makes existing employees more valuable, and the size of the externality increases with every additional worker. Then no two workers are substitutes.</p><p>Imposing such relationships uniformly is appropriate for certain problems, but is not really suited to employees in firms. Whether a given pair are complements or substitutes is in our approach an aspect of the equilibrium organization technology, not a fundamental property. That substitute and complement workers should coexist in hierarchical organizations is quite intuitive: the different roles in a firm are complementary, real substitutability only exists within a role. For example for a building company, different architects may be substitutes, whereas an architect and a construction worker are complements. Two workers are complements in our model if they interact at different levels of the hierarchy: one is assigned to manage the other. On the other hand, they are substitutes if they compete on the same level of the hierarchy: one can replace the other as manager of a given group of employees.</p><p>Suppose firm h increases its wage offer for employee j of equilibrium firm F i ðs n Þ. In case the wage offer is large enough to attract j to F h ðs n Þ, the effect on an employee kaj of F i ðs n Þ can be of two kinds: k's value added to F i ðs n Þ may weakly increase (making j and k substitutes) or weakly decrease (complements). If k leaves F i ðs n Þ, then the value created by the group G k D F i ðs n Þ is diminished, since k is the best manager for its members. Also, the value of j 2 F i ðs n Þ with k 2 G j is diminished, since j is no longer required as the best manager for k. These are complement effects. On the other hand, j could replace k as managers for the individuals in G k , if j is the best alternative manager for such an individual within the firm. This is a substitute effect.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Incomes</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.1.">The earnings of entrepreneurs</head><p>Like the organization structure, the division of income in a firm between the entrepreneur and the workforce is uniquely determined. Entrepreneurs have no preference between receiving their income in wages or profits; all that matters are the combined receipts. Let v ð1Þi ,v ð2Þi , . . . denote the highest, second-highest, etc. productivity i has under the potential managers in the population.</p><p>Proposition (P7). In any equilibrium s n , for all i 2 N such that F i ðs n Þa| (i.e. for all entrepreneurs),</p><formula xml:id="formula_19">w n e n i ðw n Þ ðiÞþp i ðs n Þ ¼ v ð1Þi þ X j2G i \i ðv ð1Þj Àv ð2Þj Þ:</formula><p>It is quite intuitive that an entrepreneur earns the value of his contribution to the firm, which consists of his own productivity v ii ¼ v ð1Þi and the productivity increase his management achieves for his subordinates in the efficient organization. Because the entrepreneur makes ultimatum wage offers, he can appropriate all benefits he bestows on the firm. Workforce income in firm F i ðs n Þ is the difference between total value created in F i ðs n Þ and the entrepreneurial income.</p><p>Importantly, employees as a group appropriate all value that is created below the highest level of managers, that reports directly to entrepreneurs. Since the value created further down in the hierarchy depends only on employees, other entrepreneurs could replicate it in their firms by hiring complementary groups and recreating their previous assignments in the new firm. In particular, anyone can employ the entire workforce of an existing firm and will only lose some productivity among the ''top managers'' that depended on the old entrepreneur. This is in one sense a peculiarity of our modeling choices because we restricted a manager's impact to the organization level immediately below. While this is not descriptively realistic, it captures the flavor of how value appropriation works in hierarchical organizations. One can imagine how a leader who ''inspires'' employees at all levels of the firm could reap large returns, but the essential constraints would remain the same.</p><p>We show now that an equilibrium exists, by constructing an explicit equilibrium wage function for the employees. There are, however, many ways to allocate workforce income among employees: entrepreneurs are indifferent between wage offer schemes that leave the firm's profit unaffected. It is not necessarily true that the entrepreneur must pay every worker a wage that reflects the productive contribution to the firm. A wage increase for a group of employees reduces its incentive to defect and may therefore permit offsetting wage decreases for other employees (who could otherwise profitably attract the group through a unilateral change in wage offers). Hence there is no reason why equilibrium wages should be unique. Such redistributions must, however, leave the total wage bill of the firm unchanged. Which wage scheme to implement is a matter of choice, not coincidence, given that the entrepreneur makes the offers.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Proposition (P8).</head><p>There exists an equilibrium s n where the wage offers accepted by i ¼ 1, . . . ,N (including entrepreneurs) are<ref type="foot" target="#foot_5">14</ref> </p><p>w n</p><formula xml:id="formula_20">e n i ðw n Þ ðiÞ ¼ v ð2Þi þ X j2G i ðv ð1Þj Àv ð2Þj Þ:</formula><p>The maximal value created by workers in G i for the firm F h ðs n Þ depends solely on i; not on i's manager, or even the entrepreneur h. This suggests the solution derived in P8: everyone is paid the incremental profit made under his or her managerial supervision (by the group G i for whom i is the best manager) since that profit could be transferred to another firm (if i is hired together with i's complementary block G i ). Hence, managers receive, for each worker they manage, the wedge between the worker's productivity and what that productivity would have been under the best alternative manager. In addition, they get their own productivity under the best alternative manager (which informs the secondhighest bid for their services). As natural as this arrangement may appear, it is certainly not the only one that can occur in equilibrium; the entrepreneur can make transfers between workers, since the complementarity structure only makes it optimal to leave the firm as long as other workers have the same incentive.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.2.">Entrepreneurial entry and the average wage</head><p>Now, consider adding a new agent to the population, transforming the economy from the prior game G to the posterior game Ĝ. We speak of entrepreneurial entry when the new arrival is an entrepreneur in the posterior game and increases the number of entrepreneurs by one (else, it would reflect an acquisition of an existing firm). Hence, as we define it, entrepreneurial entry does not replace any of the previous entrepreneurs: we are interested in the effect a growing number of entrepreneurs (equivalently, increasing demand in the labor market). <ref type="bibr">15</ref> Let O fi 2 N s:t: F i ðs n Þa|g be the set of entrepreneurs, with N and Ô denoting, respectively, the population and the set of entrepreneurs after entry.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Proposition (P9). Entrepreneurial entry increases the average employee wage</head><formula xml:id="formula_21">: if N ¼ N [ fhg and h 2 Ô ¼ O [ fhg, then 1 :N:À:O: X i2N\O w n e n i ðw n Þ ðiÞ r 1 : N :ÀJ ÔJ X i2 N \ Ô ŵn ên i ð ŵn Þ ðiÞ:</formula><p>At the same time, entrepreneurial entry decreases the average income of incumbent entrepreneurs:</p><formula xml:id="formula_22">1 JOJ X i2O ðw n i ðiÞþp i ðs n ÞÞ r 1 JOJ X i2O ð ŵn i ðiÞþ pi ðs n ÞÞ:</formula><p>The intuition for rising average wages is the following. The additional entrepreneur increases competition in the labor market by introducing new jobs that represent alternative uses of each individuals' labor services. Some employees are likely to lose in the reassignment of workers, since their managerial capacities are in less demand. Suppose i is an employee who switches to the new entrepreneur. Her former manager was able to appropriate some of i's productivity in the old firm. After i's departure, the old firm becomes the best alternative employer for i, and i must therefore appropriate in the new firm the full value she created in the old firm. This includes the share her former manager is losing in wages there. Hence, all wage reductions are at least offset by raises for the new entrepreneur's hires.</p><p>In specific circumstances, additional entrepreneurs strictly increase employee wages. We say that imitative entrepreneurial entry by h occurs if h= 2N and there exists, for some entrepreneur i 2 N, an agent j 2 G i (i's employee and direct subordinate in the prior game's equilibrium s n ) who switches to h, i.e. j 2 Ĝh . Such entry is imitative in the sense that h effectively hires a ''division'' of the incumbent firm F i ðs n Þ; F h ðŝ n Þ replicates the organization of F i ðs n Þ in one top-to-bottom branch.</p><p>Proposition (P10). The average employee wage strictly increases (and average income of incumbent entrepreneurs strictly decreases) when imitative entrepreneurial entry occurs.</p><p>When one of the new entrepreneur's hires is a ''top manager'' (head of a division) of an existing firm, then the manager who loses by the transfer is in fact an entrepreneur. The top manager now appropriates in her new wage the full contribution she made to the old firm (else the previous employer would sufficiently raise the bid to convince her to stay). Because part of it previously did not accrue to employees, average employee income goes up. This explains P10.</p><p>The wage increase may be strict even if entrepreneurship is not imitative, since the new entrepreneur could raise the highest alternative productivity for a top manager who nevertheless stays with the old firm. This makes it necessary for the employer to raise the employee's wage.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Relative payoffs: employees vs. entrepreneurs</head><p>The expected monetary return to entrepreneurship is generally found to be low or negative compared to wage income. Overly optimistic beliefs (Camerer and Lovallo, 1999; Koellinger et al., 2007; Arabsheibani et al., 2000; de Meza and  Southey, 1996; Frank, 1988) or inherent preference for entrepreneurship (Benz and Frey, 2008; Blanchflower et al., 2001)  have been advanced as explanations. <ref type="bibr">16</ref>  Vereshchagina and Hopenhayn (2009) recently argued that entrepreneurs who are ''insured'' by an exit option (such as employment) may effectively behave in a risk-seeking manner (accept a negative risk premium), even if they are risk-averse in the usual sense, i.e. with respect to consumption.</p><p>We offer a rationale for lower entrepreneurial incomes that is not a consequence of imperfect information or preferences or insurance. Competition in the labor market forces entrepreneurs to invent roles for employees that maximize their productivities, hence their value to the firm. Entrepreneurs thereby raise their own ''opportunity costs'' in the form of well-paid jobs for workers. <ref type="bibr">17</ref> We can illustrate with a small-scale example how the average income of entrepreneurs can be strictly lower than the average wage employees earn in equilibrium. Recall that equilibrium wages are not unique because income can be redistributed among the employees of a firm. Such redistributions do not change average wages, since entrepreneurial incomes are uniquely identified. However, for tangibility we use the particular equilibrium wage function from P8:</p><formula xml:id="formula_23">w n e n i ðw n Þ ðiÞ ¼ v ð2Þi þ X j2G i ðv ð1Þj Àv ð2Þj Þ:</formula><p>16 There is also an ''investment view'' (Bohacek, 2006; Polkovnichenko, 2003) according to which entrepreneurs initially forego income in the expectation of large future rewards. But it seems inconsistent with Hamilton's observation that entrepreneurial firms, on average, underperform relative to entry-level wages even after long periods of operation. 17 To be sure, these are not the true opportunity costs, but they are the opportunity costs empirical work imputes, since we can only match entrepreneurs to a reference group of employees using relatively coarse information. People who look comparable in the dataset may actually differ in ways that would be obvious to a recruiter. Then entrepreneurs are not choosing low returns over higher wages; they simply cannot get those wages, although the data might suggest they can. Rees and Shah (1986) have produced empirical support for the contention that existing high-pay jobs are not necessarily available to those who choose to be entrepreneurs.</p><p>Example. Consider the following conditional productivities for individuals x, y and z. Value v xy (that y can generate under the management of x) is found where the y-row (listing y's productivity under various managers) meets the x-column (listing x's managerial contribution to various employees).</p><formula xml:id="formula_24">Employer x y z x 0 7 2 Employee y 0 1 2 z 0 1 2</formula><p>In equilibrium, all agents are assigned to the manager under whom they are most productive (a feature of efficient organizations) and to the firm which employs the best manager. Hence, x must be managed by y, while y must be managed by z. There is one firm in equilibrium: the entrepreneur z hires y and z, and assigns y as x's manager. Agent z emerges as an entrepreneur because he can generate more value under his own management than under the management of anyone else. According to the equilibrium wage function in P8, x will earn 2 (reflecting his best alternative productivity, under z), y will earn 6 (including the difference of 5 between x's productivity under y and under z), and z will pay himself a wage of 2 (including the difference of 1 between y's productivity under z and under y) and earn a residual profit of 1. Average employee income is 4, compared to the entrepreneurial income of 3. (That entrepreneurial income is lower, as in this case, is a possibility, depending on primitives, not a regularity.)</p><p>To verify that these payoffs constitute a Nash equilibrium, note that, if z offered x less than 2 or y less than 6, y would have an incentive to create a firm that hires x and generates a total value of 8 (which can be divided between x and y such that both benefit). The payoffs make y exactly indifferent to the ''spin-off'' option, hence they maximize the entrepreneur z's income. In alternative equilibria, z would transfer income from x to y, perhaps offering x nothing, while y is paid 8. Or x could be offered 7, and y only gets 1.</p><p>What is common to all equilibria is that the entrepreneur z cannot extract any rent from the employment of x because x and y could defect if they are not fully compensated for the profit they generate between themselves. Since most of the value is created by these two, average employee incomes are high relative to the entrepreneur's. Yet, z can do no better than to run his own business. Now consider the entry of an additional entrepreneur e, leaving all other conditional productivities unaffected. The new agent e replaces z as the best manager for y and becomes an entrepreneur since he is most productive working for himself. Therefore, the new firm structure consists of e's organization, which includes y and x (where y still manages x), and z as a lone self-employed entrepreneur. Because e adopts part of the organization structure formerly implemented by z (copies z's production technology), we call e an imitative entrepreneur. The wage for y given by P8 increases from 6 to 7 because the new bid raises the best alternative offer for y (which is now z's), while x's wage remains unaffected (given that e has no direct use for x). The entry of the imitative entrepreneur bids up the average wage from 4 to 4.5 owing to the greater competition for scarce production resources: e's technology is intensive in the same kind of labor as z's. Among the entrepreneurs, e earns 4 (highest productivity under an alternative manager plus the wedge of 1 from superior management of y and residual profit 1), and z loses income he was previously able to appropriate from y: z's wage of 1 is complemented by a profit of 1. Incumbent entrepreneurial income therefore declines to 2 (while average entrepreneurial income remains the same).</p><p>Finally, suppose e enters with an innovative idea, which causes him to implement a ''novel'' production technology that is intensive in x's labor. Compared to the original scenario (without e), e replaces y as the best manager for x, while z remains the best manager for himself and for y. Thus, two firms emerge in equilibrium: e hires x, and z hires y. Now x benefits from e's arrival; his wage increases by 5 from 2 to 7 (since z now makes the second-highest bid, based on z's productivity under the management of z's employee y). Because y no longer manages x, y loses the wedge of 5 he could formerly extract from managing x. The total wage bill in the economy here is unchanged by e's entry; the increase in x's wage matches exactly the decrease in y's wage. This is a reflection of the equilibrium property that the workforce fully appropriates any value created below the top-management level. Since entry only changes the productivity of x, who was previously managed by an employee and therefore shared the value with an employee, x's reassignment merely induces a transfer between employees. The income of entrepreneur z also remains constant because z could not previously extract rents from employing x; z had to compensate y fully for his managerial skills. However, since e attains a higher income than z (namely 4, including the managerial contribution of 1 to y's productivity, and profit of 1), entrepreneurial incomes here increase on average after entry. This example illustrates that the average wage increases when the number of entrepreneurs increases, where innovative entry yields the minimal case that average wage stays the same. The average income of incumbent entrepreneurs decreases (again, it may be constant when entry is innovative), while the average income of all entrepreneurs could increase or decrease, depending on the value the entrant creates for himself. Here, entrepreneurial activity raises its own opportunity cost to a point where entrepreneurial incomes are on average lower than wages (this was the case in all three scenarios).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Conclusion</head><p>The choice to become an entrepreneur is usually modeled independently from the matching of non-entrepreneurs to jobs. Since job roles determine wages, and wages represent the opportunity cost of entrepreneurship, occupational choice and job matching are in reality determined simultaneously. Our framework accounts for this. Rather than assume a particular technology where workers are either substitutes or complements, we recognize that entrepreneurs have an incentive to delegate by building hierarchical organizations, where employees perform quasi-entrepreneurial tasks (i.e. become executives) and are rewarded for their talents. Managerial assignments lead to rich internal patterns of complementary and substitute relationships among employees.</p><p>We derive a unique value-sharing rule between entrepreneurs and workers in a unique firm formation equilibrium and show that more entrepreneurs imply a higher average wage income. While this is intuitive when workers are substitutes, job switching in the presence of complementarities imposes losses on co-workers. When the star of a new director rises in Hollywood, the race to sign top actors intensifies. Another director is forced to cast lesser names and accept a less lucrative contract. Who you work with affects your value to your employer: hence, McKinsey pays the highest salaries in the consulting industry, and consultants in second-tier firms earn less, even if they are of similar quality. Simple supply-anddemand economics might suggest that greater demand (a world with McKinsey, compared to without) will not reduce anyone's wages while supply is fixed. Yet, if McKinsey disappeared, it is a fair guess that second-tier firms could hire better consultants who would raise their colleagues' productivities and pay.</p><p>When complementarities are present, because firms have internal organization, the arrival of a new entrepreneur is not good news for all workers. The reasoning that the additional employer can only increase the highest conditional productivity for each worker, and thus individual wages, does not apply when productivities depend on organization designs, which are broken up by entry. Entrepreneurial entry will reduce wages for some workers. What survives, and is robust to the specific pattern of complementarities that arises in equilibrium, is that the average wage increases with entrepreneurial entry. Hence, high salaries (and relatively low returns to entrepreneurship) are a hallmark of an entrepreneurial sector that builds efficient organizations and delegates valuable tasks to employees.</p><p>The stereotypical founder is a free spirit who would not function well as just another wheel in a clockwork. At the same time, many capable individuals (who are adaptable) pursue corporate careers. Because we account for the value they add as managers, they choose employment over entrepreneurship in our model. While it may seem unrealistic that entrepreneurs tend to have relatively little value as employees, our model certainly allows for entrepreneurs to be potential high earners in employment. But the empirical fact that entrepreneurs earn less on average than non-entrepreneurs is more consistent with many entrepreneurs having relatively poor earning prospects in traditional employment. For entrepreneurs who are professionals or skilled inventors, this may not be the case, but there is another type of entrepreneur who never acquired experience in employment or specific training and is stuck in self-employment. Our framework accommodates both types, not by assumption but by endogenous determination.</p><p>(ii) Suppose i's strategy is to turn down a higher wage offer from another individual for a lower wage offer from another individual for some particular set of offers wÀi . Clearly, an alternative strategy that always accepts the highest wage offer, conditional on i taking a job in another firm (not becoming an entrepreneur), never fares worse and strictly improves i's payoff in case wÀi is played. &amp; P2. Let F i ðs n Þa|, and suppose i= 2F i ðs n Þ. Take any x 0 2 F i ðs n Þ, and label m n i ðx 0 ,F i ðs n ÞÞ ¼ x 1 , m n i ðx 1 ,F i ðs n ÞÞ ¼ x 2 , etc. Consider the sequence fx t g t2N . Non-circularity (with our assumption that conditional productivities under different managers are unique) implies v x t þ y x t þ y 4v xt x t þ y for all positive integers y. Because F i ðs n Þ is finite, it must be that m n i ðx t þ y ,F i ðs n ÞÞ ¼ x t for some t and some non-negative integer y. Since assignments are hierarchical, and i= 2F i ðs n Þ, there exists no x t 2 F i ðs n Þ such that m n i ðx t ,F i ðs n ÞÞ ¼ x t . Hence y is not zero. P1i requires</p><formula xml:id="formula_25">m n i ðx t þ y ,F i ðs n ÞÞ ¼ x t only if v xt x t þ y Z v yx t þ y for all y 2 F i ðs n Þ. In particular v xt x t þ y Z v x t þ y x t þ y , a contradiction. &amp; P3. (i) If x 2 G i , then v ix 4 v kx</formula><p>for all k 2 N\i, which means there exists i such that v ix 4v jx for any jai, thus x= 2G j .</p><p>(ii) If j 2 G i , then j 2 G i is immediate from the definition of G i .</p><p>(iii) If j 2 G i , then there exists a sequence fk 1 ,k 2 , . . . ,kg</p><formula xml:id="formula_26">D N such that k 1 2 G i , k 2 2 G k 1 . . . j 2 G k . Thus v ik 1 4 v k 1 k 1 , v k1k2 4 v k2k2 Á Á Á v kj 4 v jj (</formula><p>uniqueness of the conditional productivities makes the inequalities strict). Applying noncircularity, we have v ii 4 v ji .</p><p>Hence it is not the case that v ji Zv ki for all k 2 N,i.e. (a) i= 2G j . If i 2 G j ,then we have a chain that starts with v ik 1 4 v k 1 k 1 ,passes through v kj 4 v jj ,v jl 1 4 v l 1 l 1 ,and terminates at v li 4 v ii . Noncircularity then implies the contradiction v ii 4v ii ,so (b) i= 2G j . If j 2 G j ,then v jj Zv kj for all k 2 N;in particular v jj Z v ij ,which is at odds with j 2 G i DG i and uniqueness.</p><p>Thus (c) j= 2G j . Let x 2 G j . Then either x 2 G j or there exists a sequence fk 1 0 ,k 2 0 , . . . ,k</p><formula xml:id="formula_27">0 g D N such that k 1 0 2 G j , k 2 0 2 G k 1 0 . . . x 2 G k 0 .</formula><p>In both cases, j 2 G i implies there is a sequence fl 1 ,l 2 , . . . ,lg D N such that j 2 G i , l 1 2 G j , l 2 2 G l 1 . . . x 2 G l . Therefore, x 2 G i . So (d) G j DG i , and by (ii) and (iiic) j is in G i but not in G j , so the inclusion is strict.</p><p>(iv) Suppose there exists x 2 G i \ G j . Then there are sequences</p><formula xml:id="formula_28">K ¼ fk 1 ,k 2 , . . . ,kg D N such that k 1 2 G j , k 2 2 G k 1 . . . x 2 G k and K 0 ¼ fk 1 0 ,k 2 0 , . . . ,k 0 g DN such that k 1 0 2 G j 0 , k 2 0 2 G k 1 0 . . . x 2 G k 0 . It follows from (i) that x 2 G k \ G k 0 a| only if k ¼ k 0 , etc.</formula><p>Therefore, K D K 0 or K 0 D K, and thus either i 2 K 0 or j 2 K, i.e. either i 2 G j or j 2 G i . By (iiid), j 2</p><formula xml:id="formula_29">G i implies G j &amp; G i , and i 2 G j implies G i &amp; G j . If j,j 0 2 G i , suppose G j \ G j 0 a|, so that G j &amp; G j 0 or G j 0 &amp; G j 0 .</formula><p>In the first case, j 2 G i implies i 2 G j 0 ; in the second case, j 0 2 G i implies i 2 G j -either of which contradicts (iiib). We conclude G j \ G j 0 ¼ |.</p><p>(v) If j 2 G i , jai, then G j &amp; G i by (iiid). Hence S j2G i G j DG i . Moreover, G i DG i by (ii), which establishes the D part of the equality. If x 2 G i and x= 2G i , then there exists fk 1 ,k 2 , . . . ,kg</p><formula xml:id="formula_30">D N such that k 1 2 G i , k 2 2 G k1 . . . x 2 G k . It follows that x 2 G k1 for some k 1 2 G i , or x= 2G i . Relabeling k 1 as j, we have G i D G i [ S j2G i G j . &amp;</formula><p>P4. We show: for all i,j,k 2 N, if j 2 F i ðs n Þ and k 2 G j , then k 2 F i ðs n Þ. This implies j 2 F i ðs n Þ only if G j D F i ðs n Þ, and we apply P3 to argue</p><formula xml:id="formula_31">G j D F i ðs n Þ only if G j DF i ðs n Þ.</formula><p>Let k 2 G j , and suppose s n is such that j 2 F i ðs n Þ while k 2 F h ðs n Þ, with hai. Since s n is an equilibrium, the profit generated by h's employees cannot be negative:</p><formula xml:id="formula_32">X x2F h ðs n Þ\h v m n h ðx,F h ðs n ÞÞx À X x2F h ðs n Þ\h w n h ðxÞ Z0<label>ð2Þ</label></formula><p>else h could strictly improve on u h ðs n Þ by offering w h ðxÞ ¼ 0 to all x 2 F h ðs n Þ. If h 2 F h ðs n Þ, i.e. h is an entrepreneur,</p><formula xml:id="formula_33">u h ðs n Þ ¼ v m n h ðh,F h ðs n ÞÞh þ X x2F h ðs n Þ\h v m n h ðx,F h ðs n ÞÞx À X x2F h ðs n Þ\h w n h ðxÞ:<label>ð3Þ</label></formula><p>Suppose i offered every one of h's employees a slightly higher wage: wi ðxÞ ¼ w n h ðxÞþe for all x 2 F h ðs n Þ\h, with e40. If h 2 F h ðs n Þ, suppose i also offered h a wage that exceeds the current payoff: wi ðhÞ ¼ u h ðs n Þþe. Any employer-choice function that would reject these offers is not undominated, hence cannot be part of an equilibrium strategy. (P1ii implies x 2 F h ðs n Þ only if h offered the highest wage to x in s n . After topping the offer, i must be the high bidder and gain x.) We show that it is in fact an improvement for i to offer these wages for some e40.</p><p>The payoff for i when running firm</p><formula xml:id="formula_34">F i ðs i ,s n Ài Þ ¼ F i ðs n Þ [ F h ðs n Þ after increased offers wi , with all else equal, is u i ðs i ,s n Ài Þ ¼ u i ðs n Þþ X x2F h ðs n Þ v m n i ðx,F i ðs i ,s n Ài ÞÞx À X x2F h ðs n Þ w n h ðxÞÀ X x2F h ðs n Þ eZu i ðs n Þþ X x2F h ðs n Þ ðv m n i ðx,F i ðs i ,s n Ài ÞÞx Àv m n h ðx,F h ðs n ÞÞx ÞÀ X x2F h ðs n Þ e<label>ð4Þ</label></formula><p>if h= 2F h ðs n Þ, and</p><formula xml:id="formula_35">u i ðs i ,s n Ài Þ ¼ u i ðs n Þþ X x2F h ðs n Þ v m n i ðx,F i ðs i ,s n Ài ÞÞx À X x2F h ðs n Þ\h w n h ðxÞÀu h ðs n ÞÀ X x2F h ðs n Þ eZu i ðs n Þþ X x2F h ðs n Þ ðv m n i ðx,F i ðs i ,s n Ài ÞÞx Àv m n h ðx,F h ðs n ÞÞx ÞÀ X x2F h ðs n Þ e<label>ð5Þ</label></formula><p>if h 2 F h ðs n Þ. Inequalities ( <ref type="formula" target="#formula_34">4</ref>) and ( <ref type="formula" target="#formula_35">5</ref>) derive, respectively, from ( <ref type="formula" target="#formula_32">2</ref>) and (3).</p><p>For all x 2 F h ðs n Þ,</p><formula xml:id="formula_36">v m n i ðx,F i ðs i ,s n Ài ÞÞx Zv m n h ðx,F h ðs n ÞÞx since F h ðs n Þ D F i ðs i ,s n Ài Þ.</formula><p>Because s n i is undominated, P1i implies that the assignment m n i is value-maximizing. Clearly, the maximal conditional productivity for any x 2 F h ðs n Þ must be at least as large in</p><formula xml:id="formula_37">F i ðs i ,s n Ài Þ as in F h ðs n Þ. Since k 2 G j and j= 2F h ðs n Þ, v jk 4 v m n h ðk,F n h Þk : On the other hand j 2 F i ðs n Þ DF i ðs i ,s n Ài Þ, so m n i ðk,F i ðs i ,s n Ài ÞÞ ¼ j and v m n i ðk, F i Þk ¼ v jk . Then u i ðs i ,s n Ài Þ Zu i ðs n Þ if e ¼ v jk Àv m n h ðk,F h ðs n ÞÞk n þ1 40:</formula><p>The deviation establishes that k 2 F h ðs n Þ for any hai is not possible in equilibrium. Thus k 2 F i ðs n Þ, and we have</p><formula xml:id="formula_38">demonstrated that j 2 F i ðs n Þ leads to G j DF i ðs n Þ. Let x 2 G j and x= 2G j . Then there exists fk 1 ,k 2 , . . . ,kg D N such that k 1 2 G j , k 2 2 G k 1 , . . . ,x 2 G k . From j 2 F i ðs n Þ and k 1 2 G j we have k 1 2 F i ðs n Þ, applying our prior argument. Similarly, k 1 2 F i ðs n Þ and k 2 2 G k 1 imply k 2 2 F i ðs n Þ. Inductively, k 1 ,k 2 , . . . ,k 2 F i ðs n Þ, and therefore x 2 F i ðs n Þ. It follows that j 2 F i ðs n Þ entails G j D F i ðs n Þ. &amp; P5. Since i 2 F i ðs n Þ by P2 if F i ðs n Þa|, P4 requires G i D F i ðs n Þ. It remains to be shown that F i ðs n Þ D G i , or equivalently N\G i D N\F i ðs n Þ. Suppose x 2 N\G i and x 2 F i ðs n Þ.</formula><p>We relabel x as x 0 and reconstruct the sequence fx t g t2N as in the proof of P2.</p><p>Observe that iax t for any t; else we would have x 2 G i . By our prior argument, m n i ðx t þ y ,F i ðs n ÞÞ ¼ x t for some t and integer y40, which violates noncircularity unless m n i ðx t ,F i ðs n ÞÞ ¼ x t for some x t 2 F i ðs n Þai. But this does not satisfy the hierarchy requirement. Hence x 2 N\F i ðs n Þ, and we have established</p><formula xml:id="formula_39">F i ðs n Þ ¼ G i . &amp; P6. Follows from P2 and the fact that j 2 F i ðs n Þ only if k 2 F i ðs n Þ such that j 2 G k , which is what we have to show. If j 2 F i ðs n Þ and j 2 G k , but k 2 F n h with hai, then j 2 F n h : by P3ii G k D G k , and by P4, G k D F n h . This contradicts the premise j 2 F i ðs n Þ. &amp; P7. To see that w n e n i ðw n Þ ðiÞþp i ðs n Þ r v ð1Þi þ X j2G i \i ðv ð1Þj Àv ð2Þj Þ note w n e n i ðw n Þ ðiÞþp i ðs n Þ r X j2F i ðs n Þ v m n i ðj,F i ðs n ÞÞj À X j2F i ðs n Þ\i w n i ðjÞ ¼ X j2G i v ð1Þj À X j2G i \i w n i<label>ðjÞ</label></formula><p>(the firm's profit and wages must be covered by equilibrium output).</p><p>We shall refer to G j [ j such that j 2 G i \i (i.e. j is a top-level manager) as a branch of i's firm. Wage payments by i to a branch must exceed the highest productivity G j [ j would have in other firms; else it would be optimal for someone else to beat i's offers to all member of G j [ j. (Namely, for the employer of j's best alternative manager j 0 . If j 0 is employed by i, then it is optimal for the employer of the best alternative manager of j 0 's branch ''head'' k to beat i's offer to G</p><formula xml:id="formula_40">j [ j [ G k [ k.</formula><p>Noncircularity ensures that i is ultimately constrained by competition from other entrepreneurs who have the highest alternative valuation for one branch or several branches jointly. For notational simplicity, we focus on the special case that branches can be considered separately, i.e. the best alternative manager of each branch head in F i ðs n Þ belongs to another firm. When best alternative managers are employees of F i ðs n Þ in other branches, multiple branches must be considered as one, but the logic is identical.)</p><p>The individual who is the best alternative manager for j also has the second-highest valuation for G j (since G j [ j includes the best managers for all members of G j , so that the productivity of G j [ j varies only with j's productivity). Thus, if j 2 G i then i has to pay to G j [ j in total X k2G j [j</p><formula xml:id="formula_41">w n i ðkÞ Z v ð2Þj þ X k2G j \j v ð1Þk :</formula><p>Because G i \i ¼ S j2G i \i G j and the G j do not intersect by P3, we have</p><formula xml:id="formula_42">X l2G i \i w n i ðlÞ ¼ X j2G i \i X k2G j [j w n i ðkÞ ¼ X j2G i \i v ð2Þj þ X j2G i \i X k2G j \j v ð1Þk ¼ X j2G i \i v ð2Þj þ X j2G i \G i v ð1Þj : Now w n e n i ðw n Þ ðiÞþp i ðs n Þ r X j2G i v ð1Þj À X j2G i \i v ð2Þj À X j2G i \G i v ð1Þj ¼ v ð1Þi þ X j2G i \i ðv ð1Þj Àv ð2Þj Þ:</formula><p>From the entrepreneur's income-maximizing behavior, it follows that the last expression holds with equality. &amp; P8. We construct the equilibrium s n as follows. Manager assignments r n are value-maximizing (satisfy P6), and employer choices e n select the highest wage offer (or, in case of a tie, the offer from the individual who is the better manager). The high bid for each i 2 N is w n ð1Þ ðiÞ ¼ v ð2Þi þ P j2G i ðv ð1Þj Àv ð2Þj Þ, and is made by the person who is the best manager for i, i.e. h such that v hi ¼ v ð1Þi . The high bid is matched by the person who is the second-best manager for j, i.e. h 0 such that v h 0 i ¼ v ð2Þi .</p><p>The resulting firms are, for i</p><formula xml:id="formula_43">¼ 1, . . . ,N, F i ðs n Þ ¼ G i if i 2 G i and F i ðs n Þ ¼ | otherwise,</formula><p>which means s n is hierarchical. We argue that s n is also Nash. No one can have an incentive to deviate by reorganizing an efficient equilibrium firm (change r n i ). Accepting the highest wage offer is always best for non-entrepreneurs and, given the form of the winning offers, implies that i becomes an entrepreneur if and only if i 2 G i . In</p><formula xml:id="formula_44">F i ðs n Þ, i adds at least v ii þ P j2G i ðv ð1Þj Àv ð2Þj Þ under the manager assignment m n i . If i 2 G i , then v ii ¼ v ð1Þi</formula><p>, so i can earn more income through contributing to profit in F i ðs n Þ than from the highest competing wage offer. Conversely, suppose i= 2G i , but i turns down the highest wage offer to become an entrepreneur. Because the entrepreneur's income is independent of the wage paid to self, this scenario is akin to an increase in wage offers. We may therefore confine ourselves to considering changes in wage offers.</p><p>Observe first that i cannot profitably reduce wage offers. Suppose i is an entrepreneur. Employing j 2 F i ðs n Þ at wage w n ð1Þ ðjÞ is strictly profitable for i, since j 2 G i and j 2 G k implies k 2 G i , so that j is assigned to the best manager and directly adds v ð1Þj 4v ð2Þj to the firm F i ðs n Þ. Moreover, G j D G i , hence j indirectly adds at least P x2G i ðv ð1Þx Àv ð2Þx Þ to F i ðs n Þ as the best manager for the group G j . Offering less than w n ð1Þ ðjÞ loses j to the previously second-highest bidder and therefore reduces i's profit. If i is not an entrepreneur, then none of i's wage offers are accepted, and lowering them does not change anything for i.</p><p>No more can i profitably increase wage offers. If i is to benefit from raising offers, they must be accepted and add to membership in F i ðs n Þ. Suppose i attracts the group C from outside F i ðs n Þ. Then i must offer strictly more than w n ð1Þ ðjÞ to each j 2 C:</p><formula xml:id="formula_45">X j2C w i ðjÞ Z X j2C w n ð1Þj ¼ X j2C v ð2Þj þ X j2C X x2G j ðv ð1Þx Àv ð2Þx Þ ¼ X j2C v ð2Þj þ X x2 S j2C G j ðv ð1Þx Àv ð2Þx Þ:</formula><p>Since F i ðs n Þ initially included all ideal managers for its employees, members of C can only add value directly or through managing other members of C. I.e. their contribution to F i ðs n Þ is P j2C max k2F i ðs n Þ v kj . Denote the subset of C with best managers in C by C 0 fx 2 C s:t: x 2 G j with j 2 Cg. Because F i ðs n Þ already included anyone whose ideal manager is in F i ðs n Þ, all other members of C, i.e. j 2 C\C 0 , cannot make a direct contribution greater than v ð2Þj to F i ðs n Þ. The contribution C makes to F i ðs n Þ is therefore at most:</p><formula xml:id="formula_46">X j2C 0 v ð1Þj þ X j2C\C 0 v ð2Þj Z X j2C max k2F i ðs n Þ v kj : Because C 0 D S j2C G j , X j2C w i ðjÞ Z X j2C v ð2Þj þ X x2 S j2C G j ðv ð1Þx Àv ð2Þx Þ ¼ X j2C 0 v ð2Þj þ X j2C 0 ðv ð1Þj Àv ð2Þj Þþ X j2C\C 0 v ð2Þj þ X x2 S j2C G j \C 0 ðv ð1Þx Àv ð2Þx Þ ¼ X j2C 0 v ð1Þj þ X j2C\C 0 v ð2Þj þ X x2 S j2C G j \C 0 ðv ð1Þx Àv ð2Þx Þ Z X j2C max k2F i ðs n Þ v kj þ X x2 S j2C G j \C 0 ðv ð1Þx Àv ð2Þx Þ:</formula><p>This means i would pay more for C than its members can contribute to F i ðs n Þ; raising bids is not profitable. Hence individuals are optimizing in all three strategic components in s n , and s n is a hierarchical equilibrium. &amp; P9. Pre-entry total employee income is</p><formula xml:id="formula_47">X i2N\O w n e n i ðw n Þ ðiÞ ¼ X i2N v ð1Þi À X i2O ðw n i ðiÞþp i ðs n ÞÞ ¼ X i2N\O v ð1Þi À X i2O X j2G i \i ðv ð1Þj Àv ð2Þj Þ ¼ X i2N\ S j2O G j v ð1Þi þ X i2 S j2O G j \j v ð2Þj :</formula><p>Post-entry, the set of employees is unchanged and highest-and second-highest conditional productivities for any agent either stay the same or are raised by the new entrepreneur. Hence total employment income could only fall for one reason: that the set N\ S j2E G j shrinks and the set S j2E G j \j grows, i.e. some who were previously managed by employees are now directly managed by entrepreneurs. But any such individuals must be managed by the new entrepreneur, given that no other entrepreneur's value changed. Therefore, they belong, post-entry, to Ĝh , so that vð1Þj ¼ vhj . and vð2Þj ¼ v ð1Þj . Then their contribution to the right-hand side above stays the same. Since JNJÀJOJ ¼ J NJÀJ ÔJ and X Pre-entry total entrepreneurial income is</p><formula xml:id="formula_48">X i2O ðw n i ðiÞþp i ðs n ÞÞ ¼ X i2O v ð1Þi þ X i2O X j2G i \i ðv ð1Þj Àv ð2Þj Þ ¼ X i2O v ð1Þi þ X i2 S j2E G j \j ðv ð1Þi Àv ð2Þi Þ:</formula><p>Incumbent entrepreneurs i for whom v ð1Þi increases post-entry must become employees of the new entrepreneur, but the definition of entrepreneurial entry rules this scenario out (such entry does not replace existing entrepreneurs). Therefore, the first term remains constant. The set S j2E G j \j of employees for whom an incumbent entrepreneur is the best manager can only shrink after the new entrepreneur appears. The highest conditional productivities for those who remain in this set post-entry cannot have increased (else they would now be managed best by the new entrepreneur). The second-highest conditional productivities cannot have decreased. Hence the second term diminishes, so that total income of the incumbent entrepreneurs decreases. Since JOJ ¼ J ÔJ and X i2O ðw n i ðiÞþp i ðs n ÞÞ r X i2O ð ŵn i ðiÞþ pi ðŝ n ÞÞ average income of incumbent entrepreneurs weakly falls. &amp; P10. Suppose entrepreneurial entry is imitative. Then, by definition, there exists for some incumbent entrepreneur i an employee j 2 G i who switches to the new entrepreneur, i.e. j 2 Ĝh . Then vð1Þj ¼ vhj 4v ij ¼ v ð1Þj and vð2Þj ¼ vij 4 v ð2Þj . Recalling that X i2N\O</p><p>w n</p><formula xml:id="formula_49">e n i ðw n Þ ðiÞ ¼ X i2N\ S j2O G j v ð1Þi þ X i2 S j2O G j \j v ð2Þj</formula><p>and also that the identities of employees are unchanged and nothing can decrease on the right-hand side, the strict increase in v ð1Þj and v ð2Þj implies a strict increase in the average employee income.</p><p>Because i loses a member of G i \i and</p><formula xml:id="formula_50">X i2O ðw n i ðiÞþp i ðs n ÞÞ ¼ X i2O v ð1Þi þ X i2O X j2G i \i ðv ð1Þj Àv ð2Þj Þ</formula><p>(while incumbent entrepreneurs cannot become best managers for anyone new as a result of entrepreneurial entry), the average income of incumbent entrepreneurs strictly decreases. &amp;</p></div>			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_0"><p>The converse, that conditional productivities consistent with positive agency cost are spatial, is not true. For example, let (1) v ii 4 v ij 4 v ik , (2) v jj 4 v jk 4v ji , (3) v kk 4v ki 4 v kj . While (1) and (3) would imply dðf ðiÞ,f ðjÞÞ o dðf ðiÞ,f ðkÞÞo dðf ðjÞ,f ðkÞÞ, (2) requires dðf ðjÞ,f ðkÞÞo dðf ðiÞ,f ðjÞÞ. By extension, noncircularity is also strictly more general than the spatial property.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_1"><p>Notation is loose here. The domain of the function is implicity restricted to pairs ði,CÞ 2 N Â 2 N with i 2 C.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="7" xml:id="foot_2"><p>A subtle restriction is hidden in the form of the wage offers. In general, i would like to offer a schedule of wages to each j 2 N that depends on the offers j is making. Then i can reward j for competing less aggressively in the labor market. In particular, i would prevent any employee j from making the best alternative bid for another of i's employees k. To this end, i would offer j a higher wage if j bids zero for k. Because we do not allow such tie-ins (by forcing offers to be in Rþ ), competing bids for i's employees may come from within i's firm. Internal competition, from potential spin-offs, is important in practice.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="8" xml:id="foot_3"><p>Employer choice, as we have defined it, precludes a preference for working under specific managers. In practice, the best-paid job is not always chosen: it may be desirable to work with the supervisor that makes the agent most productive; one may prefer to be one's own boss; social and family C. Roessler, P.Koellinger / European Economic Review 56 (2012) 888-902  </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="13" xml:id="foot_4"><p>A related kind of complementarity appears in<ref type="bibr" target="#b23">Kremer (1993)</ref> model of interdependent production tasks. Here, the likelihood of completing a job successfully increases in the skill of co-workers at their roles. A skilled individual bestows a symmetric externality on all colleagues. One implication that is not echoed in our model is that similarly skilled individuals tend to be hired into the same firms.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="14" xml:id="foot_5"><p>Given that entrepreneurs pay themselves the ''market wage,'' i.e. their opportunity cost, entrepreneurial profit is the difference between the value they create under self-management and what they would create under the next-best manager: p i ðs n Þ ¼ v ð1Þi Àv ð2Þi .</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="15" xml:id="foot_6"><p>It is a property of the equilibrium organization structure that, after entrepreneurial entry, existing entrepreneurs will either become employees of the new entrepreneur (moving with their entire firm-which we do not allow), or will remain entrepreneurs (they will not, for instance, join another firm that previously existed).</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_7"><p>C. Roessler, P.Koellinger / European Economic Review 56 (2012) 888-902  </p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgments</head><p>We gratefully acknowledge financial support for research visits from the <rs type="funder">Erasmus Research Institute of Management (ERIM)</rs>. We would also like to thank the <rs type="institution">European Association for Research in Industrial Economics (EARIE)</rs> for recognizing an earlier version of the paper with the <rs type="grantName">Young Economists' Essay Award</rs> in 2009, as well as seminar participants at <rs type="institution">Rotterdam</rs>, <rs type="institution">Rice</rs> and <rs type="funder">Brown</rs>, and in particular Herve ´Moulin, for comments and discussions.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_4drJCq2">
+					<orgName type="grant-name">Young Economists&apos; Essay Award</orgName>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Appendix A. Proofs P1. (i) Replacing any m i with an optimal assignment of managers, i.e. m i ðj,CÞ ¼ h such that v hj Z v kj for all k 2 C, can only be beneficial, and one may construct opposing strategy profiles s Ài against which it is a strict improvement over any suboptimal assignment. (Specifically, let the person who is suboptimally assigned join F i ðsÞ.) If i accepts someone else's wage offer, then i 's payoff increases directly with a higher wage.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">And a vision appeared unto them of a great profit: evidence of self-deception among the selfemployed</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Arabsheibani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>De Meza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Maloney</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Pearson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Economics Letters</title>
+		<imprint>
+			<biblScope unit="volume">67</biblScope>
+			<biblScope unit="page" from="35" to="41" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">Core in a simple coalition formation game</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Banerjee</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Konishi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Social Choice and Welfare</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="page" from="135" to="153" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Being independent is a great thing: subjective evaluations of self-employment and hierarchy</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Benz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Frey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Economica</title>
+		<imprint>
+			<biblScope unit="volume">75</biblScope>
+			<biblScope unit="page" from="362" to="383" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Latent entrepreneurship across nations</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Blanchflower</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Oswald</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Stutzer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">European Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">45</biblScope>
+			<biblScope unit="page" from="680" to="691" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Financial constraints and entrepreneurial investment</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Bohacek</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Monetary Economics</title>
+		<imprint>
+			<biblScope unit="volume">53</biblScope>
+			<biblScope unit="page" from="2195" to="2212" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Overconfidence and excess entry: an experimental approach</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Camerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lovallo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">89</biblScope>
+			<biblScope unit="page" from="306" to="318" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Job matching with heterogeneous firms and workers</title>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">P</forename><surname>Crawford</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">M</forename><surname>Knoer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">49</biblScope>
+			<biblScope unit="page" from="437" to="450" />
+			<date type="published" when="1981">1981</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">The borrower&apos;s curse: optimism finance and entrepreneurship</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>De Meza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Southey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Economic Journal</title>
+		<imprint>
+			<biblScope unit="volume">106</biblScope>
+			<biblScope unit="page" from="375" to="386" />
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Stability of matchings when individuals have preferences over colleagues</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Dutta</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Masso</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Theory</title>
+		<imprint>
+			<biblScope unit="volume">75</biblScope>
+			<biblScope unit="page" from="464" to="475" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Core many-to-one matchings by fixed-point methods</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Echenique</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Oviedo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Theory</title>
+		<imprint>
+			<biblScope unit="volume">115</biblScope>
+			<biblScope unit="page" from="358" to="376" />
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ellickson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Grodal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Scotchmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">R</forename><surname>Zame</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Clubs and the market</title>
+		<imprint>
+			<date type="published" when="1999">1999</date>
+			<biblScope unit="volume">67</biblScope>
+			<biblScope unit="page" from="1185" to="1217" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Clubs and the market: large finite economies</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Ellickson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Grodal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Scotchmer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">R</forename><surname>Zame</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Theory</title>
+		<imprint>
+			<biblScope unit="volume">101</biblScope>
+			<biblScope unit="page" from="40" to="77" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">An estimated model of entrepreneurial choice under liquidity constraints</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Jovanovic</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="808" to="827" />
+			<date type="published" when="1989">1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">J</forename><surname>Farrell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Scotchmer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Partnerships. Quarterly Journal of Economics</title>
+		<imprint>
+			<biblScope unit="volume">103</biblScope>
+			<biblScope unit="page" from="279" to="297" />
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">An intertemporal model of industrial exit</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">Z</forename><surname>Frank</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Quarterly Journal of Economics</title>
+		<imprint>
+			<biblScope unit="volume">103</biblScope>
+			<biblScope unit="page" from="333" to="344" />
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Does entrepreneurship pay? An empirical analysis to the returns of self-employment</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Hamilton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">108</biblScope>
+			<biblScope unit="page" from="604" to="631" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Matching with contracts: comment</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">W</forename><surname>Hatfield</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kojima</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">98</biblScope>
+			<biblScope unit="page" from="1189" to="1194" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Matching with contracts</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">W</forename><surname>Hatfield</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">R</forename><surname>Milgrom</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">95</biblScope>
+			<biblScope unit="page" from="913" to="931" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Job matching, coalition formation, and gross substitutes</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">S</forename><surname>Kelso</surname><genName>Jr</genName></persName>
+		</author>
+		<author>
+			<persName><forename type="first">V</forename><forename type="middle">P</forename><surname>Crawford</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">50</biblScope>
+			<biblScope unit="page" from="1483" to="1504" />
+			<date type="published" when="1982">1982</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">A general equilibrium entrepreneurial theory of firm formation based on risk aversion</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kihlstrom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Laffont</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">87</biblScope>
+			<biblScope unit="page" from="719" to="748" />
+			<date type="published" when="1979">1979</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Stable matchings and preferences of couples</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Klaus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Klijn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Theory</title>
+		<imprint>
+			<biblScope unit="volume">121</biblScope>
+			<biblScope unit="page" from="75" to="106" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Matching with Couples: Stability and Incentives in Large Markets</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Kojima</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">A</forename><surname>Pathak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Roth</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">NBER Working Paper #16028</title>
+		<imprint>
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">I Think I can, I Think I can: overconfidence and entrepreneurial behavior</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Koellinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Minniti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Schade</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Psychology</title>
+		<imprint>
+			<biblScope unit="volume">28</biblScope>
+			<biblScope unit="page" from="502" to="527" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">The O-ring theory of economic development</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Kremer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Quarterly Journal of Economics</title>
+		<imprint>
+			<biblScope unit="volume">108</biblScope>
+			<biblScope unit="page" from="551" to="575" />
+			<date type="published" when="1993">1993</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">A general equilibrium theory of firm formation based on individual unobservable skills</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Laussel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Le Breton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">European Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="page" from="1303" to="1319" />
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Balanced skills and entrepreneurship</title>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">P</forename><surname>Lazear</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">94</biblScope>
+			<biblScope unit="page" from="208" to="211" />
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Entrepreneurship</title>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">P</forename><surname>Lazear</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Labor Economics</title>
+		<imprint>
+			<biblScope unit="volume">23</biblScope>
+			<biblScope unit="page" from="649" to="680" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Wealth effects, distribution, and the theory of organization</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Legros</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">F</forename><surname>Newman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Theory</title>
+		<imprint>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="312" to="341" />
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">On the size distribution of business firms</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">E</forename><surname>Lucas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Bell Journal of Economics</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="508" to="523" />
+			<date type="published" when="1978">1978</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Job matching and coalition formation with utility and disutility of co-workers</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Ma</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Games and Economic Behavior</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="83" to="103" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Human capital and the private equity premium</title>
+		<author>
+			<persName><forename type="first">V</forename><surname>Polkovnichenko</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Review of Economic Dynamics</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page" from="831" to="845" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Stability and preference alignment in matching and coalition formation</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Pycia</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">80</biblScope>
+			<biblScope unit="page" from="323" to="362" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">An empirical analysis of self-employment in the U.K</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Rees</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Shah</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Applied Econometrics</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="95" to="108" />
+			<date type="published" when="1986">1986</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Authority, control, and the distribution of earnings</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Rosen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Bell Journal of Economics</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="311" to="323" />
+			<date type="published" when="1982">1982</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Stability and polarization of interests in job matching</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">E</forename><surname>Roth</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">52</biblScope>
+			<biblScope unit="page" from="47" to="57" />
+			<date type="published" when="1984">1984</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Two-sided matching problems with externalities</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Sasaki</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Toda</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Theory</title>
+		<imprint>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="93" to="108" />
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Multisided matching games with complementarities</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Sherstyuk</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International Journal of Game Theory</title>
+		<imprint>
+			<biblScope unit="volume">28</biblScope>
+			<biblScope unit="page" from="489" to="509" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Risk taking by entrepreneurs</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Vereshchagina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Hopenhayn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">99</biblScope>
+			<biblScope unit="page" from="1808" to="1830" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Incentives, contracts, and markets: a general equilibrium theory of firms</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">R</forename><surname>Zame</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">75</biblScope>
+			<biblScope unit="page" from="1453" to="1500" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>
