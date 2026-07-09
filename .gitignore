@@ -44,3 +44,5 @@ pip-wheel-metadata/
 *.log
 
 data
+
+.cache
