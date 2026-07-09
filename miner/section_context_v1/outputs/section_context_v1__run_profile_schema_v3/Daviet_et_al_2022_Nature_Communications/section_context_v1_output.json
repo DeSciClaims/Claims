@@ -1,0 +1,1397 @@
+{
+  "paper": {
+    "paper_id": "Daviet_et_al_2022_Nature_Communications",
+    "doi": "10.1038/s41467-022-28735-5",
+    "pmid": null,
+    "title": "Associations between alcohol consumption and gray and white matter volumes in the UK Biobank",
+    "authors": [
+      "Remi Daviet",
+      "Gökhan Aydogan",
+      "Kanchana Jagannathan",
+      "Nathaniel Spilka",
+      "Philipp D Koellinger",
+      "Henry R Kranzler",
+      "Gideon Nave",
+      "Reagan R Wetherill"
+    ],
+    "journal": null,
+    "year": 2022,
+    "source_type": "journal_article",
+    "open_access": null
+  },
+  "sections": [
+    {
+      "section_id": "section_6631f48c83998785",
+      "paper_id": "Daviet_et_al_2022_Nature_Communications",
+      "section_name": "fallback_section_001",
+      "section_type": "OTHER",
+      "section_source": "fallback_chunk",
+      "section_title_quality": "low",
+      "original_section_name": "OTHER",
+      "page_numbers": [],
+      "span_ids": [
+        "Daviet_et_al_2022_Nature_Communications-span-0001",
+        "Daviet_et_al_2022_Nature_Communications-span-0002",
+        "Daviet_et_al_2022_Nature_Communications-span-0003",
+        "Daviet_et_al_2022_Nature_Communications-span-0004"
+      ],
+      "text": "A lcohol consumption is one of the leading contributors to the global burden of disease and to high healthcare and economic costs. Alcohol use disorder (AUD) 1 is one of the most prevalent mental health conditions worldwide 2 , with harmful effects on physical, cognitive, and social functioning 3 . Chronic excessive alcohol consumption is associated with direct and indirect adverse effects, including (but not limited to) cardiovascular disease 4 , nutritional deficiency 5 , cancer 6 , and accelerated aging [7] [8] [9] . Chronic alcohol use is associated with changes in brain structure and connectivity [9] [10] [11] . Neuroimaging studies have shown that chronic heavy alcohol consumption (3 or more drinks for women and 4 or more drinks for men on any day) is associated with widespread patterns of macrostructural and microstructural changes, primarily affecting frontal, diencephalic, hippocampal, and cerebellar structures 9, 10, 12 . A recent meta-analysis of individuals with AUD (n = 433) showed lower gray matter volume (GMV) in the corticostriatal-limbic circuits, including regions of the prefrontal cortex, insula, superior temporal gyrus, striatum, thalamus, and hippocampus compared to healthy controls (n = 498) 13 . Notably, lower GMV in striatal, frontal, and thalamic regions was associated with AUD duration or lifetime alcohol consumption. Although alcohol consumption can produce global and regional tissue volume changes, frontal regions are particularly associated with these effects [14] [15] [16] . Further, research suggests that the effects of alcohol consumption on brain volume interact with the effects of aging 9, 17 . Alcohol-consumption related white matter (WM) microstructural alterations are a hallmark change associated with AUD [18] [19] [20] . Neuroimaging studies have consistently shown WM degeneration of the corpus callosum in AUD 3, 21, 22 . However, the effects of AUD on WM microstructure, as evidenced by decreased fractional anisotropy (FA) and increased mean diffusivity (MD), are not limited to the corpus callosum but are also seen in the internal and external capsules, fornix, frontal forceps, superior cingulate, and longitudinal fasciculi 3, 21, 23 . Further, research indicates that anterior and superior WM systems are more likely to show changes associated with AUD than posterior and inferior systems 24 . However, because conventional diffusion tensor imaging (DTI) measures (FA and MD) are based on a simplistic brain tissue microstructure model, they fail to account for the complexities of neurite geometry 25 . For example, the lower FA observed in individuals with AUD may reflect lower neurite density and/or greater orientation dispersion of neurites, which conventional DTI measures do not differentiate 26, 27 . Despite an extensive literature on the associations of alcohol consumption with brain structure and microstructure in individuals with AUD, there is limited research exploring these associations in individuals who consume alcohol but do not have AUD.",
+      "token_count": 461,
+      "char_count": 3037
+    },
+    {
+      "section_id": "section_0899fb48a3b11798",
+      "paper_id": "Daviet_et_al_2022_Nature_Communications",
+      "section_name": "fallback_section_002",
+      "section_type": "OTHER",
+      "section_source": "fallback_chunk",
+      "section_title_quality": "low",
+      "original_section_name": "OTHER",
+      "page_numbers": [],
+      "span_ids": [
+        "Daviet_et_al_2022_Nature_Communications-span-0005",
+        "Daviet_et_al_2022_Nature_Communications-span-0006",
+        "Daviet_et_al_2022_Nature_Communications-span-0007"
+      ],
+      "text": "In some studies of middle-aged and older adults, moderate alcohol consumption was associated with lower total cerebral volume 28 , gray matter atrophy 29, 30 , and lower density of gray matter in frontal and parietal brain regions 30 . However, other studies have failed to show an association 31 , and one study showed a positive association of light-to-moderate alcohol consumption and GMV in older men 32 . One interpretation of these findings is that an inverse U-shaped, dose-dependent association exists between alcohol consumption and brain structure 32 . However, this interpretation was not supported by a longitudinal cohort study, which showed no difference in structural brain measures between individuals who did not consume alcohol and those who consumed between 1 and <7 alcohol units per week (i.e., light alcohol consumption), while individuals who consumed moderate-to-high amounts of alcohol (i.e., 14 or more alcohol units per week) showed GMV atrophy in the hippocampi and altered WM microstructure (lower FA, higher MD) in the corpus callosum 33 . The inconclusive evidence regarding the association between moderate alcohol intake and brain structure in the general population may be because the literature consists of mostly small, unrepresentative studies with limited statistical power 34, 35 . Moreover, most studies have not accounted for the effects of many relevant covariates and, therefore, have yielded potentially biased findings. Potential confounds that may be associated with individual differences in both alcohol intake and neuroanatomy include sex 36 , body mass index (BMI) 37 , age 38, 39 , and genetic population structure 40 . Similar to other research fields, progress in this area may also be limited by publication bias, as positive findings are more likely to be published than null results 41 . The current study examines the associations between alcohol intake and measures of GM structure and WM microstructure in the brain in a large population sample. We perform a preregistered analysis of multimodal imaging data from the UK Biobank (UKB) [42] [43] [44] , which controls for numerous potential confounds. The UKB, a prospective cohort study representative of the United Kingdom (UK) population aged 40-69 years, is the largest available collection of high-quality MRI brain scans, alcohol-related behavioral phenotypes, and measurements of the socioeconomic environment. The UKB brain imaging data include three structural modalities, resting and task-based fMRI, and diffusion imaging [42] [43] [44] . The WM fiber integrity measures available in the UKB include the conventional FA and MD metrics and neurite orientation dispersion and density imaging (NODDI) measures 26 . Such measures offer information on WM microstructure and estimates of neurite density (i.e., intracellular volume fraction; ICVF), extracellular water diffusion (i.e., isotropic volume fraction; ISOVF), and tract complexity/fanning (i.e., orientation dispersion, OD). Specifically, we assess associations between alcohol intake (i.e., mean daily alcohol units; one unit = 10 ml or 8 g of ethanol) and imaging derived phenotypes (IDPs) of brain structure (total GMV, total WMV, and 139 regional GMVs), as well as 375 IDPs of WM microstructure (DTI and NODDI indices), using data from 36,678 UKB participants. Our analyses adjust for numerous covariates (see Methods for full list).",
+      "token_count": 518,
+      "char_count": 3411
+    },
+    {
+      "section_id": "section_22ed1d8bfd0f1cff",
+      "paper_id": "Daviet_et_al_2022_Nature_Communications",
+      "section_name": "fallback_section_003",
+      "section_type": "OTHER",
+      "section_source": "fallback_chunk",
+      "section_title_quality": "low",
+      "original_section_name": "OTHER",
+      "page_numbers": [],
+      "span_ids": [
+        "Daviet_et_al_2022_Nature_Communications-span-0008"
+      ],
+      "text": "Our sample size provides us statistical power of 90% to detect effects as small as f 2 < 0.00078 at the 5% significance level, after accounting for multiple hypotheses testing (p uncorrected < 1.64 × 10 -4 ). Given previous findings, we hypothesized a negative relationship between alcohol intake and global GMV and WMV in individuals who consume large amounts of alcohol (i.e., females who report consuming more than 18 units/week and males who report consuming more than 24 units/week). The large general population sample provided sufficient sensitivity to qualitatively and quantitatively assess how associations vary across the drinking spectrum and test at which threshold associations emerge. Our design also allowed us to explore whether the associations between alcohol intake and GMV and WM microstructure are localized in specific regions or widespread across the brain and compare the associations across various WM integrity indicators.",
+      "token_count": 144,
+      "char_count": 949
+    },
+    {
+      "section_id": "section_b67428f1010e3fba",
+      "paper_id": "Daviet_et_al_2022_Nature_Communications",
+      "section_name": "Results",
+      "section_type": "RESULTS",
+      "section_source": "tei_header",
+      "section_title_quality": "high",
+      "original_section_name": "Results",
+      "page_numbers": [],
+      "span_ids": [
+        "Daviet_et_al_2022_Nature_Communications-span-0009",
+        "Daviet_et_al_2022_Nature_Communications-span-0010",
+        "Daviet_et_al_2022_Nature_Communications-span-0011",
+        "Daviet_et_al_2022_Nature_Communications-span-0012",
+        "Daviet_et_al_2022_Nature_Communications-span-0013",
+        "Daviet_et_al_2022_Nature_Communications-span-0014",
+        "Daviet_et_al_2022_Nature_Communications-span-0015",
+        "Daviet_et_al_2022_Nature_Communications-span-0016"
+      ],
+      "text": "Figure 1 summarizes the characteristics of the 36,678 participants (52.8% female), including the distributions of age, daily alcohol units, and global GMV and WMV. Participants were healthy adults of middle age or older. We normalize all IDPs for head size by multiplying the raw IDP by the head size scaling factor. Relationship between Global GMV and WMV and alcohol intake. The scatter plots in Figs. 2 and 3 illustrate the relationships of the global IDPs (GMV and WMV, both normalized for head size) with age and daily alcohol intake (in log scale) within sex. The figures include local polynomial regression lines (LOWESS), which indicate negative trends on every dimension. This preliminary analysis also demonstrates slight non-linearities in both dimensions, with curves appearing concave. Therefore, our subsequent regression models include both linear and quadratic terms for age and logged alcohol intake, test the joint significance of the associations of the two terms with brain structure via an F-test (see \"Methods\"), and quantify the effect size via the IDP variance explained by alcohol intake, above the other covariates (4R 2 ). We estimate linear regressions to quantify the relationships between daily alcohol intake and its interactions with age, sex, and the global IDPs. Our primary analyses (N = 36,585) control for age, height, handedness, sex, smoking status, socioeconomic status, genetic ancestry, and county of residence (see Methods). Table 1 summarizes the results, revealing that both global IDPs decrease as a function of daily alcohol intake. Alcohol intake explains 1% of the variance in global GMV and 0.3% of the variance in global WMV across individuals beyond all other control variables (both p < 10 -16 ). Additional analyses excluding abstainers (N = 33,733) or excluding individuals who consume a high level of alcohol (i.e., females who report consuming more than 18 units/week and males who report consuming more than 24 units/week) (N = 34,383) and models using an extended set of covariates (including BMI, educational attainment, and weight; N = 36,678) yield similar findings, though the variance explained by alcohol intake beyond other control variables is reduced to 0.4% for GMV and 0.1% for WMV when individuals who consume a high level of alcohol are excluded (Supplementary Tables 1 and 2 ). In the eight regressions we tested, the interaction between alcohol intake and sex is not significant at the 1% level, except weakly for GMV when including the extended control variables (BMI, weight, and educational attainment). Similarly, none of the interactions between alcohol intake and age are significant at the 10% level. Only the regressions that exclude abstainers were significant at the 10% level (p = 0.034 for GMV, p = 0.0014 for WMV). Consequently, we excluded the interaction terms from the analyses of local IDPs. We further used our regression models to calculate the predicted change in global GMV and WMV associated with increasing daily alcohol intake by one unit (Table 2 ). This prediction is similar when using different sets of control variables and when excluding individuals who did not consume alcohol or those who consume a high level of alcohol (for illustration, the change resulting from increasing alcohol intake from zero to one daily unit results in a reduction of -0.030 SD in global GMV and -0.020 SD in global WMV in the model estimated on the full sample and the model that excludes individuals who consume a high level of alcohol yields negative associations of similar magnitudes: -0.034 SD in global GMV and -0.019 SD in WMV. Given the non-linear relationship between global IDPs and alcohol intake, the associations vary across the drinking range. The change in the predicted global GMV and WMV when shifting from no daily alcohol consumption to one daily alcohol unit was less than 0.03 standard deviations. However, the observed associations between alcohol intake and global IDPs increase as the number of daily units increases. An increase from one to two daily units is associated with a decrease of 0.127 and 0.074 standard deviations in predicted global GMV and WMV, respectively. A change from two to three daily units is associated with a 75% greater decrease of 0.223 and 1.28 standard deviations in GMV and WMV, respectively. Table 3 benchmarks the predicted effect magnitudes against the effects associated with aging for an average 50-year-old UKB participant, based on our regression models in the full sample. Table 4 replicates these results using the models that exclude individuals who consume a high level of alcohol. For illustration, the effect associated with a change from one to two daily alcohol units is equivalent to the effect of aging 2 years (or 1.7 years in the model that excludes individuals who consume a high level of alcohol), where the increase from two to three daily units is equivalent to aging 3.5 years (or 2.9 years in the model that excludes individuals who consume a high level of alcohol). Figure 4 displays the averages of the two global IDPs in subsamples binned according to their daily alcohol consumption range, illustrating the non-linear nature of the relationship between daily units and the global measures. The figure includes statistical tests that compare the average of the IDPs in the different sub-samples to their average in participants who consume one daily unit or less. These tests identify statistically significant associations for all bins of participants consuming more than one daily unit, including those consuming 1-2 daily units. These associations are observed both in the full sample and within sex. Supplementary Figure 1 replicates Fig. 4 with the exclusion of individuals who consume a high level of alcohol, similarly demonstrating significant associations in participants who consume 1-2 units daily. Relationship between regional GMV and alcohol intake. To investigate whether the reduction in global GMV associated with alcohol intake stems from relationships in specific regions, we estimate regression models to quantify the association of alcohol intake with a total of 139 regional GMV IDPs. These IDPs were derived using parcellations from the Harvard-Oxford cortical and subcortical atlases and Diedrichsen cerebellar atlas. Of the 139 GMV IDPs, 125 (88.9%) are significantly associated with log alcohol intake (see Supplementary Table 3 ). We observe the strongest associations in frontal, parietal, and insular cortices, temporal and cingulate regions, putamen, amygdala, and the brain stem. In these regions, alcohol intake explains between 0.3 and 0.4% of the variance in local GMV above the other covariates. Supplementary Figure 2 illustrates the marginal effect of increasing daily alcohol units on regional GMV IDPs, grouped by lobe. All associations are negative, except that involving the right pallidum-where the effect size is positive but very small (4R 2 = 0.0005). Importantly, the largest regional association was less than half the size of the association between alcohol consumption and global GMV, indicating that the global reduction in GMV associated with alcohol intake results from aggregating smaller associations that are widespread across the brain (rather than constrained to specific areas). In a similar fashion to the analysis using the global IDPs, we calculate the average localized GMV IDP for each daily alcohol unit bin (Supplementary Fig. 3 ) and test their difference against the average of the group drinking up to one unit per day, within sexes and in the overall sample. As expected, the number of regional GMV IDPs showing a significant negative association with alcohol intake, and the magnitude of these associations increase as the average number of daily alcohol units increases. There are few regions (e.g., fusiform cortex) where lower GMV is either not observed as a function of alcohol intake or only apparent among individuals who consume a high level of alcohol (i.e., females who report consuming more than 18 units/week and males who report consuming more than 24 units/week). However, in most regions, GMV reduction is already visible in the groups that report moderate alcohol consumption (i.e., consuming 1-2 or 2-3 daily units). Thus, the association between moderate alcohol intake and GMV appears widespread across the brain and is detectable in males and females. Relationship between regional WM microstructure and alcohol intake. To evaluate the relationship between alcohol intake and different indicators of WM integrity at the regional level, we estimate linear regressions to quantify the association of alcohol intake with 375 IDPs, including FA, MD, ICVF, ISOVF, and OD measures extracted via averaging parameters across 74 WM tract regions 45 . Of the 375 WM microstructure IDPs, 179 (47.7%) are significantly associated with alcohol intake (see Supplementary Table 4 ). Generally, alcohol intake is related to lower coherence of water diffusion, lower neurite density, and higher magnitude of water diffusion, indicating less healthy WM microstructure with increasing alcohol intake. To visualize the magnitude of WM microstructure IDP associations with alcohol intake, Fig. 5 displays the statistically significant and non-significant associations, alongside the average change in normalized WM microstructure IDPs associated with a mean daily alcohol intake increasing from 1 to 2 units (for a similar visualization of the changes associated with the increase from 2 to 3 units, see Supplementary Fig. 4 ). Thirteen WM tract regions show consistent associations with lower FA and higher ISOVF and MD. The strongest of these are in the fornix, where WM integrity was previously found to be associated with alcohol intake in studies of populations with AUD 3, 21, 23 . In the fornix, alcohol intake accounts for 0.45% of the variance in ISOVF, 0.35% of the variance in MD, and 0.32% of the variance in FA. Other WM tract regions showing a similar pattern yet with associations of weaker magnitude include commissural fibers (genu and body of the corpus callosum, bilateral tapetum), projection fibers (bilateral anterior corona radiata), associative fibers (fornix cres+stria terminalis, left inferior longitudinal fasciculus), and the bilateral anterior thalamic radiations. Among the NODDI measures, ISOVF showed the strongest associations of alcohol intake all over the brain, most notably in the tract regions discussed above. The associations between alcohol intake and ICVF are also consistently negative yet smaller in size. Daily alcohol intake explains no more than 0.1% of the variance beyond control variables in all ICVF IDPs.",
+      "token_count": 1671,
+      "char_count": 10692
+    },
+    {
+      "section_id": "section_ca2b26b153889f3d",
+      "paper_id": "Daviet_et_al_2022_Nature_Communications",
+      "section_name": "Discussion",
+      "section_type": "DISCUSSION",
+      "section_source": "tei_header",
+      "section_title_quality": "high",
+      "original_section_name": "Discussion",
+      "page_numbers": [],
+      "span_ids": [
+        "Daviet_et_al_2022_Nature_Communications-span-0017",
+        "Daviet_et_al_2022_Nature_Communications-span-0018",
+        "Daviet_et_al_2022_Nature_Communications-span-0019",
+        "Daviet_et_al_2022_Nature_Communications-span-0020",
+        "Daviet_et_al_2022_Nature_Communications-span-0021",
+        "Daviet_et_al_2022_Nature_Communications-span-0022",
+        "Daviet_et_al_2022_Nature_Communications-span-0023",
+        "Daviet_et_al_2022_Nature_Communications-span-0024"
+      ],
+      "text": "We report a multimodal brain imaging study of 36,678 middleaged and older adults of European descent, a population sample whose reported alcohol consumption ranged from low (i.e., 1-2 alcohol units per day) to high (i.e., more than 4 alcohol units per day) levels of intake. The scale and granularity of the data provide ample statistical power to identify small associations while accounting for important potential confounds. We observe negative relationships between alcohol intake and global gray and white matter measures, regional GMVs, and WM microstructure indices. The associations we identify are widespread across the brain, and their magnitude increases with the average absolute number of daily alcohol units consumed. Notably, the negative associations we observe with global IDPs are detectable in individuals who consume between 1 and 2 alcohol units daily. Thus, in the UK, consuming just one alcoholic drink daily (or two units of alcohol) could be associated with changes in GMV and WMV in the brain. The negative associations between alcohol intake and total GMV and WMV are consistent with prior studies of early middle-aged 46 and older adults 28, 47 . Based on Figs. 2 and 3 , which show that males consumed more alcohol units per day and had larger global GMV and WMV, we further examine the influence of sex in detail. We find negative associations between alcohol intake and the global IDPs for both sexes and weak evidence for interactive effects between alcohol intake and sex on the brain. These findings are similar to a recent study of early middleaged adult moderate drinkers that showed smaller brain volumes associated with moderate alcohol consumption in men and women 46 . The weak sex-by-alcohol interactions also comport with the findings of an earlier longitudinal study in individuals with AUD 38 ; however, other cross-sectional studies have reported greater volume changes in women than men 48, 49 . Although nearly 90% of all regional GMVs show significant negative associations with alcohol intake, the most extensively affected regions included the frontal, parietal, and insular cortices, with changes also in temporal and cingulate regions. Associations are also marked in the brain stem, putamen, and amygdala. The share of variance explained by alcohol intake for these regions is smaller in size than for global GMV, suggesting that the latter results from an aggregation of many small effects that are widespread, rather than a localized effect that is limited to specific regions. Alcohol intake is further associated with poorer WM microstructure (lower FA and higher ISOVF and MD) in specific classes of WM tract regions. The commissural fibers (genu and body of the corpus callosum, bilateral tapetum), projection fibers (bilateral anterior corona radiata), associative bundles (fornix, fornix cres+stria terminalis, left inferior longitudinal fasciculus), and the bilateral anterior thalamic radiations show the most consistent associations with alcohol intake, with the fornix showing the strongest associations. The fornix is the primary outgoing pathway from the hippocampus 50 , and WM microstructural alterations in the fornix are consistently associated with heavy alcohol consumption and memory impairments 3, 51 . Our findings are partly consistent with studies of individuals with AUD 18, 52 . The pattern of microstructural alterations in our general population sample show that widespread WM alterations are present across multiple WM systems. Like individuals with AUD, alcohol intake in this healthy population sample is associated with microstructural differences in superficial WM systems functionally related to GM networks, including the frontoparietal control and attention networks, and the default mode, sensorimotor, and cerebellar networks. Deeper WM systems (superior longitudinal fasciculus and dorsal frontoparietal systems, inferior longitudinal fasciculus system, and deep frontal WM) thought to be involved in cognitive functioning by regulating reciprocal connectivity 52, 53 are also associated with alcohol intake. Within these WM systems, alcohol intake is most strongly associated with ISOVF, MD, and FA WM microstructure indices; whereas, associations with ICVF are small, and OD associations are inconsistent or nonexistent. Alcohol intake shows positive associations with ISOVF and MD and negative associations with FA. This pattern of alcohol-associated WM microstructural disruption supports previous research showing excessive intracellular and extracellular fluid in individuals with AUD 20 . Our study has several limitations. First, we rely on a sample of middle-aged individuals of European ancestry living in the UK. We hope that future work will test the generalizability of our findings to individuals from other populations and in other age groups. It is reasonable to expect that the relationship we observe would differ in younger individuals who have not experienced the chronic effects of alcohol on the brain. An additional limitation stems from the self-reported alcohol intake measures in the UK Biobank, which cover only the year prior to participation. Such estimates may not adequately reflect drinking prior to past year and are susceptible to reporting and recall bias 38, 39 . Further, our analyses do not account for individuals with a past diagnosis of AUD. Earlier studies have shown that the brain shows some recovery with the cessation of drinking in individuals with AUD, but this varies with age and sex, and recovery might be incomplete [54] [55] [56] . Thus, a past diagnosis of AUD would likely influence our results. We hope future studies will shed light on how a history of AUD with prolonged recovery is associated with brain structure in middle-aged and older adults. Moreover, partial volume effects (e.g., voxels containing cerebrospinal fluid (CSF)) can reduce the accuracy of tissue characterization and WM microstructural estimates. Previous research indicates that partial volume effects can bias diffusion measures toward a pattern of high diffusivity (MD) and reduced FA, particularly in intraventricular locations like the fornix 57, 58 . As such, our findings could reflect partial volume effects; however, it should be noted that the structural data were acquired using T2-weighted FLAIR imaging, a structural technique that mitigates CSF contamination by suppressing signal from fluid (i.e., CSF). Finally, our study relies on a cross-sectional design, which does not allow for the identification of causal effects. While our models account for more potential confounding variables than earlier observational studies in this area of research, we cannot rule out the possibility of reverse-causality or a confounding influence of other factors that are not included in our models. Further investigation of the causal nature of the relationships between alcohol intake and brain anatomy (e.g., via longitudinal studies or natural experiments) would be of interest. In summary, this study provides additional evidence for a negative association between alcohol intake and brain macrostructure and microstructure in a general population sample of middle-aged and older adults. Alcohol intake is negatively associated with global brain volume measures, regional GMVs, and WM microstructure. The associations between alcohol intake and regional GMV are evident across the entire brain, with the largest volume changes observed in frontal, parietal, and insular cortices, temporal and cingulate regions, the brain stem, putamen, and amygdala. Alcohol intake is related to WM microstructural alterations in several WM tract regions connecting large-scale networks and deeper WM systems. Most of these negative associations are apparent in individuals consuming an average of only one to two daily alcohol units. Thus, this multimodal imaging study highlights the potential for even moderate drinking to be associated with changes in brain volume in middle-aged and older adults.",
+      "token_count": 1203,
+      "char_count": 8013
+    },
+    {
+      "section_id": "section_fd4912e9fa620d54",
+      "paper_id": "Daviet_et_al_2022_Nature_Communications",
+      "section_name": "Methods",
+      "section_type": "METHODS",
+      "section_source": "tei_header",
+      "section_title_quality": "high",
+      "original_section_name": "Methods",
+      "page_numbers": [],
+      "span_ids": [
+        "Daviet_et_al_2022_Nature_Communications-span-0025",
+        "Daviet_et_al_2022_Nature_Communications-span-0026",
+        "Daviet_et_al_2022_Nature_Communications-span-0027",
+        "Daviet_et_al_2022_Nature_Communications-span-0028"
+      ],
+      "text": "Sample, procedure, and exclusion criteria. Our sample comprised 36,678 individuals of European ancestry from the UKB, all study participants whose data were available of September 1, 2020. All UK Biobank (www.ukbiobank.ac.uk) participants provided written informed consent, and the North West Multi-Center Ethics committee granted ethical approval. Participants provided demographic and health information via touchscreen questionnaires. A nurse conducted a medical history interview, which included self-report of medical diagnoses and other conditions or life events that were used to evaluate eligibility to participate (study details are available at https://www.ukbiobank.ac.uk/media/gnkeyh2q/study-rationale.pdf). Vital signs were obtained, and BMI was calculated as weight (kg)/height 2 (m). The data was provided by the UK Biobank and was already subject to quality control 59 . We excluded individuals with IDP values outside a range of four standard deviations (SDs). Given the large sample size, we chose this lenient threshold as a non-trivial number of observations (97 for GM, 127 for WM) fall between three and four SDs away from the mean. The IDPs beyond the four SD range are likely the results of processing errors, or the corresponding individuals present severe brain irregularities (5 individuals for GM, 7 for WM). Note that excluding these outliers does not change the statistical significance or magnitude of our reported effects. The exclusion of individuals falling within three SDs of the mean does not change the results either. Measures of alcohol consumption. Participants self-reported the number of alcohol units (10 ml of pure ethanol) consumed, in \"units per week\" (for frequent drinkers) or \"units per month\" (for less frequent drinkers), across several beverage categories (red wine, white wine/champagne, beer/cider, spirits, fortified wine, and \"other\"). The UKB assessment defined units of alcohol as follows: a pint or can of beer/lager/cider = two units; a 25 ml single shot of spirits = one unit; and a standard glass of wine (175 ml) = two units. We computed the number of weekly units by summing the weekly units consumed in all categories. When reported monthly, the intake was converted to units per week by dividing by 4.3. The number of weekly units was divided by 7 to determine units per day. MRI data acquisition and processing. MRI data were acquired using a Siemens Skyra 3T scanner (Siemens Healthcare, Erlangen, Germany) using a standard 32channel head coil, according to a freely available protocol (http://www.fmrib.ox.ac.uk/ ukbiobank/protocol/V4_23092014.pdf). As part of the scanning protocol, highresolution T1-weighted images, three-dimensional T2-weighted fluid-attenuated inversion recovery (FLAIR) images, and diffusion data were obtained. High-resolution T1-weighted images were obtained using an MPRAGE sequence with the following parameters: Structural imaging and diffusion data were processed by the UK Biobank team and made available to approved researchers as imaging-derived phenotypes (IDPs); the full details of the image processing and QC pipeline are available in an open-access article 42, 60 . IDPs used in analyses included whole-brain GMV, whole-brain WMV, 139 regional GMV IDPs derived using parcellations from the Harvard-Oxford cortical and subcortical atlases and Diedrichsen cerebellar atlas (UKB fields 25782-25920), and 375 tract-averaged measures of FA, MD, ICVF, ISOVF, and orientation diffusion (OD) extracted by averaging parameters over 74 different white-matter tract regions based on subject-specific tractography 61 and from population-average WM masks 45 . Volumetric IDPs were normalized for head size by multiplying the raw IDP by the T1-based \"head size scaling factor\" 60 .",
+      "token_count": 551,
+      "char_count": 3774
+    },
+    {
+      "section_id": "section_ed46c7be52d718c1",
+      "paper_id": "Daviet_et_al_2022_Nature_Communications",
+      "section_name": "Statistical analyses",
+      "section_type": "OTHER",
+      "section_source": "tei_header",
+      "section_title_quality": "high",
+      "original_section_name": "Statistical analyses",
+      "page_numbers": [],
+      "span_ids": [
+        "Daviet_et_al_2022_Nature_Communications-span-0029",
+        "Daviet_et_al_2022_Nature_Communications-span-0030",
+        "Daviet_et_al_2022_Nature_Communications-span-0031",
+        "Daviet_et_al_2022_Nature_Communications-span-0032",
+        "Daviet_et_al_2022_Nature_Communications-span-0033",
+        "Daviet_et_al_2022_Nature_Communications-span-0034"
+      ],
+      "text": "Descriptive analysis using global IDPs. We plot global GMV and WMV in males and females separately, normalized for head size, against age (Fig. 2 ) and alcohol intake (i.e., alcohol units/day on a log scale) (Fig. 3 ). Global IDPs, regional GMV, and WM microstructure analyses. Our primary analysis estimates a linear regression of several IDPs on alcohol intake in log(1 + daily units), including various control variables and interactions. Given the slight concavity of the LOWESS regression lines in the descriptive analysis of the global IDPs, we included both linear and quadratic terms for alcohol intake and age in the regression: where IDP i is the IDP normalized for head size, X i is the standardized alcohol intake in log(1 + daily units), AGE i is standardized age, Z i is a vector of control variables, and e i is an error term. Our analyses comprise models that include two different sets of control variables. The standard set includes standardized age, standardized age squared standardized height, handedness (right/left/ambidextrous; dummy-coded), sex (female:0, male:1), current smoker status, former light smoker, former heavy smoker, and standardized Townsend index of social deprivation measured at the zip code level 62 . To control for genetic population structure, the models also include the first 40 genetic principal components 63 and county of residence (dummy-coded) 62 . A second set of extended control variables includes all standard control variables and in addition standardized BMI, standardized educational attainment 64 , and standardized weight. To determine whether observations at the extreme ends of the drinking distribution bias the estimates of the relationship between alcohol intake and IDPs, we also estimate a model that excludes abstainers and a model that excludes heavy drinkers (i.e., women who reported consuming more than 18 units/week and men who consumed more than 24 units/week), both with standard controls. For each IDP, we test the null hypothesis that alcohol did not affect the outcome measure via an F-test that compares our model against a model with only the control variables (excluding alcohol intake and related interaction terms). We separate the analysis into two parts: (1) global analysis and (2) regional GMV and WM microstructure analysis, including 514 IDPs in total (139 GMV IDPs, 375 WM microstructure IDPs). The interactions of alcohol intake variables with sex and age are not significant in the global analysis (p > 0.001), so we exclude them from the regional analyses. To control the family-wise error rate in the regional GMV and WM microstructure analysis, we determine the significance thresholds for all regressions using the Holm method 65 , ensuring a family-wise error rate below 5%. When testing for M hypotheses, this method orders the corresponding p-values from lowest to highest: p 0 ,…, p M , and identifies the minimal index k such that p k > 0.05/(M + 1k). All hypotheses with an index m < k are then considered to be statistically significant. In our application, the significance threshold was determined to be 1.64 × 10 -4 . To quantify and visualize associations between alcohol intake and IDPs (i.e., global GMV and WMV, and regional GMV IDPs), we bin participants in the following six categories based on average alcohol intake: (1) abstainers, (2) individuals who drank less than one unit/day, (3) individuals who drank between one (included) and two (excluded) units/day (recommended maximal alcohol consumption based on the UK Chief Medical Officers \"low-risk\" guidelines 32 ), (4) individuals who drank between two (included) and three (excluded) units/day, (5) individuals who drank between three (included) and four (excluded) units/day, and (6) individuals who drank at least four units/day. After regressing the influence of the standard control variables, we then calculate the mean residual values (measured in standard deviations of IDPs) and 95% confidence intervals (CI). By first regressing the dependent variables on the standard control variables, the estimated effect can be interpreted as the part of the change in IDP that is not explained by these other variables, and it is represented in terms of standard deviations from the average. Results are available to the readers in supplementary data figures and tables. For example, Supplementary Fig. 3 includes the average GMV of all regions tested (both significant and non-significant) in bins of participants with different daily alcohol intake levels.",
+      "token_count": 711,
+      "char_count": 4527
+    }
+  ],
+  "section_summaries": [
+    {
+      "section_id": "section_6631f48c83998785",
+      "section_name": "fallback_section_001",
+      "section_type": "OTHER",
+      "summary_text": "This section discusses the significant health impact of alcohol consumption, highlighting its role in alcohol use disorder (AUD) and its associated adverse health effects, including changes in brain structure. It details how chronic heavy drinking is linked to reductions in gray matter volume (GMV) in various brain regions and describes the microstructural alterations in white matter (WM) associated with AUD. Additionally, it notes the complexity of measuring these changes using conventional neuroimaging techniques due to the intricacies of brain tissue microstructure.",
+      "section_role": "background",
+      "key_entities": [
+        "alcohol consumption",
+        "alcohol use disorder (AUD)",
+        "gray matter volume (GMV)",
+        "white matter (WM)",
+        "neuroimaging studies"
+      ],
+      "key_findings": [
+        "Chronic alcohol consumption is associated with adverse health effects, including changes in brain structure.",
+        "Lower GMV is observed in individuals with AUD compared to healthy controls.",
+        "WM alterations are a hallmark of AUD, particularly affecting specific brain regions like the corpus callosum.",
+        "Conventional measures may not fully capture the complexities of alcohol's impact on brain structure."
+      ],
+      "extractability_assessment": "This section contains several self-contained claims supported by references but discusses a broad range of related findings.",
+      "locality_confidence": 0.7
+    },
+    {
+      "section_id": "section_0899fb48a3b11798",
+      "section_name": "fallback_section_002",
+      "section_type": "OTHER",
+      "summary_text": "This section discusses the mixed findings in previous studies about the relationship between alcohol consumption and brain structure, particularly gray matter (GM) and white matter (WM) volumes. It points out the limitations of existing literature, such as small sample sizes and unaccounted covariates. The current study aims to provide a clearer understanding by analyzing a large dataset from the UK Biobank, which includes multimodal imaging data and various covariates to assess the impacts of alcohol intake on brain structure and microstructure more robustly.",
+      "section_role": "background",
+      "key_entities": [
+        "UK Biobank",
+        "gray matter",
+        "white matter",
+        "alcohol consumption",
+        "cerebral volume",
+        "aging population"
+      ],
+      "key_findings": [
+        "Inconsistent associations between alcohol intake and brain structure in previous studies.",
+        "Potential publications bias affecting the literature.",
+        "The current study aims to examine these associations using a large and representative sample."
+      ],
+      "extractability_assessment": "This section outlines background information and limitations of previous studies, making it potentially less extractable for claims but informative for understanding the context of the current research.",
+      "locality_confidence": 0.7
+    },
+    {
+      "section_id": "section_22ed1d8bfd0f1cff",
+      "section_name": "fallback_section_003",
+      "section_type": "OTHER",
+      "summary_text": "This section discusses the statistical power of the study, which is 90% to detect small effects while considering multiple hypothesis testing corrections. The authors hypothesized a negative relationship between high alcohol consumption and gray matter volume (GMV) and white matter volume (WMV), focusing on individuals exceeding specified alcohol intake thresholds. The study design aims to analyze how associations differ across the drinking spectrum and identify whether these relationships are localized or widespread in the brain.",
+      "section_role": "mixed",
+      "key_entities": [
+        "UK Biobank",
+        "alcohol consumption",
+        "gray matter volume (GMV)",
+        "white matter volume (WMV)",
+        "females",
+        "males"
+      ],
+      "key_findings": [
+        "Statistical power of 90% to detect effects as small as f 2 < 0.00078",
+        "Hypothesized negative relationship between high alcohol intake and GMV/WMV",
+        "Study design allows assessment of association variability across the drinking spectrum"
+      ],
+      "extractability_assessment": "The section contains potential claims relating to the relationship between alcohol consumption and brain volume metrics, though they are derived from hypotheses rather than results.",
+      "locality_confidence": 0.7
+    },
+    {
+      "section_id": "section_b67428f1010e3fba",
+      "section_name": "Results",
+      "section_type": "RESULTS",
+      "summary_text": "This section presents the results of a study examining the relationship between alcohol consumption and brain structure as measured by global and regional gray matter volume (GMV) and white matter volume (WMV). Findings indicate that higher alcohol intake correlates with decreased global GMV and WMV. The analysis reveals that a significant proportion of regional GMV indicators are associated with log alcohol intake, particularly in areas such as the frontal and parietal cortices. Additionally, relationships between alcohol consumption and white matter microstructure are outlined, showing that increasing intake corresponds with observed declines in white matter integrity.",
+      "section_role": "results",
+      "key_entities": [
+        "participants",
+        "global GMV",
+        "WMV",
+        "regional GMV",
+        "alcohol intake",
+        "NODDI",
+        "FA",
+        "MD",
+        "ICVF",
+        "ISOVF",
+        "OD"
+      ],
+      "key_findings": [
+        "Global GMV and WMV decrease as a function of daily alcohol intake.",
+        "Alcohol intake explains 1% of the variance in global GMV and 0.3% in global WMV.",
+        "125 out of 139 regional GMV IDPs significantly associated with log alcohol intake.",
+        "Relationship with WM microstructure shows lower coherence of water diffusion with increased alcohol intake."
+      ],
+      "extractability_assessment": "This section contains self-contained claims supported by statistical analyses and clear results.",
+      "locality_confidence": 0.9
+    },
+    {
+      "section_id": "section_ca2b26b153889f3d",
+      "section_name": "Discussion",
+      "section_type": "DISCUSSION",
+      "summary_text": "This discussion elaborates on the findings of a multimodal brain imaging study involving 36,678 middle-aged and older adults, showing negative associations between alcohol consumption and both global and regional brain volumes as well as white matter microstructure. The study suggests that even moderate alcohol intake (1-2 units daily) may lead to changes in gray and white matter, with pronounced effects across widespread brain regions. Additionally, while sex was examined for potential interaction effects, the findings indicate consistent negative associations for both sexes. Limitations are acknowledged, including reliance on self-reported data and the cross-sectional design, which complicates causal interpretations.",
+      "section_role": "discussion",
+      "key_entities": [
+        "UK Biobank",
+        "gray matter",
+        "white matter",
+        "alcohol consumption",
+        "middle-aged adults",
+        "older adults"
+      ],
+      "key_findings": [
+        "Negative relationships observed between alcohol intake and global gray and white matter measures.",
+        "Associations evident across various brain regions, particularly in the frontal, parietal, and insular cortices.",
+        "Even moderate consumption of 1-2 units daily is linked to changes in GMV and WMV.",
+        "Widespread microstructural differences related to alcohol intake in white matter systems."
+      ],
+      "extractability_assessment": "This section contains comprehensive findings regarding the associations between alcohol intake and brain structure, which are substantiated by the presented data.",
+      "locality_confidence": 0.85
+    },
+    {
+      "section_id": "section_fd4912e9fa620d54",
+      "section_name": "Methods",
+      "section_type": "METHODS",
+      "summary_text": "This section outlines the methods employed in the study, detailing the participant selection from the UK Biobank, data collection procedures, and exclusion criteria for outlier values in brain imaging data. It describes the self-reporting of alcohol consumption by participants and the method of calculating consumption units. Furthermore, the section explains the MRI data acquisition using a Siemens scanner and the processing of imaging-derived phenotypes, including volumetric measurements of gray and white matter.",
+      "section_role": "methods",
+      "key_entities": [
+        "UK Biobank",
+        "Siemens Skyra 3T scanner",
+        "T1-weighted images",
+        "gray matter volume",
+        "white matter volume"
+      ],
+      "key_findings": [
+        "Sample comprised 36,678 individuals of European ancestry",
+        "Exclusion of individuals with IDP values beyond four SDs",
+        "Self-reported alcohol consumption measures converted to weekly units",
+        "MRI data acquired and processed to derive volumetric IDPs"
+      ],
+      "extractability_assessment": "This section provides a clear methodology that supports the reproducibility of claims related to the study's analyses and outcomes.",
+      "locality_confidence": 0.9
+    },
+    {
+      "section_id": "section_ed46c7be52d718c1",
+      "section_name": "Statistical analyses",
+      "section_type": "OTHER",
+      "summary_text": "This section details the statistical analyses conducted to explore the relationship between alcohol consumption and brain structure as indicated by global gray and white matter volumes. It outlines the use of linear regression models with control variables, the importance of testing hypotheses regarding the impact of alcohol intake on various imaging-derived phenotypes (IDPs), and the methodology for ensuring statistical validity, including handling extreme values in drinking behavior. The analysis is separated into global and regional investigations, with visual representations of the data provided in supplementary materials.",
+      "section_role": "methods",
+      "key_entities": [
+        "global GMV",
+        "WMV",
+        "IDPs",
+        "alcohol intake",
+        "standard control variables",
+        "genetic principal components",
+        "BMI",
+        "educational attainment",
+        "Holm method"
+      ],
+      "key_findings": [
+        "Significant relationships between alcohol intake and IDPs",
+        "Exclusion of abstainers and heavy drinkers in some models",
+        "Non-significant interactions of alcohol intake with sex and age in global analysis",
+        "Significance thresholds determined using the Holm method"
+      ],
+      "extractability_assessment": "This section provides detailed statistical methodologies and describes the analysis framework, which allows for the extraction of claims related to the impact of alcohol on brain structure outcomes.",
+      "locality_confidence": 0.8
+    }
+  ],
+  "paper_summary": {
+    "paper_id": "Daviet_et_al_2022_Nature_Communications",
+    "paper_title": "Associations between alcohol consumption and gray and white matter volumes in the UK Biobank",
+    "paper_summary": "This study investigates the associations between alcohol consumption and brain structure, specifically gray matter volume (GMV) and white matter volume (WMV), using a large dataset from the UK Biobank.",
+    "main_findings": [
+      "Higher alcohol intake is associated with decreased global GMV and WMV.",
+      "Significant negative relationships between alcohol consumption and regional GMV in areas such as the frontal and parietal cortices.",
+      "Even moderate drinking (1-2 units daily) is linked to changes in gray and white matter.",
+      "Findings show consistent negative associations for both sexes.",
+      "Statistical analyses support the existence of these relationships across the drinking spectrum."
+    ],
+    "limitations": [
+      "Reliance on self-reported alcohol consumption data.",
+      "Study design is cross-sectional, complicating causal interpretations.",
+      "Possible underrepresentation of heavy drinkers and abstainers in some analyses."
+    ],
+    "evidence_map": [
+      "Results section provides strong evidence of the negative impacts of alcohol on global and regional brain volumes.",
+      "Discussion section elaborates on associations across various brain regions and reinforces findings with a large sample size.",
+      "Methods section outlines participant selection and methodological rigor that validate the study's claims."
+    ]
+  },
+  "section_extraction_plan": [
+    {
+      "section_id": "section_6631f48c83998785",
+      "should_extract": false,
+      "reason": "The section is mostly background information discussing the health impacts of alcohol consumption without providing specific localized evidence or results.",
+      "expected_claim_types": [],
+      "expected_evidence_types": [],
+      "likely_claim_density": "low",
+      "likely_evidence_density": "none",
+      "likely_context_completeness": "mixed"
+    },
+    {
+      "section_id": "section_0899fb48a3b11798",
+      "should_extract": false,
+      "reason": "The section primarily provides background information and discusses limitations of previous studies without presenting specific results or evidence.",
+      "expected_claim_types": [],
+      "expected_evidence_types": [],
+      "likely_claim_density": "none",
+      "likely_evidence_density": "none",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_22ed1d8bfd0f1cff",
+      "should_extract": false,
+      "reason": "The section primarily discusses hypotheses and study design rather than presenting specific results or localized evidence.",
+      "expected_claim_types": [
+        "relationship hypothesis",
+        "statistical power claim"
+      ],
+      "expected_evidence_types": [
+        "statistical power metrics",
+        "generalized relationships"
+      ],
+      "likely_claim_density": "low",
+      "likely_evidence_density": "low",
+      "likely_context_completeness": "mixed"
+    },
+    {
+      "section_id": "section_b67428f1010e3fba",
+      "should_extract": true,
+      "reason": "The section contains specific results supported by statistical analyses and clear findings related to the relationship between alcohol consumption and brain structure.",
+      "expected_claim_types": [
+        "correlation",
+        "statistical significance",
+        "measurement comparison"
+      ],
+      "expected_evidence_types": [
+        "statistical analyses",
+        "quantitative data",
+        "measurements"
+      ],
+      "likely_claim_density": "high",
+      "likely_evidence_density": "high",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_ca2b26b153889f3d",
+      "should_extract": true,
+      "reason": "The section provides specific results and findings about the negative associations between alcohol consumption and brain volumes, making it a suitable target for claim extraction.",
+      "expected_claim_types": [
+        "negative associations",
+        "effects of alcohol consumption",
+        "gender consistency"
+      ],
+      "expected_evidence_types": [
+        "statistical relationships",
+        "quantitative findings",
+        "regional brain effects"
+      ],
+      "likely_claim_density": "medium",
+      "likely_evidence_density": "medium",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_fd4912e9fa620d54",
+      "should_extract": false,
+      "reason": "The section primarily details methods and procedures without presenting specific results or claims that can be extracted.",
+      "expected_claim_types": [],
+      "expected_evidence_types": [],
+      "likely_claim_density": "none",
+      "likely_evidence_density": "none",
+      "likely_context_completeness": "mixed"
+    },
+    {
+      "section_id": "section_ed46c7be52d718c1",
+      "should_extract": true,
+      "reason": "The section provides detailed statistical methodologies and results regarding the impact of alcohol consumption on brain structure metrics, which supports claim extraction.",
+      "expected_claim_types": [
+        "statistical relationships",
+        "impact statements",
+        "methodological assertions"
+      ],
+      "expected_evidence_types": [
+        "linear regression results",
+        "significance thresholds",
+        "control variable impacts"
+      ],
+      "likely_claim_density": "medium",
+      "likely_evidence_density": "medium",
+      "likely_context_completeness": "good"
+    }
+  ],
+  "claims": [],
+  "evidence_items": [
+    {
+      "evidence_id": "evidence_99030e5e031fd2d0",
+      "paper_id": "Daviet_et_al_2022_Nature_Communications",
+      "role": "statistical analysis",
+      "summary_text": "Higher alcohol intake explains 1% of the variance in global GMV and 0.3% in global WMV.",
+      "evidence_method": {
+        "value": "regression_estimate",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "behavioral_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "Daviet_et_al_2022_Nature_Communications-span-0009",
+        "Daviet_et_al_2022_Nature_Communications-span-0010",
+        "Daviet_et_al_2022_Nature_Communications-span-0011",
+        "Daviet_et_al_2022_Nature_Communications-span-0012",
+        "Daviet_et_al_2022_Nature_Communications-span-0013",
+        "Daviet_et_al_2022_Nature_Communications-span-0014",
+        "Daviet_et_al_2022_Nature_Communications-span-0015",
+        "Daviet_et_al_2022_Nature_Communications-span-0016"
+      ],
+      "context": {
+        "population": {
+          "value": "UK Biobank participants",
+          "entity_type": "population",
+          "ontology": null
+        },
+        "setting": {
+          "value": "observational study",
+          "entity_type": "setting",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "global GMV and WMV",
+        "effect_size": "1% for GMV, 0.3% for WMV",
+        "p_value": "< 10^-16"
+      },
+      "ontology": null
+    },
+    {
+      "evidence_id": "evidence_6720f6837a39a41c",
+      "paper_id": "Daviet_et_al_2022_Nature_Communications",
+      "role": "statistical analysis",
+      "summary_text": "The relationship between daily alcohol intake and GMV decreases as the number of daily units increases.",
+      "evidence_method": {
+        "value": "regression_estimate",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "behavioral_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "Daviet_et_al_2022_Nature_Communications-span-0009",
+        "Daviet_et_al_2022_Nature_Communications-span-0010",
+        "Daviet_et_al_2022_Nature_Communications-span-0011",
+        "Daviet_et_al_2022_Nature_Communications-span-0012",
+        "Daviet_et_al_2022_Nature_Communications-span-0013",
+        "Daviet_et_al_2022_Nature_Communications-span-0014",
+        "Daviet_et_al_2022_Nature_Communications-span-0015",
+        "Daviet_et_al_2022_Nature_Communications-span-0016"
+      ],
+      "context": {
+        "population": {
+          "value": "UK Biobank participants",
+          "entity_type": "population",
+          "ontology": null
+        },
+        "setting": {
+          "value": "observational study",
+          "entity_type": "setting",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "change in global GMV and WMV",
+        "effect_size": "0.127 SD in GMV and 0.074 SD in WMV for increasing from 1 to 2 units, 0.223 SD in GMV and 1.28 SD in WMV for increasing from 2 to 3 units."
+      },
+      "ontology": null
+    },
+    {
+      "evidence_id": "evidence_e4c88f8ee5611140",
+      "paper_id": "Daviet_et_al_2022_Nature_Communications",
+      "role": "statistical analysis",
+      "summary_text": "125 of 139 regional GMV IDPs are significantly associated with log alcohol intake.",
+      "evidence_method": {
+        "value": "regression_estimate",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "behavioral_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "Daviet_et_al_2022_Nature_Communications-span-0009",
+        "Daviet_et_al_2022_Nature_Communications-span-0010",
+        "Daviet_et_al_2022_Nature_Communications-span-0011",
+        "Daviet_et_al_2022_Nature_Communications-span-0012",
+        "Daviet_et_al_2022_Nature_Communications-span-0013",
+        "Daviet_et_al_2022_Nature_Communications-span-0014",
+        "Daviet_et_al_2022_Nature_Communications-span-0015",
+        "Daviet_et_al_2022_Nature_Communications-span-0016"
+      ],
+      "context": {
+        "population": {
+          "value": "UK Biobank participants",
+          "entity_type": "population",
+          "ontology": null
+        },
+        "setting": {
+          "value": "observational study",
+          "entity_type": "setting",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "regional GMV IDPs"
+      },
+      "ontology": null
+    },
+    {
+      "evidence_id": "evidence_d5c110e5e886ba3c",
+      "paper_id": "Daviet_et_al_2022_Nature_Communications",
+      "role": "statistical_analysis",
+      "summary_text": "This section details the use of linear regression models to assess the impact of alcohol intake on global GMV and WMV, including various control variables.",
+      "evidence_method": {
+        "value": "regression_estimate",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "quantitative_measure",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "Daviet_et_al_2022_Nature_Communications-span-0029",
+        "Daviet_et_al_2022_Nature_Communications-span-0030",
+        "Daviet_et_al_2022_Nature_Communications-span-0031",
+        "Daviet_et_al_2022_Nature_Communications-span-0032",
+        "Daviet_et_al_2022_Nature_Communications-span-0033",
+        "Daviet_et_al_2022_Nature_Communications-span-0034"
+      ],
+      "context": {
+        "population": {
+          "value": "UK Biobank participants",
+          "entity_type": "population",
+          "ontology": null
+        },
+        "setting": {
+          "value": "UK Biobank study",
+          "entity_type": "setting",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "global GMV and WMV",
+        "estimator": "linear regression"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "statistical results",
+        "normalized_text": "statistical results",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    }
+  ],
+  "claim_evidence_links": [],
+  "raw_section_outputs": [
+    {
+      "section": {
+        "section_id": "section_b67428f1010e3fba",
+        "paper_id": "Daviet_et_al_2022_Nature_Communications",
+        "section_name": "Results",
+        "section_type": "RESULTS",
+        "section_source": "tei_header",
+        "section_title_quality": "high",
+        "original_section_name": "Results",
+        "page_numbers": [],
+        "span_ids": [
+          "Daviet_et_al_2022_Nature_Communications-span-0009",
+          "Daviet_et_al_2022_Nature_Communications-span-0010",
+          "Daviet_et_al_2022_Nature_Communications-span-0011",
+          "Daviet_et_al_2022_Nature_Communications-span-0012",
+          "Daviet_et_al_2022_Nature_Communications-span-0013",
+          "Daviet_et_al_2022_Nature_Communications-span-0014",
+          "Daviet_et_al_2022_Nature_Communications-span-0015",
+          "Daviet_et_al_2022_Nature_Communications-span-0016"
+        ],
+        "text": "Figure 1 summarizes the characteristics of the 36,678 participants (52.8% female), including the distributions of age, daily alcohol units, and global GMV and WMV. Participants were healthy adults of middle age or older. We normalize all IDPs for head size by multiplying the raw IDP by the head size scaling factor. Relationship between Global GMV and WMV and alcohol intake. The scatter plots in Figs. 2 and 3 illustrate the relationships of the global IDPs (GMV and WMV, both normalized for head size) with age and daily alcohol intake (in log scale) within sex. The figures include local polynomial regression lines (LOWESS), which indicate negative trends on every dimension. This preliminary analysis also demonstrates slight non-linearities in both dimensions, with curves appearing concave. Therefore, our subsequent regression models include both linear and quadratic terms for age and logged alcohol intake, test the joint significance of the associations of the two terms with brain structure via an F-test (see \"Methods\"), and quantify the effect size via the IDP variance explained by alcohol intake, above the other covariates (4R 2 ). We estimate linear regressions to quantify the relationships between daily alcohol intake and its interactions with age, sex, and the global IDPs. Our primary analyses (N = 36,585) control for age, height, handedness, sex, smoking status, socioeconomic status, genetic ancestry, and county of residence (see Methods). Table 1 summarizes the results, revealing that both global IDPs decrease as a function of daily alcohol intake. Alcohol intake explains 1% of the variance in global GMV and 0.3% of the variance in global WMV across individuals beyond all other control variables (both p < 10 -16 ). Additional analyses excluding abstainers (N = 33,733) or excluding individuals who consume a high level of alcohol (i.e., females who report consuming more than 18 units/week and males who report consuming more than 24 units/week) (N = 34,383) and models using an extended set of covariates (including BMI, educational attainment, and weight; N = 36,678) yield similar findings, though the variance explained by alcohol intake beyond other control variables is reduced to 0.4% for GMV and 0.1% for WMV when individuals who consume a high level of alcohol are excluded (Supplementary Tables 1 and 2 ). In the eight regressions we tested, the interaction between alcohol intake and sex is not significant at the 1% level, except weakly for GMV when including the extended control variables (BMI, weight, and educational attainment). Similarly, none of the interactions between alcohol intake and age are significant at the 10% level. Only the regressions that exclude abstainers were significant at the 10% level (p = 0.034 for GMV, p = 0.0014 for WMV). Consequently, we excluded the interaction terms from the analyses of local IDPs. We further used our regression models to calculate the predicted change in global GMV and WMV associated with increasing daily alcohol intake by one unit (Table 2 ). This prediction is similar when using different sets of control variables and when excluding individuals who did not consume alcohol or those who consume a high level of alcohol (for illustration, the change resulting from increasing alcohol intake from zero to one daily unit results in a reduction of -0.030 SD in global GMV and -0.020 SD in global WMV in the model estimated on the full sample and the model that excludes individuals who consume a high level of alcohol yields negative associations of similar magnitudes: -0.034 SD in global GMV and -0.019 SD in WMV. Given the non-linear relationship between global IDPs and alcohol intake, the associations vary across the drinking range. The change in the predicted global GMV and WMV when shifting from no daily alcohol consumption to one daily alcohol unit was less than 0.03 standard deviations. However, the observed associations between alcohol intake and global IDPs increase as the number of daily units increases. An increase from one to two daily units is associated with a decrease of 0.127 and 0.074 standard deviations in predicted global GMV and WMV, respectively. A change from two to three daily units is associated with a 75% greater decrease of 0.223 and 1.28 standard deviations in GMV and WMV, respectively. Table 3 benchmarks the predicted effect magnitudes against the effects associated with aging for an average 50-year-old UKB participant, based on our regression models in the full sample. Table 4 replicates these results using the models that exclude individuals who consume a high level of alcohol. For illustration, the effect associated with a change from one to two daily alcohol units is equivalent to the effect of aging 2 years (or 1.7 years in the model that excludes individuals who consume a high level of alcohol), where the increase from two to three daily units is equivalent to aging 3.5 years (or 2.9 years in the model that excludes individuals who consume a high level of alcohol). Figure 4 displays the averages of the two global IDPs in subsamples binned according to their daily alcohol consumption range, illustrating the non-linear nature of the relationship between daily units and the global measures. The figure includes statistical tests that compare the average of the IDPs in the different sub-samples to their average in participants who consume one daily unit or less. These tests identify statistically significant associations for all bins of participants consuming more than one daily unit, including those consuming 1-2 daily units. These associations are observed both in the full sample and within sex. Supplementary Figure 1 replicates Fig. 4 with the exclusion of individuals who consume a high level of alcohol, similarly demonstrating significant associations in participants who consume 1-2 units daily. Relationship between regional GMV and alcohol intake. To investigate whether the reduction in global GMV associated with alcohol intake stems from relationships in specific regions, we estimate regression models to quantify the association of alcohol intake with a total of 139 regional GMV IDPs. These IDPs were derived using parcellations from the Harvard-Oxford cortical and subcortical atlases and Diedrichsen cerebellar atlas. Of the 139 GMV IDPs, 125 (88.9%) are significantly associated with log alcohol intake (see Supplementary Table 3 ). We observe the strongest associations in frontal, parietal, and insular cortices, temporal and cingulate regions, putamen, amygdala, and the brain stem. In these regions, alcohol intake explains between 0.3 and 0.4% of the variance in local GMV above the other covariates. Supplementary Figure 2 illustrates the marginal effect of increasing daily alcohol units on regional GMV IDPs, grouped by lobe. All associations are negative, except that involving the right pallidum-where the effect size is positive but very small (4R 2 = 0.0005). Importantly, the largest regional association was less than half the size of the association between alcohol consumption and global GMV, indicating that the global reduction in GMV associated with alcohol intake results from aggregating smaller associations that are widespread across the brain (rather than constrained to specific areas). In a similar fashion to the analysis using the global IDPs, we calculate the average localized GMV IDP for each daily alcohol unit bin (Supplementary Fig. 3 ) and test their difference against the average of the group drinking up to one unit per day, within sexes and in the overall sample. As expected, the number of regional GMV IDPs showing a significant negative association with alcohol intake, and the magnitude of these associations increase as the average number of daily alcohol units increases. There are few regions (e.g., fusiform cortex) where lower GMV is either not observed as a function of alcohol intake or only apparent among individuals who consume a high level of alcohol (i.e., females who report consuming more than 18 units/week and males who report consuming more than 24 units/week). However, in most regions, GMV reduction is already visible in the groups that report moderate alcohol consumption (i.e., consuming 1-2 or 2-3 daily units). Thus, the association between moderate alcohol intake and GMV appears widespread across the brain and is detectable in males and females. Relationship between regional WM microstructure and alcohol intake. To evaluate the relationship between alcohol intake and different indicators of WM integrity at the regional level, we estimate linear regressions to quantify the association of alcohol intake with 375 IDPs, including FA, MD, ICVF, ISOVF, and OD measures extracted via averaging parameters across 74 WM tract regions 45 . Of the 375 WM microstructure IDPs, 179 (47.7%) are significantly associated with alcohol intake (see Supplementary Table 4 ). Generally, alcohol intake is related to lower coherence of water diffusion, lower neurite density, and higher magnitude of water diffusion, indicating less healthy WM microstructure with increasing alcohol intake. To visualize the magnitude of WM microstructure IDP associations with alcohol intake, Fig. 5 displays the statistically significant and non-significant associations, alongside the average change in normalized WM microstructure IDPs associated with a mean daily alcohol intake increasing from 1 to 2 units (for a similar visualization of the changes associated with the increase from 2 to 3 units, see Supplementary Fig. 4 ). Thirteen WM tract regions show consistent associations with lower FA and higher ISOVF and MD. The strongest of these are in the fornix, where WM integrity was previously found to be associated with alcohol intake in studies of populations with AUD 3, 21, 23 . In the fornix, alcohol intake accounts for 0.45% of the variance in ISOVF, 0.35% of the variance in MD, and 0.32% of the variance in FA. Other WM tract regions showing a similar pattern yet with associations of weaker magnitude include commissural fibers (genu and body of the corpus callosum, bilateral tapetum), projection fibers (bilateral anterior corona radiata), associative fibers (fornix cres+stria terminalis, left inferior longitudinal fasciculus), and the bilateral anterior thalamic radiations. Among the NODDI measures, ISOVF showed the strongest associations of alcohol intake all over the brain, most notably in the tract regions discussed above. The associations between alcohol intake and ICVF are also consistently negative yet smaller in size. Daily alcohol intake explains no more than 0.1% of the variance beyond control variables in all ICVF IDPs.",
+        "token_count": 1671,
+        "char_count": 10692
+      },
+      "decision": {
+        "section_id": "section_b67428f1010e3fba",
+        "should_extract": true,
+        "reason": "The section contains specific results supported by statistical analyses and clear findings related to the relationship between alcohol consumption and brain structure.",
+        "expected_claim_types": [
+          "correlation",
+          "statistical significance",
+          "measurement comparison"
+        ],
+        "expected_evidence_types": [
+          "statistical analyses",
+          "quantitative data",
+          "measurements"
+        ],
+        "likely_claim_density": "high",
+        "likely_evidence_density": "high",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_b67428f1010e3fba",
+        "section_name": "Results",
+        "section_type": "RESULTS",
+        "summary_text": "This section presents the results of a study examining the relationship between alcohol consumption and brain structure as measured by global and regional gray matter volume (GMV) and white matter volume (WMV). Findings indicate that higher alcohol intake correlates with decreased global GMV and WMV. The analysis reveals that a significant proportion of regional GMV indicators are associated with log alcohol intake, particularly in areas such as the frontal and parietal cortices. Additionally, relationships between alcohol consumption and white matter microstructure are outlined, showing that increasing intake corresponds with observed declines in white matter integrity.",
+        "section_role": "results",
+        "key_entities": [
+          "participants",
+          "global GMV",
+          "WMV",
+          "regional GMV",
+          "alcohol intake",
+          "NODDI",
+          "FA",
+          "MD",
+          "ICVF",
+          "ISOVF",
+          "OD"
+        ],
+        "key_findings": [
+          "Global GMV and WMV decrease as a function of daily alcohol intake.",
+          "Alcohol intake explains 1% of the variance in global GMV and 0.3% in global WMV.",
+          "125 out of 139 regional GMV IDPs significantly associated with log alcohol intake.",
+          "Relationship with WM microstructure shows lower coherence of water diffusion with increased alcohol intake."
+        ],
+        "extractability_assessment": "This section contains self-contained claims supported by statistical analyses and clear results.",
+        "locality_confidence": 0.9
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "Higher alcohol intake is associated with decreased global GMV and WMV.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "alcohol intake",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "exposure",
+                "normalized_text": "exposure",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relation",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "association",
+                "normalized_text": "association",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "object": {
+              "value": "global GMV and WMV",
+              "entity_type": "measure",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "brain_volume",
+                "normalized_text": "brain_volume",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "context": {
+              "population": "UK Biobank participants",
+              "setting": "observational study"
+            },
+            "details": {
+              "effect_size": "1%",
+              "variance_explained": "0.3%",
+              "statistical_significance": "< 10^-16"
+            }
+          },
+          {
+            "claim_text": "Increasing daily alcohol intake is associated with a 75% greater decrease in GMV and WMV when moving from two to three daily units.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "alcohol intake",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "exposure",
+                "normalized_text": "exposure",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relation",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "association",
+                "normalized_text": "association",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "object": {
+              "value": "decrease in global GMV and WMV",
+              "entity_type": "measure",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "brain_volume",
+                "normalized_text": "brain_volume",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "context": {
+              "population": "UK Biobank participants",
+              "setting": "observational study"
+            },
+            "details": {
+              "effect_size": "0.223 SD in GMV and 1.28 SD in WMV"
+            }
+          },
+          {
+            "claim_text": "125 out of 139 regional GMV IDPs are significantly associated with log alcohol intake.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "regional GMV IDPs",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "brain_structure",
+                "normalized_text": "brain_structure",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relation",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "association",
+                "normalized_text": "association",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "object": {
+              "value": "log alcohol intake",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "exposure",
+                "normalized_text": "exposure",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "context": {
+              "population": "UK Biobank participants",
+              "setting": "observational study"
+            },
+            "details": {
+              "count": 125,
+              "total": 139
+            }
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "statistical analysis",
+            "summary_text": "Higher alcohol intake explains 1% of the variance in global GMV and 0.3% in global WMV.",
+            "evidence_method": "regression_estimate",
+            "outcome_type": "behavioral_outcome",
+            "presentation_type": "text",
+            "context": {
+              "population": "UK Biobank participants",
+              "setting": "observational study"
+            },
+            "details": {
+              "outcome_name": "global GMV and WMV",
+              "effect_size": "1% for GMV, 0.3% for WMV",
+              "p_value": "< 10^-16"
+            },
+            "ontology": {}
+          },
+          {
+            "role": "statistical analysis",
+            "summary_text": "The relationship between daily alcohol intake and GMV decreases as the number of daily units increases.",
+            "evidence_method": "regression_estimate",
+            "outcome_type": "behavioral_outcome",
+            "presentation_type": "text",
+            "context": {
+              "population": "UK Biobank participants",
+              "setting": "observational study"
+            },
+            "details": {
+              "outcome_name": "change in global GMV and WMV",
+              "effect_size": "0.127 SD in GMV and 0.074 SD in WMV for increasing from 1 to 2 units, 0.223 SD in GMV and 1.28 SD in WMV for increasing from 2 to 3 units."
+            },
+            "ontology": {}
+          },
+          {
+            "role": "statistical analysis",
+            "summary_text": "125 of 139 regional GMV IDPs are significantly associated with log alcohol intake.",
+            "evidence_method": "regression_estimate",
+            "outcome_type": "behavioral_outcome",
+            "presentation_type": "text",
+            "context": {
+              "population": "UK Biobank participants",
+              "setting": "observational study"
+            },
+            "details": {
+              "outcome_name": "regional GMV IDPs",
+              "count": 125,
+              "total": 139
+            },
+            "ontology": {}
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.9
+          },
+          {
+            "claim_index": 1,
+            "evidence_index": 1,
+            "relation": "supports",
+            "confidence": 0.9
+          },
+          {
+            "claim_index": 2,
+            "evidence_index": 2,
+            "relation": "supports",
+            "confidence": 0.9
+          }
+        ]
+      },
+      "gated_claim_count": 0
+    },
+    {
+      "section": {
+        "section_id": "section_ca2b26b153889f3d",
+        "paper_id": "Daviet_et_al_2022_Nature_Communications",
+        "section_name": "Discussion",
+        "section_type": "DISCUSSION",
+        "section_source": "tei_header",
+        "section_title_quality": "high",
+        "original_section_name": "Discussion",
+        "page_numbers": [],
+        "span_ids": [
+          "Daviet_et_al_2022_Nature_Communications-span-0017",
+          "Daviet_et_al_2022_Nature_Communications-span-0018",
+          "Daviet_et_al_2022_Nature_Communications-span-0019",
+          "Daviet_et_al_2022_Nature_Communications-span-0020",
+          "Daviet_et_al_2022_Nature_Communications-span-0021",
+          "Daviet_et_al_2022_Nature_Communications-span-0022",
+          "Daviet_et_al_2022_Nature_Communications-span-0023",
+          "Daviet_et_al_2022_Nature_Communications-span-0024"
+        ],
+        "text": "We report a multimodal brain imaging study of 36,678 middleaged and older adults of European descent, a population sample whose reported alcohol consumption ranged from low (i.e., 1-2 alcohol units per day) to high (i.e., more than 4 alcohol units per day) levels of intake. The scale and granularity of the data provide ample statistical power to identify small associations while accounting for important potential confounds. We observe negative relationships between alcohol intake and global gray and white matter measures, regional GMVs, and WM microstructure indices. The associations we identify are widespread across the brain, and their magnitude increases with the average absolute number of daily alcohol units consumed. Notably, the negative associations we observe with global IDPs are detectable in individuals who consume between 1 and 2 alcohol units daily. Thus, in the UK, consuming just one alcoholic drink daily (or two units of alcohol) could be associated with changes in GMV and WMV in the brain. The negative associations between alcohol intake and total GMV and WMV are consistent with prior studies of early middle-aged 46 and older adults 28, 47 . Based on Figs. 2 and 3 , which show that males consumed more alcohol units per day and had larger global GMV and WMV, we further examine the influence of sex in detail. We find negative associations between alcohol intake and the global IDPs for both sexes and weak evidence for interactive effects between alcohol intake and sex on the brain. These findings are similar to a recent study of early middleaged adult moderate drinkers that showed smaller brain volumes associated with moderate alcohol consumption in men and women 46 . The weak sex-by-alcohol interactions also comport with the findings of an earlier longitudinal study in individuals with AUD 38 ; however, other cross-sectional studies have reported greater volume changes in women than men 48, 49 . Although nearly 90% of all regional GMVs show significant negative associations with alcohol intake, the most extensively affected regions included the frontal, parietal, and insular cortices, with changes also in temporal and cingulate regions. Associations are also marked in the brain stem, putamen, and amygdala. The share of variance explained by alcohol intake for these regions is smaller in size than for global GMV, suggesting that the latter results from an aggregation of many small effects that are widespread, rather than a localized effect that is limited to specific regions. Alcohol intake is further associated with poorer WM microstructure (lower FA and higher ISOVF and MD) in specific classes of WM tract regions. The commissural fibers (genu and body of the corpus callosum, bilateral tapetum), projection fibers (bilateral anterior corona radiata), associative bundles (fornix, fornix cres+stria terminalis, left inferior longitudinal fasciculus), and the bilateral anterior thalamic radiations show the most consistent associations with alcohol intake, with the fornix showing the strongest associations. The fornix is the primary outgoing pathway from the hippocampus 50 , and WM microstructural alterations in the fornix are consistently associated with heavy alcohol consumption and memory impairments 3, 51 . Our findings are partly consistent with studies of individuals with AUD 18, 52 . The pattern of microstructural alterations in our general population sample show that widespread WM alterations are present across multiple WM systems. Like individuals with AUD, alcohol intake in this healthy population sample is associated with microstructural differences in superficial WM systems functionally related to GM networks, including the frontoparietal control and attention networks, and the default mode, sensorimotor, and cerebellar networks. Deeper WM systems (superior longitudinal fasciculus and dorsal frontoparietal systems, inferior longitudinal fasciculus system, and deep frontal WM) thought to be involved in cognitive functioning by regulating reciprocal connectivity 52, 53 are also associated with alcohol intake. Within these WM systems, alcohol intake is most strongly associated with ISOVF, MD, and FA WM microstructure indices; whereas, associations with ICVF are small, and OD associations are inconsistent or nonexistent. Alcohol intake shows positive associations with ISOVF and MD and negative associations with FA. This pattern of alcohol-associated WM microstructural disruption supports previous research showing excessive intracellular and extracellular fluid in individuals with AUD 20 . Our study has several limitations. First, we rely on a sample of middle-aged individuals of European ancestry living in the UK. We hope that future work will test the generalizability of our findings to individuals from other populations and in other age groups. It is reasonable to expect that the relationship we observe would differ in younger individuals who have not experienced the chronic effects of alcohol on the brain. An additional limitation stems from the self-reported alcohol intake measures in the UK Biobank, which cover only the year prior to participation. Such estimates may not adequately reflect drinking prior to past year and are susceptible to reporting and recall bias 38, 39 . Further, our analyses do not account for individuals with a past diagnosis of AUD. Earlier studies have shown that the brain shows some recovery with the cessation of drinking in individuals with AUD, but this varies with age and sex, and recovery might be incomplete [54] [55] [56] . Thus, a past diagnosis of AUD would likely influence our results. We hope future studies will shed light on how a history of AUD with prolonged recovery is associated with brain structure in middle-aged and older adults. Moreover, partial volume effects (e.g., voxels containing cerebrospinal fluid (CSF)) can reduce the accuracy of tissue characterization and WM microstructural estimates. Previous research indicates that partial volume effects can bias diffusion measures toward a pattern of high diffusivity (MD) and reduced FA, particularly in intraventricular locations like the fornix 57, 58 . As such, our findings could reflect partial volume effects; however, it should be noted that the structural data were acquired using T2-weighted FLAIR imaging, a structural technique that mitigates CSF contamination by suppressing signal from fluid (i.e., CSF). Finally, our study relies on a cross-sectional design, which does not allow for the identification of causal effects. While our models account for more potential confounding variables than earlier observational studies in this area of research, we cannot rule out the possibility of reverse-causality or a confounding influence of other factors that are not included in our models. Further investigation of the causal nature of the relationships between alcohol intake and brain anatomy (e.g., via longitudinal studies or natural experiments) would be of interest. In summary, this study provides additional evidence for a negative association between alcohol intake and brain macrostructure and microstructure in a general population sample of middle-aged and older adults. Alcohol intake is negatively associated with global brain volume measures, regional GMVs, and WM microstructure. The associations between alcohol intake and regional GMV are evident across the entire brain, with the largest volume changes observed in frontal, parietal, and insular cortices, temporal and cingulate regions, the brain stem, putamen, and amygdala. Alcohol intake is related to WM microstructural alterations in several WM tract regions connecting large-scale networks and deeper WM systems. Most of these negative associations are apparent in individuals consuming an average of only one to two daily alcohol units. Thus, this multimodal imaging study highlights the potential for even moderate drinking to be associated with changes in brain volume in middle-aged and older adults.",
+        "token_count": 1203,
+        "char_count": 8013
+      },
+      "decision": {
+        "section_id": "section_ca2b26b153889f3d",
+        "should_extract": true,
+        "reason": "The section provides specific results and findings about the negative associations between alcohol consumption and brain volumes, making it a suitable target for claim extraction.",
+        "expected_claim_types": [
+          "negative associations",
+          "effects of alcohol consumption",
+          "gender consistency"
+        ],
+        "expected_evidence_types": [
+          "statistical relationships",
+          "quantitative findings",
+          "regional brain effects"
+        ],
+        "likely_claim_density": "medium",
+        "likely_evidence_density": "medium",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_ca2b26b153889f3d",
+        "section_name": "Discussion",
+        "section_type": "DISCUSSION",
+        "summary_text": "This discussion elaborates on the findings of a multimodal brain imaging study involving 36,678 middle-aged and older adults, showing negative associations between alcohol consumption and both global and regional brain volumes as well as white matter microstructure. The study suggests that even moderate alcohol intake (1-2 units daily) may lead to changes in gray and white matter, with pronounced effects across widespread brain regions. Additionally, while sex was examined for potential interaction effects, the findings indicate consistent negative associations for both sexes. Limitations are acknowledged, including reliance on self-reported data and the cross-sectional design, which complicates causal interpretations.",
+        "section_role": "discussion",
+        "key_entities": [
+          "UK Biobank",
+          "gray matter",
+          "white matter",
+          "alcohol consumption",
+          "middle-aged adults",
+          "older adults"
+        ],
+        "key_findings": [
+          "Negative relationships observed between alcohol intake and global gray and white matter measures.",
+          "Associations evident across various brain regions, particularly in the frontal, parietal, and insular cortices.",
+          "Even moderate consumption of 1-2 units daily is linked to changes in GMV and WMV.",
+          "Widespread microstructural differences related to alcohol intake in white matter systems."
+        ],
+        "extractability_assessment": "This section contains comprehensive findings regarding the associations between alcohol intake and brain structure, which are substantiated by the presented data.",
+        "locality_confidence": 0.85
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "Alcohol intake is negatively associated with global brain volume measures.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "alcohol intake",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "alcohol consumption",
+                "normalized_text": "alcohol consumption",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relation",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "association",
+                "normalized_text": "association",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "object": {
+              "value": "global brain volume measures",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "brain volume",
+                "normalized_text": "brain volume",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "context": {
+              "population": "middle-aged and older adults",
+              "setting": "UK Biobank"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "Association between alcohol intake and regional GMVs is evident across various brain regions, especially in the frontal, parietal, and insular cortices.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "alcohol intake",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "alcohol consumption",
+                "normalized_text": "alcohol consumption",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relation",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "association",
+                "normalized_text": "association",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "object": {
+              "value": "regional GMVs",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "brain volume",
+                "normalized_text": "brain volume",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "context": {
+              "population": "middle-aged and older adults",
+              "setting": "UK Biobank"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "Even moderate alcohol intake (1-2 units daily) is linked to changes in GMV and WMV.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "moderate alcohol intake",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "alcohol consumption",
+                "normalized_text": "alcohol consumption",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relation",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "association",
+                "normalized_text": "association",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "object": {
+              "value": "changes in GMV and WMV",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "brain volume",
+                "normalized_text": "brain volume",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "context": {
+              "population": "middle-aged and older adults",
+              "setting": "UK Biobank"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "Alcohol intake is associated with poorer WM microstructure in specific classes of WM tract regions.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "alcohol intake",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "alcohol consumption",
+                "normalized_text": "alcohol consumption",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relation",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "association",
+                "normalized_text": "association",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "object": {
+              "value": "poorer WM microstructure",
+              "entity_type": "variable",
+              "ontology": {
+                "annotation_type": "classification",
+                "raw_text": "white matter structure",
+                "normalized_text": "white matter structure",
+                "mapping_status": "unresolved",
+                "candidate_mappings": [],
+                "selected_mapping": null,
+                "mapping_method": "section_context_v1_string_fallback"
+              }
+            },
+            "context": {
+              "population": "middle-aged and older adults",
+              "setting": "UK Biobank"
+            },
+            "details": {}
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "supporting evidence",
+            "summary_text": "The study observes negative relationships between alcohol intake and global gray and white matter measures, regional GMVs, and WM microstructure indices.",
+            "evidence_method": "observation",
+            "outcome_type": "phenotype",
+            "presentation_type": "text",
+            "context": {
+              "population": "middle-aged and older adults",
+              "setting": "UK Biobank"
+            },
+            "details": {
+              "outcome_name": "global gray and white matter measures, regional GMVs, and WM microstructure indices",
+              "value": "negative relationships"
+            },
+            "ontology": {
+              "annotation_type": "evidence_type",
+              "raw_text": "brain imaging study",
+              "normalized_text": "brain imaging study",
+              "mapping_status": "unresolved",
+              "candidate_mappings": [],
+              "selected_mapping": null,
+              "mapping_method": "section_context_v1_string_fallback"
+            }
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.85
+          },
+          {
+            "claim_index": 1,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.85
+          },
+          {
+            "claim_index": 2,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.85
+          },
+          {
+            "claim_index": 3,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.85
+          }
+        ]
+      },
+      "gated_claim_count": 0
+    },
+    {
+      "section": {
+        "section_id": "section_ed46c7be52d718c1",
+        "paper_id": "Daviet_et_al_2022_Nature_Communications",
+        "section_name": "Statistical analyses",
+        "section_type": "OTHER",
+        "section_source": "tei_header",
+        "section_title_quality": "high",
+        "original_section_name": "Statistical analyses",
+        "page_numbers": [],
+        "span_ids": [
+          "Daviet_et_al_2022_Nature_Communications-span-0029",
+          "Daviet_et_al_2022_Nature_Communications-span-0030",
+          "Daviet_et_al_2022_Nature_Communications-span-0031",
+          "Daviet_et_al_2022_Nature_Communications-span-0032",
+          "Daviet_et_al_2022_Nature_Communications-span-0033",
+          "Daviet_et_al_2022_Nature_Communications-span-0034"
+        ],
+        "text": "Descriptive analysis using global IDPs. We plot global GMV and WMV in males and females separately, normalized for head size, against age (Fig. 2 ) and alcohol intake (i.e., alcohol units/day on a log scale) (Fig. 3 ). Global IDPs, regional GMV, and WM microstructure analyses. Our primary analysis estimates a linear regression of several IDPs on alcohol intake in log(1 + daily units), including various control variables and interactions. Given the slight concavity of the LOWESS regression lines in the descriptive analysis of the global IDPs, we included both linear and quadratic terms for alcohol intake and age in the regression: where IDP i is the IDP normalized for head size, X i is the standardized alcohol intake in log(1 + daily units), AGE i is standardized age, Z i is a vector of control variables, and e i is an error term. Our analyses comprise models that include two different sets of control variables. The standard set includes standardized age, standardized age squared standardized height, handedness (right/left/ambidextrous; dummy-coded), sex (female:0, male:1), current smoker status, former light smoker, former heavy smoker, and standardized Townsend index of social deprivation measured at the zip code level 62 . To control for genetic population structure, the models also include the first 40 genetic principal components 63 and county of residence (dummy-coded) 62 . A second set of extended control variables includes all standard control variables and in addition standardized BMI, standardized educational attainment 64 , and standardized weight. To determine whether observations at the extreme ends of the drinking distribution bias the estimates of the relationship between alcohol intake and IDPs, we also estimate a model that excludes abstainers and a model that excludes heavy drinkers (i.e., women who reported consuming more than 18 units/week and men who consumed more than 24 units/week), both with standard controls. For each IDP, we test the null hypothesis that alcohol did not affect the outcome measure via an F-test that compares our model against a model with only the control variables (excluding alcohol intake and related interaction terms). We separate the analysis into two parts: (1) global analysis and (2) regional GMV and WM microstructure analysis, including 514 IDPs in total (139 GMV IDPs, 375 WM microstructure IDPs). The interactions of alcohol intake variables with sex and age are not significant in the global analysis (p > 0.001), so we exclude them from the regional analyses. To control the family-wise error rate in the regional GMV and WM microstructure analysis, we determine the significance thresholds for all regressions using the Holm method 65 , ensuring a family-wise error rate below 5%. When testing for M hypotheses, this method orders the corresponding p-values from lowest to highest: p 0 ,…, p M , and identifies the minimal index k such that p k > 0.05/(M + 1k). All hypotheses with an index m < k are then considered to be statistically significant. In our application, the significance threshold was determined to be 1.64 × 10 -4 . To quantify and visualize associations between alcohol intake and IDPs (i.e., global GMV and WMV, and regional GMV IDPs), we bin participants in the following six categories based on average alcohol intake: (1) abstainers, (2) individuals who drank less than one unit/day, (3) individuals who drank between one (included) and two (excluded) units/day (recommended maximal alcohol consumption based on the UK Chief Medical Officers \"low-risk\" guidelines 32 ), (4) individuals who drank between two (included) and three (excluded) units/day, (5) individuals who drank between three (included) and four (excluded) units/day, and (6) individuals who drank at least four units/day. After regressing the influence of the standard control variables, we then calculate the mean residual values (measured in standard deviations of IDPs) and 95% confidence intervals (CI). By first regressing the dependent variables on the standard control variables, the estimated effect can be interpreted as the part of the change in IDP that is not explained by these other variables, and it is represented in terms of standard deviations from the average. Results are available to the readers in supplementary data figures and tables. For example, Supplementary Fig. 3 includes the average GMV of all regions tested (both significant and non-significant) in bins of participants with different daily alcohol intake levels.",
+        "token_count": 711,
+        "char_count": 4527
+      },
+      "decision": {
+        "section_id": "section_ed46c7be52d718c1",
+        "should_extract": true,
+        "reason": "The section provides detailed statistical methodologies and results regarding the impact of alcohol consumption on brain structure metrics, which supports claim extraction.",
+        "expected_claim_types": [
+          "statistical relationships",
+          "impact statements",
+          "methodological assertions"
+        ],
+        "expected_evidence_types": [
+          "linear regression results",
+          "significance thresholds",
+          "control variable impacts"
+        ],
+        "likely_claim_density": "medium",
+        "likely_evidence_density": "medium",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_ed46c7be52d718c1",
+        "section_name": "Statistical analyses",
+        "section_type": "OTHER",
+        "summary_text": "This section details the statistical analyses conducted to explore the relationship between alcohol consumption and brain structure as indicated by global gray and white matter volumes. It outlines the use of linear regression models with control variables, the importance of testing hypotheses regarding the impact of alcohol intake on various imaging-derived phenotypes (IDPs), and the methodology for ensuring statistical validity, including handling extreme values in drinking behavior. The analysis is separated into global and regional investigations, with visual representations of the data provided in supplementary materials.",
+        "section_role": "methods",
+        "key_entities": [
+          "global GMV",
+          "WMV",
+          "IDPs",
+          "alcohol intake",
+          "standard control variables",
+          "genetic principal components",
+          "BMI",
+          "educational attainment",
+          "Holm method"
+        ],
+        "key_findings": [
+          "Significant relationships between alcohol intake and IDPs",
+          "Exclusion of abstainers and heavy drinkers in some models",
+          "Non-significant interactions of alcohol intake with sex and age in global analysis",
+          "Significance thresholds determined using the Holm method"
+        ],
+        "extractability_assessment": "This section provides detailed statistical methodologies and describes the analysis framework, which allows for the extraction of claims related to the impact of alcohol on brain structure outcomes.",
+        "locality_confidence": 0.8
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "Higher alcohol intake is associated with decreased global GMV and WMV.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "alcohol intake",
+              "entity_type": "variable",
+              "ontology": "alcohol consumption"
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relationship",
+              "ontology": "association"
+            },
+            "object": {
+              "value": "global GMV and WMV",
+              "entity_type": "brain volume",
+              "ontology": "brain structure"
+            },
+            "context": {
+              "population": "UK Biobank participants",
+              "setting": "UK Biobank study"
+            },
+            "details": {}
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "statistical_analysis",
+            "summary_text": "This section details the use of linear regression models to assess the impact of alcohol intake on global GMV and WMV, including various control variables.",
+            "evidence_method": "regression_estimate",
+            "outcome_type": "quantitative_measure",
+            "presentation_type": "text",
+            "context": {
+              "population": "UK Biobank participants",
+              "setting": "UK Biobank study"
+            },
+            "details": {
+              "outcome_name": "global GMV and WMV",
+              "estimator": "linear regression",
+              "measurement_type": "brain volume"
+            },
+            "ontology": "statistical results"
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.8
+          }
+        ]
+      },
+      "gated_claim_count": 0
+    }
+  ]
+}

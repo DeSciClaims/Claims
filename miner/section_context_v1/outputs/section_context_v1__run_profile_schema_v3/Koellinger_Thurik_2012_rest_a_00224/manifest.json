@@ -1,0 +1,11 @@
+{
+  "paper_id": "Koellinger_Thurik_2012_rest_a_00224",
+  "paper_title": "ENTREPRENEURSHIP AND THE BUSINESS CYCLE",
+  "output_dir": "/Users/ogbanugot/Workspace/claims/Claims/miner/section_context_v1/outputs/section_context_v1__run_profile_schema_v3/Koellinger_Thurik_2012_rest_a_00224",
+  "claim_count": 5,
+  "evidence_item_count": 10,
+  "link_count": 3,
+  "input_source": "pdf",
+  "input_pdf_path": "/Users/ogbanugot/Workspace/claims/ml-llm-benchmark/data/Koellinger_Thurik_2012_rest_a_00224.pdf",
+  "pdf_extraction_method": "grobid"
+}

@@ -42,3 +42,7 @@ pip-wheel-metadata/
 
 # Misc logs
 *.log
+
+data
+
+.cache

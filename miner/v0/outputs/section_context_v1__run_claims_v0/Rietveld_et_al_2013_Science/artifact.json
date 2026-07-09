@@ -1,10 +1,17 @@
 {
   "paper": {
     "paper_id": "Rietveld_et_al_2013_Science",
-    "doi": "10.1126/science.1235488",
+    "doi": "10.1126/science.1236787",
     "pmid": null,
-    "title": "GWAS of 126,559 Individuals Identifies Genetic Variants Associated with Educational Attainment",
-    "authors": [],
+    "title": "An Airborne Transmissible Avian Influenza H5 Hemagglutinin Seen at the Atomic Level",
+    "authors": [
+      "Wei Zhang",
+      "Yi Shi",
+      "Xishan Lu",
+      "Yuelong Shu",
+      "Jianxun Qi",
+      "George F Gao"
+    ],
     "journal": null,
     "year": 2013,
     "source_type": "journal_article",

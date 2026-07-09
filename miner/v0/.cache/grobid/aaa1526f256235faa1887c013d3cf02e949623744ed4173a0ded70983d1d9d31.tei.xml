@@ -1,0 +1,2323 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">ENTREPRENEURSHIP AND THE BUSINESS CYCLE</title>
+				<funder>
+					<orgName type="full">GSCM Montpellier Business School and Panteia, Zoetermeer</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher/>
+				<availability status="unknown"><licence/></availability>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Philipp</forename><forename type="middle">D</forename><surname>Koellinger</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">A</forename><forename type="middle">Roy</forename><surname>Thurik</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Dennis</forename><surname>Fok</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Wim</forename><surname>Naude</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Erik</forename><surname>Canton</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Marcus</forename><surname>Dejardin</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Andre</forename><surname>´van Stel</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Dick</forename><surname>Van Dijk</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Michael</forename><surname>Fritsch</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Maurice</forename><surname>Bun</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Sander</forename><surname>Wennekers</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Joao</forename><surname>Faria</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Christian</forename><surname>Roessler</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Avichai</forename><surname>Snir</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Schizas</forename><surname>Emmanouil</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Martin</forename><surname>Carree</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Niels</forename><surname>Bosma</surname></persName>
+							<affiliation key="aff0">
+								<orgName type="institution" key="instit1">Erasmus School of Economics</orgName>
+								<orgName type="institution" key="instit2">Tinbergen Institute</orgName>
+								<orgName type="institution" key="instit3">Eras-mus Research Institute in Management</orgName>
+								<orgName type="institution" key="instit4">German Institute for Economic Research</orgName>
+							</affiliation>
+						</author>
+						<title level="a" type="main">ENTREPRENEURSHIP AND THE BUSINESS CYCLE</title>
+					</analytic>
+					<monogr>
+						<imprint>
+							<date/>
+						</imprint>
+					</monogr>
+					<idno type="MD5">FCA09471EBC750BC7BD0D118078AD208</idno>
+					<note type="submission">Received for publication September 29, 2009. Revision accepted for publication April 26, 2011.</note>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-06-24T15:51+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>We find new empirical regularities in the business cycle in a cross-country panel of 22 OECD countries for the period 1972 to 2007; entrepreneurship Granger-causes the cycles of the world economy. Furthermore, the entrepreneurial cycle is positively affected by the national unemployment cycle. We discuss possible causes and implications of these findings.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>I. Introduction</head><p>D ESPITE the structural changes in modern economies that have led to the increasing importance of entrepreneurs <ref type="bibr" target="#b8">(Audretsch &amp; Thurik, 2001;</ref><ref type="bibr" target="#b12">Baumol, 2002;</ref><ref type="bibr">Audretsch, 2007)</ref>, macroeconomic models of business cycles usually abstract from entrepreneurship, with only a few exceptions <ref type="bibr" target="#b14">(Bernanke &amp; Gertler, 1989;</ref><ref type="bibr" target="#b24">Carlstrom &amp; Fuerst, 1997;</ref><ref type="bibr" target="#b84">Rampini, 2004</ref>). In addition, there is very little empirical evidence on this topic. 1 Therefore, in establishing the relationship between entrepreneurship and the business cycle, we find it worthwhile to ''let the data speak freely'' <ref type="bibr" target="#b54">(Hoover, Johansen, &amp; Juselius, 2008;</ref><ref type="bibr" target="#b59">Juselius, 2009)</ref> instead of deducing and calibrating a model from more or less arbitrary assumptions regarding entrepreneurial behavior.</p><p>We explore the relationship between entrepreneurship and the business cycle using panel data from 22 OECD countries for the period 1972 to 2007. 2 To the best of our knowledge, this is the first study of its kind. We differentiate between the aggregate and the national level. The aggregate level refers to the weighted average of business cycle fluctuations across countries. We loosely refer to the aggregate-level business cycle as the global or world economy. 3  The national level analyzes the data for each of the 22 countries separately and in a panel framework.</p><p>Differentiating between these two research levels of the relationship between the entrepreneurship and the business cycle, we obtain four results. First, global fluctuations in entrepreneurship are an early indicator of the world business cycle: they Granger-cause increases in GDP. Second, on this aggregate level, GDP and unemployment cycles do not predict the entrepreneurial cycle. This suggests that other factors besides the world business climate influence global trends in entrepreneurial activity. Third, at the national level, the impact of entrepreneurship on the cycle seems to be weaker than at the aggregate level. Fourth, again at the national level, an upswing in the unemployment cycle leads to a subsequent upswing in the entrepreneurship cycle. Numerous tests using various methods and different data confirm the robustness of these main results. Taken together, our results suggest that entrepreneurship is intertwined with business cycle dynamics in ways that do not follow from existing theories.</p><p>In the following section, we discuss related literature. Section III presents our empirical evidence, including a robustness check using another data set. Section IV discusses the empirical finding and concludes. The appendix in <ref type="bibr" target="#b68">Koellinger and Thurik (2009)</ref>, updated in March 2011, reports on various robustness checks using our main data set.</p><p>II. Related Literature <ref type="bibr" target="#b14">Bernanke and Gertler (1989)</ref> study the influence of entrepreneurs' net worth on borrowing conditions and the resulting investment fluctuations in a neoclassical model of the business cycle. The key to their analysis is the principalagent problem between entrepreneurs and lenders: only entrepreneurs can costlessly observe the returns on their individual projects, whereas outside lenders must jointly incur fixed costs to observe these returns. The greater the collateralizable net worth of the entrepreneur's balance sheet, the lower the expected agency costs will be, as implied by the optimal financial contract. Because entrepreneurs' net worth is likely to be procyclical (i.e., entrepreneurs are more solvent during good times), there will be a decline in agency costs and an increase in real investments during booms. The opposite happens during recessions. Hence, an accelerator effect emerges due to the principalagent problem between entrepreneurs and lenders. The focus of <ref type="bibr" target="#b14">Bernanke and Gertler (1989)</ref> is on the real effects caused by random fluctuations in balance sheets (e.g., due to an unanticipated fall in real estate prices), not on entrepreneurship per se. They assume that the potential share of entrepreneurs in the economy is independent of business cycle fluctuations, whereas the fraction of entrepreneurs who get funding and produce is procyclical. <ref type="bibr" target="#b24">Carlstrom and Fuerst (1997)</ref> extend the work of <ref type="bibr" target="#b14">Bernanke and Gertler (1989)</ref> by developing a computable gen-eral equilibrium model that can quantitatively capture the propagation of productivity shocks through agency costs. Similar to that of Bernanke and Gertler, the model by Carlstrom and Fuerst also does not focus on entrepreneurship per se and assumes that the potential share of entrepreneurs in a population is a constant that does not fluctuate with the cycle. However, due to simplifying assumptions, they end up with the somewhat counterintuitive result that bankruptcy rates and risk premiums are highest during boom periods as a result of positive technology shocks and higher capital prices. Hence, the number of solvent entrepreneurs would then be countercyclical. Furthermore, the bankruptcy probability is the same across entrepreneurs, independent of their net worth. However, the authors point this out as one of the shortcomings of their model.</p><p>The only theoretical business cycle model we are aware of that explicitly focuses on the share of entrepreneurs in the labor force is that of <ref type="bibr" target="#b84">Rampini (2004)</ref>. In this real business cycle model, the risk associated with entrepreneurial activity implies that the amount of such activity should be procyclical, which also results in the amplification and intertemporal propagation of productivity shocks. Agents are assumed to be risk-averse and can choose between a risk-free production technology (wage employment) and a risky production technology (entrepreneurship). Productivity shocks shift the output of both technologies by a constant. As a result, all agents are wealthier during economic booms. The risk-free production technology is always available, which implies no structural unemployment. Furthermore, it is assumed that the expected value of risky entrepreneurship exceeds the opportunity costs of risk-free employment. Hence, all agents prefer entrepreneurship to employment. However, the share of entrepreneurs is restricted by a financial intermediary that determines the optimal rate of entrepreneurship, given the productivity shock of the period and the wealth and preferences of the agents. The intermediary designs an optimal incentive contract that allows entrepreneurs to insure a part of their risk by leverage. Because all agents are wealthier as a result of positive productivity shocks and because risk aversion is assumed to decrease with wealth, it is optimal to have a higher share of entrepreneurs during economic booms. <ref type="foot" target="#foot_1">4</ref> Furthermore, it is also argued in the spirit of <ref type="bibr" target="#b14">Bernanke and Gertler (1989)</ref> that agency costs are countercyclical because more utility is lost due to the moral hazard problem when productivity is low. Hence, <ref type="bibr" target="#b84">Rampini (2004)</ref> concludes that entrepreneurship is procyclical, even if agents have access to financial intermediaries.</p><p>Aside from these direct analyses of the relationship between entrepreneurship and the business cycle, several labor market-related effects have been identified in the entrepreneurship literature. A literature survey by <ref type="bibr" target="#b81">Parker (2009)</ref> discusses evidence from the United States that new firm formation is procyclical. He also points to the effect of falling wages in recessions, which may lower the opportunity costs for starting a business and encouraging marginal types of entrepreneurship. Yet low-quality businesses may be removed in recessions, exerting a countervailing force on the total number of business owners. <ref type="bibr" target="#b26">Congregado et al. (2009)</ref> discuss the recession-push and prosperity-pull concepts, as well as numerous studies supporting these concepts. The recession-push argument would lead to a countercyclical and the prosperity-pull argument to a procyclical effect. <ref type="foot" target="#foot_2">5</ref>The vast majority of the business cycle literature, however, does not explicitly model entrepreneurial activity. This implies the hypothesis that entrepreneurship is either independent of the cycle or irrelevant for the real economy. The results are mixed and often indirect in the entrepreneurship literature <ref type="bibr" target="#b95">(Thurik et al., 2008;</ref><ref type="bibr" target="#b26">Congregado et al., 2009)</ref>. This ambiguity does not lead to dominant hypotheses. Hence, we will focus on the data and link our results to the existing literature afterward.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>III. Analysis</head><p>In general, there are two ways of analyzing our data: observations can be averaged across countries to focus on global trends or coefficients can be averaged, putting more emphasis on national conditions. Of course, the two approaches address somewhat different questions: the first investigates if global trends in entrepreneurial activity exist and how they relate to the cycles of the world economy; the second approach investigates the average relationship between entrepreneurship and the cycle at the national level. These two perspectives are likely to yield diverging results if different factors influence the data at the aggregate and national levels. For example, low-skilled individuals who consider starting a business are more likely to be influenced by national labor market policies than by global technological trends, whereas the opposite can be expected for highly skilled opportunity entrepreneurs. Because the former constitute the majority of entrepreneurs <ref type="bibr" target="#b62">(Kirchhoff, 1994)</ref>, one can expect to find different relationships between unemployment and entrepreneurial activity at the national and global levels if labor market conditions are imperfectly correlated across countries.</p><p>Furthermore, economic variables at the country level are more likely to be influenced by national policies and the conditions in specific, closely related nations. The world economy is hardly influenced by the idiosyncratic policies of particular countries. Instead, global-scale business cycle fluctuations more directly reflect developments of global importance, such as major geopolitical changes, world mar-ket prices of commodities, or technological breakthroughs. Of course, these global developments also have an impact on national business cycles, but the additional influence of national policies and conditions leads to country-specific patterns and dilutes the correlation of cycles across countries.</p><p>This section has three parts. First, we present the global results of the comovement of GDP, unemployment, and business ownership using data from 22 OECD countries for the period 1972 to 2007. The second part deals with the comovement of these variables at the country level. The third part is a robustness check we carried out using a different data source, with the aim of replicating the results of our initial analysis using an alternative measure of entrepreneurship.</p><p>A. Aggregate Analysis of Entrepreneurship, Unemployment, and the Cycle</p><p>We construct a balanced cross-country panel of 22 OECD countries with annual data for the period 1972 to 2007 using various sources. OECD data are used to determine annual real GDP in constant 2000 prices in national currencies and standardized unemployment rates. 6  Entrepreneurial activity per country and per year is measured as the share of business owners in the total labor force, 7 using data from Compendia 2007.1 that corrects for measurement differences across countries and over time. 8 This is a broad measure of entrepreneurial activity that includes incorporated, self-employed individuals (ownermanagers of incorporated businesses) and (unincorporated) self-employed persons with and without employees; conversely, the measure excludes unpaid family workers. 9 The business ownership rate also excludes so-called ''sideowners,'' who generate less than 50% of their income by running their own businesses.</p><p>A disadvantage of using business ownership as a measure of entrepreneurial activity is that it does not fully capture early-stage ventures that do not yet generate a substantial contribution to the owner's income. In addition, business ownership rates reflect to some extent the existing industry structures in place rather than the introduction of new economic activity in the <ref type="bibr">Schumpeterian (1934)</ref> and <ref type="bibr">Kirznerian (1973)</ref> sense. 10 To address these conceptual shortcomings of business ownership rates as a measure of entrepreneurial activity, we also use data from the Global Entrepreneurship Monitor (GEM) <ref type="bibr" target="#b86">(Reynolds et al., 2005)</ref> as a second measure for robustness checks.</p><p>Following the convention of defining the business cycle as a series of deviations from long-term trends in GDP data, we decompose time series into trends and cycles using the Hodrick-Prescott filter <ref type="bibr" target="#b53">(Hodrick &amp; Prescott, 1997)</ref>, referred to below as the HP filter. The HP filter is a standard method of removing trend movements that has been applied to both actual data and artificial data in numerous studies. 11  The smoothing parameter k of the filter, which penalizes acceleration in the trend relative to the business cycle component, needs to be specified. Most of the business cycle literature uses quarterly data and a k value of 1,600, as <ref type="bibr" target="#b53">Hodrick and Prescott (1997)</ref> suggested. Unfortunately, business ownership rates are available only on an annual basis in most countries. Because the time period over which aggregation takes place affects the variance in the process at discrete time intervals, the k value must be adjusted. <ref type="bibr" target="#b85">Ravn and Uhlig (2002)</ref> show that the appropriate k value for annual data is 6.25; this is the value we use for our analysis.</p><p>To test if our results are robust to different methods of detrending the data, we repeat all analyses using a k value of 100 and first differences of growth rates. 12 The main results we present have been computed using the HP filer with a k value of 6.25. They are not sensitive to the method of detrending. The additional results are reported in the appendix in <ref type="bibr" target="#b68">Koellinger and Thurik (2009)</ref>.</p><p>A first look at the data shows considerable variation of all three series and countries around a stable mean value of zero. Table <ref type="table" target="#tab_0">1</ref> shows that the series are only weakly corre-  6 The included countries are Australia, Austria, Belgium, Canada, Denmark, Finland, France, Greece, Iceland, Ireland, Japan, Luxembourg, the Netherlands, New Zealand, Norway, Portugal, Spain, Sweden, Switzerland, the United Kingdom, and the United States. These are the 23 old OECD countries. We excluded Germany because we are unable to correct for the influence of its unification on the time series. 7 The total labor force is the sum of the employed and the unemployed. 8 Data are constructed by Panteia (Zoetermeer, NL) on the basis of OECD material. See http://www.ondernemerschap.nl for the data and van Stel ( <ref type="formula">2005</ref>) for an explanation of the method. Quarterly data regarding business ownership rates are not available for most countries.</p><p>9 Unpaid family owners can be regarded as irrelevant in measuring the extent of entrepreneurship because they do not own the businesses they work for and do not bear responsibility or risk in the way that ''real'' entrepreneurs do.</p><p>10 Despite these disadvantages, the business ownership rate is widely used: in <ref type="bibr" target="#b95">Thurik et al. (2008)</ref>, investigating the interrelationships between entrepreneurship and unemployment; in <ref type="bibr">Erken, Dunselaar, and Thurik (2009)</ref>, measuring the influence of entrepreneurship on total factor productivity; and in <ref type="bibr" target="#b25">Carree et al. (2002)</ref>, studying the influence of economic development. See also <ref type="bibr" target="#b81">Parker (2009)</ref>.</p><p>11 See <ref type="bibr" target="#b85">Ravn and Uhlig (2002)</ref> and <ref type="bibr" target="#b56">Jaimovich and Siu (2009)</ref>, for example.</p><p>12 According to additional tests we conducted, the method of detrending influences the spectrum of the resulting series as well as the AR and MA order of variables. The HP filter with a k ¼ 100 or higher forces a common spectral shape on the series, which is not so much the case for an HP filter with k ¼ 6.25 and not at all for the first differences of growth rates. Our additional analyses also showed that GDP and unemployment have very similar spectra, while business ownership exhibits different peaks in the spectrum. ARMA specification tests using the <ref type="bibr" target="#b50">Hannan-Rissanen (1982)</ref> procedure showed that GDP and unemployment have more complex AR and MA orders than business ownership. lated across countries. While the GDP series of some countries are strongly correlated (e.g., the Netherlands and Belgium, the United States, and Canada), the series of other countries are independent (e.g., Spain and New Zealand) or even negatively correlated (e.g., Austria and Australia). The same holds for the unemployment series. The average of the correlation coefficients across countries is 0.34 for GDP and 0.39 for unemployment. The pattern in the data indicates a strong correlation of business cycles in countries that are geographically close or economically integrated, such as the European Union. The weakest systematic correlation across countries is shown by the entrepreneurship series, with an average correlation of only 0.06. This suggests that entrepreneurial activity at the country level exhibits considerable noise that disguises global trends.</p><p>To reveal these global trends, we aggregate observations across countries after detrending the original data. Observations of every country are weighted by the economic size of each country, using the average share of each country's GDP in the total GDP of all countries included in the analysis from 1972 to 2007. We use GDP in current prices and current USD to compute these weights. This yields time series for the world economy that smooth out most of the national idiosyncrasies. We also experiment with unweighted data and different weighting methods and find that our main results reported below are not sensitive to weighting. <ref type="foot" target="#foot_3">13</ref>Figure <ref type="figure">1</ref> shows average deviations of world GDP (corrected for inflation) and entrepreneurship from their long- As expected, a descriptive analysis of GDP and unemployment shows that unemployment is strongly countercyclical. The contemporaneous correlation between the two series is -0.9 (significant at more then 99% confidence). A countercyclical relationship between GDP and entrepreneurship can be clearly rejected since the contemporaneous correlation between the two series is positive (0.3, significant at over 90% confidence). A feedback between unemployment and entrepreneurship seems likely because labor market opportunities determine to a large extent the opportunity costs of entrepreneurship <ref type="bibr" target="#b95">(Thurik et al., 2008)</ref>. Indeed, the contemporaneous correlation between unemployment and entrepreneurship is -0.43 (significant at more than 98% confidence).</p><p>This interrelation between GDP, unemployment, and entrepreneurship suggests a joint analysis of these three variables in an autoregressive context. Given the stationarity of detrended data, we estimate a vector autoregression model with two lags, VAR(2), including deviations from trends in terms of business ownership, real GDP, and unemployment <ref type="bibr" target="#b72">(Lu ¨tkepohl, 2007;</ref><ref type="bibr" target="#b45">Greene, 2003)</ref>. <ref type="foot" target="#foot_4">14</ref> The optimal lag length of 2 is unanimously suggested by the <ref type="bibr" target="#b1">Akaike (1974)</ref> information criterion, the <ref type="bibr" target="#b49">Hannan-Quinn (1979)</ref> criterion, and the <ref type="bibr" target="#b90">Schwarz (1978)</ref> criterion for 1 &lt; p max &lt; 7.</p><p>Our reduced-form VAR(2) expresses each variable as a linear function of its own two past values and the two past values of the other two variables. The vector of errors is assumed to be serially uncorrelated with contemporaneous covariance across equations. Specifically, we estimate</p><formula xml:id="formula_0">y t ¼ v þ A 1 y tÀ1 þ A 2 y tÀ2 þ u t<label>ð1Þ</label></formula><p>where y t ¼ y 1t ; y 2t ; y 3t ð Þ 0 is a 3 Â 1 random vector with, y 1 ¼ real GDP cycle, y 2 ¼ unemployment cycle, and y 3 ¼ business ownership cycle. A 1 and A 2 are fixed 3 Â 3 matrices of parameters, v is a 3 Â 1 vector of fixed parameters, and u t is assumed to be white noise; that is,</p><formula xml:id="formula_1">E u t ð Þ ¼ 0 E u t u t 0 ð Þ ¼ R E u t u s 0 ð Þ ¼ 08t 6 ¼ s:</formula><p>The model is estimated with least squares. Confidence intervals are based on common t-values, which have been shown to yield reasonably accurate estimates even for small samples <ref type="bibr" target="#b72">(Lu ¨tkepohl, 2007)</ref>.</p><p>Table <ref type="table" target="#tab_2">2</ref> shows the parameter estimates. The coefficients suggest that entrepreneurship forecasts GDP upswings and unemployment downswings one year in advance. A twoyear lag of entrepreneurship seems to predict the next business cycle turnaround.</p><p>The model test statistics show that nonnormality of the residuals is of no concern. There is some indication of remaining autocorrelation in the error terms. However, plots show that none of the autocorrelations reach significance at any lag length, but some partial autocorrelations at longer lags (L 3 and higher) are significant. 15 Varying the lag length of the VAR model does not change this (instead, the residual autocorrelation seems to become stronger). In addition, the multivariate ARCH test does not raise any concerns about heteroskedasticity either. Alternative methods of detrending the data do not result in models with remaining autocorrelation, although they show similar relationships between entrepreneurship, GDP, and unemployment (see the appendix in <ref type="bibr" target="#b68">Koellinger &amp; Thurik, 2009)</ref>. Hence, we conclude that the model in table 2 captures the dynamics in the data reasonably well.</p><p>Table <ref type="table" target="#tab_1">3</ref> reports the result of the corresponding Granger causality tests <ref type="bibr" target="#b44">(Granger, 1969)</ref>. Fluctuations in entrepreneurship help to predict GDP with 98% confidence. Hence, we conclude that fluctuations in global trends of entrepreneurship Granger-cause the world business cycle. Furthermore, they predict future unemployment with 98% confidence. However, the reverse is not true. Neither GDP nor unemployment can forecast future entrepreneurship at the aggregate level.</p><p>Based on the estimates from equation (1), we compute orthogonalized impulse response functions <ref type="bibr" target="#b93">(Sims, 1980)</ref> that allow us to investigate the thought experiment of how a random shock in entrepreneurship affects real GDP and unemployment in a later phase, holding everything else constant.</p><p>Figure <ref type="figure" target="#fig_2">2</ref> shows that an unexpected 1% rise in entrepreneurship is followed by a 0.19% rise in real GDP in year t þ 1. This is a considerably strong positive impulse on the world economy. The plotted 90% bootstrap confidence interval suggests that the effect is highly significant in the first year after the impulse. In subsequent years, the positive effect of the entrepreneurship shock levels out. Hence, we conclude that global entrepreneurship trends are a leading   <ref type="bibr" target="#b0">(Ahn, 1988)</ref> 0.04 LJB test for nonnormality of residuals <ref type="bibr" target="#b32">(Doornik &amp; Hansen, 2008)</ref> 0.98 LMF (5) statistic of residual autocorrelation <ref type="bibr" target="#b34">(Edgerton &amp; Shukur, 1999)</ref> 0.12 MARCHLM (2) (Lu ¨tkepohl &amp; Kra ¨tzig 2004) 0.57</p><p>Significance at * &gt;90% confidence; ** &gt;95% confidence; *** &gt;99% confidence. HP-filtered data (k ¼ 6.25). 15 The plots are available from the authors on request.</p><p>indicator of the world business cycle and Granger-cause upswings.</p><p>Similarly, the impulse response function in figure <ref type="figure">3</ref> shows that an unexpected increase in the global entrepreneurship leads to a decrease in unemployment one year later. The effect is also significant at over 90% confidence. Again, the effect of the entrepreneurship shock levels off in later years as the cycle progresses. Although this pattern is partly a result of the general upswing in economic activity that tends to follow an expansion of entrepreneurial activity, it is equally possible that part of the effect stems from the additional economic activity and the jobs created by new firms. 16  In summary, these observations suggest that an impulse from global entrepreneurial activity is typically followed by a recovery of the world economy and a decrease in unemployment.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Country-Level Analysis of Entrepreneurship, Unemployment, and the Cycle</head><p>We replicate the VAR model of section IIA for every individual country. Consistent with <ref type="bibr" target="#b43">Golpe (2009)</ref> and <ref type="bibr" target="#b26">Congregado et al. (2009)</ref>, we find considerable heterogeneity of coefficients across countries. Table <ref type="table" target="#tab_3">4</ref> shows that only 7 out of 22 countries exhibit significant Granger causality of entrepreneurship on the cycle ( p &lt; 0.10). It is also noteworthy that the aggregate result (Granger causality Wald test of 0.02; see table 3) is in excess of the value in 21 out of 22 individual countries. We conclude that the aggregate result across countries is not driven by a few countries that exhibit a particularly strong relationship between entrepreneurship and the cycle.</p><p>An obvious way to aggregate coefficients across countries is to use panel estimators. It is noteworthy that detrending the data removes country fixed effects. This is  Orthogonalized impulse response function in the business-ownership/unemployment/real-GDP VAR(2), with 90% bootstrapped confidence interval. 16 For example, in a study covering the establishment of all private sector firms in Denmark, <ref type="bibr">Malchow-Møller, Schjerning, and Sørenson (2009)</ref> estimate that 8% of total gross job creation in the economy is traceable to entrepreneurial firms. reflected in almost identical results for OLS, fixed effects, and Blundell and Bond (1998) system GMM estimations. Unfortunately, there are still several caveats connected to applying these standard techniques in our application. 17 We choose to report fixed-effects estimations because they provide a conservative lower bound for the true coefficients. 18  The coefficient of entrepreneurship in t À 1 still has the same sign as in the aggregate VAR model, but it is no longer significant. Hence, while entrepreneurship Grangercauses the world business cycle, this is not necessarily the case at the national level. Past values of GDP, unemployment, and entrepreneurship at the country level (table 5) appear to be less informative about future economic development than at the level of the world economy (table 2), possibly due to random policy shocks at the country level that add unexplained variance to the data.</p><p>Furthermore, in contrast to the aggregate results in table 2, in which business ownership rates could not be predicted by past values of GDP and unemployment, the picture is different at the level of individual countries. As table <ref type="table" target="#tab_5">5</ref> shows, unemployment does have a positive effect on future business ownership rates. Intuitively, national labor market conditions influence the opportunity costs of people who consider starting a business <ref type="bibr" target="#b71">(Lucas, 1978;</ref><ref type="bibr" target="#b55">Iyigun &amp; Owen, 1998)</ref>. While falling unemployment and better labor market opportunities depress new start-up activities, the opposite is true when unemployment rises. In this case, entrepreneurship is often an escape route for people who have lost their jobs to make a living. This effect has been labeled the ''supply push'' in the literature. <ref type="foot" target="#foot_5">19</ref> Hence, while entrepreneurship seems to fluctuate independent of the business cycle at the aggregate level, it does respond to cyclical labor market conditions at the national level.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Robustness Check Using GEM Data</head><p>As a robustness check, we examine a second measure of entrepreneurial activity from a different data source, the Global Entrepreneurship Monitor (GEM) survey for the period 2001 to 2006. Essential in the GEM data collection is the recognition that setting up a business is a process involving various engagement levels <ref type="bibr" target="#b46">(Grilo &amp; Thurik, 2008;</ref><ref type="bibr" target="#b99">van der Zwan, Thurik, &amp; Grilo, 2010)</ref>. The GEM data also allow for the investigation of different motives and degrees of innovativeness among entrepreneurs.</p><p>GEM is currently the largest and most widely recognized cross-country research initiative used to study the prevalence, determinants, and consequences of entrepreneurial activity. The core activity of GEM is the annual compilation of data on entrepreneurial activity based on a random sample of at least 2,000 adult-age individuals in each of the participating countries <ref type="bibr" target="#b86">(Reynolds et al., 2005)</ref>. The GEM survey uses three questions to identify nascent entrepreneurs:</p><p>''Over the past twelve months, have you done anything to help start a new business, such as looking for equipment or a location, organizing a start-up team, working on a business plan, beginning to save money, or any other activity that would help launch a business?'' (yes, no, don't know/refuse) ''Will you personally own all, part, or none of this business?'' (all, part, none, don't know/refuse) ''Has the new business paid any salaries, wages, or payments in kind, including your own, for more than three months?'' (yes, no, don't know/refuse) An individual is coded as a nascent entrepreneur if he or she answers ''yes'' to question 1, ''all'' or ''part'' to question 2, and ''no'' to question 3. Thus, a nascent entrepreneur is defined as someone who, during the twelve months preceding the survey, has done something tangible to start a new Results were computed from, country-specific VARs for the period 1972-2007 using HP-filtered data (k ¼ 6.25). 17 The caveats: First, regressions have to be carried out for every dependent variable of the system separately, ignoring the covariance of error terms among the three equations. Second, panel estimators are developed for situations with ''small T and large N.'' Because our panel has a very small N of 22 and a medium-sized T of 34, the asymptotic results of these estimators do not necessarily carry over to our application. Third, although at least system GMM allows for heteroskedasticity and autocorrelation within countries but not across them, the close economic relationships among many countries in our sample and the ignored interdependence of the three estimated equations make it plausible that some heteroskedasticity and autocorrelation remain in the models. Fourth, <ref type="bibr" target="#b83">Pesaran and Smith (1995)</ref> point out that the average effect cannot be consistently estimated in dynamic panels when coefficients vary across countries because incorrectly ignoring coefficient heterogeneity causes serial correlation in the error term. The aggregation we perform in section IIA circumvents these problems.</p><p>18 If fixed effects were present in the data, the dynamic panel bias would make simple OLS upward biased and fixed-effects regression downward biased, providing upper and lower bounds for the true coefficients <ref type="bibr" target="#b20">(Bond, 2002)</ref>. firm, expects to own at least part of this new firm, and has not paid wages for more than three months. 20 GEM data on the prevalence of nascent entrepreneurs as a percentage of the adult population are available for all of the 22 OECD countries in our previous exercise for the time period 2001 to 2006, with the exception of Luxembourg. However, not all countries participated in GEM every year, and this yields an unbalanced panel structure.</p><p>An advantage of using GEM data is that nascent entrepreneurs are categorized by their start-up motives (opportunity versus necessity) and by the self-evaluated innovativeness of their ventures. Hence, we can examine whether different types of entrepreneurship show different patterns of relation to the business cycle. The differentiation between opportunity and necessity entrepreneurs is available for the entire time period 2001 to 2006. Each nascent entrepreneur is asked if he or she is involved in the start-up or firm to take advantage of a business opportunity or because he or she has no better choices for work <ref type="bibr" target="#b86">(Reynolds et al., 2005)</ref>. Below, we consider the share of opportunityand necessity-bound nascent entrepreneurs, leaving aside those who said they engaged for both reasons or did not know.</p><p>In addition, the GEM surveys for 2002 to 2004 included three follow-up questions related to the innovativeness of the business ideas of individuals who qualify as nascent entrepreneurs. These follow-up questions ask each nascent entrepreneur about the novelty of the technology he or she attempts to use, the novelty of the product or service to potential customers, and the expected degree of competition in the market he or she wishes to enter <ref type="bibr">(Hessels, ven Gelderen, &amp; Thurik, 2008)</ref>. Hence, these questions can be used to construct a profile of the innovativeness of business ideas pursued by nascent entrepreneurs. We define purely imitative entrepreneurs as nascent entrepreneurs who have neither a product nor a process innovation and expect many business competitors in the market they enter <ref type="bibr" target="#b65">(Koellinger, 2008;</ref><ref type="bibr" target="#b66">Koellinger &amp; Minniti, 2009)</ref>.</p><p>Because of the short time frame for which GEM data are available, it does not lend itself to detrending and an autoregressive analysis. <ref type="foot" target="#foot_7">21</ref> Instead, table 6 summarizes the bivariate correlations of the lagged variables using panel data instead of aggregated data. Similar to the results in table 2, we find that an increase in nascent entrepreneurial activity is followed by a significant increase in GDP two years later. The strongest positive correlation between nascent entrepreneurship and future GDP is found at t -2, while the peak in business ownership is a little later, at t -1. This is what one should expect given that the GEM measure captures entrepreneurial activity at an earlier stage, before most ventures start to contribute significantly to the entrepreneur's income. Given that the GEM measure is constructed to measure entrepreneurship consistently across countries and is not just a side product of official labor market statistics, </p><formula xml:id="formula_2">(N¼71) (N¼91) (N¼108) (N¼108) (N¼108) (N¼108) (N¼108)</formula><p>*Denotes significance at *&gt;90% confidence, **&gt;95% confidence; ***&gt;99% confidence. Data for Australia, Belgium, Canada, Denmark, Finland, France, Greece, Iceland, Ireland, Italy, Japan, The Netherlands, New Zealand, Norway, Portugal, Spain, Sweden, Switzerland, United Kindom, and United States. All models include time dummies and a constant and including time dummies. OLS and one-step system GMM estimators (with 136 instruments, collapsed) deliver almost identical results. N ¼ 22, T ¼ 32, observations ¼ 726. Significance at *90% confidence, **&gt;95% confidence. HP-filtered data (k ¼ 6.25). 20 GEM uses the information on the duration that wages have been paid to differentiate nascent, young, and established entrepreneurs. one would also expect that it is a better dynamic measure of entrepreneurial activity in the <ref type="bibr">Schumpeterian (1934)</ref> or <ref type="bibr">Kirznerian (1973)</ref> sense than is the more static business ownership rate. Hence, finding strong correlations between the GEM measure and future GDP across countries adds credibility to our previous findings.</p><p>The comparison between the start-up motives (rows 4 and 5) indicates that opportunity entrepreneurship leads the cycle by two years, while necessity entrepreneurship leads the cycle by only one year. A somewhat speculative explanation for the lag in necessity entrepreneurship has to do with the legitimation or moral approval of entrepreneurship within a culture <ref type="bibr" target="#b37">(Etzioni, 1987)</ref>. In this case, if there is a higher level of legitimation of entrepreneurship, then it will manifest itself widely, resulting in more attention to entrepreneurship within the educational system, higher social status for entrepreneurs, and more tax incentives to encourage business start-ups. Obviously this results in a higher supply of entrepreneurs. It may be that here, we observe the cyclical variant of what Etzioni proposed as a cross-section structural cause: the opportunity entrepreneurs pave the way for necessity entrepreneurs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>IV. Discussion</head><p>Our results show that global trends in entrepreneurship are an early indicator of the recovery from economic recessions, while entrepreneurship at the national level reacts to unemployment fluctuations instead of causing them. Our discussion focuses on three aspects of these results. First, we discuss the disparity between the results at the aggregate and national levels. Where does it come from? Second, how do our empirical results relate to the theoretical conjectures about entrepreneurship and the cycle? And finally, what are the implications of our finding that entrepreneurship Granger-causes the business cycle, at least at the aggregate level?</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>A. Differences between the Aggregate and National Cycles</head><p>We see three economic factors that together help to explain the disparity between the aggregate and national levels. <ref type="foot" target="#foot_8">22</ref>First, not all entrepreneurs are equal in their performance and motivation. This determines their potential impact on the economy. The majority of business start-ups engage in marginal, imitative economic activity <ref type="bibr" target="#b62">(Kirchhoff, 1994;</ref><ref type="bibr" target="#b104">Wennekers &amp; Thurik, 1999;</ref><ref type="bibr" target="#b65">Koellinger, 2008)</ref> or fail shortly after their inception <ref type="bibr" target="#b33">(Dunne, Roberts, &amp; Samuelson, 1988)</ref>. <ref type="foot" target="#foot_9">23</ref> The potential impact of these marginal entrepreneurs on the macroeconomy is likely to be limited. The small share of successful, innovative, and high-growth entrepreneurs, however, is likely to make a difference, as the success stories of the Richard Bransons and Steve Jobses of this world demonstrate. These different types of entrepreneurs are likely to be motivated by different factors. Highpotential entrepreneurs react more to the presence of good business opportunities than to a lack of employment alternatives <ref type="bibr" target="#b21">(Bowen &amp; de Clercq, 2008;</ref><ref type="bibr" target="#b52">Hessels et al., 2008)</ref>. Good business opportunities are often related to newly invented technologies, geopolitical developments, or changes in commodity prices that are of global importance <ref type="bibr" target="#b92">(Shane, 2003)</ref>. Hence, nonmarginal entrepreneurship tends to exhibit global peaks whenever business opportunities of global magnitude arise, such as during the IT boom of the late 1990s. Marginal entrepreneurs, however, are more likely to respond to national labor market conditions because they play marginal roles in existing organizations as well. Hence, the increase in unemployment during recessions <ref type="bibr" target="#b69">(Kydland &amp; Prescott, 1990;</ref><ref type="bibr" target="#b47">Hall, 2005;</ref><ref type="bibr" target="#b35">Elsby, Michaels, &amp; Solon, 2009)</ref> triggers increases in marginal entrepreneurship <ref type="bibr" target="#b39">(Evans &amp; Leighton, 1990;</ref><ref type="bibr" target="#b22">Caliendo &amp; Uhlendorff, 2008;</ref><ref type="bibr" target="#b95">Thurik et al., 2008;</ref><ref type="bibr" target="#b40">Faria et al., 2009</ref><ref type="bibr" target="#b41">Faria et al., , 2010))</ref>. In addition, start-up costs for paying qualified labor <ref type="bibr" target="#b69">(Kydland &amp; Prescott, 1990</ref>) and borrowing capital <ref type="bibr" target="#b61">(King &amp; Watson, 1996)</ref> tend to be lower during recessions. Both factors together contribute to the increase in entrepreneurial activity, in response to recessions, which our results show at the national level.</p><p>Second, business cycles across countries are only weakly correlated (see table <ref type="table" target="#tab_0">1</ref>). This is because national business cycles are driven not only by global business conditions but also by unanticipated shocks in government spending, taxes, real estate market bubbles, (de)-regulation, monetary policy, and other nationally relevant factors. One reason for country-specific policy shocks is constituted by political business cycles, which can be triggered by nonrational voters in combination with ideological or opportunistic parties. Because voting cycles are asynchronous across countries, politically motivated shocks to the economy will typically be country specific rather than systematic across countries. <ref type="foot" target="#foot_10">24</ref> Another reason for country-specific shocks may result from poorly informed policymakers. For example, <ref type="bibr" target="#b70">Leamer (2009)</ref> argues that the excessive volatility of U.S. interest rates set by the Fed between 2000 and 2005 contributed to the rise and burst of the U.S. real estate bubble in 2008 and the subsequent recession. Leamer argues further that the Fed was targeting the wrong indicator (inflation) during that period and that a monetary policy focused on preventing the excessive building of homes or cars, with preemptive rate increases in the middle of expansions, would help to smooth out the cycle instead of amplifying it. The combined role of such unanticipated fiscal and mone-tary policy is likely to dominate the effects from mostly marginal entrepreneurial activity at the country level. <ref type="foot" target="#foot_11">25</ref>National entrepreneurship rates will respond to many country-specific policy shocks, such as national changes in taxation or unemployment benefits. It is reasonable that most entrepreneurs will not be better than consumers at anticipating such policy shocks. Hence, only weakly correlated business cycles across countries in combination with national policy shocks contribute to the almost-zero correlation of entrepreneurial activity across countries, as shown in table <ref type="table" target="#tab_0">1</ref>.</p><p>Third, as a consequence of the above, aggregating cyclical fluctuations of GDP, unemployment, and entrepreneurship across countries has a dual effect. First, it filters out national policy shocks on GDP and unemployment, which are likely to dominate the impulse coming from productive entrepreneurial activity. Second, aggregated cyclical data focus on the subset of entrepreneurs who identify technologies and business opportunities that are globally important. Both effects together are more likely to disclose the ''real shocks'' that the highly productive part of entrepreneurial activity exerts on the economy in aggregated data rather than in national data.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>B. Relation to Theoretical Literature</head><p>Our empirical results help to put the previous theoretical literature on the topic into perspective. Clearly, our data reject the null hypothesis that the share of entrepreneurs in the population is independent of the cycle. In addition, our results modify the hypothesis that the share of entrepreneurs is procyclical <ref type="bibr" target="#b84">(Rampini, 2004)</ref>. Instead of being strictly procyclical, entrepreneurial activity appears to lead the cycle at the global level. This is an important result rather than a nuance because it has repercussions for the conceptual reasons for the interplay of entrepreneurship and the cycle. While accepting <ref type="bibr" target="#b84">Rampini's (2004</ref>) logic, we discuss several assumptions that might be responsible for the discrepancy between his theoretical results and our empirical outcomes.</p><p>First, <ref type="bibr" target="#b84">Rampini (2004)</ref> assumes a decrease in absolute risk aversion of agents. This assumption drives the conclusion that entrepreneurial activity is procyclical because it implies that higher average wealth among agents, as a result of positive productivity shocks, leads to a higher optimal share of entrepreneurs. However, prospective entrepreneurs might not be primarily concerned about expected payoffs in evaluating the attractiveness of different occupational choices. Rather, they might evaluate their current income relative to some reference point, such as average income or their previous income. <ref type="foot" target="#foot_12">26</ref> Agents who have a current income that falls below this reference point (e.g., as a result of losing their jobs in a recession) may exhibit risk-seeking behavior. <ref type="foot" target="#foot_13">27</ref> The mechanism leading to procyclical entrepreneurship in Rampini's model would cease to work if a significant share of the population were to exhibit increasing absolute risk aversion or if some agents were risk seeking during recessions.</p><p>Second, <ref type="bibr" target="#b84">Rampini (2004)</ref> assumes that entrepreneurs on average make profits that exceed their opportunity costs. This seems to be at odds with empirical evidence. New entrepreneurs have extremely high dropout rates.<ref type="foot" target="#foot_14">28</ref> Such high failure rates have repercussions for the financial attractiveness of entrepreneurship: using U.S. data, <ref type="bibr" target="#b48">Hamilton (2000)</ref> shows that staying in a wage job or moving back to it makes more economic sense than does starting a new business, except for the highest 25% of entrepreneurial incomes. Hence, contrary to expectations, entrepreneurship is a career choice that does not pay on average. In addition, entrepreneurial investments of individuals in their own companies exhibit comparatively low returns. Moskovitz and Vissing-Jørgensen ( <ref type="formula">2002</ref>) have investigated the riskreturn profiles of investments in private enterprises and found them to be inferior to investments in publicly traded assets, such as stocks. In essence, empirical evidence suggests that entrepreneurship is not a wise career or investment choice from a purely monetary perspective.</p><p>Third, low payoffs to entrepreneurship have been traced to nonfinancial preferences, such as a taste for independence and for being one's own boss <ref type="bibr" target="#b16">(Blanchflower &amp; Oswald 1998;</ref><ref type="bibr" target="#b15">Blanchflower, 2000;</ref><ref type="bibr" target="#b17">Blanchflower, Oswald, &amp; Stutzer, 2001;</ref><ref type="bibr" target="#b13">Benz &amp; Frey, 2008;</ref><ref type="bibr" target="#b18">Block &amp; Koellinger, 2009)</ref>, a more varied work experience <ref type="bibr" target="#b4">(Astebro &amp; Thompson, 2011)</ref>, and judgmental errors on the part of entrepreneurs, such as overconfidence and excessive optimism <ref type="bibr" target="#b27">(Cooper, Woo, &amp; Dunkelberg, 1988;</ref><ref type="bibr" target="#b23">Camerer &amp; Lovallo, 1999;</ref><ref type="bibr" target="#b67">Koellinger, Minniti, &amp; Schade, 2007)</ref>. In the absence of strictly financial preferences and optimal decision making, there is no obvious reason that positive productivity shocks and countercyclical agency costs would imply procyclical entrepreneurship. In fact, one might even argue that the tendency of entrepreneurs to be overconfident leads to an information structure that is opposite the classic principal-agent problem assumed by <ref type="bibr" target="#b14">Bernanke and Gertler (1989)</ref>, <ref type="bibr" target="#b24">Carlstrom and</ref><ref type="bibr" target="#b24">Fuerst (1997), and</ref><ref type="bibr" target="#b84">Rampini (2004)</ref>: instead of borrowers being better informed than lenders, it may be that banks are more realistic and more efficient processors of relevant information than are the entrepreneurs seeking financing.<ref type="foot" target="#foot_15">29</ref> </p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>C. Implications</head><p>What are the implications of the finding that entrepreneurship Granger-causes the world business cycle? Obviously the answer to this question depends on whether this empirical pattern is structural.</p><p>Entrepreneurial behavior may be a structural cause of economic booms because it can lead to a positive productivity shock during a recession via two mechanisms. First, additional entrepreneurs contribute to aggregate productivity growth by diffusing new technologies and products even if they do not invent them themselves. This can lead to a more efficient use of productive resources in the economy <ref type="bibr" target="#b88">(Schmitz, 1989)</ref>.</p><p>Second, entrepreneurial innovations may lead to aggregate productivity shocks. However, why should it be new firms that innovate more vigorously in response to recessions rather than established firms? One explanation is that innovative ventures are riskier and more uncertain than are imitative ventures <ref type="bibr" target="#b65">(Koellinger, 2008)</ref>. According to prospect theory <ref type="bibr" target="#b60">(Kahneman &amp; Tversky, 1979)</ref>, an aversion to high risk and uncertainty is usually observed among individuals who are in a gain position relative to their individual reference points, whereas individuals in a loss position actually seek high risk and uncertainty. Applying this behavioral pattern to business start-up decisions would suggest that innovative business ideas that entail high risk and uncertainty are more likely to be pursued by individuals who suddenly have lower opportunity costs to self-employment than before, for example, as a result of a salary cut or unemployment in a recession <ref type="bibr" target="#b65">(Koellinger, 2008)</ref>. In other words, the alternative of unemployment can cause people to start businesses premised on rather unusual, innovative ideas. Of course, many of them will ultimately fail, but some will succeed and grow. If the tendency of entrepreneurs to accept higher risks during a recession coincides with the availability of new breakthrough technologies and new business opportunities, more of these new businesses will survive and grow <ref type="bibr" target="#b5">(Audretsch, 1991</ref><ref type="bibr">(Audretsch, , 1995))</ref>, causing a global spike in business ownership rates that forecasts the next economic boom. The reasoning that people are more willing to accept risks during a recession does not carry over to established firms because agents in established firms typically absorb only a small share of the risk of the venture <ref type="bibr" target="#b51">(Hart, 1995)</ref> and because large firms are more diversified and therefore exhibit fewer profit fluctuations <ref type="bibr">(Mills &amp; Schuman, 1985)</ref>. In fact, there is empirical evidence that innovative activity measured by R&amp;D spending in established firms is strongly procyclical <ref type="bibr" target="#b11">(Barlevy, 2007)</ref>.</p><p>An alternative reason that new firms instead of established firms innovate during recessions is that established firms face the costs associated with making new production technologies compatible with installed production technologies. New firms do not have to deal with incompatibilities; they start from scratch. Hence, the arrival of new, incompatible technologies will raise investment in new firms and decrease investment in established firms <ref type="bibr" target="#b57">(Jovanovic &amp; Rousseau, 2009;</ref><ref type="bibr" target="#b105">Yorukoglu, 1998)</ref>. <ref type="foot" target="#foot_16">30</ref> Such compatibility costs result in the delayed adoption of new technologies in established firms <ref type="bibr" target="#b58">(Jovanovic &amp; Stolyarov, 2000)</ref>. In addition, <ref type="bibr" target="#b64">Klenow (1998)</ref> argues that the profits associated with the adoption of a new technology are highest just before a boom. If, for some reason, new firms are quicker to see the new opportunities, then their adoption decisions should lead the boom.</p><p>The procyclical R&amp;D spending of established firms <ref type="bibr" target="#b11">(Barlevy, 2007)</ref> is not necessarily at odds with the hypothesis that more entrepreneurial innovation takes place during recessions. The innovative activities of entrepreneurs often remain below the radar of official R&amp;D measurements because they happen to a large extent before a business is incorporated and becomes part of the official statistics. An instructive example is user innovation-innovation that is developed and applied by end users rather than by suppliers <ref type="bibr" target="#b101">(von Hippel, 1986</ref><ref type="bibr">(von Hippel, , 1988))</ref>. Users have commercialized their innovations and became ''user entrepreneurs'' in a wide range of industries. <ref type="foot" target="#foot_17">31</ref> Often user entrepreneurship involves the introduction of radically new technology and, in some cases, the creation of entirely new industries <ref type="bibr" target="#b10">(Baldwin, Hienerth, &amp; von Hippel, 2006;</ref><ref type="bibr" target="#b96">Tripsas, 2008)</ref>. Frustrated users are often ''accidental'' entrepreneurs who stumble across an idea and then share it with others. The innovation happens before the formal evaluation of the idea as the basis of a commercial venture; it is not the result of commercial R&amp;D activity and remains undetected by R&amp;D and patent statistics. <ref type="bibr" target="#b91">Shah and Tripsas (2007)</ref> argue that user entrepreneurship is more likely if users have relatively low opportunity costs, as would be the case during recessions. Such mechanisms suggest that in addition to more imitative entrepreneurship being a source of aggregate productivity shocks during recessions, it might also be that more innovative entrepreneurship takes place during recessions. If one were willing to accept a causal interpretation of our empirical findings, it would imply that entrepreneurs exert a portion of the real shocks and innovations that drive dynamics in real business cycle models.</p><p>Alternatively, entrepreneurial activity may not be the structural cause but simply an early indicator of a coming economic boom. For example, entrepreneurs may be quicker in detecting and reacting to new technologies and business opportunities than established firms, for the reasons we have outlined. Nevertheless, the economic impulse resulting from their nascent business activities might be too small to cause an economic boom. Instead, larger, more established firms are probably slower to realize and adapt to positive productivity shocks, but they might be ultimately responsible for the measurable increase in GDP and the decrease in unem-ployment. Which of these interpretations is correct is an interesting question for future research.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>V. Conclusion</head><p>Our empirical results of the interplay between the entrepreneurship and the business cycle correspond to the two faces of entrepreneurship. On the one side, entrepreneurs are agents of change and economic development, in a Schumpeterian sense, who anticipate and maybe even trigger economic booms <ref type="bibr" target="#b12">(Baumol, 2002)</ref>. On the other side, many business owners perform only marginal activities <ref type="bibr" target="#b62">(Kirchhoff, 1994)</ref> and escape to entrepreneurship only if no regular jobs are available <ref type="bibr" target="#b80">(Oxenfeldt, 1943)</ref>. The prevalence of the former effect at the level of the world economy suggests an important and much overlooked function of entrepreneurship in the recovery from recessions.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head></head><label></label><figDesc>term trends from 1972 to 2007. At least four major cycles are clearly visible: (a) the deep double-dip of the oil crisis in the early 1970s, (b) the recovery and boom of 1979, (c) the boom of 1989, and (d) the high-tech boom of 2000, with the subsequent recession in 2001. Following the 2001 recession is a gradual recovery until 2007. Casual observation of the two graphs suggests at least two phenomena. First, economic recoveries and boom periods since the 1980s typically have been preceded by rising levels of entrepreneurship. In particular, the 1989 boom, the high-tech boom of 2000, and the recovery from the recession after 2001 are led by a rise in entrepreneurial activity. Second, cyclical entrepreneurship typically reaches its maximum and starts declining just before a cyclical boom in GDP reaches its maximum. The only exceptions to this trend are the oil crisis and the boom of 1979. Both observations suggest that entrepreneurship is a leading indicator of the business cycle in the time frame we consider.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head></head><label></label><figDesc>FIGURE 1.-AVERAGE DEVIATIONS OF REAL GDP AND BUSINESS OWNERSHIP RATES FROM TREND IN PERCENT ACROSS 22 OECD COUNTRIES, HP-FILTERED DATA (k ¼ 6.25)</figDesc><graphic coords="4,136.23,102.96,361.44,198.12" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>FIGURE 2 .</head><label>2</label><figDesc>FIGURE 2.-EFFECT OF A SHOCK IN BUSINESS OWNERSHIP (1%) TO REAL GDP, HP-FILTERED DATA (k ¼ 6.25)</figDesc><graphic coords="6,106.24,94.00,421.20,149.76" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head></head><label></label><figDesc>FIGURE 3.-EFFECT OF A SHOCK IN BUSINESS OWNERSHIP (1%) TO UNEMPLOYMENT, HP-FILTERED DATA (k ¼ 6.25)</figDesc><graphic coords="6,106.24,308.86,421.20,148.32" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>TABLE 1</head><label>1</label><figDesc></figDesc><table><row><cell cols="4">.-AVERAGE CORRELATION OF BUSINESS CYCLE TIME SERIES</cell></row><row><cell></cell><cell cols="2">BETWEEN COUNTRIES</cell><cell></cell></row><row><cell></cell><cell>GDP</cell><cell>Unemployment</cell><cell>Entrepreneurship</cell></row><row><cell>Average correlation</cell><cell>0.34</cell><cell>0.39</cell><cell>0.06</cell></row></table><note><p>Based on time series for 22 OECD countries 1972-2007, HP-filtered data (k ¼ 6.25).</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>TABLE 3 .</head><label>3</label><figDesc>-GRANGER-CAUSALITY WALD TESTS ON WORLD ECONOMY Results were computed from a vector autoregression with two lags over the annual cross-country averages for the 1972-2007 period. Entries show the p-values for chi square tests that lag of the variable in the row labeled Regressor do not enter the reduced-form equation for the column variable labeled Dependent Variable. HP-filtered data (k ¼ 6.25).</figDesc><table><row><cell></cell><cell></cell><cell cols="2">Dependent Variable in Regression</cell></row><row><cell>Regressor</cell><cell>GDP</cell><cell>Unemployment</cell><cell>Entrepreneurship</cell></row><row><cell>GDP</cell><cell></cell><cell>0.00</cell><cell>0.85</cell></row><row><cell>Unempoyment</cell><cell>0.15</cell><cell></cell><cell>0.89</cell></row><row><cell>Enrepreneurship</cell><cell>0.02</cell><cell>0.02</cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>TABLE 2 .</head><label>2</label><figDesc>-VECTOR AUTOREGRESSIVE MODEL ON AGGREGATED DATA</figDesc><table><row><cell></cell><cell>Y 1 ¼ GDP</cell><cell></cell><cell cols="2">Y 2 ¼ Unemployment</cell><cell cols="2">Y 3 ¼ Entrepreneurship</cell></row><row><cell></cell><cell>Coefficient</cell><cell>s.e.</cell><cell>Coefficiend</cell><cell>s.e.</cell><cell>Coefficient</cell><cell>s.e.</cell></row><row><cell>GDP (t À 1)</cell><cell>0.89***</cell><cell>(0.31)</cell><cell>À6.12***</cell><cell>(1.69)</cell><cell>0.10</cell><cell>(0.17)</cell></row><row><cell>GDP (t À 2)</cell><cell>À0.56</cell><cell>(0.36)</cell><cell>4.62**</cell><cell>(1.98)</cell><cell>0.01</cell><cell>(0.20)</cell></row><row><cell>Unempl (t À 1)</cell><cell>0.07</cell><cell>(0.06)</cell><cell>À0.19</cell><cell>(0.31)</cell><cell>0.01</cell><cell>(0.03)</cell></row><row><cell>Unempl (t À 2)</cell><cell>À0.06</cell><cell>(0.05)</cell><cell>0.30</cell><cell>(0.26)</cell><cell>0.01</cell><cell>(0.03)</cell></row><row><cell>Ent (t À 1)</cell><cell>0.65**</cell><cell>(0.27)</cell><cell>À3.95**</cell><cell>(1.50)</cell><cell>0.71***</cell><cell>(0.15)</cell></row><row><cell>Ent (t À 2)</cell><cell>À0.67**</cell><cell>(0.28)</cell><cell>2.96*</cell><cell>(1.56)</cell><cell>À0.54***</cell><cell>(0.16)</cell></row><row><cell>Model Diagnostics</cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">Portmanteau (16) test of residual autocorrelation, modified</cell><cell></cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>TABLE 4 .</head><label>4</label><figDesc>-GRANGER CAUSALITY OF BUSINESS OWNERSHIP ON REAL GDP CYCLES ACROSS COUNTRIES</figDesc><table><row><cell></cell><cell>Granger</cell><cell></cell><cell>Granger</cell></row><row><cell></cell><cell>Causality</cell><cell></cell><cell>Causality</cell></row><row><cell>Country</cell><cell>Wald Test</cell><cell>Country</cell><cell>Wald Test</cell></row><row><cell>Australia</cell><cell>0.09</cell><cell>Japan</cell><cell>0.10</cell></row><row><cell>Austria</cell><cell>0.07</cell><cell>Luxembourg</cell><cell>0.15</cell></row><row><cell>Belgium</cell><cell>0.07</cell><cell>Netherlands</cell><cell>0.45</cell></row><row><cell>Canada</cell><cell>0.27</cell><cell>New Zealand</cell><cell>0.29</cell></row><row><cell>Denmark</cell><cell>0.28</cell><cell>Norway</cell><cell>0.07</cell></row><row><cell>Finland</cell><cell>0.90</cell><cell>Portugal</cell><cell>0.48</cell></row><row><cell>France</cell><cell>0.37</cell><cell>Spain</cell><cell>0.07</cell></row><row><cell>Greece</cell><cell>0.38</cell><cell>Sweden</cell><cell>0.87</cell></row><row><cell>Iceland</cell><cell>0.62</cell><cell>Switzerland</cell><cell>0.36</cell></row><row><cell>Ireland</cell><cell>0.07</cell><cell>United Kingdom</cell><cell>0.71</cell></row><row><cell>Italy</cell><cell>0.58</cell><cell>United States</cell><cell>0.01</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>TABLE 6 .</head><label>6</label><figDesc>-CYCLICAL TIME PATTERNS OF REAL GDP WITH NASCENT ENTREPRENEURIAL ACTIVITY Bivariate Correlation of Real GDP Cycle (Year t) with</figDesc><table><row><cell>Lags in Years</cell><cell>t À 3</cell><cell>tÀ 2</cell><cell>tÀ 1</cell><cell>t</cell><cell>t þ1</cell><cell>t þ2</cell><cell>t þ3</cell></row><row><cell>Nascent entrepreneurship</cell><cell>0.11</cell><cell>0.21*</cell><cell>0.09</cell><cell>0.00</cell><cell>À0.05</cell><cell>À0.08</cell><cell>À0.12</cell></row><row><cell></cell><cell>(N¼72)</cell><cell>(N¼92)</cell><cell>(N¼109)</cell><cell>(N¼109)</cell><cell>(N¼109)</cell><cell>(N¼109)</cell><cell>(N¼109)</cell></row><row><cell>Innovative nascent entrepreneurship</cell><cell>0.08</cell><cell>0.22</cell><cell>0.18</cell><cell>À0.00</cell><cell>À0.11</cell><cell>À0.21</cell><cell>À0.06</cell></row><row><cell></cell><cell>(N¼55)</cell><cell>(N¼55)</cell><cell>(N¼55)</cell><cell>(N¼55)</cell><cell>(N¼55)</cell><cell>(N¼55)</cell><cell>(N¼55)</cell></row><row><cell>Imitative nascent entrepreeneurship</cell><cell>0.02</cell><cell>0.20</cell><cell>0.15</cell><cell>0.12</cell><cell>À0.05</cell><cell>À0.17</cell><cell>À0.02</cell></row><row><cell></cell><cell>(N¼55)</cell><cell>(N¼55)</cell><cell>(N¼55)</cell><cell>(N¼55)</cell><cell>(N¼55</cell><cell>(N¼55)</cell><cell>(N¼55)</cell></row><row><cell>Opportunity nascent entrepreneurship</cell><cell>0.13</cell><cell>0.21*</cell><cell>0.07</cell><cell>0.00</cell><cell>À0.07</cell><cell>À0.08</cell><cell>À0.11</cell></row><row><cell></cell><cell>(N¼71)</cell><cell>(N¼91)</cell><cell>(N¼108)</cell><cell>(N¼108)</cell><cell>(N¼108)</cell><cell>(N¼108)</cell><cell>(N¼108)</cell></row><row><cell>Necessity nascent entrepreneurship</cell><cell>À0.06</cell><cell>0.11</cell><cell>0.18**</cell><cell>0.14</cell><cell>0.06</cell><cell>À0.01</cell><cell>À0.11</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>TABLE 5 .</head><label>5</label><figDesc>-FIXED EFFECTS REGRESSIONS ON CROSS-COUNTRY PANEL</figDesc><table><row><cell></cell><cell>Y 1 ¼ GDP</cell><cell></cell><cell cols="2">Y 2 ¼ Unemployment</cell><cell cols="2">Y 3 ¼ Entrepreneurship</cell></row><row><cell></cell><cell>Coefficient</cell><cell>s.e.</cell><cell>Coefficient</cell><cell>s.e.</cell><cell>Coefficient</cell><cell>s.e.</cell></row><row><cell>GDP (t À 1)</cell><cell>0.36**</cell><cell>(0.04)</cell><cell>À2.03**</cell><cell>(0.35)</cell><cell>0.03</cell><cell>(0.05)</cell></row><row><cell>GDP (t À 2)</cell><cell>À0.26**</cell><cell>(0.04)</cell><cell>0.30</cell><cell>(0.30)</cell><cell>À0.01</cell><cell>(0.05)</cell></row><row><cell>Unempl (t À 1)</cell><cell>À0.01</cell><cell>(0.00)</cell><cell>0.33**</cell><cell>(0.04)</cell><cell>0.01</cell><cell>(0.01)</cell></row><row><cell>Unempl (t À 2)</cell><cell>0.01**</cell><cell>(0.00)</cell><cell>À0.25**</cell><cell>(0.03)</cell><cell>0.01*</cell><cell>(0.01)</cell></row><row><cell>Ent (t À 1)</cell><cell>0.04</cell><cell>(0.03)</cell><cell>À0.17</cell><cell>(0.23)</cell><cell>0.07**</cell><cell>(0.04)</cell></row><row><cell>Ent (t À 2)</cell><cell>0.03</cell><cell>(0.03)</cell><cell>0.06</cell><cell>(0.23)</cell><cell>À0.35**</cell><cell>(0.04)</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>The Review of Economicsand Statistics, November 2012, 94(4): 1143-1156</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_1"><p>Alternatively, one might argue that risk preferences remain constant over time, but the higher level of wealth of agents during booms reduces liquidity constraints and hence increases entrepreneurial activity<ref type="bibr" target="#b38">(Evans &amp; Jovanovic, 1989)</ref>.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_2"><p>See also<ref type="bibr" target="#b95">Thurik et al. (2008)</ref> and<ref type="bibr" target="#b81">Parker (2009)</ref> discussing the interplay between unemployment and entrepreneurship.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="13" xml:id="foot_3"><p>Results are available from the authors on request.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="14" xml:id="foot_4"><p>There is no indication of unit roots in any of the series included in the model according to the augmented<ref type="bibr" target="#b31">Dickey-Fuller (1979)</ref> test at 99% confidence levels, using<ref type="bibr" target="#b29">Davidson and MacKinnon (1993)</ref> critical values.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="19" xml:id="foot_5"><p><ref type="bibr" target="#b80">Oxenfeldt (1943)</ref> argued that unemployed individuals or individuals with low prospects for wage employment may become self-employed to earn a living. This effect of unemployment, lowering the opportunity costs of self-employment and driving individuals to start their own businesses, is often referred to as the ''supply push'' or the ''push effect of unemployment.'' Evidence of this effect has been provided in many studies<ref type="bibr" target="#b94">(Storey &amp; Jones, 1987;</ref><ref type="bibr" target="#b42">Foti &amp; Vivarelli, 1994;</ref><ref type="bibr" target="#b9">Audretsch &amp; Vivarelli, 1996;</ref> Thurik et</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_6"><p> al., 2008;<ref type="bibr" target="#b87">Schaffner, 1993)</ref>.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="21" xml:id="foot_7"><p>The decomposition of GDP in trend and cycle is again computed for the period 1972-2007.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="22" xml:id="foot_8"><p>We believe these economic factors are ultimately more important than the econometric caveats regarding the country level analyses (see note 16).</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="23" xml:id="foot_9"><p>See Davidsson, Achtenhagen, and Naldi (2010)  for a survey of the small firm growth literature.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="24" xml:id="foot_10"><p><ref type="bibr" target="#b78">Nordhaus, Alesina, and Schultze (1989)</ref> provide a comprehensive review of the rich theoretical literature on political business cycles and empirical evidence that speaks strongly against ultrarational voters who would render political cycles ineffective.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="25" xml:id="foot_11"><p>A similar effect is known to arise from monetary demand across countries. For example,<ref type="bibr" target="#b2">Arnold (1994)</ref> and<ref type="bibr" target="#b3">Arnold and de Vries (2000)</ref> point out that the stability of Euro-area monetary demand may be due to desynchronized shocks in monetary demand across countries, which are averaged out through the aggregation process.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="26" xml:id="foot_12"><p>The minimum wage level can also be an evaluation point for countries with generous social safety systems.<ref type="bibr" target="#b76">Nooteboom (1985)</ref> developed a theory in which retail profit margins are influenced by the minimum wage level. See also<ref type="bibr" target="#b77">Nooteboom and Thurik (1985)</ref>.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="27" xml:id="foot_13"><p>27 See<ref type="bibr" target="#b60">Kahneman and Tversky (1979)</ref>,<ref type="bibr" target="#b82">Payne, Laughhunn, and Crum (1981)</ref>,<ref type="bibr" target="#b103">Wehrung (1989)</ref>,<ref type="bibr" target="#b97">Tversky and Kahneman (1992)</ref>, and Tversky and Wakker (</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="28" xml:id="foot_14"><p>1995).28  For example,<ref type="bibr" target="#b39">Evans and Leighton (1989)</ref> report for the United States that about a third of entrants leave self-employment within three years. Similarly,Dunne et al.'s (1988)  study of U.S. Census of Manufacturers' data purports that on average, 61.5% of all firms exit in the first five years following the first census in which they are</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="29" xml:id="foot_15"><p>observed.29  De<ref type="bibr" target="#b30">Meza and Southey (1996)</ref> theoretically demonstrate that this perspective performs better in explaining the stylized facts about entrepreneurship.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="30" xml:id="foot_16"><p>In the model developed by<ref type="bibr" target="#b57">Jovanovic and Rousseau (2009)</ref>, the share of entrepreneurs is countercyclical if the source of variation is the cost of capital between old and new firms.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="31" xml:id="foot_17"><p>See Shah and Tripsas (2007)  for an overview.</p></note>
+		</body>
+		<back>
+
+			<div type="funding">
+<div><p>Thurik is also with <rs type="funder">GSCM Montpellier Business School and Panteia, Zoetermeer</rs>. We are grateful for comments from <rs type="person">Boyan Jovanovic</rs>, <rs type="person">Adriano Rampini</rs>,</p></div>
+			</div>
+			<listOrg type="funding">
+			</listOrg>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<analytic>
+		<title level="a" type="main">Distribution of Residual Autocovariances in Multivariate Autoregressive Models with Structured Parameterization</title>
+		<author>
+			<persName><forename type="first">Sung</forename><forename type="middle">K</forename><surname>Ahn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Biometrika</title>
+		<imprint>
+			<biblScope unit="volume">75</biblScope>
+			<biblScope unit="page" from="590" to="593" />
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<title level="a" type="main">A New Look at the Statistical Model Identification</title>
+		<author>
+			<persName><forename type="first">Hirotsugu</forename><surname>Akaike</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">IEEE Transactions on Automatic Control</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="716" to="723" />
+			<date type="published" when="1974">1974</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">The Myth of a Stable European Money Demand</title>
+		<author>
+			<persName><forename type="first">Ivo</forename><forename type="middle">J M</forename><surname>Arnold</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Open Economies Review</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page" from="249" to="259" />
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Endogeneity and European Money Demand</title>
+		<author>
+			<persName><forename type="first">Ivo</forename><forename type="middle">J M</forename><surname>Arnold</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Casper</forename><forename type="middle">G</forename><surname>De Vries</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">European Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="page" from="587" to="609" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Entrepreneurs: Jacks of All Trades or Hobos?</title>
+		<author>
+			<persName><forename type="first">Thomas</forename><surname>Astebro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Thompson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Research Policy</title>
+		<imprint>
+			<biblScope unit="volume">40</biblScope>
+			<biblScope unit="page" from="637" to="649" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">New Firm Survival and the Technological Regime</title>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">B</forename><surname>Audretsch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">REVIEW</title>
+		<imprint>
+			<biblScope unit="volume">73</biblScope>
+			<biblScope unit="page" from="441" to="450" />
+			<date type="published" when="1991">1991</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">International Journal of Industrial Organization</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="441" to="457" />
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+	<note>Innovation, Growth and Survival</note>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<monogr>
+		<title level="m">The Entrepreneurial Society</title>
+		<meeting><address><addrLine>New York</addrLine></address></meeting>
+		<imprint>
+			<publisher>Oxford University Press</publisher>
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">B</forename><surname>Audretsch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Roy</forename><surname>Thurik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">What Is New about the New Economy: Sources of Growth in the Managed and Entrepreneurial Economies,&apos;&apos; Industrial and Corporate Change</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page" from="267" to="315" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">&apos;Firms&apos; Size and R&amp;D Spillovers: Evidence from Italy</title>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">B</forename><surname>Audretsch</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Vivarelli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Small Business Economics</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="249" to="258" />
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">How User Innovations Become Commercial Products: A Theoretical Investigation and Case Study</title>
+		<author>
+			<persName><forename type="first">Carliss</forename><surname>Baldwin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christoph</forename><surname>Hienerth</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Eric Von</forename><surname>Hippel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Research Policy</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="1291" to="1313" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">On the Cyclicality of Research and Development</title>
+		<author>
+			<persName><forename type="first">Gadi</forename><surname>Barlevy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="1131" to="1164" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<monogr>
+		<author>
+			<persName><forename type="first">William</forename><surname>Baumol</surname></persName>
+		</author>
+		<title level="m">The Free-Market Innovation Machine</title>
+		<meeting><address><addrLine>Princeton, NJ</addrLine></address></meeting>
+		<imprint>
+			<publisher>Princeton University Press</publisher>
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Being Independent Is a Great Thing: Subjective Evaluations of Self-Employment and Hierarchy</title>
+		<author>
+			<persName><forename type="first">Matthias</forename><surname>Benz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bruno</forename><surname>Frey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Economica</title>
+		<imprint>
+			<biblScope unit="volume">75</biblScope>
+			<biblScope unit="page" from="362" to="383" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Agency Costs, Net Worth, and Business Fluctuations</title>
+		<author>
+			<persName><forename type="first">Ben</forename><surname>Bernanke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Gertler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">79</biblScope>
+			<biblScope unit="page" from="14" to="31" />
+			<date type="published" when="1989">1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Self-Employment in OECD Countries</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Blanchflower</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Labour Economics</title>
+		<imprint>
+			<biblScope unit="volume">7</biblScope>
+			<biblScope unit="page" from="471" to="505" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">What Makes an Entrepreneur?</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Blanchflower</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Oswald</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Labor Economics</title>
+		<imprint>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="page" from="26" to="60" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Latent Entrepreneurship across Nations</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Blanchflower</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><surname>Oswald</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alois</forename><surname>Stutzer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">European Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">45</biblScope>
+			<biblScope unit="page" from="680" to="691" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">&apos;I Can&apos;t Get No Satisfaction: Necessity Entrepreneurship and Procedural Utility</title>
+		<author>
+			<persName><forename type="first">Joern</forename><surname>Block</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koellinger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Kyklos</title>
+		<imprint>
+			<biblScope unit="volume">62</biblScope>
+			<biblScope unit="page" from="191" to="209" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Initial Conditions and Moment Restrictions in Dynamic Panel Data Models</title>
+		<author>
+			<persName><forename type="first">Richard</forename><surname>Blundell</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Bond</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Econometrics</title>
+		<imprint>
+			<biblScope unit="volume">87</biblScope>
+			<biblScope unit="page" from="115" to="143" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<monogr>
+		<title level="m" type="main">Dynamic Panel Data Models: A Guide to Micro Data Methods and Practice</title>
+		<author>
+			<persName><forename type="first">Stephen</forename><surname>Bond</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2002">2002</date>
+			<biblScope unit="page">2</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Institutional Context and the Allocation of Entrepreneurial Effort</title>
+		<author>
+			<persName><forename type="first">Harry</forename><forename type="middle">P</forename><surname>Bowen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dirk</forename><surname>De</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clercq</forename></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of International Business Studies</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="page" from="747" to="767" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Self-Employment Dynamics, State Dependence and Cross-Mobility Patterns</title>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Caliendo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Arne</forename><surname>Uhlendorff</surname></persName>
+		</author>
+		<ptr target="http://www.diw.de/documents/publikationen/73/93247/diw_sp0152.pdf" />
+	</analytic>
+	<monogr>
+		<title level="j">SOEPpapers on multidisciplinary panel data research</title>
+		<imprint>
+			<biblScope unit="issue">152</biblScope>
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Overconfidence and Excess Entry: An Experimental Approach</title>
+		<author>
+			<persName><forename type="first">Colin</forename><forename type="middle">F</forename><surname>Camerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dan</forename><surname>Lovallo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">89</biblScope>
+			<biblScope unit="page" from="306" to="318" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Agency Costs, Net Worth, and Business Fluctuations: A Computable General Equilibrium Analysis</title>
+		<author>
+			<persName><forename type="first">Charles</forename><forename type="middle">T</forename><surname>Carlstrom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Timothy</forename><forename type="middle">S</forename><surname>Fuerst</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">87</biblScope>
+			<biblScope unit="page" from="893" to="910" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Economic Development and Business Ownership: An Analysis Using Data of 23 OECD Countries in the Period</title>
+		<author>
+			<persName><forename type="first">Martin</forename><surname>Carree</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andre</forename><surname>´van Stel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Roy</forename><surname>Thurik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Sander</forename><surname>Wennekers</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Small Business Economics</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="271" to="290" />
+			<date type="published" when="1976">1976-1996. 2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">The Dynamics of Entrepreneurship: Hysteresis, Business Cycles and Government Policy</title>
+		<author>
+			<persName><forename type="first">Emilio</forename><surname>Congregado</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Antonio</forename><forename type="middle">A</forename><surname>Golpe</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Simon</forename><surname>Parker</surname></persName>
+		</author>
+		<ptr target="ftp://repec.iza.org/RePEc/Discussionpaper/dp4093.pdf" />
+	</analytic>
+	<monogr>
+		<title level="j">IZA discussion</title>
+		<imprint>
+			<biblScope unit="page">4093</biblScope>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Entrepreneurs&apos; Perceived Chances for Success</title>
+		<author>
+			<persName><forename type="first">Arnold</forename><surname>Cooper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Carolyn</forename><surname>Woo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">C</forename><surname>Dunkelberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Business Venturing</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="97" to="108" />
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title/>
+		<author>
+			<persName><surname>Davidsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Leona</forename><surname>Per</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Lucia</forename><surname>Achtenhagen</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Naldi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Foundations and Trends in Entrepreneurship</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page" from="69" to="166" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+	<note>Small Firm Growth</note>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<monogr>
+		<author>
+			<persName><forename type="first">Russel</forename><surname>Davidson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">James</forename><forename type="middle">G</forename><surname>Mackinnon</surname></persName>
+		</author>
+		<title level="m">Estimation and Inference in Econometrics</title>
+		<meeting><address><addrLine>New York</addrLine></address></meeting>
+		<imprint>
+			<publisher>Oxford University Press</publisher>
+			<date type="published" when="1993">1993</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">The Borrower&apos;s Curse: Optimism, Finance and Entrepreneurship</title>
+		<author>
+			<persName><forename type="first">De</forename><surname>Meza</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Clive</forename><surname>Southey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Economic Journal</title>
+		<imprint>
+			<biblScope unit="volume">106</biblScope>
+			<biblScope unit="page" from="375" to="386" />
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Distribution of the Estimators for Autoregressive Time Series with a Unit Root</title>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">A</forename><surname>Dickey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Wayne</forename><forename type="middle">A</forename><surname>Fuller</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the American Statistical Association</title>
+		<imprint>
+			<biblScope unit="volume">74</biblScope>
+			<biblScope unit="page" from="427" to="431" />
+			<date type="published" when="1979">1979</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">An Omnibus Test for Univariate and Multivariate Normality</title>
+		<author>
+			<persName><forename type="first">Jurgen</forename><forename type="middle">A</forename><surname>Doornik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Henrik</forename><surname>Hansen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Oxford Bulletin of Economics and Statistics</title>
+		<imprint>
+			<biblScope unit="volume">70</biblScope>
+			<biblScope unit="page" from="927" to="939" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Patterns of Firm Entry and Exit in US Manufacturing Industries</title>
+		<author>
+			<persName><forename type="first">Timothy</forename><surname>Dunne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><forename type="middle">J</forename><surname>Roberts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Larry</forename><surname>Samuelson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">RAND Journal of Economics</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="495" to="515" />
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Testing Autocorrelation in a System Perspective</title>
+		<author>
+			<persName><forename type="first">David</forename><surname>Edgerton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ghazi</forename><surname>Shukur</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometric Reviews</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="page" from="343" to="386" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">The Ins and Outs of Cyclical Unemployment</title>
+		<author>
+			<persName><forename type="first">Michael</forename><forename type="middle">W L</forename><surname>Elsby</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ryan</forename><surname>Michaels</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Gary</forename><surname>Solon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Journal Macroeconomics</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="84" to="110" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<monogr>
+		<title level="m" type="main">Total Factor Productivity and the Role of Entrepreneurship</title>
+		<author>
+			<persName><forename type="first">Hugo</forename><surname>Erken</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Piet</forename><surname>Donselaar</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Roy</forename><surname>Thurik</surname></persName>
+		</author>
+		<idno>2009-034/3</idno>
+		<ptr target="http://www.tinbergen.nl/discussionpapers/09034.pdf" />
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">Entrepreneurship, Adaptation and Legitimation</title>
+		<author>
+			<persName><forename type="first">Amitai</forename><surname>Etzioni</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Behavior and Organization</title>
+		<imprint>
+			<biblScope unit="volume">8</biblScope>
+			<biblScope unit="page" from="175" to="189" />
+			<date type="published" when="1987">1987</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">An Estimated Model of Entrepreneurial Choice Under Liquidity Constraints</title>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">S</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jovanovic</forename><surname>Boyan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="808" to="827" />
+			<date type="published" when="1989">1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Some Empirical Aspects of Entrepreneurship</title>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">S</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Linda</forename><forename type="middle">S</forename><surname>Leighton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Small Business Formation by Unemployed and Employed Workers</title>
+		<imprint>
+			<biblScope unit="volume">79</biblScope>
+			<biblScope unit="page" from="319" to="330" />
+			<date type="published" when="1989">1989. 1990</date>
+		</imprint>
+	</monogr>
+	<note>Small Business Economics</note>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Joa</forename><surname>Faria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juan</forename><forename type="middle">Carlos</forename><surname>˜o Ricardo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Luis</forename><forename type="middle">A</forename><surname>Cuestas</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Gil-Alana</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Unemployment and Entrepreneurship: A Cyclical Relationship? Economics Letters</title>
+		<imprint>
+			<biblScope unit="volume">105</biblScope>
+			<biblScope unit="page" from="318" to="320" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Entrepreneurship and Unemployment: A Nonlinear Bidirectional Causality?</title>
+		<author>
+			<persName><forename type="first">Joa</forename><surname>Faria</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Juan</forename><forename type="middle">Carlos</forename><surname>˜o Ricardo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Estefanı</forename><surname>Cuestas</surname></persName>
+		</author>
+		<author>
+			<persName><surname>´a Mourelle</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Economic Modelling</title>
+		<imprint>
+			<biblScope unit="volume">27</biblScope>
+			<biblScope unit="page" from="1282" to="1291" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">An Econometric Test of the Self-Employment Model: The Case of Italy</title>
+		<author>
+			<persName><forename type="first">Alessandro</forename><surname>Foti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Vivarelli</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Small Business Economics</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page" from="81" to="93" />
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<monogr>
+		<title level="m" type="main">Self-Employment and Business Cycles</title>
+		<author>
+			<persName><forename type="first">Antonio</forename><surname>Golpe</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+		<respStmt>
+			<orgName>University of Huelva</orgName>
+		</respStmt>
+	</monogr>
+	<note type="report_type">Ph.D. dissertation</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Investigating Causal Relations by Econometric Models and Cross-Spectral Methods</title>
+		<author>
+			<persName><forename type="first">Clive</forename><forename type="middle">W J</forename><surname>Granger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="page" from="424" to="438" />
+			<date type="published" when="1969">1969</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<monogr>
+		<author>
+			<persName><forename type="first">W</forename><surname>Greene</surname></persName>
+		</author>
+		<title level="m">Econometric Analysis, 5</title>
+		<meeting><address><addrLine>Upper Saddle River, NJ</addrLine></address></meeting>
+		<imprint>
+			<publisher>Prentice Hall</publisher>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+	<note>th ed.</note>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Determinants of Entrepreneurial Engagement Levels in Europe and the US</title>
+		<author>
+			<persName><forename type="first">Isabel</forename><surname>Grilo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roy</forename><surname>Thurik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Industrial and Corporate Change</title>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="page" from="1113" to="1145" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Employment Fluctuations with Equilibrium Wage Stickiness</title>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">E</forename><surname>Hall</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">95</biblScope>
+			<biblScope unit="page" from="50" to="65" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Does Entrepreneurship Pay? An Empirical Analysis of the Returns to Self-Employment</title>
+		<author>
+			<persName><forename type="first">Barton</forename><forename type="middle">H</forename><surname>Hamilton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">108</biblScope>
+			<biblScope unit="page" from="604" to="631" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">The Determination of the Order of an Autoregression</title>
+		<author>
+			<persName><forename type="first">Edward</forename><forename type="middle">J</forename><surname>Hannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bary</forename><forename type="middle">G</forename><surname>Quinn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the Royal Statistical Society B</title>
+		<imprint>
+			<biblScope unit="volume">41</biblScope>
+			<biblScope unit="page" from="190" to="195" />
+			<date type="published" when="1979">1979</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Recursive Estimation of Mixed Autoregressive-Moving Average Order</title>
+		<author>
+			<persName><forename type="first">Edward</forename><forename type="middle">J</forename><surname>Hannan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Jorma</forename><surname>Rissanen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Biometrika</title>
+		<imprint>
+			<biblScope unit="volume">69</biblScope>
+			<biblScope unit="page" from="81" to="94" />
+			<date type="published" when="1982">1982</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Corporate Governance: Some Theory and Implications</title>
+		<author>
+			<persName><forename type="first">Oliver</forename><surname>Hart</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Economic Journal</title>
+		<imprint>
+			<biblScope unit="volume">105</biblScope>
+			<biblScope unit="page" from="678" to="689" />
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Entrepreneurial Aspiration, Motivation and Their Drivers</title>
+		<author>
+			<persName><forename type="first">Jolanda</forename><surname>Hessels</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Marco</forename><surname>Van Gelderen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roy</forename><surname>Thurik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Small Business Economics</title>
+		<imprint>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="page" from="323" to="339" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">J</forename><surname>Hodrick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><forename type="middle">C</forename><surname>Prescott</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Business Cycles: An Empirical Investigation</title>
+		<imprint>
+			<date type="published" when="1997">1997</date>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="page" from="1" to="16" />
+		</imprint>
+	</monogr>
+	<note>Postwar U.S.</note>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Allowing the Data to Speak Freely: The Macroeconometrics of the Cointegrated Vector Autoregression</title>
+		<author>
+			<persName><forename type="first">Kevin</forename><forename type="middle">D</forename><surname>Hoover</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Søren</forename><surname>Johansen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Katarina</forename><surname>Juselius</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review: Papers and Proceedings</title>
+		<imprint>
+			<biblScope unit="volume">98</biblScope>
+			<biblScope unit="page" from="251" to="255" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Risk, Entrepreneurship and Human Capital Accumulation</title>
+		<author>
+			<persName><forename type="first">Murat</forename><forename type="middle">F</forename><surname>Iyigun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ann</forename><forename type="middle">L</forename><surname>Owen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review: Papers and Proceedings</title>
+		<imprint>
+			<biblScope unit="volume">88</biblScope>
+			<biblScope unit="page" from="454" to="457" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">The Young, the Old, and the Restless: Demographics and Business Cycle Volatility</title>
+		<author>
+			<persName><forename type="first">Nir</forename><surname>Jaimovich</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Henry</forename><forename type="middle">E</forename><surname>Siu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">99</biblScope>
+			<biblScope unit="page" from="804" to="826" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Extensive and Intensive Investment over the Business Cycle</title>
+		<author>
+			<persName><forename type="first">Boyan</forename><surname>Jovanovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><forename type="middle">L</forename><surname>Rousseau</surname></persName>
+		</author>
+		<ptr target="http://www.nber.org/papers/w14960.pdf" />
+	</analytic>
+	<monogr>
+		<title level="j">NBER working</title>
+		<imprint>
+			<biblScope unit="page">14960</biblScope>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">Optimal Adoption of Complementary Technologies</title>
+		<author>
+			<persName><forename type="first">Boyan</forename><surname>Jovanovic</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Dmitriy</forename><surname>Stolyarov</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">90</biblScope>
+			<biblScope unit="page" from="15" to="29" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">Special Issue on Using Econometrics for Assessing Economic Models-An Introduction</title>
+		<author>
+			<persName><forename type="first">Katarina</forename><surname>Juselius</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Economics: The Open-Access, Open-Assessment E-Journal</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="1" to="20" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title level="a" type="main">Prospect Theory: An Analysis of Decision under Risk</title>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Kahneman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Amos</forename><surname>Tversky</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">47</biblScope>
+			<biblScope unit="page" from="263" to="291" />
+			<date type="published" when="1979">1979</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<analytic>
+		<title level="a" type="main">Money, Prices, Interest Rates and the Business Cycle</title>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">G</forename><surname>King</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mark</forename><surname>Watson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">this REVIEW</title>
+		<imprint>
+			<biblScope unit="volume">78</biblScope>
+			<biblScope unit="page" from="35" to="53" />
+			<date type="published" when="1996">1996</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<monogr>
+		<author>
+			<persName><forename type="first">Bruce</forename><forename type="middle">A</forename><surname>Kirchhoff</surname></persName>
+		</author>
+		<title level="m">Entrepreneurship and Dynamic Capitalism</title>
+		<meeting><address><addrLine>Westport, CT</addrLine></address></meeting>
+		<imprint>
+			<publisher>Praeger</publisher>
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<monogr>
+		<author>
+			<persName><forename type="first">Israel</forename><forename type="middle">M</forename><surname>Kirzner</surname></persName>
+		</author>
+		<title level="m">Competition and Entrepreneurship</title>
+		<meeting><address><addrLine>Chicago</addrLine></address></meeting>
+		<imprint>
+			<publisher>The University of Chicago Press</publisher>
+			<date type="published" when="1973">1973</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<analytic>
+		<title level="a" type="main">Learning Curves and the Cyclical Behavior of Manufacturing Industries</title>
+		<author>
+			<persName><forename type="first">Peter</forename><forename type="middle">J</forename><surname>Klenow</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Review of Economic Dynamics</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="531" to="550" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b65">
+	<analytic>
+		<title level="a" type="main">Why Are Some Entrepreneurs More Innovative Than Others?</title>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koellinger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Small Business Economics</title>
+		<imprint>
+			<biblScope unit="volume">31</biblScope>
+			<biblScope unit="page" from="21" to="37" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b66">
+	<analytic>
+		<title level="a" type="main">Unemployment Benefits Crowd Out Entrepreneurial Activity</title>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koellinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maria</forename><surname>Minniti</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Economics Letters</title>
+		<imprint>
+			<biblScope unit="volume">103</biblScope>
+			<biblScope unit="page" from="96" to="98" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b67">
+	<analytic>
+		<title level="a" type="main">&apos;&apos;I Think I Can, I Think, I Can&apos;: Overconfidence and Entrepreneurial Behavior</title>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koellinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Maria</forename><surname>Minniti</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Christian</forename><surname>Schade</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Psychology</title>
+		<imprint>
+			<biblScope unit="volume">28</biblScope>
+			<biblScope unit="page" from="502" to="527" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b68">
+	<monogr>
+		<title level="m" type="main">Entrepreneurship and the Business Cycle</title>
+		<author>
+			<persName><forename type="first">Philipp</forename><surname>Koellinger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roy</forename><surname>Thurik</surname></persName>
+		</author>
+		<idno>09-032/3</idno>
+		<imprint>
+			<date type="published" when="2009-03">2009. March 2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b69">
+	<analytic>
+		<title level="a" type="main">Business Cycles: Real Facts and a Monetary Myth</title>
+		<author>
+			<persName><forename type="first">Finn</forename><forename type="middle">E</forename><surname>Kydland</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Edward</forename><surname>Prescott</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Federal Reserve Bank of Minneapolis Quarterly Review</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="3" to="18" />
+			<date type="published" when="1990">1990</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b70">
+	<analytic>
+		<title level="a" type="main">Homes and Cars: Why Are the Cycles in Homes and Consumer Goods So Similar?</title>
+		<author>
+			<persName><forename type="first">Edward</forename><forename type="middle">D</forename><surname>Leamer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">B.E. Journal of Economic Analysis and Policy</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+	<note>Article 5</note>
+</biblStruct>
+
+<biblStruct xml:id="b71">
+	<analytic>
+		<title level="a" type="main">On the Size Distribution of Business Firms</title>
+		<author>
+			<persName><forename type="first">Robert</forename><forename type="middle">E</forename><surname>Lucas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Bell Journal of Economics</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="508" to="523" />
+			<date type="published" when="1978">1978</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b72">
+	<monogr>
+		<author>
+			<persName><surname>Lu ¨tkepohl</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Helmut</surname></persName>
+		</author>
+		<title level="m">New Introduction to Multiple Time Series Analysis</title>
+		<meeting><address><addrLine>New York</addrLine></address></meeting>
+		<imprint>
+			<publisher>Springer</publisher>
+			<date type="published" when="2007">2007</date>
+			<biblScope unit="volume">2</biblScope>
+		</imprint>
+	</monogr>
+	<note>nd ed.</note>
+</biblStruct>
+
+<biblStruct xml:id="b73">
+	<analytic>
+		<title/>
+		<author>
+			<persName><surname>Lu ¨tkepohl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Markus</forename><surname>Helmut</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Kra ¨tzig</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Applied Time Series Econometrics</title>
+		<imprint>
+			<date type="published" when="2004">2004</date>
+			<publisher>Cambridge University Press</publisher>
+			<pubPlace>Cambridge</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b74">
+	<monogr>
+		<title level="m" type="main">Entrepreneurship, Job Creation, and Wage Growth</title>
+		<author>
+			<persName><surname>Malchow-Møller</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Bertel</forename><surname>Nikolaj</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Anders</forename><surname>Schjerning</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Sørensen</surname></persName>
+		</author>
+		<ptr target="http://www.econ.ku.dk/CAM/" />
+		<imprint>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+	<note>CAM working paper no. 2009-01</note>
+</biblStruct>
+
+<biblStruct xml:id="b75">
+	<analytic>
+		<title level="a" type="main">The Returns to Entrepreneurial Investment: A Private Equity Premium Puzzle?</title>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">D</forename><surname>Mills</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Laurence</forename><surname>Schumann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">;</forename><surname>Moskovitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Tobias</forename><forename type="middle">J</forename></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Annette</forename><surname>Vissing-Jørgensen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">75</biblScope>
+			<biblScope unit="page" from="745" to="778" />
+			<date type="published" when="1985">1985. 2002</date>
+		</imprint>
+	</monogr>
+	<note>American Economic Review</note>
+</biblStruct>
+
+<biblStruct xml:id="b76">
+	<analytic>
+		<title level="a" type="main">A Mark-Up Model of Retail Margins</title>
+		<author>
+			<persName><forename type="first">Bart</forename><surname>Nooteboom</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Applied Economics</title>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="page" from="647" to="667" />
+			<date type="published" when="1985">1985</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b77">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">Bart</forename><surname>Nooteboom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Roy</forename><surname>Thurik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Retail Margins during Recession and Growth</title>
+		<imprint>
+			<biblScope unit="volume">17</biblScope>
+			<biblScope unit="page" from="281" to="284" />
+			<date type="published" when="1985">1985</date>
+		</imprint>
+	</monogr>
+	<note>Economics Letters</note>
+</biblStruct>
+
+<biblStruct xml:id="b78">
+	<analytic>
+		<title level="a" type="main">Alternative Approaches to the Political Business Cycle</title>
+		<author>
+			<persName><forename type="first">William</forename><forename type="middle">D</forename><surname>Nordhaus</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Alberto</forename><surname>Alesina</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Charles</forename><forename type="middle">L</forename><surname>Schultze</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Brookings Papers on Economic Activity</title>
+		<imprint>
+			<biblScope unit="volume">2</biblScope>
+			<biblScope unit="page" from="1" to="68" />
+			<date type="published" when="1989">1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b79">
+	<analytic>
+		<title/>
+	</analytic>
+	<monogr>
+		<title level="j">Perspectives on Global Development</title>
+		<imprint>
+			<date type="published" when="2010">2010. 2010</date>
+			<publisher>OECD</publisher>
+			<pubPlace>Paris</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b80">
+	<monogr>
+		<author>
+			<persName><forename type="first">Alfred</forename><forename type="middle">R</forename><surname>Oxenfeldt</surname></persName>
+		</author>
+		<title level="m">New Firms and Free Enterprise</title>
+		<meeting><address><addrLine>Washington, DC</addrLine></address></meeting>
+		<imprint>
+			<publisher>American Council on Public Affairs</publisher>
+			<date type="published" when="1943">1943</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b81">
+	<monogr>
+		<author>
+			<persName><forename type="first">Simon</forename><forename type="middle">C</forename><surname>Parker</surname></persName>
+		</author>
+		<title level="m">The Economics of Entrepreneurship</title>
+		<meeting><address><addrLine>Cambridge</addrLine></address></meeting>
+		<imprint>
+			<publisher>Cambridge University Press</publisher>
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b82">
+	<analytic>
+		<title level="a" type="main">Aspiration Level Effects in Risky Behavior</title>
+		<author>
+			<persName><forename type="first">John</forename><forename type="middle">W</forename><surname>Payne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="middle">J</forename><surname>Dan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Roy</forename><surname>Laughhunn</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Crum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Management Science</title>
+		<imprint>
+			<biblScope unit="volume">27</biblScope>
+			<biblScope unit="page" from="953" to="958" />
+			<date type="published" when="1981">1981</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b83">
+	<analytic>
+		<title level="a" type="main">Estimating Long-Run Relationships from Dynamic Heterogeneous Panels</title>
+		<author>
+			<persName><forename type="first">Hashem</forename><surname>Pesaran</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Ron</forename><surname>Smith</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Econometrics</title>
+		<imprint>
+			<biblScope unit="volume">68</biblScope>
+			<biblScope unit="page" from="79" to="113" />
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b84">
+	<analytic>
+		<title level="a" type="main">Entrepreneurial Activity, Risk, and the Business Cycle</title>
+		<author>
+			<persName><forename type="first">Adriano</forename><surname>Rampini</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Monetary Economics</title>
+		<imprint>
+			<biblScope unit="volume">51</biblScope>
+			<biblScope unit="page" from="555" to="573" />
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b85">
+	<analytic>
+		<title level="a" type="main">On Adjusting the Hodrick-Prescott Filter for the Frequency of Observations</title>
+		<author>
+			<persName><forename type="first">Morten</forename><forename type="middle">O</forename><surname>Ravn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Harald</forename><surname>Uhlig</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">REVIEW</title>
+		<imprint>
+			<biblScope unit="volume">84</biblScope>
+			<biblScope unit="page" from="371" to="376" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b86">
+	<analytic>
+		<title level="a" type="main">Global Entrepreneurship Monitor: Data Collection Design and Implementation 1998-2003</title>
+		<author>
+			<persName><forename type="first">Paul</forename><surname>Reynolds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Niels</forename><surname>Bosma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Erkoo</forename><surname>Autio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Steve</forename><surname>Hunt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Natalie</forename><surname>De Bono</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Isabel</forename><surname>Servais</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Paloma</forename><surname>Lopez-Garcia</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Nancy</forename><surname>Chin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Small Business Economics</title>
+		<imprint>
+			<biblScope unit="volume">24</biblScope>
+			<biblScope unit="page" from="205" to="231" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b87">
+	<analytic>
+		<title level="a" type="main">Rising Incomes and the Shift from Self-Employment to Firm-Based Production</title>
+		<author>
+			<persName><forename type="first">Julie</forename><forename type="middle">A</forename><surname>Schaffner</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Economics Letters</title>
+		<imprint>
+			<biblScope unit="volume">41</biblScope>
+			<biblScope unit="page" from="435" to="440" />
+			<date type="published" when="1993">1993</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b88">
+	<analytic>
+		<title level="a" type="main">Imitation, Entrepreneurship, and Long-Run Growth</title>
+		<author>
+			<persName><forename type="first">James</forename><forename type="middle">A</forename><surname>Schmitz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="721" to="739" />
+			<date type="published" when="1989">1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b89">
+	<monogr>
+		<author>
+			<persName><forename type="first">Jospeh</forename><forename type="middle">A</forename><surname>Schumpeter</surname></persName>
+		</author>
+		<title level="m">The Theory of Economic Development</title>
+		<meeting><address><addrLine>Cambridge, MA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Harvard University Press</publisher>
+			<date type="published" when="1934">1934</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b90">
+	<analytic>
+		<title level="a" type="main">Estimating the Dimension of a Model</title>
+		<author>
+			<persName><forename type="first">Gideon</forename><forename type="middle">E</forename><surname>Schwarz</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Annals of Statistics</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page" from="461" to="464" />
+			<date type="published" when="1978">1978</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b91">
+	<analytic>
+		<title level="a" type="main">The Accidental Entrepreneur: The Emergent and Collective Process of User Entrepreneurship</title>
+		<author>
+			<persName><forename type="first">Sonali</forename><forename type="middle">K</forename><surname>Shah</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Mary</forename><surname>Tripsas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Strategic Entrepreneurship Journal</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="123" to="140" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b92">
+	<monogr>
+		<author>
+			<persName><forename type="first">Scott</forename><surname>Shane</surname></persName>
+		</author>
+		<title level="m">General Theory of Entrepreneurship: The Individual-Opportunity Nexus</title>
+		<meeting><address><addrLine>Northampton, MA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Edward Elgar</publisher>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b93">
+	<analytic>
+		<title level="a" type="main">Macroeconomics and Reality</title>
+		<author>
+			<persName><forename type="first">Christopher</forename><forename type="middle">A</forename><surname>Sims</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">48</biblScope>
+			<biblScope unit="page" from="1" to="48" />
+			<date type="published" when="1980">1980</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b94">
+	<analytic>
+		<title level="a" type="main">New Firm Formation: A Labor Market Approach to Industrial Entry</title>
+		<author>
+			<persName><forename type="first">David</forename><forename type="middle">J</forename><surname>Storey</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Andrew</forename><forename type="middle">M</forename><surname>Jones</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Scottish Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="37" to="51" />
+			<date type="published" when="1987">1987</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b95">
+	<analytic>
+		<title level="a" type="main">Does Self-Employment Reduce Unemployment?</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Thurik</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Martin</forename><forename type="middle">A</forename><surname>Roy</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Carree</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">David</forename><surname>Andre ´van Stel</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Audretsch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Business Venturing</title>
+		<imprint>
+			<biblScope unit="volume">23</biblScope>
+			<biblScope unit="page" from="673" to="686" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b96">
+	<analytic>
+		<title level="a" type="main">Customer Preference Discontinuities: A Trigger for Radical Technological Change</title>
+		<author>
+			<persName><forename type="first">Mary</forename><surname>Tripsas</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Managerial and Decision Economics</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="page" from="79" to="97" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b97">
+	<analytic>
+		<title level="a" type="main">Advances in Prospect Theory: Cumulative Representation of Uncertainty</title>
+		<author>
+			<persName><forename type="first">Amos</forename><surname>Tversky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Daniel</forename><surname>Kahneman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Risk and Uncertainty</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page" from="297" to="323" />
+			<date type="published" when="1992">1992</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b98">
+	<analytic>
+		<title level="a" type="main">Risk Attitudes and Decision Weights</title>
+		<author>
+			<persName><forename type="first">Amos</forename><surname>Tversky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Peter</forename><surname>Wakker</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">63</biblScope>
+			<biblScope unit="page" from="1255" to="1280" />
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b99">
+	<analytic>
+		<title/>
+		<author>
+			<persName><surname>Van Der Zwan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Roy</forename><surname>Peter</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Isabel</forename><surname>Thurik</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Grilo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Entrepreneurial Ladder and Its Determinants,&apos;&apos; Applied Economics</title>
+		<imprint>
+			<biblScope unit="volume">42</biblScope>
+			<biblScope unit="page" from="2183" to="2191" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b100">
+	<analytic>
+		<title level="a" type="main">COMPENDIA: Harmonizing Business Ownership Data across Countries and over Time</title>
+		<author>
+			<persName><surname>Van Stel</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">´</forename><surname>Andre</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">International Entrepreneurship and Management Journal</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="105" to="123" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b101">
+	<analytic>
+		<title level="a" type="main">Lead Users: A Source of Novel Product Concepts</title>
+		<author>
+			<persName><forename type="first">Eric</forename><surname>Hippel</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Management Science</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="791" to="805" />
+			<date type="published" when="1986">1986</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b102">
+	<monogr>
+		<title level="m">The Sources of Innovation</title>
+		<meeting><address><addrLine>New York</addrLine></address></meeting>
+		<imprint>
+			<publisher>Oxford University Press</publisher>
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b103">
+	<analytic>
+		<title level="a" type="main">Risk Taking over Gains and Losses: A Study of Oil Executives</title>
+		<author>
+			<persName><forename type="first">Donald</forename><forename type="middle">A</forename><surname>Wehrung</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Annals of Operations Research</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="115" to="139" />
+			<date type="published" when="1989">1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b104">
+	<analytic>
+		<title/>
+		<author>
+			<persName><surname>Wennekers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">Roy</forename><surname>Sander</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Thurik</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Linking Entrepreneurship and Economic Growth</title>
+		<imprint>
+			<biblScope unit="volume">13</biblScope>
+			<biblScope unit="page" from="27" to="55" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+	<note>Small Business Economics</note>
+</biblStruct>
+
+<biblStruct xml:id="b105">
+	<analytic>
+		<title level="a" type="main">The Information Technology Productivity Paradox</title>
+		<author>
+			<persName><forename type="first">Mehmet</forename><surname>Yorukoglu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Review of Economic Dynamics</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="551" to="592" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

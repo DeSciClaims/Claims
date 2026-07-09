@@ -1,0 +1,2363 @@
+{
+  "paper": {
+    "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+    "doi": "10.1016/j.joep.2006.11.002",
+    "pmid": null,
+    "title": "“I think I can, I think I can”: Overconfidence and entrepreneurial behavior",
+    "authors": [
+      "Philipp Koellinger",
+      "Maria Minniti",
+      "Christian Schade"
+    ],
+    "journal": null,
+    "year": 2007,
+    "source_type": "journal_article",
+    "open_access": null
+  },
+  "sections": [
+    {
+      "section_id": "section_88a13fcc42f3b433",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "section_name": "Introduction",
+      "section_type": "INTRO",
+      "section_source": "tei_header",
+      "section_title_quality": "high",
+      "original_section_name": "Introduction",
+      "page_numbers": [],
+      "span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0001",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0002",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0003",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0004",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0005"
+      ],
+      "text": "Many new businesses fail shortly after inception (Baldwin, 1995; Dunne, Roberts, & Samuelson, 1988) , and entrepreneurship is a career choice that does not pay on average. Hamilton (2000) has shown that, except for the highest 25% of entrepreneurial incomes, staying in a wage job or moving back to it makes more economic sense than starting a new business. Along similar lines, Moskovitz and Vissing-Jørgensen (2002) have investigated the risk-return profile of investments in private enterprises and found them to be inferior to those in publicly traded assets such as stocks. High business failure rates and low average financial returns to entrepreneurship suggest that, at least with respect to pecuniary interests and individual welfare, too many people may be entering markets as entrepreneurs. Given the social and economic relevance of creating new businesses, it is important to understand how entry decisions are made, what factors influence individuals who make these decisions, and what kinds of errors these individuals are likely to make. Excess entrepreneurial entry into markets has also been demonstrated in experimental studies and causally linked to overconfidence. Camerer and Lovallo (1999) run a simultaneous market-entry experiment where the payoffs of participants decrease with the number of entrants, i.e. the intensity of competition. Their findings showed that entering subjects thought that the total profit earned by all entrants would be negative but estimated that their own profit would be positive. Camerer and Lovallo (1999) also suggest that the analysis conducted with field data would be a very desirable way to study further the possibility of overconfidence as an explanation for excess entry and an especially compelling complement to experimental evidence. Finding empirical evidence of overconfidence requires measuring entrepreneurial confidence and linking such measure to actual startup activities. Our paper contributes to this area of inquiry. Using a large sample obtained from surveys conducted in 18 countries, we use probit analyses to study what variables have a significant impact on an individual's decision to start a business. Data used in our analysis were collected for the 2001 population survey of the Global Entrepreneurship Monitor (GEM) project. GEM is an ongoing large scale academic project designed to study the causes and implications of entrepreneurial behavior across countries. The main purpose of the survey was to create a representative random sample of population in each country and to identify individuals in each sample who, at the time of the survey, owned and managed a business or were in the process of starting one. Our data are original and exceptionally well suited for our purpose since they do not rely on the respondents ex post explanations for their own decisions. In other words, our data do not suffer from ''hindsight bias'' (Fischhoff, 1975; Thaler, 2000) . Our results provide significant evidence that subjective and possibly biased perceptions have a crucial impact on new business creation. In particular, confidence in one's own entrepreneurial skills emerges as a major driver in the decision to start a business across all countries in our sample. First, large variations in perceptions about one's own skills exist across countries. Yet, across countries, we found only weak or no positive correlation between education and confidence in one's own skill. Second, we find nascent entrepreneurs to be more confident in their own skills than individuals who have been successfully in business for some times. That is, confidence in one's own skills appears to be stronger among individuals in early stages of the entrepreneurial process, when the outcome of the business is still based on expectations, than among individuals whose skills have been tested by the market. In fact, our regression models indicate that perceptions about one's own skills provide a higher relative contribution to the difference between nascent entrepreneurs and non-entrepreneurs than to the difference between established entrepreneurs and non-entrepreneurs. Finally, we find that countries exhibiting a high rate of entrepreneurial confidence exhibit significantly higher start-up activity but lower average chances that a business will survive in the market for more than 42 months. Overall, our evidence suggests that potential entrepreneurs may be overconfident in their own skills and abilities. In addition to socio-economic and demographic factors, differences in subjective perceptions and the extent to which such perceptions are biased may help us to understand why some people start businesses while others do not. Our results complement and support the experimental findings of Camerer and Lovallo (1999) and suggest that, rather than an accurate assessment of one's own abilities, it may be overconfidence that often leads individuals to start a business. The connection between entrepreneurial decisions and overconfidence may explain, in part, the high failure rate of new business owners.",
+      "token_count": 769,
+      "char_count": 5085
+    },
+    {
+      "section_id": "section_3c1e4837f98e0ffe",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "section_name": "Theoretical background",
+      "section_type": "OTHER",
+      "section_source": "tei_header",
+      "section_title_quality": "high",
+      "original_section_name": "Theoretical background",
+      "page_numbers": [],
+      "span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0006",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0007",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0008",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0009",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0010",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0011"
+      ],
+      "text": "In microeconomic models of entrepreneurial behavior, objectively measurable variables as well as subjective preferences and perceptions influence the decision to start a business. Among objectively measurable variables, age and gender have been shown to play some role in entrepreneurial decisions. For example, the probability of starting a business has been shown to increase with age up to a threshold point and to decrease thereafter (Levesque & Minniti, 2006) , and men have been shown to be more likely to start a business than women (Blanchflower, 2004) . Evidence also suggests that entrepreneurs are significantly hindered by liquidity constraints (Evans & Jovanovic, 1989 ) and that individuals with greater family wealth are more likely to switch from employment to self-employment (Kihlstrom & Laffont, 1979) . Education has been shown to be negatively related to the probability of being self-employed, except in some rich countries where post-graduate training has been found to have some positive effects (Blanchflower, 2004; Reynolds, Autio, & Hay, 2003) , and conditions in the labor market have been identified as an important determinant of employment status choice, though the nature of the relationship is still under debate (Acs, Carlsson, & Karlsson, 1999; Blanchflower & Oswald, 1998) . 1 Finally, different cultural and economic characteristics have been linked to variations in rates of new firm formation across countries and regions (Acs, Arenius, Michael, & Minniti, 2005; Davidsson & Wiklund, 1997) . Since starting a business is a risky decision, in addition to objectively measurable sociodemographic variables, subjective preferences and perceptions have also been suggested as important determinants of entrepreneurial behavior. Kirzner (1973 Kirzner ( , 1979) ) argues that entrepreneurship is alertness, that is, the ability to perceive unexploited opportunities. Similarly, Casson (1982) argues that the essence of entrepreneurship is different perceptions about the environment. Higher entrepreneurial propensity has also been linked to self-confidence and an illusion of control. Building on Rotter (1966) , Harper (1998) discusses the interdependence between entrepreneurship and locus of control. An individual with an internal locus of control tends to believe that events are contingent upon his own behavior or his own relatively permanent characteristics. In Harper's theory, an internal locus of control increases entrepreneurial alertness. This increased alertness, in turn, leads to more opportunity perception and, therefore, to more entrepreneurship. An individual's tolerance for risk may also be important for entrepreneurial decisions (Iyigun & Owen, 1998; Kihlstrom & Laffont, 1979; Wu & Knott, 2006) . Although data support the existence of some negative effects of risk aversion on entrepreneurial choices, the direction of causality is unclear (Cramer, Hartog, Jonker, & Van Praag, 2002) . Wu and Knott (2006) demonstrate that it is important to discriminate entrepreneur's preferences regarding demand risk and ability risk -the latter being closely related to our work. Weber and Milliman (1997) , for example, have shown that subjective risk perceptions may be systematically distorted by, e.g., prior gains and losses. In addition, since most individuals are not only risk averse but also ambiguity averse (Ellsberg, 1961; Tversky & Kahneman, 1992) knowing other entrepreneurs may increase the propensity of an individual to start a business. Minniti (2005) emphasizes the ambiguity-reducing effects of knowing other entrepreneurs. Reducing ambiguity changes the weighting of probabilities so that reducing ambiguity may lead individuals to accept more risk (Einhorn & Hogarth, 1985) . For decisions made under uncertainty, such as starting a new business, perceptions are a mediator between preferences and behavior, affecting perceptions of both probabilities and outcomes (Kahneman & Tversky, 1979; Tversky & Kahneman, 1991 , 1992) . For an individual to start a new business, the sum of perceived potential outcomes weighted by their respective perceived probabilities has to be larger than the perceived potential outcomes of a wage job, weighted by its perceived probabilities (for similar arguments see Simon, Houghton, & Aquino, 1999; Forlani & Mullins, 2000) . Smaller perceived downside risks and greater perceived chances of success may increase an individual's entrepreneurial propensity. The connection between perception and action matters because an individual's perceptions with respect to starting a business may be systematically distorted by overconfidence. Overconfidence has been defined differently in different disciplines. It has been defined as an overestimation of one's own ability to make accurate forecasts, or, alternatively, as an overestimation of one's own ability relative to others (often referred to as the 'betterthan-average' effect) or relative to one's actual ability (Moore & Kim, 2003) . In the study by Camerer and Lovallo (1999) , overconfidence means overestimation of one's own abilities relative to others. Our study is similar to Camerer and Lovallo's research because we are looking at the combination of self-assessed abilities to be a successful entrepreneur, actual entry at the individual level and estimated survival at the aggregate level. However, in contrast to Camerer and Lovallo's experimental approach, market capacities and probability distributions are unknown in field data and in the real world. Therefore, our entrepreneurs do not know ex ante how good they need to be in order to survive in the market. Consequently, our evidence for overconfidence is more indirect than Camerer and Lovallo's because self-perceptions cannot be compared to objectively required skill levels. Recent studies on the related better-than-average effect have shown that this effect is very common, and some of its characterizing factors have been identified. For example, individuals have been shown to exhibit less bias when they believe themselves to have little or no control over events. Some work has shown that, when faced with a difficult task, people often report that they have below average skills (Chambers, Windschitl, & Suls, 2003; Hoelzl & Rustichini, 2005; Kruger & Burrus, 2004) . Kruger (1999) showed that people rate themselves above average in domains for which the average individual feels skilled and capable. The same people, however, rate themselves below average in more challenging or unfamiliar domains. These results are consistent with Camerer and Lovallo's reference group neglect and with Harper's theory that the perception of more internal control increases entrepreneurial alertness. It is also consistent with our argument that individuals exhibiting more self-confidence are more likely to become involved in starting a business. The related better-than-average effect provides compelling evidence that individuals maintain unrealistically positive images of themselves relative to others and, specifically, that the average individual tends to rate himself above the average in positive situations (Alicke, Klotz, Breitenbecher, Yurak, & Vredenburg, 1995; Eiser, Pahl, & Prins, 2001) . In our data, unlike other respondents, nascent and new entrepreneurs frequently report having the necessary skills to successfully start a business. Also, Windschitl, Kruger, and Simms (2003) suggest that when people judge their likelihood of success, their assessment of their own strengths and weaknesses have greater impact than their assessments of their competitors' strengths and weaknesses. This is consistent with our argument that individuals who believe themselves to have the skills and ability to start a new business are more likely to take an optimistic view of their prospects and overestimate their chances of success.",
+      "token_count": 1155,
+      "char_count": 7862
+    },
+    {
+      "section_id": "section_f7d0da35fda936da",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "section_name": "Data and method",
+      "section_type": "OTHER",
+      "section_source": "tei_header",
+      "section_title_quality": "high",
+      "original_section_name": "Data and method",
+      "page_numbers": [],
+      "span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0012",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0013",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0014",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0015",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0016",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0017",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0018",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0019",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0020",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0021"
+      ],
+      "text": "Data used in our analysis were collected for the 2001 population survey of the Global Entrepreneurship Monitor (GEM) project. GEM is an ongoing large scale academic project designed to study the causes and implications of entrepreneurial behavior across countries. 2 Initiated in 1999 with 10 countries, the project collects data annually and has grown to include more than 40 countries in 2006. GEM data used in this paper were collected in 2001 in 29 countries. A harmonized, representative population survey with at least 2000 observations was conducted in each of the participating countries, yielding over 74,000 completed interviews collected between June and July 2001. 3 The main purpose of the survey was to create a representative random sample of population in each country and to identify what percentage of these individuals, at the time of the survey, owned and man-aged a business or were in the process of starting one. If either or both of these criteria applied, respondents were asked follow-up questions that allowed the construction of a profile of the respondents and of their businesses. Among other things, respondents were asked the age of their venture and whether or not the business had already paid wages. These criteria were then used to identify the number of people involved in entrepreneurial activity in each country, and to distinguish between nascent entrepreneurs, new entrepreneurs, established entrepreneurs, and non-entrepreneurs. 4 Individuals were coded as nascent entrepreneurs (nascent) if they claimed to have been engaged in start-up activities during the 12 months preceding the survey, to have been full or part owners of the new business, and to have paid wages to the owners or others for a period not exceeding 3 months. Individuals were coded as new entrepreneurs (newentr) if they claimed to be managing and owning a business at the time of the survey, and to have paid wages for at least 3 but no more than 42 months. Finally, respondents were classified as established entrepreneurs (establ) if, at the time of the survey, they owned all or part of a business they helped manage and had paid wages or profits for longer than 42 months. All three variables nascent, newentr, and establ are binary variables computed at the individual level (individual fits definition ''Yes'' = 1 or ''No'' = 0). All respondents in our sample fit into one of the three above groups or into none of the above. In the latter case, they are labeled as non-entrepreneurs. There are no missing values for these categories. Although individuals in the three entrepreneurial groups (nascent, newentr, or establ) are all entrepreneurs, they are distinct because of the length of time they have been involved in their ventures. The dataset contains basic demographic information for each respondent, including age and gender. For most countries, data are also available about working status, education level, and relative income group. 5 11 countries had data gaps in one or more of the demographic and socio-economic variables and, therefore, were excluded from our analysis, reducing the working sample to 18 countries for a total of more than 40,000 observations. Countries included in our study are Argentina, Canada, Denmark, Finland, Germany, Hungary, India, Israel, Italy, Japan, New Zealand, Poland, Portugal, Russia, Singapore, South Korea, Sweden, and USA. Each survey participant was also asked six questions related to perceptual variables often associated with entrepreneurial behavior. Specifically, respondents were asked whether they believed they had the knowledge, skill and experience required to start a business (suskill). This variable describes the subjective assessment of one's own skills, knowledge and ability with respect to starting a business; it is expected to have a positive influence on entrepreneurial propensity. Respondents were asked whether they thought that good opportunities for starting a business would exist in the area where they lived in the 6 months following the survey (opport). This variable describes a personal assessment of the existence of opportunities and is also expected to have a positive impact on entrepreneurial propensity. Respondents were also asked whether fear of failure would prevent them from starting a business. This variable is expected to have a negative effect on individuals' entrepreneurial propensity. In fact, fear of failure (fearfail) may be viewed as a proxy for downside risk tolerance. Respondents were also asked two questions related to their expectations about the future which, in turn, can be influenced by objectively measurable conditions and subjective attitudes, i.e. optimism and pessimism. Respondents were asked whether they expected the business conditions in their country to be better, worse, or about the same, 1 year after the survey (ctrfutur), and whether they thought that, 1 year after the survey, their family would be financially better off, worse off, or about the same (famfutur). The possible impact of these perceptions on the propensity to start a business could be positive or negative. If, for example, the country's future is expected to be unsatisfactory, the individual may avoid founding a business because it seems too risky to do so. On the other hand, bad conditions in a country may imply a lack of employment opportunities and, as a result, lead to more attempts to start businesses. Finally, respondents were asked whether they knew personally someone who had started a business in the 2 years preceding the survey (knowent). This variable provides some indication of how direct exposure to other entrepreneurs provides information about the entrepreneurial process. We expect that knowing other entrepreneurs might influence the perception of entrepreneurial opportunities by providing social clues in the uncertain environment characterizing the creation of a new business. In other words, knowing other entrepreneurs might reduce ambiguity and, as a result, have a positive influence on startup propensity (Minniti, 2005) . A detailed description of all independent variables is presented in the Appendix together with descriptive statistics for the co-variables used in the estimated models. The GEM project provides analogous aggregate data at the country level from 2002 through 2005, including the same measures for entrepreneurial activity and most of the perceptual variables discussed above. These aggregate data, combined with those for 2001, allowed us to construct an unbalanced panel, which we used to test the relationship between sufficient skill perceptions, entrepreneurial activity, and survival chances. Overall, GEM data are exceptionally well suited for our purpose. To our knowledge, the dataset is the only major cross-country study of entrepreneurial behavior that uses a consistent methodology and a set of simple, comparable variables measuring relevant individual perceptions in each country. Earlier studies dealing with the influence of perceptions and overconfidence on entrepreneurial activity were based on experimental data with students (Camerer & Lovallo, 1999) , or had to rely on noticeably smaller samples of established entrepreneurs from just one country (Busenitz & Barney, 1997; Cooper, Woo, & Dunkelberg, 1988) . Our data, instead, allow us to relate prevalence rates of perceptual variables, including a self-assessment of entrepreneurial skills, to cross-country differences in entrepreneurial activity and performance. Finally, our data are unique because they include perceptions of individuals who were in the process of starting a new business at the time of the interview, thereby allowing us to relate individual perceptions to the actual activity of starting a business. To identify the effects associated with entrepreneurial activity we ran probit regressions and calculated a robust covariance matrix of the parameter estimates using the sandwich estimation procedure (White, 1982) . The sandwich estimation procedure has the desirable property of yielding asymptotically consistent covariance standard error estimates that are independent from distributional assumptions. The large sample size in our study makes robust covariance estimates particularly attractive (Kauermann & Carroll, 2001) . 6 In addition, preparatory tests revealed only weak correlations among the explanatory variables and no indication of multicollinearity. All independent variables in the regression are dummies. The estimated model is a transformed probit model, where the reported coefficients are computed with a discrete calculation associated with the dummy changing from 0 to 1. Each probit model is calculated as EðyjX j Þ ¼ P ðy 6 ¼ 0jX j Þ ¼ UðX j bÞ, where U is the cumulative standard normal distribution. The transformed probit models report coefficients b Ã i ¼ UðX 1 bÞ À UðX 0 bÞ where X 0 ¼ X 1 ¼ X except that the ith element of X 1 and X 0 are set to 1 and 0, respectively. The coefficients have an intuitive interpretation. They indicate the percentage change in the observed outcome if the explanatory variable changes from 0 to 1. For example, a coefficient value of 5% means thatceteris paribus -a population where all individuals report x = 1 would have 5% more entrepreneurs than a population in which all individuals report x = 0. Thus, the coefficients can be thought of as reporting the difference in entrepreneurial activity due to x, holding everything else constant. In all models, we contrast the relevant dependent variable (nascent, newentr or establ) against the control group of non-entrepreneurs. 7 Finally, we run additional regressions and correlations using the panel of aggregate country data from 2001 to 2005 to test whether sufficient skill perceptions are related to survival chances. In the first step of our analysis, nascent, newentr, and establ are used as dependent variables in separate models to test which covariables are significantly associated with an individual's decision to start a business and to analyze how entrepreneurs differ from non-entrepreneurs.",
+      "token_count": 1558,
+      "char_count": 10097
+    },
+    {
+      "section_id": "section_caf93d64ef07734d",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "section_name": "Results",
+      "section_type": "RESULTS",
+      "section_source": "tei_header",
+      "section_title_quality": "high",
+      "original_section_name": "Results",
+      "page_numbers": [],
+      "span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0022",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0023",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0024",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0025",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0026",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0027",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0028",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0029",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0030"
+      ],
+      "text": "We estimate two different models for each of the three dependent variables nascent, newentr and establ. For each individual, the first model includes as explanatory variables only country of residence, age, income group, education, and current work status. The second model includes all available variables. All model results suggest that perceptual variables have a significant impact on the creation of businesses and model diagnostics indicate that the fit of the regressions increase substantially when perceptual variables are added. Regression results are reported in The first two models (1a and 1b) refer to nascent entrepreneurs as the dependent variable (nascent). The strongest cross-national influence on the individual propensity to start a business is shown to be whether that person believes she has sufficient skills, knowledge and ability to start a business (suskill). According to the second probit model on nascent (Model 1b), the individual probability of starting a business increases by 5.6% on average, if the individual believes she has sufficient skills. This is a very strong contribution for a single co-variable, especially considering that only 6.03% of the individuals included in Model 1b are actually nascent entrepreneurs (nascent = 1). In addition to the strong influence of the suskill variable, other perceptual variables are also strongly associated with the decision to start a business. The perception of good business opportunities (opport) and optimism about the financial situation of the family in the near future (famfutur) all have strong positive coefficients in the model on nascent. Knowing other entrepreneurs (knowent) is also positively associated with start-up propensity. Fear of failure (fearfail), on the other hand, seems to reduce the propensity to start a new business. Socio-economic factors, such as household income and education, have a relatively small influence on entrepreneurial activity. Also, the relevance of socio-economic factors is clearly biased upward in model 1, where perceptual variables are not explicitly controlled for. This suggests that instead of having a direct impact, socio-demographic variables like high educational attainment and high income are, rather, mediators of individual perceptions. In Table 1 , Models 2a and 2b report regression results for new entrepreneurs (newentr) without and with perceptual variables, respectively. Models 3a and 3b, instead, report regression results for established entrepreneurs (establ) without and with perceptual variables, respectively. Together, these models describe differences between new entrepreneurs, established entrepreneurs and non-entrepreneurs. Again, we find that entrepreneurs and non-entrepreneurs differ significantly in their perceptions. Both new entrepreneurs and established entrepreneurs are more likely than non-entrepreneurs to perceive themselves as skilled (suskill), to know other individuals who have recently started a business (knowent), and to perceive good business opportunities (opport). Also, entrepreneurs are less prone than non-entrepreneurs to state that fear of failure would stop them from starting a business (fearfail). In general, these results are consistent with the ones obtained for nascent entrepreneurs (nascent). In contrast to nascent entrepreneurs, however, both new entrepreneurs and established entrepreneurs are more likely to have a high income. This result may suggest that high income is a consequence rather than a prerequisite of successful entrepreneurial activity. Alternatively, it could also imply that individuals with a high income are more likely to survive the first months of new business ownership. As in the case of nascent entrepreneurs, suskill turns out to be the single most important factor that distinguishes entrepreneurs from non-entrepreneurs in all models. Our results also support existing empirical evidence reporting strong country effects (Acs et al., 1999; Blanchflower, 2004) . Interestingly, the coefficients' signs change for some country dummies when perceptual variables are added to the models. For each dependent variable, the country dummy variables in the second model (Models 1b, 2b, and 3b, respectively) show country-specific effects after controlling for observable differences in socio-economic factors and individual perceptions. Thus, the country effects in all ''b'' models approximate deviations of the expected level of entrepreneurial activity from the comparison country (US) that would occur if demographic, socio-economic, and perceptual variables were equally distributed across all countries in the sample. To illustrate, Table 2 shows the prevalence rates of nascent entrepreneurs (nascent), new entrepreneurs (newentr) and established entrepreneurs (establ) across countries. Table 2 shows that fewer people are involved in start-up activities in Japan than in the US (À4.2%). Model 1a in Table 1 shows that Japan would still be significantly less entrepreneurial than the US (À2.8%), even if the socio-economic and demographic characteristics of the two populations were equally distributed. However, on average, Japanese differ substantially in their individual perceptions from Americans, i.e. they are less confident in their skills and less optimistic about good business opportunities. After controlling for these perceptual factors explicitly, in fact, Model 1b in Table 1 indicates that Japanese would be more likely to start a business than Americans if demographic and socio-economic characteristics and perceptual variables were equally distributed in both countries (+1.3%). Obviously, these country-specific differences in perceptions could result from different economic conditions, and some perceptual biases could be more common in some countries than in others. 9 The evidence discussed above points out the importance of perceptual variables. It also contains significant evidence of the bias characterizing subjective perceptions. The belief that one has sufficient skills, knowledge and ability to start a business originates from the subjective perception of the individual and need not necessarily correspond to his actual skill level. In fact, Table 3 shows a surprisingly strong variance in the suskill variable across countries. For example, about 55% of individuals in Hungary and Argentina believe they have sufficient skills to start a new business, compared to only 11% in Japan or 24% in Sweden. Interestingly, countries that exhibit a high percentage of individuals with confidence in their own entrepreneurial skills also exhibit the highest percentage of entrepreneurs. Analyzing the relationship of sufficient skill perception and educational attainment levels yields additional evidence for our argument that relevant perceptions might be systematically distorted. Education is often used as a proxy measuring potential skills. To the extent that education is indeed a good proxy, individuals with high levels of educational attainment should be more confident in their entrepreneurial skills. However, if the perception of one's own skills to start a business is only loosely related to a potentially important aspect of these skills, namely education levels, something else must be driving this perception. Table 4 shows that, in general, skill perception and educational attainment are only weakly correlated (coefficients <0.1). In addition, results in Table 5 , showing group-means for the suskill variable by educational attainment among countries, suggest that individuals with high education are not necessarily more confident in their entrepreneurial skills. 10 In addition to providing information on the existence of perceptual biases, our results contain significant evidence on their direction. Confidence in ones own skills and abilities to start a business should increase as individuals gain relevant entrepreneurial experience and successfully survive in the market for some time. In other words, if individual perceptions were unbiased, established entrepreneurs should be more confident in their own skills than individuals who are just starting a business. We use a v 2 -test to evaluate the null hypothesis that perceptions among nascent entrepreneurs (nascent) and established business owners (establ) are equal. The results are reported in Table 6 and show that nascent entrepreneurs are significantly more confident in their skills, knowledge, and experience than established entrepreneurs. This finding suggests that nascent entrepreneurs may exhibit a perceptual bias reflecting overconfidence. We observe that the suskill variable has its strongest effect in the regression on nascent entrepreneurs (nascent), together with the v 2 -test, this suggests that strong confidence in entrepreneurial ability may be driving start-up decisions rather than being the consequence of a start-up decision made in the past. According to Table 1 , for nascent entrepreneurs (nascent), suskill = ''yes'' increases the average individual probability of starting a new business by 5.62%. The average probability in the sample is 6.03%. Thus, individuals who believe they have sufficient skills are (5.62/6.03) + 1 = 1.93 times more likely to be nascent entrepreneurs than non-entrepreneurs, everything else being the same. Similarly, suskill = ''yes'' increases the chance to be in the group of new entrepreneurs (newentr) by 1.82 times, compared to being in the group of non-entrepreneur. For established entrepreneurs, the ratio is 1.75. Thus, although sufficient skill perception is the single most important variable in all regression models, its relative explanatory power is strongest for the group of nascent entrepreneurs, and declines as groups of more established entrepreneurs are considered. Finally, we link entrepreneurial confidence to performance using country level prevalence rates and examine the relationship between sufficient skill perceptions, current and future levels of entrepreneurial activity, and survival chances. Table 2 displays the ratio of established to nascent entrepreneurs (establ/nascent) and the ratio of established entrepreneurs to new entrepreneurs (establ/newentr) in each country. The ratios are positively correlated to each other. 11 Table 2 shows strong variation of the ratios and of entrepreneurial activity in general across countries. 12 The two ratios can be interpreted as rough proxies for the average survival chances of nascent and new entrepreneurs in each country under the assumption that both the prevalence of entrepreneurial activity and the survival chances of new businesses are structural characteristics of a country and constant over time. The higher the ratio of established entrepreneurs to nascent or new entrepreneurs, the greater is the chance of those early stage entrepreneurs to succeed with their businesses. 11 The correlation coefficient is 0.54 for the countries covered by the 2001 GEM survey, and it is significant at above 99% confidence. Pooling all available country observations from 2001 to 2005 yields a correlation coefficient of 0.596, also significant at above 99%. 12 For example, only 2.3% of Japanese were involved in start-up activities (nascent) at the time of the survey compared to 6.5% of Americans. Yet, the ratio of established entrepreneurs to nascent entrepreneurs (establ/ nascent) is more favorable in Japan (2.3) than in the US (0.8). The same holds for the ratio of established entrepreneurs to new entrepreneurs (establ/newentr): Japan exhibits a ratio of 7.6 compared to 1.9 in the US. Assuming that these ratios do not change much over time, these results suggests that the average chances for new business survival are better in Japan than in the US. We test this assumption by constructing a cross-country panel including all participating countries in the GEM project from 2001 to 2005. The panel covers 40 countries and has an unbalanced structure since not all countries participated in the GEM project in all years. The stability of our proxies for survival rates over time is tested using correlations over various time lags. The results are reported in Table 7 . Although there is some variation in the ratios, they are highly positively correlated over time. For example, the correlation coefficient for the ratio of established to nascent entrepreneurs in 2001 and 2005 is 0.755. Table 7 also shows that the prevalence rates of sufficient skill perceptions in each country are very robust over time. Using this cross-country panel, we calculate the Pearson correlation coefficients between the past and current prevalence of suskill, ranging from t À 4 to t, and our two proxies for survival as well as for the prevalence of established entrepreneurs for all available countries. In addition, we estimate an unbalanced random effects linear model (Baltagi & Chang, 1994; Swamy & Arora, 1972) with suskill and a constant as explanatory variables. 13 The results are reported in Table 8 . As expected, sufficient skill perceptions are positively associated with the prevalence of established entrepreneurs. Yet, the relationship with established entrepreneurial activity becomes insignificant for larger time gaps. At the same time, and consistently with our overconfidence argument, perceptions of having sufficient skills and ability are significantly and negatively associated with future survival rates. We find negative coefficients for all time gaps and for both ratios approximating survival chances. 14 13 The appropriateness of the random effects assumption was tested in all 12 models using a Hausman (1978) test. In 9 models, random effects were supported by the test. In 3 cases, a fixed effects model was indicated but the estimated fixed effects model was not significantly different from an empty model because suskill does not explain variations in the data within countries (R 2 within <1% in all models, compared to R 2 between ranging from 6% to 21%). This suggests that variations in sufficient skill perceptions can help to explain cross-country differences in entrepreneurial activity, but not variations in entrepreneurial activity in a particular country over time. 14 We chose to report the results for all 40 countries participating in the GEM study to highlight the robustness and generality of our results. However, when the analysis is replicated using only the 18 countries included in our probit models, the results are even stronger showing higher negative coefficient values for all time gaps between suskill and the two proxies for survival. For example, the correlation coefficient in this sample between suskill in t À 3 and establ/nascent is À0.65, significant at 95% confidence. These findings imply that the average survival chances of nascent entrepreneurs are actually lower in countries that exhibit high prevalence rates of entrepreneurial self-confidence. The combination of high self-assessed abilities, high actual entry rates and low estimated survival chances lends indirect support to our hypothesis that overconfidence may, in fact, drive market entry decisions not only in the laboratory but also in the real world, and that some countries may exhibit relatively high rates of business start-ups because their inhabitants are more (over)confident than those of other countries.",
+      "token_count": 2261,
+      "char_count": 15336
+    },
+    {
+      "section_id": "section_64750b720c57178a",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "section_name": "Discussion and implications",
+      "section_type": "DISCUSSION",
+      "section_source": "tei_header",
+      "section_title_quality": "high",
+      "original_section_name": "Discussion and implications",
+      "page_numbers": [],
+      "span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0031",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0032",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0033",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0034",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0035",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0036"
+      ],
+      "text": "Overall, our results suggest that subjective and possibly biased perceptions have a major impact on the decision to start a business. We argue that this is the case because these variables influence the perceived chances of positive outcomes and perceived risks associated with starting one's own business. In particular, entrepreneurial confidence, the subjective belief that one has sufficient skills, knowledge, and ability to start a business, is the most important factor in our regressions. In addition, we find a significant negative relation between entrepreneurial self-confidence and survival rates of nascent entrepreneurs across countries. This result provides some evidence that the perception of entrepreneurial skills is likely to be biased by overconfidence. Our results are consistent with existing evidence that overconfidence is common among individuals in general (Hoffrage, 2004; Weinstein, 1980) , and among entrepreneurs in particular. For example, Busenitz and Barney (1997) have shown overconfidence in entrepreneurs to be higher than overconfidence in managers. Also, Cooper et al. (1988) have found strong evidence of overconfidence among entrepreneurs. Their results suggest that 81% of entrepreneurs believe their chances of success to be at least 70%, and that a third of the entrepreneurs believe they will be successful with certainty. Participants in the study of Cooper et al.'s also estimated their own chances of survival to be higher than those of competing businesses. Unfortunately, however, at the time of the study, 66% of all newly founded businesses were failing. Camerer and Lovallo (1999) have shown that overconfidence in one's own skills leads to excess entry in experimental market conditions and that participants neglect to adjust their expectations to reflect the fact that other group members also judge themselves as skilled. Thus, the importance of perceptual variables, and their associated bias, in the decision to start a business may explain some of the observable inconsistencies between returns to entrepreneurship and entrepreneurial decisions found in the literature (Camerer & Lovallo, 1999; Hamilton, 2000) . Why could entrepreneurial behavior be characterized by overconfidence? A possible reason is that entrepreneurs have a strong tendency to consider their situation as unique. After all, by definition, entrepreneurs are individuals who deviate from the norm. Once they identify a profit opportunity, they isolate their present situation, namely starting a new business, and treat it as an original and unrepeatable event. As a result, they neglect the available statistics of past and future similar situations that could help them to form more accurate forecasts of their likelihood of success. Kahneman and Lovallo (1993) define a situation in which forecasting individuals focus on the case at hand as the ''inside view''. In the inside view, the way to think about a problem is to consider all that one knows about it, with special attention to its unique features. In an alternative, Kahneman and Lovallo define the ''outside view'' as the one in which forecasting individuals focus on the statistics of a class of cases chosen to be similar, in relevant ways, to the current situation. Individuals in general, and entrepreneurs in particular, tend to base their choices on the predictions generated by the inside view. This suggests that entrepreneurs may base their decisions largely on subjective perceptions. Ultimately, numerous effects including evolution, history, culture and the institutional framework contribute to determine the quantity and quality of entrepreneurial behavior. They influence individuals' perceptions and thus their incentives to transform perceived opportunities into actions. Optimistic biases have been often linked to an illusion of control (Taylor & Brown, 1988) . Thus, an institutional setting leading to stronger perceptions of control over one's domain may yield more entrepreneurial activity. Harper (1998) has argued explicitly that the nature of political and economic institutions influences individuals' perceptions. Those institutions and policies that improve transparency and entitlement tend to increase the subjective perception of the link between actions and outcome. They may increase, therefore, the number of individuals having an internal locus of control. Along similar lines, Baumol (1990) argues that institutional arrangements affect the distribution of entrepreneurial efforts between productive and unproductive. Finally, a relevant question is what function overconfidence may serve for either the individual or for society as a whole. Hoffrage (2004) argues that, at the individual level, there can be situations in which the benefits of being overconfident clearly outweigh the costs. For example, a physician may be overconfident that a particular treatment will help her patient, and showing high confidence that the treatment will help may be essential for a placebo effect to occur. With respect to entrepreneurial activity, some people might start a business with the erroneous belief that they have the sufficient skills and experience. However, the effort and steps necessary to starting may help them to acquire the skills and the experience that they actually need. Hvide (2002) shed light on why overconfidence emerges by proposing the existence of pragmatic beliefs. Busenitz and Barney (1997) argue that the use of biases and heuristics can be an effective and efficient guide for decisions with high environmental uncertainty and complexity, such as starting a business. Busenitz and Barney also mention that overconfidence may be beneficial in implementing a specific decision and persuading others to be enthusiastic about it as well. Overconfidence may be beneficial, to some extent, even at the aggregate level. Without over-optimistic judgments, we would probably see fewer business start-ups but higher average success rates and returns among those who become entrepreneurs. It is not clear if excess entry is desirable in terms of social returns and, if so, in what quantity. In fact, unsuccessful businesses create negative externalities if the costs of their failure have to be absorbed -at least in parts -by others. On the other hand, overconfident and potentially unsuccessful entrepreneurs may also generate valuable information that would not be available otherwise (Bernardo & Welch, 2001; Minniti, 2005) . In addition, new entry, albeit unsuccessful, might help spur competition and push incumbent businesses towards efficiency. Given the potential costs and benefits of excess entry, its optimal level may be dependent on the degree of its concentration across industries. Further explorations of this matter are clearly beyond the scope of this article, but may provide an interesting avenue for future research.",
+      "token_count": 1024,
+      "char_count": 6881
+    },
+    {
+      "section_id": "section_035e6f569438e912",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "section_name": "Conclusion",
+      "section_type": "DISCUSSION",
+      "section_source": "tei_header",
+      "section_title_quality": "high",
+      "original_section_name": "Conclusion",
+      "page_numbers": [],
+      "span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0037"
+      ],
+      "text": "Starting a business is an intentional act that involves repeated attempts to exercise control over a process in order to achieve the desired outcome. If, indeed, entrepreneurial decisions are largely based on perceptions, and the cognitive mechanism we have discussed leads to overconfidence, it is likely that entrepreneurs overestimate their control over events. As a result, the entrepreneurial environment may be populated by individuals who adopt an ''inside view'' and act on overconfident self-perceptions. Overconfident perceptions may lead these individuals to overestimate their skills and make them think ''they can''. In general, individual perceptions are influenced by various factors, including economic framework conditions, history, culture and psychological phenomena such as heuristics and biases. Thus, perceptions of individual ability and risk may differ from actual abilities and risks. Yet, these possibly biased perceptions are strongly associated with actual start-up activities and have real economic consequences. This is not to say that perceptual biases are generally bad. Ironically, individual overconfidence may even lead to better economic outcomes for society at large than more unbiased decision making.",
+      "token_count": 174,
+      "char_count": 1239
+    }
+  ],
+  "section_summaries": [
+    {
+      "section_id": "section_88a13fcc42f3b433",
+      "section_name": "Introduction",
+      "section_type": "INTRO",
+      "summary_text": "The introduction highlights the high failure rates and low financial returns associated with entrepreneurship, suggesting that many individuals may enter this field due to overconfidence. It discusses the importance of understanding the factors that influence entrepreneurial entry and the role of biased perceptions of one's abilities. The authors use data from a global survey to investigate how confidence in entrepreneurial skills affects the decision to start a business, revealing that overconfidence is a significant driver behind entrepreneurial activity and linked to higher startup rates and lower survival chances for new businesses.",
+      "section_role": "background",
+      "key_entities": [
+        "Global Entrepreneurship Monitor (GEM)",
+        "Camerer and Lovallo",
+        "Baldwin",
+        "Dunne, Roberts, & Samuelson",
+        "Hamilton",
+        "Moskovitz and Vissing-Jørgensen"
+      ],
+      "key_findings": [
+        "Overconfidence leads to excess entrepreneurial entry.",
+        "Confidence in one's entrepreneurial skills is a major driver of business startup decisions.",
+        "Nascent entrepreneurs are more confident than established entrepreneurs.",
+        "Countries with high entrepreneurial confidence have higher startup activity but lower business survival rates."
+      ],
+      "extractability_assessment": "This section contains self-contained claims supported by referenced studies and survey data, making it extractable for claims regarding overconfidence and entrepreneurial behavior.",
+      "locality_confidence": 0.85
+    },
+    {
+      "section_id": "section_3c1e4837f98e0ffe",
+      "section_name": "Theoretical background",
+      "section_type": "OTHER",
+      "summary_text": "This section discusses the factors influencing entrepreneurial behavior, including measurable variables such as age, gender, and education, as well as subjective preferences and perceptions. It highlights the impact of risk tolerance and overconfidence on the decision to start a business, emphasizing that individuals often overestimate their abilities and prospects for success. Theoretical frameworks and empirical evidence are presented to illustrate how different perceptions affect entrepreneurial alertness and decision-making in uncertain conditions.",
+      "section_role": "background",
+      "key_entities": [
+        "age",
+        "gender",
+        "liquidity constraints",
+        "family wealth",
+        "education",
+        "cultural characteristics",
+        "self-confidence",
+        "locus of control",
+        "risk aversion",
+        "ambiguity aversion",
+        "better-than-average effect",
+        "entrepreneurs"
+      ],
+      "key_findings": [
+        "Age increases the probability of starting a business up to a threshold and then decreases.",
+        "Men are more likely to start a business than women.",
+        "Overconfidence leads individuals to overestimate their chances of business success.",
+        "Learning from other entrepreneurs increases the likelihood of starting a business by reducing ambiguity.",
+        "Perceptions of risks and outcomes influence entrepreneurial decisions."
+      ],
+      "extractability_assessment": "This section contains self-contained claims that are supported by referenced empirical studies.",
+      "locality_confidence": 0.8
+    },
+    {
+      "section_id": "section_f7d0da35fda936da",
+      "section_name": "Data and method",
+      "section_type": "OTHER",
+      "summary_text": "This section outlines the data collection methods and dataset utilized in the analysis. It describes the Global Entrepreneurship Monitor (GEM) project, which collected data from 29 countries in 2001, focusing on entrepreneurial behavior. The dataset categorizes individuals into four groups based on their entrepreneurial status and includes demographic information and responses to survey questions related to entrepreneurial perceptions and opportunities.",
+      "section_role": "methods",
+      "key_entities": [
+        "Global Entrepreneurship Monitor",
+        "GEM",
+        "nascent entrepreneurs",
+        "new entrepreneurs",
+        "established entrepreneurs",
+        "non-entrepreneurs",
+        "Argentina",
+        "Canada",
+        "Germany",
+        "India"
+      ],
+      "key_findings": [
+        "The study uses GEM data from 2001, covering over 74,000 respondents across 29 countries.",
+        "Individuals are classified into nascent, new, established, or non-entrepreneurs based on their entrepreneurial activities.",
+        "Respondents answered questions regarding their entrepreneurial skills, opportunities, and perceptions of risk."
+      ],
+      "extractability_assessment": "This section contains structured information and categorization of respondents, allowing for some claims to be extracted based on the classifications and perceptions of entrepreneurial activity.",
+      "locality_confidence": 0.8
+    },
+    {
+      "section_id": "section_caf93d64ef07734d",
+      "section_name": "Results",
+      "section_type": "RESULTS",
+      "summary_text": "This results section presents two different regression models assessing the impact of various perceptual and socio-economic variables on entrepreneurial behavior across different populations. It finds that self-perception of skills ('suskill') is the most significant predictor of starting a business, and that individuals who perceive themselves as capable are more likely to engage in entrepreneurial activities. Additionally, the section discusses how these perceptions vary by country and suggests that overconfidence in one's skills may drive start-up decisions, potentially impacting survival rates for new businesses.",
+      "section_role": "results",
+      "key_entities": [
+        "suskill",
+        "opport",
+        "famfutur",
+        "knowent",
+        "fearfail",
+        "Japan",
+        "US",
+        "Hungary",
+        "Argentina",
+        "Sweden"
+      ],
+      "key_findings": [
+        "Individuals believing they have sufficient skills to start a business show increased propensity to become nascent entrepreneurs by 5.6%.",
+        "Perceptual variables have a significant impact on entrepreneurial activity, overshadowing socio-economic factors.",
+        "Entrepreneurs exhibit higher confidence in their perceptions compared to non-entrepreneurs.",
+        "High self-assessed skill perceptions correlate with greater entrepreneurship rates but lower survival chances."
+      ],
+      "extractability_assessment": "This section contains self-contained, locally supported claims regarding the influence of perceptions on entrepreneurial behavior.",
+      "locality_confidence": 0.85
+    },
+    {
+      "section_id": "section_64750b720c57178a",
+      "section_name": "Discussion and implications",
+      "section_type": "DISCUSSION",
+      "summary_text": "This section discusses the significant impact of subjective perceptions, particularly overconfidence, on entrepreneurial behavior and decision-making. It highlights how entrepreneurs' belief in their skills can lead to biased judgments about their chances of success and associated risks, which in turn affects their survival rates. The section also explores the dual nature of overconfidence, suggesting that while it may lead to excessive business entry, it can also facilitate the acquisition of necessary skills and spur competition, raising questions about the optimal level of such behavior in society.",
+      "section_role": "discussion",
+      "key_entities": [
+        "entrepreneurial confidence",
+        "overconfidence",
+        "Camerer and Lovallo",
+        "Baumol",
+        "Taylor & Brown"
+      ],
+      "key_findings": [
+        "Entrepreneurial confidence is a major factor influencing business start decisions.",
+        "Overconfidence is prevalent in entrepreneurs and negatively relates to survival rates.",
+        "Optimistic biases and institutional settings influence entrepreneurial behavior.",
+        "Overconfidence may have both individual and aggregate benefits for entrepreneurship."
+      ],
+      "extractability_assessment": "This section contains self-contained claims supported by evidence and references.",
+      "locality_confidence": 0.85
+    },
+    {
+      "section_id": "section_035e6f569438e912",
+      "section_name": "Conclusion",
+      "section_type": "DISCUSSION",
+      "summary_text": "This conclusion section discusses the relationship between entrepreneurial decision-making and overconfidence. It posits that entrepreneurs often perceive a higher level of control over their business outcomes, influenced by cognitive biases and various external factors. These overconfident perceptions can lead to better economic achievements, despite often being at odds with actual capabilities and risks. Overall, the section highlights the dual nature of perceptual biases in entrepreneurship.",
+      "section_role": "discussion",
+      "key_entities": [
+        "entrepreneurs",
+        "perceptions",
+        "cognitive mechanisms",
+        "overconfidence",
+        "skills",
+        "economic outcomes"
+      ],
+      "key_findings": [
+        "Entrepreneurs may overestimate their control over events due to overconfidence.",
+        "Perceptions of ability and risk may differ from actual abilities and risks.",
+        "Overconfidence can lead to positive economic outcomes despite potential biases."
+      ],
+      "extractability_assessment": "This section contains self-contained claims related to entrepreneurial behavior and perceptions.",
+      "locality_confidence": 0.8
+    }
+  ],
+  "paper_summary": {
+    "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+    "paper_title": "“I think I can, I think I can”: Overconfidence and entrepreneurial behavior",
+    "paper_summary": "This paper examines the impact of overconfidence on entrepreneurial behavior, revealing its role in driving individuals to start businesses despite high failure rates. It synthesizes data from a global survey to explore how self-perceived abilities influence entrepreneurial decisions.",
+    "main_findings": [
+      "Overconfidence leads to increased entrepreneurial entry but lower survival rates.",
+      "Self-perception of skills is the strongest predictor of starting a business.",
+      "Men are more likely to start businesses than women.",
+      "Perceptual biases can lead to optimistic economic outcomes despite actual risks.",
+      "Learning from other entrepreneurs can mitigate uncertainty."
+    ],
+    "limitations": [
+      "The findings may not account for all socio-economic factors influencing entrepreneurial decisions.",
+      "Self-reported data may be biased due to overconfidence and social desirability."
+    ],
+    "evidence_map": [
+      "Introduction section discusses overconfidence and entrepreneurial activity using GEM data.",
+      "Theoretical background outlines how different perceptions affect entrepreneurial alertness.",
+      "Results section provides statistical evidence linking self-perception to entrepreneurial behavior.",
+      "Discussion highlights the dual nature of overconfidence and its implications."
+    ]
+  },
+  "section_extraction_plan": [
+    {
+      "section_id": "section_88a13fcc42f3b433",
+      "should_extract": true,
+      "reason": "The introduction contains specific claims supported by referenced studies and survey data about overconfidence and its influence on entrepreneurial behavior.",
+      "expected_claim_types": [
+        "overconfidence impact",
+        "entrepreneurial entry drivers",
+        "startup activity correlations"
+      ],
+      "expected_evidence_types": [
+        "survey data",
+        "referenced studies"
+      ],
+      "likely_claim_density": "medium",
+      "likely_evidence_density": "medium",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_3c1e4837f98e0ffe",
+      "should_extract": true,
+      "reason": "The section presents specific findings supported by empirical evidence regarding factors influencing entrepreneurial behavior, including overconfidence.",
+      "expected_claim_types": [
+        "statistical relationships",
+        "empirical findings",
+        "theoretical assertions"
+      ],
+      "expected_evidence_types": [
+        "empirical studies",
+        "theoretical frameworks",
+        "statistical data"
+      ],
+      "likely_claim_density": "medium",
+      "likely_evidence_density": "medium",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_f7d0da35fda936da",
+      "should_extract": true,
+      "reason": "The section provides structured information about the data collection process and classifications of respondents, which can support claims related to entrepreneurial behavior and perceptions.",
+      "expected_claim_types": [
+        "statistical classification",
+        "survey response analysis",
+        "cross-country comparison"
+      ],
+      "expected_evidence_types": [
+        "data from GEM",
+        "demographic information",
+        "survey questions"
+      ],
+      "likely_claim_density": "medium",
+      "likely_evidence_density": "medium",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_caf93d64ef07734d",
+      "should_extract": true,
+      "reason": "The section contains specific results about the impact of self-perception on entrepreneurial behavior, supported by data from regression models.",
+      "expected_claim_types": [
+        "statistical results",
+        "comparative results",
+        "predictive factors"
+      ],
+      "expected_evidence_types": [
+        "regression analysis",
+        "statistical percentages",
+        "country-specific comparisons"
+      ],
+      "likely_claim_density": "high",
+      "likely_evidence_density": "high",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_64750b720c57178a",
+      "should_extract": true,
+      "reason": "The section contains specific results and localized qualifiers regarding the impact of overconfidence on entrepreneurial behavior.",
+      "expected_claim_types": [
+        "impact of overconfidence",
+        "relationship between entrepreneurial confidence and survival rates",
+        "optimal levels of overconfidence"
+      ],
+      "expected_evidence_types": [
+        "statistical evidence",
+        "case studies",
+        "theoretical references"
+      ],
+      "likely_claim_density": "medium",
+      "likely_evidence_density": "medium",
+      "likely_context_completeness": "good"
+    },
+    {
+      "section_id": "section_035e6f569438e912",
+      "should_extract": true,
+      "reason": "The section contains specific claims about the relationship between overconfidence and entrepreneurial outcomes, supported by localized observations.",
+      "expected_claim_types": [
+        "perceptions of control",
+        "economic achievements",
+        "differences in actual abilities vs perceived abilities"
+      ],
+      "expected_evidence_types": [
+        "cognitive biases",
+        "entrepreneurial behaviors",
+        "outcomes of decisions"
+      ],
+      "likely_claim_density": "medium",
+      "likely_evidence_density": "medium",
+      "likely_context_completeness": "good"
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "claim_53186a3728aa97ed",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "claim_text": "Fear of failure (fearfail) reduces the propensity to start a new business.",
+      "subject": {
+        "value": "fearfail",
+        "entity_type": "variable",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "perceptual variable",
+          "normalized_text": "perceptual variable",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "predicate": {
+        "value": "is_associated_with",
+        "entity_type": "relationship",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "entrepreneurial behavior",
+          "normalized_text": "entrepreneurial behavior",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "object": {
+        "value": "starting a new business",
+        "entity_type": "outcome",
+        "ontology": {
+          "annotation_type": "classification",
+          "raw_text": "entrepreneurial activity",
+          "normalized_text": "entrepreneurial activity",
+          "mapping_status": "unresolved",
+          "candidate_mappings": [],
+          "selected_mapping": null,
+          "mapping_method": "section_context_v1_string_fallback"
+        }
+      },
+      "claim_kind": "result",
+      "claim_profile": "generic_result",
+      "epistemic_status": "empirical",
+      "support_origin": "own_results",
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0022",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0023",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0024",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0025",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0026",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0027",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0028",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0029",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0030"
+      ],
+      "context": {
+        "population": {
+          "value": "nascent entrepreneurs",
+          "entity_type": "population",
+          "ontology": null
+        },
+        "condition": {
+          "value": "perception of failure",
+          "entity_type": "condition",
+          "ontology": null
+        }
+      },
+      "details": {
+        "subject_role": "fear of failure",
+        "object_role": "entrepreneurial activity"
+      },
+      "extractor_confidence": null
+    }
+  ],
+  "evidence_items": [
+    {
+      "evidence_id": "evidence_b0398f324abb15fd",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "supporting",
+      "summary_text": "The paper provides significant evidence that subjective and possibly biased perceptions impact new business creation, highlighting the effect of entrepreneurial confidence.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "phenotype",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0001",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0002",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0003",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0004",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0005"
+      ],
+      "context": {
+        "setting": {
+          "value": "entrepreneurial decision-making",
+          "entity_type": "setting",
+          "ontology": null
+        },
+        "condition": {
+          "value": "varied across countries",
+          "entity_type": "condition",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "impact of biased perceptions on entrepreneurship",
+        "sample_size": "large sample from 18 countries"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "entrepreneurial behavior",
+        "normalized_text": "entrepreneurial behavior",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_b868ad11dda51850",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "supporting evidence",
+      "summary_text": "Research shows that overconfidence results in entrepreneurs overestimating their ability to succeed in business.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "behavioral_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0006",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0007",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0008",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0009",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0010",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0011"
+      ],
+      "context": {
+        "population": {
+          "value": "entrepreneurs",
+          "entity_type": "population",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "overconfidence in entrepreneurial success",
+        "value": "overestimation of capabilities"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "entrepreneurial behavior",
+        "normalized_text": "entrepreneurial behavior",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_c643f8506dfdafff",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "statistical finding",
+      "summary_text": "Statistical analysis demonstrates that men are statistically more likely to engage in entrepreneurial activities compared to women.",
+      "evidence_method": {
+        "value": "regression_estimate",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "behavioral_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0006",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0007",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0008",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0009",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0010",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0011"
+      ],
+      "context": {
+        "population": {
+          "value": "men and women",
+          "entity_type": "population",
+          "ontology": null
+        },
+        "setting": {
+          "value": "entrepreneurship",
+          "entity_type": "setting",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "gender difference in entrepreneurial activity"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "gender studies",
+        "normalized_text": "gender studies",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_9cafb0226ae685a9",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "linking concept",
+      "summary_text": "Studies indicate that self-confidence positively correlates with the probability of starting a business.",
+      "evidence_method": {
+        "value": "meta_analysis",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "behavioral_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0006",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0007",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0008",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0009",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0010",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0011"
+      ],
+      "context": {
+        "population": {
+          "value": "entrepreneurs",
+          "entity_type": "population",
+          "ontology": null
+        },
+        "condition": {
+          "value": "high self-confidence",
+          "entity_type": "condition",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "entrepreneurial propensity"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "entrepreneurial behavior",
+        "normalized_text": "entrepreneurial behavior",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_5c677d6ba0640287",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "data collection",
+      "summary_text": "GEM project data was collected from 29 countries in 2001 with over 74,000 completed interviews.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "quantitative_measure",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0012",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0013",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0014",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0015",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0016",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0017",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0018",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0019",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0020",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0021"
+      ],
+      "context": {
+        "population": {
+          "value": "74,000 respondents",
+          "entity_type": "population",
+          "ontology": null
+        },
+        "species": {
+          "value": "human",
+          "entity_type": "species",
+          "ontology": null
+        },
+        "setting": {
+          "value": "29 countries",
+          "entity_type": "setting",
+          "ontology": null
+        }
+      },
+      "details": {
+        "value": "74,000",
+        "measurement_type": "completed interviews"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "entrepreneurship survey data",
+        "normalized_text": "entrepreneurship survey data",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_f40b9af6c67d2485",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "classification criteria",
+      "summary_text": "Respondents were classified into nascent, new, established, or non-entrepreneurs based on their business ownership status.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "qualitative_measure",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0012",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0013",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0014",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0015",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0016",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0017",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0018",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0019",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0020",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0021"
+      ],
+      "context": {},
+      "details": {
+        "outcome_name": "entrepreneurial classification",
+        "value": "nascent, new, established, non-entrepreneurs"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "entrepreneurial activity classification",
+        "normalized_text": "entrepreneurial activity classification",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_32d3f5eea4e2cf15",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "perceptual data collection",
+      "summary_text": "Survey included questions on respondents' self-assessed skills, perceived opportunities, and fear of failure.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "qualitative_measure",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0012",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0013",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0014",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0015",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0016",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0017",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0018",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0019",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0020",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0021"
+      ],
+      "context": {
+        "population": {
+          "value": "survey participants",
+          "entity_type": "population",
+          "ontology": null
+        },
+        "condition": {
+          "value": "self-assessment",
+          "entity_type": "condition",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "perceptions of entrepreneurial skills",
+        "value": "skills, opportunities, fear of failure"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "entrepreneurial perceptions",
+        "normalized_text": "entrepreneurial perceptions",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_e326f12b6ca442de",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "evidence supporting claim on the effect of skills perception",
+      "summary_text": "The regression analysis showed that individuals with sufficient skills perceive a higher probability of starting a business, increasing by 5.6%.",
+      "evidence_method": {
+        "value": "regression_estimate",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "phenotype",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0022",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0023",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0024",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0025",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0026",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0027",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0028",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0029",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0030"
+      ],
+      "context": {
+        "analysis_context": {
+          "value": "regression models on entrepreneurial behavior",
+          "entity_type": "analysis_context",
+          "ontology": null
+        },
+        "population": {
+          "value": "nascent entrepreneurs",
+          "entity_type": "population",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "entrepreneurial probability"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "entrepreneurial activity",
+        "normalized_text": "entrepreneurial activity",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_277b405ea853383c",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "evidence supporting claim on fear of failure",
+      "summary_text": "The results indicated that fear of failure significantly reduces the likelihood of becoming a nascent entrepreneur.",
+      "evidence_method": {
+        "value": "regression_estimate",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "behavioral_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0022",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0023",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0024",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0025",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0026",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0027",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0028",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0029",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0030"
+      ],
+      "context": {
+        "population": {
+          "value": "nascent entrepreneurs",
+          "entity_type": "population",
+          "ontology": null
+        },
+        "condition": {
+          "value": "fear of failure perception",
+          "entity_type": "condition",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "propensity to start a business"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "entrepreneurial behavior",
+        "normalized_text": "entrepreneurial behavior",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_8c5788764b0abb2d",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "supporting claim",
+      "summary_text": "The belief in one's skills significantly impacts entrepreneurial decisions and perceived chances of success.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "behavioral_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0031",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0032",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0033",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0034",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0035",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0036"
+      ],
+      "context": {},
+      "details": {
+        "outcome_name": "entrepreneurial decisions",
+        "value": "subjective and possibly biased perceptions"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "entrepreneurial behavior",
+        "normalized_text": "entrepreneurial behavior",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_7ee034dccce2943d",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "supporting claim",
+      "summary_text": "Entrepreneurs perceive their chances of success to be higher than competing businesses, indicating biased overconfidence.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "behavioral_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0031",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0032",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0033",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0034",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0035",
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0036"
+      ],
+      "context": {},
+      "details": {
+        "outcome_name": "perception of success",
+        "value": "chances of success"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "entrepreneurial behavior",
+        "normalized_text": "entrepreneurial behavior",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_a3e713edfacf5797",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "evidence",
+      "summary_text": "The text discusses how entrepreneurs' cognitive mechanisms lead to overconfident self-perceptions.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "behavioral_outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0037"
+      ],
+      "context": {
+        "cohort": {
+          "value": "entrepreneurs",
+          "entity_type": "cohort",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "control over events",
+        "value": "overestimated"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "Cognitive Bias Ontology",
+        "normalized_text": "Cognitive Bias Ontology",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    },
+    {
+      "evidence_id": "evidence_075598347befc68f",
+      "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+      "role": "evidence",
+      "summary_text": "The conclusion states that overconfidence can yield positive economic outcomes despite its biases.",
+      "evidence_method": {
+        "value": "observation",
+        "entity_type": "evidence_method",
+        "ontology": null
+      },
+      "outcome_type": {
+        "value": "economic outcome",
+        "entity_type": "outcome_type",
+        "ontology": null
+      },
+      "presentation_type": {
+        "value": "text",
+        "entity_type": "presentation_type",
+        "ontology": null
+      },
+      "source_span_ids": [
+        "JOEP_Koellinger_Minniti_Schade_2007-span-0037"
+      ],
+      "context": {
+        "setting": {
+          "value": "society",
+          "entity_type": "setting",
+          "ontology": null
+        }
+      },
+      "details": {
+        "outcome_name": "better economic outcomes",
+        "value": "positive impact"
+      },
+      "ontology": {
+        "annotation_type": "classification",
+        "raw_text": "Economic Outcome Ontology",
+        "normalized_text": "Economic Outcome Ontology",
+        "mapping_status": "unresolved",
+        "candidate_mappings": [],
+        "selected_mapping": null,
+        "mapping_method": "section_context_v1_string_fallback"
+      }
+    }
+  ],
+  "claim_evidence_links": [
+    {
+      "link_id": "claim_evidence_link_45b617c3f06c42bc",
+      "claim_id": "claim_53186a3728aa97ed",
+      "evidence_id": "evidence_277b405ea853383c",
+      "relation": "supports",
+      "confidence": null
+    }
+  ],
+  "raw_section_outputs": [
+    {
+      "section": {
+        "section_id": "section_88a13fcc42f3b433",
+        "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+        "section_name": "Introduction",
+        "section_type": "INTRO",
+        "section_source": "tei_header",
+        "section_title_quality": "high",
+        "original_section_name": "Introduction",
+        "page_numbers": [],
+        "span_ids": [
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0001",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0002",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0003",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0004",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0005"
+        ],
+        "text": "Many new businesses fail shortly after inception (Baldwin, 1995; Dunne, Roberts, & Samuelson, 1988) , and entrepreneurship is a career choice that does not pay on average. Hamilton (2000) has shown that, except for the highest 25% of entrepreneurial incomes, staying in a wage job or moving back to it makes more economic sense than starting a new business. Along similar lines, Moskovitz and Vissing-Jørgensen (2002) have investigated the risk-return profile of investments in private enterprises and found them to be inferior to those in publicly traded assets such as stocks. High business failure rates and low average financial returns to entrepreneurship suggest that, at least with respect to pecuniary interests and individual welfare, too many people may be entering markets as entrepreneurs. Given the social and economic relevance of creating new businesses, it is important to understand how entry decisions are made, what factors influence individuals who make these decisions, and what kinds of errors these individuals are likely to make. Excess entrepreneurial entry into markets has also been demonstrated in experimental studies and causally linked to overconfidence. Camerer and Lovallo (1999) run a simultaneous market-entry experiment where the payoffs of participants decrease with the number of entrants, i.e. the intensity of competition. Their findings showed that entering subjects thought that the total profit earned by all entrants would be negative but estimated that their own profit would be positive. Camerer and Lovallo (1999) also suggest that the analysis conducted with field data would be a very desirable way to study further the possibility of overconfidence as an explanation for excess entry and an especially compelling complement to experimental evidence. Finding empirical evidence of overconfidence requires measuring entrepreneurial confidence and linking such measure to actual startup activities. Our paper contributes to this area of inquiry. Using a large sample obtained from surveys conducted in 18 countries, we use probit analyses to study what variables have a significant impact on an individual's decision to start a business. Data used in our analysis were collected for the 2001 population survey of the Global Entrepreneurship Monitor (GEM) project. GEM is an ongoing large scale academic project designed to study the causes and implications of entrepreneurial behavior across countries. The main purpose of the survey was to create a representative random sample of population in each country and to identify individuals in each sample who, at the time of the survey, owned and managed a business or were in the process of starting one. Our data are original and exceptionally well suited for our purpose since they do not rely on the respondents ex post explanations for their own decisions. In other words, our data do not suffer from ''hindsight bias'' (Fischhoff, 1975; Thaler, 2000) . Our results provide significant evidence that subjective and possibly biased perceptions have a crucial impact on new business creation. In particular, confidence in one's own entrepreneurial skills emerges as a major driver in the decision to start a business across all countries in our sample. First, large variations in perceptions about one's own skills exist across countries. Yet, across countries, we found only weak or no positive correlation between education and confidence in one's own skill. Second, we find nascent entrepreneurs to be more confident in their own skills than individuals who have been successfully in business for some times. That is, confidence in one's own skills appears to be stronger among individuals in early stages of the entrepreneurial process, when the outcome of the business is still based on expectations, than among individuals whose skills have been tested by the market. In fact, our regression models indicate that perceptions about one's own skills provide a higher relative contribution to the difference between nascent entrepreneurs and non-entrepreneurs than to the difference between established entrepreneurs and non-entrepreneurs. Finally, we find that countries exhibiting a high rate of entrepreneurial confidence exhibit significantly higher start-up activity but lower average chances that a business will survive in the market for more than 42 months. Overall, our evidence suggests that potential entrepreneurs may be overconfident in their own skills and abilities. In addition to socio-economic and demographic factors, differences in subjective perceptions and the extent to which such perceptions are biased may help us to understand why some people start businesses while others do not. Our results complement and support the experimental findings of Camerer and Lovallo (1999) and suggest that, rather than an accurate assessment of one's own abilities, it may be overconfidence that often leads individuals to start a business. The connection between entrepreneurial decisions and overconfidence may explain, in part, the high failure rate of new business owners.",
+        "token_count": 769,
+        "char_count": 5085
+      },
+      "decision": {
+        "section_id": "section_88a13fcc42f3b433",
+        "should_extract": true,
+        "reason": "The introduction contains specific claims supported by referenced studies and survey data about overconfidence and its influence on entrepreneurial behavior.",
+        "expected_claim_types": [
+          "overconfidence impact",
+          "entrepreneurial entry drivers",
+          "startup activity correlations"
+        ],
+        "expected_evidence_types": [
+          "survey data",
+          "referenced studies"
+        ],
+        "likely_claim_density": "medium",
+        "likely_evidence_density": "medium",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_88a13fcc42f3b433",
+        "section_name": "Introduction",
+        "section_type": "INTRO",
+        "summary_text": "The introduction highlights the high failure rates and low financial returns associated with entrepreneurship, suggesting that many individuals may enter this field due to overconfidence. It discusses the importance of understanding the factors that influence entrepreneurial entry and the role of biased perceptions of one's abilities. The authors use data from a global survey to investigate how confidence in entrepreneurial skills affects the decision to start a business, revealing that overconfidence is a significant driver behind entrepreneurial activity and linked to higher startup rates and lower survival chances for new businesses.",
+        "section_role": "background",
+        "key_entities": [
+          "Global Entrepreneurship Monitor (GEM)",
+          "Camerer and Lovallo",
+          "Baldwin",
+          "Dunne, Roberts, & Samuelson",
+          "Hamilton",
+          "Moskovitz and Vissing-Jørgensen"
+        ],
+        "key_findings": [
+          "Overconfidence leads to excess entrepreneurial entry.",
+          "Confidence in one's entrepreneurial skills is a major driver of business startup decisions.",
+          "Nascent entrepreneurs are more confident than established entrepreneurs.",
+          "Countries with high entrepreneurial confidence have higher startup activity but lower business survival rates."
+        ],
+        "extractability_assessment": "This section contains self-contained claims supported by referenced studies and survey data, making it extractable for claims regarding overconfidence and entrepreneurial behavior.",
+        "locality_confidence": 0.85
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "Excess entrepreneurial entry is causally linked to overconfidence.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "excess entrepreneurial entry",
+              "entity_type": "concept",
+              "ontology": "entrepreneurial behavior"
+            },
+            "predicate": {
+              "value": "is_caused_by",
+              "entity_type": "action",
+              "ontology": "causal relationships"
+            },
+            "object": {
+              "value": "overconfidence",
+              "entity_type": "concept",
+              "ontology": "psychological traits"
+            },
+            "context": {
+              "setting": "entrepreneurial market",
+              "condition": "high business failure rates"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "Confidence in one's own entrepreneurial skills is a major driver in the decision to start a business.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "confidence in one's own entrepreneurial skills",
+              "entity_type": "concept",
+              "ontology": "entrepreneurial behavior"
+            },
+            "predicate": {
+              "value": "is_a_driver_of",
+              "entity_type": "action",
+              "ontology": "behavioral influences"
+            },
+            "object": {
+              "value": "decision to start a business",
+              "entity_type": "concept",
+              "ontology": "entrepreneurial decisions"
+            },
+            "context": {
+              "population": "entrepreneurs across 18 countries",
+              "timepoint": "2001 Global Entrepreneurship Monitor survey"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "Countries with high entrepreneurial confidence have significantly higher startup activity but lower survival rates for businesses.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "countries with high entrepreneurial confidence",
+              "entity_type": "concept",
+              "ontology": "countries"
+            },
+            "predicate": {
+              "value": "exhibit",
+              "entity_type": "action",
+              "ontology": "outcome metrics"
+            },
+            "object": {
+              "value": "higher startup activity and lower survival rates",
+              "entity_type": "concept",
+              "ontology": "business outcomes"
+            },
+            "context": {
+              "population": "entrepreneurs",
+              "condition": "over a period of 42 months"
+            },
+            "details": {}
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "supporting",
+            "summary_text": "The paper provides significant evidence that subjective and possibly biased perceptions impact new business creation, highlighting the effect of entrepreneurial confidence.",
+            "evidence_method": "observation",
+            "outcome_type": "phenotype",
+            "presentation_type": "text",
+            "context": {
+              "setting": "entrepreneurial decision-making",
+              "condition": "varied across countries"
+            },
+            "details": {
+              "outcome_name": "impact of biased perceptions on entrepreneurship",
+              "sample_size": "large sample from 18 countries"
+            },
+            "ontology": "entrepreneurial behavior"
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.85
+          },
+          {
+            "claim_index": 1,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.85
+          },
+          {
+            "claim_index": 2,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.85
+          }
+        ]
+      },
+      "gated_claim_count": 0
+    },
+    {
+      "section": {
+        "section_id": "section_3c1e4837f98e0ffe",
+        "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+        "section_name": "Theoretical background",
+        "section_type": "OTHER",
+        "section_source": "tei_header",
+        "section_title_quality": "high",
+        "original_section_name": "Theoretical background",
+        "page_numbers": [],
+        "span_ids": [
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0006",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0007",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0008",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0009",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0010",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0011"
+        ],
+        "text": "In microeconomic models of entrepreneurial behavior, objectively measurable variables as well as subjective preferences and perceptions influence the decision to start a business. Among objectively measurable variables, age and gender have been shown to play some role in entrepreneurial decisions. For example, the probability of starting a business has been shown to increase with age up to a threshold point and to decrease thereafter (Levesque & Minniti, 2006) , and men have been shown to be more likely to start a business than women (Blanchflower, 2004) . Evidence also suggests that entrepreneurs are significantly hindered by liquidity constraints (Evans & Jovanovic, 1989 ) and that individuals with greater family wealth are more likely to switch from employment to self-employment (Kihlstrom & Laffont, 1979) . Education has been shown to be negatively related to the probability of being self-employed, except in some rich countries where post-graduate training has been found to have some positive effects (Blanchflower, 2004; Reynolds, Autio, & Hay, 2003) , and conditions in the labor market have been identified as an important determinant of employment status choice, though the nature of the relationship is still under debate (Acs, Carlsson, & Karlsson, 1999; Blanchflower & Oswald, 1998) . 1 Finally, different cultural and economic characteristics have been linked to variations in rates of new firm formation across countries and regions (Acs, Arenius, Michael, & Minniti, 2005; Davidsson & Wiklund, 1997) . Since starting a business is a risky decision, in addition to objectively measurable sociodemographic variables, subjective preferences and perceptions have also been suggested as important determinants of entrepreneurial behavior. Kirzner (1973 Kirzner ( , 1979) ) argues that entrepreneurship is alertness, that is, the ability to perceive unexploited opportunities. Similarly, Casson (1982) argues that the essence of entrepreneurship is different perceptions about the environment. Higher entrepreneurial propensity has also been linked to self-confidence and an illusion of control. Building on Rotter (1966) , Harper (1998) discusses the interdependence between entrepreneurship and locus of control. An individual with an internal locus of control tends to believe that events are contingent upon his own behavior or his own relatively permanent characteristics. In Harper's theory, an internal locus of control increases entrepreneurial alertness. This increased alertness, in turn, leads to more opportunity perception and, therefore, to more entrepreneurship. An individual's tolerance for risk may also be important for entrepreneurial decisions (Iyigun & Owen, 1998; Kihlstrom & Laffont, 1979; Wu & Knott, 2006) . Although data support the existence of some negative effects of risk aversion on entrepreneurial choices, the direction of causality is unclear (Cramer, Hartog, Jonker, & Van Praag, 2002) . Wu and Knott (2006) demonstrate that it is important to discriminate entrepreneur's preferences regarding demand risk and ability risk -the latter being closely related to our work. Weber and Milliman (1997) , for example, have shown that subjective risk perceptions may be systematically distorted by, e.g., prior gains and losses. In addition, since most individuals are not only risk averse but also ambiguity averse (Ellsberg, 1961; Tversky & Kahneman, 1992) knowing other entrepreneurs may increase the propensity of an individual to start a business. Minniti (2005) emphasizes the ambiguity-reducing effects of knowing other entrepreneurs. Reducing ambiguity changes the weighting of probabilities so that reducing ambiguity may lead individuals to accept more risk (Einhorn & Hogarth, 1985) . For decisions made under uncertainty, such as starting a new business, perceptions are a mediator between preferences and behavior, affecting perceptions of both probabilities and outcomes (Kahneman & Tversky, 1979; Tversky & Kahneman, 1991 , 1992) . For an individual to start a new business, the sum of perceived potential outcomes weighted by their respective perceived probabilities has to be larger than the perceived potential outcomes of a wage job, weighted by its perceived probabilities (for similar arguments see Simon, Houghton, & Aquino, 1999; Forlani & Mullins, 2000) . Smaller perceived downside risks and greater perceived chances of success may increase an individual's entrepreneurial propensity. The connection between perception and action matters because an individual's perceptions with respect to starting a business may be systematically distorted by overconfidence. Overconfidence has been defined differently in different disciplines. It has been defined as an overestimation of one's own ability to make accurate forecasts, or, alternatively, as an overestimation of one's own ability relative to others (often referred to as the 'betterthan-average' effect) or relative to one's actual ability (Moore & Kim, 2003) . In the study by Camerer and Lovallo (1999) , overconfidence means overestimation of one's own abilities relative to others. Our study is similar to Camerer and Lovallo's research because we are looking at the combination of self-assessed abilities to be a successful entrepreneur, actual entry at the individual level and estimated survival at the aggregate level. However, in contrast to Camerer and Lovallo's experimental approach, market capacities and probability distributions are unknown in field data and in the real world. Therefore, our entrepreneurs do not know ex ante how good they need to be in order to survive in the market. Consequently, our evidence for overconfidence is more indirect than Camerer and Lovallo's because self-perceptions cannot be compared to objectively required skill levels. Recent studies on the related better-than-average effect have shown that this effect is very common, and some of its characterizing factors have been identified. For example, individuals have been shown to exhibit less bias when they believe themselves to have little or no control over events. Some work has shown that, when faced with a difficult task, people often report that they have below average skills (Chambers, Windschitl, & Suls, 2003; Hoelzl & Rustichini, 2005; Kruger & Burrus, 2004) . Kruger (1999) showed that people rate themselves above average in domains for which the average individual feels skilled and capable. The same people, however, rate themselves below average in more challenging or unfamiliar domains. These results are consistent with Camerer and Lovallo's reference group neglect and with Harper's theory that the perception of more internal control increases entrepreneurial alertness. It is also consistent with our argument that individuals exhibiting more self-confidence are more likely to become involved in starting a business. The related better-than-average effect provides compelling evidence that individuals maintain unrealistically positive images of themselves relative to others and, specifically, that the average individual tends to rate himself above the average in positive situations (Alicke, Klotz, Breitenbecher, Yurak, & Vredenburg, 1995; Eiser, Pahl, & Prins, 2001) . In our data, unlike other respondents, nascent and new entrepreneurs frequently report having the necessary skills to successfully start a business. Also, Windschitl, Kruger, and Simms (2003) suggest that when people judge their likelihood of success, their assessment of their own strengths and weaknesses have greater impact than their assessments of their competitors' strengths and weaknesses. This is consistent with our argument that individuals who believe themselves to have the skills and ability to start a new business are more likely to take an optimistic view of their prospects and overestimate their chances of success.",
+        "token_count": 1155,
+        "char_count": 7862
+      },
+      "decision": {
+        "section_id": "section_3c1e4837f98e0ffe",
+        "should_extract": true,
+        "reason": "The section presents specific findings supported by empirical evidence regarding factors influencing entrepreneurial behavior, including overconfidence.",
+        "expected_claim_types": [
+          "statistical relationships",
+          "empirical findings",
+          "theoretical assertions"
+        ],
+        "expected_evidence_types": [
+          "empirical studies",
+          "theoretical frameworks",
+          "statistical data"
+        ],
+        "likely_claim_density": "medium",
+        "likely_evidence_density": "medium",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_3c1e4837f98e0ffe",
+        "section_name": "Theoretical background",
+        "section_type": "OTHER",
+        "summary_text": "This section discusses the factors influencing entrepreneurial behavior, including measurable variables such as age, gender, and education, as well as subjective preferences and perceptions. It highlights the impact of risk tolerance and overconfidence on the decision to start a business, emphasizing that individuals often overestimate their abilities and prospects for success. Theoretical frameworks and empirical evidence are presented to illustrate how different perceptions affect entrepreneurial alertness and decision-making in uncertain conditions.",
+        "section_role": "background",
+        "key_entities": [
+          "age",
+          "gender",
+          "liquidity constraints",
+          "family wealth",
+          "education",
+          "cultural characteristics",
+          "self-confidence",
+          "locus of control",
+          "risk aversion",
+          "ambiguity aversion",
+          "better-than-average effect",
+          "entrepreneurs"
+        ],
+        "key_findings": [
+          "Age increases the probability of starting a business up to a threshold and then decreases.",
+          "Men are more likely to start a business than women.",
+          "Overconfidence leads individuals to overestimate their chances of business success.",
+          "Learning from other entrepreneurs increases the likelihood of starting a business by reducing ambiguity.",
+          "Perceptions of risks and outcomes influence entrepreneurial decisions."
+        ],
+        "extractability_assessment": "This section contains self-contained claims that are supported by referenced empirical studies.",
+        "locality_confidence": 0.8
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "Overconfidence leads individuals to overestimate their chances of business success.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "overconfidence",
+              "entity_type": "concept",
+              "ontology": "psychological constructs"
+            },
+            "predicate": {
+              "value": "leads to",
+              "entity_type": "relation",
+              "ontology": "causal relations"
+            },
+            "object": {
+              "value": "overestimation of chances of business success",
+              "entity_type": "phenomenon",
+              "ontology": "entrepreneurial behavior"
+            },
+            "context": {
+              "analysis_context": "theoretical framework",
+              "condition": "under uncertainty",
+              "population": "entrepreneurs"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "Men are more likely to start a business than women.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "men",
+              "entity_type": "group",
+              "ontology": "gender studies"
+            },
+            "predicate": {
+              "value": "are more likely to",
+              "entity_type": "relation",
+              "ontology": "probabilistic relations"
+            },
+            "object": {
+              "value": "start a business",
+              "entity_type": "action",
+              "ontology": "entrepreneurial behavior"
+            },
+            "context": {
+              "population": "men and women",
+              "setting": "entrepreneurship"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "Higher entrepreneurial propensity has been linked to self-confidence.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "higher entrepreneurial propensity",
+              "entity_type": "concept",
+              "ontology": "entrepreneurial behavior"
+            },
+            "predicate": {
+              "value": "has been linked to",
+              "entity_type": "relation",
+              "ontology": "correlation"
+            },
+            "object": {
+              "value": "self-confidence",
+              "entity_type": "concept",
+              "ontology": "psychological constructs"
+            },
+            "context": {
+              "population": "entrepreneurs",
+              "condition": "positive self-assessment"
+            },
+            "details": {}
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "supporting evidence",
+            "summary_text": "Research shows that overconfidence results in entrepreneurs overestimating their ability to succeed in business.",
+            "evidence_method": "observation",
+            "outcome_type": "behavioral_outcome",
+            "presentation_type": "text",
+            "context": {
+              "analysis_context": "theoretical framework",
+              "population": "entrepreneurs"
+            },
+            "details": {
+              "outcome_name": "overconfidence in entrepreneurial success",
+              "value": "overestimation of capabilities"
+            },
+            "ontology": "entrepreneurial behavior"
+          },
+          {
+            "role": "statistical finding",
+            "summary_text": "Statistical analysis demonstrates that men are statistically more likely to engage in entrepreneurial activities compared to women.",
+            "evidence_method": "regression_estimate",
+            "outcome_type": "behavioral_outcome",
+            "presentation_type": "text",
+            "context": {
+              "population": "men and women",
+              "setting": "entrepreneurship"
+            },
+            "details": {
+              "outcome_name": "gender difference in entrepreneurial activity",
+              "value": "higher probability for men"
+            },
+            "ontology": "gender studies"
+          },
+          {
+            "role": "linking concept",
+            "summary_text": "Studies indicate that self-confidence positively correlates with the probability of starting a business.",
+            "evidence_method": "meta_analysis",
+            "outcome_type": "behavioral_outcome",
+            "presentation_type": "text",
+            "context": {
+              "population": "entrepreneurs",
+              "condition": "high self-confidence"
+            },
+            "details": {
+              "outcome_name": "entrepreneurial propensity",
+              "value": "linked to self-confidence"
+            },
+            "ontology": "entrepreneurial behavior"
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": "high"
+          },
+          {
+            "claim_index": 1,
+            "evidence_index": 1,
+            "relation": "supports",
+            "confidence": "high"
+          },
+          {
+            "claim_index": 2,
+            "evidence_index": 2,
+            "relation": "supports",
+            "confidence": "high"
+          }
+        ]
+      },
+      "gated_claim_count": 0
+    },
+    {
+      "section": {
+        "section_id": "section_f7d0da35fda936da",
+        "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+        "section_name": "Data and method",
+        "section_type": "OTHER",
+        "section_source": "tei_header",
+        "section_title_quality": "high",
+        "original_section_name": "Data and method",
+        "page_numbers": [],
+        "span_ids": [
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0012",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0013",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0014",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0015",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0016",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0017",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0018",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0019",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0020",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0021"
+        ],
+        "text": "Data used in our analysis were collected for the 2001 population survey of the Global Entrepreneurship Monitor (GEM) project. GEM is an ongoing large scale academic project designed to study the causes and implications of entrepreneurial behavior across countries. 2 Initiated in 1999 with 10 countries, the project collects data annually and has grown to include more than 40 countries in 2006. GEM data used in this paper were collected in 2001 in 29 countries. A harmonized, representative population survey with at least 2000 observations was conducted in each of the participating countries, yielding over 74,000 completed interviews collected between June and July 2001. 3 The main purpose of the survey was to create a representative random sample of population in each country and to identify what percentage of these individuals, at the time of the survey, owned and man-aged a business or were in the process of starting one. If either or both of these criteria applied, respondents were asked follow-up questions that allowed the construction of a profile of the respondents and of their businesses. Among other things, respondents were asked the age of their venture and whether or not the business had already paid wages. These criteria were then used to identify the number of people involved in entrepreneurial activity in each country, and to distinguish between nascent entrepreneurs, new entrepreneurs, established entrepreneurs, and non-entrepreneurs. 4 Individuals were coded as nascent entrepreneurs (nascent) if they claimed to have been engaged in start-up activities during the 12 months preceding the survey, to have been full or part owners of the new business, and to have paid wages to the owners or others for a period not exceeding 3 months. Individuals were coded as new entrepreneurs (newentr) if they claimed to be managing and owning a business at the time of the survey, and to have paid wages for at least 3 but no more than 42 months. Finally, respondents were classified as established entrepreneurs (establ) if, at the time of the survey, they owned all or part of a business they helped manage and had paid wages or profits for longer than 42 months. All three variables nascent, newentr, and establ are binary variables computed at the individual level (individual fits definition ''Yes'' = 1 or ''No'' = 0). All respondents in our sample fit into one of the three above groups or into none of the above. In the latter case, they are labeled as non-entrepreneurs. There are no missing values for these categories. Although individuals in the three entrepreneurial groups (nascent, newentr, or establ) are all entrepreneurs, they are distinct because of the length of time they have been involved in their ventures. The dataset contains basic demographic information for each respondent, including age and gender. For most countries, data are also available about working status, education level, and relative income group. 5 11 countries had data gaps in one or more of the demographic and socio-economic variables and, therefore, were excluded from our analysis, reducing the working sample to 18 countries for a total of more than 40,000 observations. Countries included in our study are Argentina, Canada, Denmark, Finland, Germany, Hungary, India, Israel, Italy, Japan, New Zealand, Poland, Portugal, Russia, Singapore, South Korea, Sweden, and USA. Each survey participant was also asked six questions related to perceptual variables often associated with entrepreneurial behavior. Specifically, respondents were asked whether they believed they had the knowledge, skill and experience required to start a business (suskill). This variable describes the subjective assessment of one's own skills, knowledge and ability with respect to starting a business; it is expected to have a positive influence on entrepreneurial propensity. Respondents were asked whether they thought that good opportunities for starting a business would exist in the area where they lived in the 6 months following the survey (opport). This variable describes a personal assessment of the existence of opportunities and is also expected to have a positive impact on entrepreneurial propensity. Respondents were also asked whether fear of failure would prevent them from starting a business. This variable is expected to have a negative effect on individuals' entrepreneurial propensity. In fact, fear of failure (fearfail) may be viewed as a proxy for downside risk tolerance. Respondents were also asked two questions related to their expectations about the future which, in turn, can be influenced by objectively measurable conditions and subjective attitudes, i.e. optimism and pessimism. Respondents were asked whether they expected the business conditions in their country to be better, worse, or about the same, 1 year after the survey (ctrfutur), and whether they thought that, 1 year after the survey, their family would be financially better off, worse off, or about the same (famfutur). The possible impact of these perceptions on the propensity to start a business could be positive or negative. If, for example, the country's future is expected to be unsatisfactory, the individual may avoid founding a business because it seems too risky to do so. On the other hand, bad conditions in a country may imply a lack of employment opportunities and, as a result, lead to more attempts to start businesses. Finally, respondents were asked whether they knew personally someone who had started a business in the 2 years preceding the survey (knowent). This variable provides some indication of how direct exposure to other entrepreneurs provides information about the entrepreneurial process. We expect that knowing other entrepreneurs might influence the perception of entrepreneurial opportunities by providing social clues in the uncertain environment characterizing the creation of a new business. In other words, knowing other entrepreneurs might reduce ambiguity and, as a result, have a positive influence on startup propensity (Minniti, 2005) . A detailed description of all independent variables is presented in the Appendix together with descriptive statistics for the co-variables used in the estimated models. The GEM project provides analogous aggregate data at the country level from 2002 through 2005, including the same measures for entrepreneurial activity and most of the perceptual variables discussed above. These aggregate data, combined with those for 2001, allowed us to construct an unbalanced panel, which we used to test the relationship between sufficient skill perceptions, entrepreneurial activity, and survival chances. Overall, GEM data are exceptionally well suited for our purpose. To our knowledge, the dataset is the only major cross-country study of entrepreneurial behavior that uses a consistent methodology and a set of simple, comparable variables measuring relevant individual perceptions in each country. Earlier studies dealing with the influence of perceptions and overconfidence on entrepreneurial activity were based on experimental data with students (Camerer & Lovallo, 1999) , or had to rely on noticeably smaller samples of established entrepreneurs from just one country (Busenitz & Barney, 1997; Cooper, Woo, & Dunkelberg, 1988) . Our data, instead, allow us to relate prevalence rates of perceptual variables, including a self-assessment of entrepreneurial skills, to cross-country differences in entrepreneurial activity and performance. Finally, our data are unique because they include perceptions of individuals who were in the process of starting a new business at the time of the interview, thereby allowing us to relate individual perceptions to the actual activity of starting a business. To identify the effects associated with entrepreneurial activity we ran probit regressions and calculated a robust covariance matrix of the parameter estimates using the sandwich estimation procedure (White, 1982) . The sandwich estimation procedure has the desirable property of yielding asymptotically consistent covariance standard error estimates that are independent from distributional assumptions. The large sample size in our study makes robust covariance estimates particularly attractive (Kauermann & Carroll, 2001) . 6 In addition, preparatory tests revealed only weak correlations among the explanatory variables and no indication of multicollinearity. All independent variables in the regression are dummies. The estimated model is a transformed probit model, where the reported coefficients are computed with a discrete calculation associated with the dummy changing from 0 to 1. Each probit model is calculated as EðyjX j Þ ¼ P ðy 6 ¼ 0jX j Þ ¼ UðX j bÞ, where U is the cumulative standard normal distribution. The transformed probit models report coefficients b Ã i ¼ UðX 1 bÞ À UðX 0 bÞ where X 0 ¼ X 1 ¼ X except that the ith element of X 1 and X 0 are set to 1 and 0, respectively. The coefficients have an intuitive interpretation. They indicate the percentage change in the observed outcome if the explanatory variable changes from 0 to 1. For example, a coefficient value of 5% means thatceteris paribus -a population where all individuals report x = 1 would have 5% more entrepreneurs than a population in which all individuals report x = 0. Thus, the coefficients can be thought of as reporting the difference in entrepreneurial activity due to x, holding everything else constant. In all models, we contrast the relevant dependent variable (nascent, newentr or establ) against the control group of non-entrepreneurs. 7 Finally, we run additional regressions and correlations using the panel of aggregate country data from 2001 to 2005 to test whether sufficient skill perceptions are related to survival chances. In the first step of our analysis, nascent, newentr, and establ are used as dependent variables in separate models to test which covariables are significantly associated with an individual's decision to start a business and to analyze how entrepreneurs differ from non-entrepreneurs.",
+        "token_count": 1558,
+        "char_count": 10097
+      },
+      "decision": {
+        "section_id": "section_f7d0da35fda936da",
+        "should_extract": true,
+        "reason": "The section provides structured information about the data collection process and classifications of respondents, which can support claims related to entrepreneurial behavior and perceptions.",
+        "expected_claim_types": [
+          "statistical classification",
+          "survey response analysis",
+          "cross-country comparison"
+        ],
+        "expected_evidence_types": [
+          "data from GEM",
+          "demographic information",
+          "survey questions"
+        ],
+        "likely_claim_density": "medium",
+        "likely_evidence_density": "medium",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_f7d0da35fda936da",
+        "section_name": "Data and method",
+        "section_type": "OTHER",
+        "summary_text": "This section outlines the data collection methods and dataset utilized in the analysis. It describes the Global Entrepreneurship Monitor (GEM) project, which collected data from 29 countries in 2001, focusing on entrepreneurial behavior. The dataset categorizes individuals into four groups based on their entrepreneurial status and includes demographic information and responses to survey questions related to entrepreneurial perceptions and opportunities.",
+        "section_role": "methods",
+        "key_entities": [
+          "Global Entrepreneurship Monitor",
+          "GEM",
+          "nascent entrepreneurs",
+          "new entrepreneurs",
+          "established entrepreneurs",
+          "non-entrepreneurs",
+          "Argentina",
+          "Canada",
+          "Germany",
+          "India"
+        ],
+        "key_findings": [
+          "The study uses GEM data from 2001, covering over 74,000 respondents across 29 countries.",
+          "Individuals are classified into nascent, new, established, or non-entrepreneurs based on their entrepreneurial activities.",
+          "Respondents answered questions regarding their entrepreneurial skills, opportunities, and perceptions of risk."
+        ],
+        "extractability_assessment": "This section contains structured information and categorization of respondents, allowing for some claims to be extracted based on the classifications and perceptions of entrepreneurial activity.",
+        "locality_confidence": 0.8
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "The Global Entrepreneurship Monitor (GEM) project collected data from more than 74,000 respondents across 29 countries in 2001.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "Global Entrepreneurship Monitor",
+              "entity_type": "project",
+              "ontology": "entrepreneurship survey"
+            },
+            "predicate": {
+              "value": "collected_data_from",
+              "entity_type": "action",
+              "ontology": "data collection"
+            },
+            "object": {
+              "value": "74,000 respondents",
+              "entity_type": "population",
+              "ontology": "survey population"
+            },
+            "context": {
+              "population": "74,000 respondents",
+              "setting": "29 countries"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "Individuals were classified as nascent, new, or established entrepreneurs based on their entrepreneurial activities and business ownership.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "younger entrepreneurs",
+              "entity_type": "category",
+              "ontology": "entrepreneurial status"
+            },
+            "predicate": {
+              "value": "classified_as",
+              "entity_type": "action",
+              "ontology": "classification"
+            },
+            "object": {
+              "value": "nascent, new, or established entrepreneurs",
+              "entity_type": "category",
+              "ontology": "entrepreneurial classification"
+            },
+            "context": {
+              "analysis_context": "entrepreneurial classification"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "GEM data allows for the identification of individuals' perceptions regarding skills, opportunities, and fear of failure.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "GEM data",
+              "entity_type": "dataset",
+              "ontology": "entrepreneurship survey"
+            },
+            "predicate": {
+              "value": "identifies_perceptions_about",
+              "entity_type": "action",
+              "ontology": "perception analysis"
+            },
+            "object": {
+              "value": "skills, opportunities, and fear of failure",
+              "entity_type": "concept",
+              "ontology": "entrepreneurial perceptions"
+            },
+            "context": {
+              "setting": "entrepreneurial perception assessment"
+            },
+            "details": {}
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "data collection",
+            "summary_text": "GEM project data was collected from 29 countries in 2001 with over 74,000 completed interviews.",
+            "evidence_method": "observation",
+            "outcome_type": "quantitative_measure",
+            "presentation_type": "text",
+            "context": {
+              "population": "74,000 respondents",
+              "species": "human",
+              "setting": "29 countries"
+            },
+            "details": {
+              "value": "74,000",
+              "measurement_type": "completed interviews"
+            },
+            "ontology": "entrepreneurship survey data"
+          },
+          {
+            "role": "classification criteria",
+            "summary_text": "Respondents were classified into nascent, new, established, or non-entrepreneurs based on their business ownership status.",
+            "evidence_method": "observation",
+            "outcome_type": "qualitative_measure",
+            "presentation_type": "text",
+            "context": {
+              "analysis_context": "entrepreneurial classification"
+            },
+            "details": {
+              "outcome_name": "entrepreneurial classification",
+              "value": "nascent, new, established, non-entrepreneurs"
+            },
+            "ontology": "entrepreneurial activity classification"
+          },
+          {
+            "role": "perceptual data collection",
+            "summary_text": "Survey included questions on respondents' self-assessed skills, perceived opportunities, and fear of failure.",
+            "evidence_method": "observation",
+            "outcome_type": "qualitative_measure",
+            "presentation_type": "text",
+            "context": {
+              "population": "survey participants",
+              "condition": "self-assessment"
+            },
+            "details": {
+              "outcome_name": "perceptions of entrepreneurial skills",
+              "value": "skills, opportunities, fear of failure"
+            },
+            "ontology": "entrepreneurial perceptions"
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "is_supported_by",
+            "confidence": 0.8
+          },
+          {
+            "claim_index": 1,
+            "evidence_index": 1,
+            "relation": "is_supported_by",
+            "confidence": 0.8
+          },
+          {
+            "claim_index": 2,
+            "evidence_index": 2,
+            "relation": "is_supported_by",
+            "confidence": 0.8
+          }
+        ]
+      },
+      "gated_claim_count": 0
+    },
+    {
+      "section": {
+        "section_id": "section_caf93d64ef07734d",
+        "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+        "section_name": "Results",
+        "section_type": "RESULTS",
+        "section_source": "tei_header",
+        "section_title_quality": "high",
+        "original_section_name": "Results",
+        "page_numbers": [],
+        "span_ids": [
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0022",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0023",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0024",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0025",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0026",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0027",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0028",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0029",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0030"
+        ],
+        "text": "We estimate two different models for each of the three dependent variables nascent, newentr and establ. For each individual, the first model includes as explanatory variables only country of residence, age, income group, education, and current work status. The second model includes all available variables. All model results suggest that perceptual variables have a significant impact on the creation of businesses and model diagnostics indicate that the fit of the regressions increase substantially when perceptual variables are added. Regression results are reported in The first two models (1a and 1b) refer to nascent entrepreneurs as the dependent variable (nascent). The strongest cross-national influence on the individual propensity to start a business is shown to be whether that person believes she has sufficient skills, knowledge and ability to start a business (suskill). According to the second probit model on nascent (Model 1b), the individual probability of starting a business increases by 5.6% on average, if the individual believes she has sufficient skills. This is a very strong contribution for a single co-variable, especially considering that only 6.03% of the individuals included in Model 1b are actually nascent entrepreneurs (nascent = 1). In addition to the strong influence of the suskill variable, other perceptual variables are also strongly associated with the decision to start a business. The perception of good business opportunities (opport) and optimism about the financial situation of the family in the near future (famfutur) all have strong positive coefficients in the model on nascent. Knowing other entrepreneurs (knowent) is also positively associated with start-up propensity. Fear of failure (fearfail), on the other hand, seems to reduce the propensity to start a new business. Socio-economic factors, such as household income and education, have a relatively small influence on entrepreneurial activity. Also, the relevance of socio-economic factors is clearly biased upward in model 1, where perceptual variables are not explicitly controlled for. This suggests that instead of having a direct impact, socio-demographic variables like high educational attainment and high income are, rather, mediators of individual perceptions. In Table 1 , Models 2a and 2b report regression results for new entrepreneurs (newentr) without and with perceptual variables, respectively. Models 3a and 3b, instead, report regression results for established entrepreneurs (establ) without and with perceptual variables, respectively. Together, these models describe differences between new entrepreneurs, established entrepreneurs and non-entrepreneurs. Again, we find that entrepreneurs and non-entrepreneurs differ significantly in their perceptions. Both new entrepreneurs and established entrepreneurs are more likely than non-entrepreneurs to perceive themselves as skilled (suskill), to know other individuals who have recently started a business (knowent), and to perceive good business opportunities (opport). Also, entrepreneurs are less prone than non-entrepreneurs to state that fear of failure would stop them from starting a business (fearfail). In general, these results are consistent with the ones obtained for nascent entrepreneurs (nascent). In contrast to nascent entrepreneurs, however, both new entrepreneurs and established entrepreneurs are more likely to have a high income. This result may suggest that high income is a consequence rather than a prerequisite of successful entrepreneurial activity. Alternatively, it could also imply that individuals with a high income are more likely to survive the first months of new business ownership. As in the case of nascent entrepreneurs, suskill turns out to be the single most important factor that distinguishes entrepreneurs from non-entrepreneurs in all models. Our results also support existing empirical evidence reporting strong country effects (Acs et al., 1999; Blanchflower, 2004) . Interestingly, the coefficients' signs change for some country dummies when perceptual variables are added to the models. For each dependent variable, the country dummy variables in the second model (Models 1b, 2b, and 3b, respectively) show country-specific effects after controlling for observable differences in socio-economic factors and individual perceptions. Thus, the country effects in all ''b'' models approximate deviations of the expected level of entrepreneurial activity from the comparison country (US) that would occur if demographic, socio-economic, and perceptual variables were equally distributed across all countries in the sample. To illustrate, Table 2 shows the prevalence rates of nascent entrepreneurs (nascent), new entrepreneurs (newentr) and established entrepreneurs (establ) across countries. Table 2 shows that fewer people are involved in start-up activities in Japan than in the US (À4.2%). Model 1a in Table 1 shows that Japan would still be significantly less entrepreneurial than the US (À2.8%), even if the socio-economic and demographic characteristics of the two populations were equally distributed. However, on average, Japanese differ substantially in their individual perceptions from Americans, i.e. they are less confident in their skills and less optimistic about good business opportunities. After controlling for these perceptual factors explicitly, in fact, Model 1b in Table 1 indicates that Japanese would be more likely to start a business than Americans if demographic and socio-economic characteristics and perceptual variables were equally distributed in both countries (+1.3%). Obviously, these country-specific differences in perceptions could result from different economic conditions, and some perceptual biases could be more common in some countries than in others. 9 The evidence discussed above points out the importance of perceptual variables. It also contains significant evidence of the bias characterizing subjective perceptions. The belief that one has sufficient skills, knowledge and ability to start a business originates from the subjective perception of the individual and need not necessarily correspond to his actual skill level. In fact, Table 3 shows a surprisingly strong variance in the suskill variable across countries. For example, about 55% of individuals in Hungary and Argentina believe they have sufficient skills to start a new business, compared to only 11% in Japan or 24% in Sweden. Interestingly, countries that exhibit a high percentage of individuals with confidence in their own entrepreneurial skills also exhibit the highest percentage of entrepreneurs. Analyzing the relationship of sufficient skill perception and educational attainment levels yields additional evidence for our argument that relevant perceptions might be systematically distorted. Education is often used as a proxy measuring potential skills. To the extent that education is indeed a good proxy, individuals with high levels of educational attainment should be more confident in their entrepreneurial skills. However, if the perception of one's own skills to start a business is only loosely related to a potentially important aspect of these skills, namely education levels, something else must be driving this perception. Table 4 shows that, in general, skill perception and educational attainment are only weakly correlated (coefficients <0.1). In addition, results in Table 5 , showing group-means for the suskill variable by educational attainment among countries, suggest that individuals with high education are not necessarily more confident in their entrepreneurial skills. 10 In addition to providing information on the existence of perceptual biases, our results contain significant evidence on their direction. Confidence in ones own skills and abilities to start a business should increase as individuals gain relevant entrepreneurial experience and successfully survive in the market for some time. In other words, if individual perceptions were unbiased, established entrepreneurs should be more confident in their own skills than individuals who are just starting a business. We use a v 2 -test to evaluate the null hypothesis that perceptions among nascent entrepreneurs (nascent) and established business owners (establ) are equal. The results are reported in Table 6 and show that nascent entrepreneurs are significantly more confident in their skills, knowledge, and experience than established entrepreneurs. This finding suggests that nascent entrepreneurs may exhibit a perceptual bias reflecting overconfidence. We observe that the suskill variable has its strongest effect in the regression on nascent entrepreneurs (nascent), together with the v 2 -test, this suggests that strong confidence in entrepreneurial ability may be driving start-up decisions rather than being the consequence of a start-up decision made in the past. According to Table 1 , for nascent entrepreneurs (nascent), suskill = ''yes'' increases the average individual probability of starting a new business by 5.62%. The average probability in the sample is 6.03%. Thus, individuals who believe they have sufficient skills are (5.62/6.03) + 1 = 1.93 times more likely to be nascent entrepreneurs than non-entrepreneurs, everything else being the same. Similarly, suskill = ''yes'' increases the chance to be in the group of new entrepreneurs (newentr) by 1.82 times, compared to being in the group of non-entrepreneur. For established entrepreneurs, the ratio is 1.75. Thus, although sufficient skill perception is the single most important variable in all regression models, its relative explanatory power is strongest for the group of nascent entrepreneurs, and declines as groups of more established entrepreneurs are considered. Finally, we link entrepreneurial confidence to performance using country level prevalence rates and examine the relationship between sufficient skill perceptions, current and future levels of entrepreneurial activity, and survival chances. Table 2 displays the ratio of established to nascent entrepreneurs (establ/nascent) and the ratio of established entrepreneurs to new entrepreneurs (establ/newentr) in each country. The ratios are positively correlated to each other. 11 Table 2 shows strong variation of the ratios and of entrepreneurial activity in general across countries. 12 The two ratios can be interpreted as rough proxies for the average survival chances of nascent and new entrepreneurs in each country under the assumption that both the prevalence of entrepreneurial activity and the survival chances of new businesses are structural characteristics of a country and constant over time. The higher the ratio of established entrepreneurs to nascent or new entrepreneurs, the greater is the chance of those early stage entrepreneurs to succeed with their businesses. 11 The correlation coefficient is 0.54 for the countries covered by the 2001 GEM survey, and it is significant at above 99% confidence. Pooling all available country observations from 2001 to 2005 yields a correlation coefficient of 0.596, also significant at above 99%. 12 For example, only 2.3% of Japanese were involved in start-up activities (nascent) at the time of the survey compared to 6.5% of Americans. Yet, the ratio of established entrepreneurs to nascent entrepreneurs (establ/ nascent) is more favorable in Japan (2.3) than in the US (0.8). The same holds for the ratio of established entrepreneurs to new entrepreneurs (establ/newentr): Japan exhibits a ratio of 7.6 compared to 1.9 in the US. Assuming that these ratios do not change much over time, these results suggests that the average chances for new business survival are better in Japan than in the US. We test this assumption by constructing a cross-country panel including all participating countries in the GEM project from 2001 to 2005. The panel covers 40 countries and has an unbalanced structure since not all countries participated in the GEM project in all years. The stability of our proxies for survival rates over time is tested using correlations over various time lags. The results are reported in Table 7 . Although there is some variation in the ratios, they are highly positively correlated over time. For example, the correlation coefficient for the ratio of established to nascent entrepreneurs in 2001 and 2005 is 0.755. Table 7 also shows that the prevalence rates of sufficient skill perceptions in each country are very robust over time. Using this cross-country panel, we calculate the Pearson correlation coefficients between the past and current prevalence of suskill, ranging from t À 4 to t, and our two proxies for survival as well as for the prevalence of established entrepreneurs for all available countries. In addition, we estimate an unbalanced random effects linear model (Baltagi & Chang, 1994; Swamy & Arora, 1972) with suskill and a constant as explanatory variables. 13 The results are reported in Table 8 . As expected, sufficient skill perceptions are positively associated with the prevalence of established entrepreneurs. Yet, the relationship with established entrepreneurial activity becomes insignificant for larger time gaps. At the same time, and consistently with our overconfidence argument, perceptions of having sufficient skills and ability are significantly and negatively associated with future survival rates. We find negative coefficients for all time gaps and for both ratios approximating survival chances. 14 13 The appropriateness of the random effects assumption was tested in all 12 models using a Hausman (1978) test. In 9 models, random effects were supported by the test. In 3 cases, a fixed effects model was indicated but the estimated fixed effects model was not significantly different from an empty model because suskill does not explain variations in the data within countries (R 2 within <1% in all models, compared to R 2 between ranging from 6% to 21%). This suggests that variations in sufficient skill perceptions can help to explain cross-country differences in entrepreneurial activity, but not variations in entrepreneurial activity in a particular country over time. 14 We chose to report the results for all 40 countries participating in the GEM study to highlight the robustness and generality of our results. However, when the analysis is replicated using only the 18 countries included in our probit models, the results are even stronger showing higher negative coefficient values for all time gaps between suskill and the two proxies for survival. For example, the correlation coefficient in this sample between suskill in t À 3 and establ/nascent is À0.65, significant at 95% confidence. These findings imply that the average survival chances of nascent entrepreneurs are actually lower in countries that exhibit high prevalence rates of entrepreneurial self-confidence. The combination of high self-assessed abilities, high actual entry rates and low estimated survival chances lends indirect support to our hypothesis that overconfidence may, in fact, drive market entry decisions not only in the laboratory but also in the real world, and that some countries may exhibit relatively high rates of business start-ups because their inhabitants are more (over)confident than those of other countries.",
+        "token_count": 2261,
+        "char_count": 15336
+      },
+      "decision": {
+        "section_id": "section_caf93d64ef07734d",
+        "should_extract": true,
+        "reason": "The section contains specific results about the impact of self-perception on entrepreneurial behavior, supported by data from regression models.",
+        "expected_claim_types": [
+          "statistical results",
+          "comparative results",
+          "predictive factors"
+        ],
+        "expected_evidence_types": [
+          "regression analysis",
+          "statistical percentages",
+          "country-specific comparisons"
+        ],
+        "likely_claim_density": "high",
+        "likely_evidence_density": "high",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_caf93d64ef07734d",
+        "section_name": "Results",
+        "section_type": "RESULTS",
+        "summary_text": "This results section presents two different regression models assessing the impact of various perceptual and socio-economic variables on entrepreneurial behavior across different populations. It finds that self-perception of skills ('suskill') is the most significant predictor of starting a business, and that individuals who perceive themselves as capable are more likely to engage in entrepreneurial activities. Additionally, the section discusses how these perceptions vary by country and suggests that overconfidence in one's skills may drive start-up decisions, potentially impacting survival rates for new businesses.",
+        "section_role": "results",
+        "key_entities": [
+          "suskill",
+          "opport",
+          "famfutur",
+          "knowent",
+          "fearfail",
+          "Japan",
+          "US",
+          "Hungary",
+          "Argentina",
+          "Sweden"
+        ],
+        "key_findings": [
+          "Individuals believing they have sufficient skills to start a business show increased propensity to become nascent entrepreneurs by 5.6%.",
+          "Perceptual variables have a significant impact on entrepreneurial activity, overshadowing socio-economic factors.",
+          "Entrepreneurs exhibit higher confidence in their perceptions compared to non-entrepreneurs.",
+          "High self-assessed skill perceptions correlate with greater entrepreneurship rates but lower survival chances."
+        ],
+        "extractability_assessment": "This section contains self-contained, locally supported claims regarding the influence of perceptions on entrepreneurial behavior.",
+        "locality_confidence": 0.85
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "Individuals who believe they have sufficient skills (suskill) are approximately 1.93 times more likely to be nascent entrepreneurs compared to non-entrepreneurs.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "suskill = 'yes'",
+              "entity_type": "variable",
+              "ontology": "entrepreneurial skill perception"
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relationship",
+              "ontology": "entrepreneurial behavior"
+            },
+            "object": {
+              "value": "nascent entrepreneurship",
+              "entity_type": "outcome",
+              "ontology": "entrepreneurial activity"
+            },
+            "context": {
+              "population": "nascent entrepreneurs",
+              "condition": "individual beliefs about skills"
+            },
+            "details": {
+              "effect_size": "1.93 times",
+              "subject_role": "perception of skills",
+              "object_role": "entrepreneurial activity"
+            }
+          },
+          {
+            "claim_text": "Individuals with high self-assessed skill perceptions have a greater likelihood of engaging in entrepreneurial activities.",
+            "claim_profile": "gwas_association_result",
+            "subject": {
+              "value": "suskill = 'yes'",
+              "entity_type": "variable",
+              "ontology": "entrepreneurial skill perception"
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relationship",
+              "ontology": "entrepreneurial behavior"
+            },
+            "object": {
+              "value": "entrepreneurial activities",
+              "entity_type": "outcome",
+              "ontology": "entrepreneurial activity"
+            },
+            "context": {
+              "population": "general entrepreneurial population",
+              "condition": "self-assessment of skills"
+            },
+            "details": {
+              "subject_role": "perception of skills",
+              "object_role": "entrepreneurial behavior"
+            }
+          },
+          {
+            "claim_text": "Fear of failure (fearfail) reduces the propensity to start a new business.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "fearfail",
+              "entity_type": "variable",
+              "ontology": "perceptual variable"
+            },
+            "predicate": {
+              "value": "is_associated_with",
+              "entity_type": "relationship",
+              "ontology": "entrepreneurial behavior"
+            },
+            "object": {
+              "value": "starting a new business",
+              "entity_type": "outcome",
+              "ontology": "entrepreneurial activity"
+            },
+            "context": {
+              "population": "nascent entrepreneurs",
+              "condition": "perception of failure"
+            },
+            "details": {
+              "subject_role": "fear of failure",
+              "object_role": "entrepreneurial activity"
+            }
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "evidence supporting claim on the effect of skills perception",
+            "summary_text": "The regression analysis showed that individuals with sufficient skills perceive a higher probability of starting a business, increasing by 5.6%.",
+            "evidence_method": "regression_estimate",
+            "outcome_type": "phenotype",
+            "presentation_type": "text",
+            "context": {
+              "analysis_context": "regression models on entrepreneurial behavior",
+              "population": "nascent entrepreneurs"
+            },
+            "details": {
+              "outcome_name": "entrepreneurial probability",
+              "value": "5.6%",
+              "measurement_type": "probability"
+            },
+            "ontology": "entrepreneurial activity"
+          },
+          {
+            "role": "evidence supporting claim on fear of failure",
+            "summary_text": "The results indicated that fear of failure significantly reduces the likelihood of becoming a nascent entrepreneur.",
+            "evidence_method": "regression_estimate",
+            "outcome_type": "behavioral_outcome",
+            "presentation_type": "text",
+            "context": {
+              "population": "nascent entrepreneurs",
+              "condition": "fear of failure perception"
+            },
+            "details": {
+              "outcome_name": "propensity to start a business"
+            },
+            "ontology": "entrepreneurial behavior"
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": "high"
+          },
+          {
+            "claim_index": 2,
+            "evidence_index": 1,
+            "relation": "supports",
+            "confidence": "high"
+          }
+        ]
+      },
+      "gated_claim_count": 1
+    },
+    {
+      "section": {
+        "section_id": "section_64750b720c57178a",
+        "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+        "section_name": "Discussion and implications",
+        "section_type": "DISCUSSION",
+        "section_source": "tei_header",
+        "section_title_quality": "high",
+        "original_section_name": "Discussion and implications",
+        "page_numbers": [],
+        "span_ids": [
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0031",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0032",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0033",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0034",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0035",
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0036"
+        ],
+        "text": "Overall, our results suggest that subjective and possibly biased perceptions have a major impact on the decision to start a business. We argue that this is the case because these variables influence the perceived chances of positive outcomes and perceived risks associated with starting one's own business. In particular, entrepreneurial confidence, the subjective belief that one has sufficient skills, knowledge, and ability to start a business, is the most important factor in our regressions. In addition, we find a significant negative relation between entrepreneurial self-confidence and survival rates of nascent entrepreneurs across countries. This result provides some evidence that the perception of entrepreneurial skills is likely to be biased by overconfidence. Our results are consistent with existing evidence that overconfidence is common among individuals in general (Hoffrage, 2004; Weinstein, 1980) , and among entrepreneurs in particular. For example, Busenitz and Barney (1997) have shown overconfidence in entrepreneurs to be higher than overconfidence in managers. Also, Cooper et al. (1988) have found strong evidence of overconfidence among entrepreneurs. Their results suggest that 81% of entrepreneurs believe their chances of success to be at least 70%, and that a third of the entrepreneurs believe they will be successful with certainty. Participants in the study of Cooper et al.'s also estimated their own chances of survival to be higher than those of competing businesses. Unfortunately, however, at the time of the study, 66% of all newly founded businesses were failing. Camerer and Lovallo (1999) have shown that overconfidence in one's own skills leads to excess entry in experimental market conditions and that participants neglect to adjust their expectations to reflect the fact that other group members also judge themselves as skilled. Thus, the importance of perceptual variables, and their associated bias, in the decision to start a business may explain some of the observable inconsistencies between returns to entrepreneurship and entrepreneurial decisions found in the literature (Camerer & Lovallo, 1999; Hamilton, 2000) . Why could entrepreneurial behavior be characterized by overconfidence? A possible reason is that entrepreneurs have a strong tendency to consider their situation as unique. After all, by definition, entrepreneurs are individuals who deviate from the norm. Once they identify a profit opportunity, they isolate their present situation, namely starting a new business, and treat it as an original and unrepeatable event. As a result, they neglect the available statistics of past and future similar situations that could help them to form more accurate forecasts of their likelihood of success. Kahneman and Lovallo (1993) define a situation in which forecasting individuals focus on the case at hand as the ''inside view''. In the inside view, the way to think about a problem is to consider all that one knows about it, with special attention to its unique features. In an alternative, Kahneman and Lovallo define the ''outside view'' as the one in which forecasting individuals focus on the statistics of a class of cases chosen to be similar, in relevant ways, to the current situation. Individuals in general, and entrepreneurs in particular, tend to base their choices on the predictions generated by the inside view. This suggests that entrepreneurs may base their decisions largely on subjective perceptions. Ultimately, numerous effects including evolution, history, culture and the institutional framework contribute to determine the quantity and quality of entrepreneurial behavior. They influence individuals' perceptions and thus their incentives to transform perceived opportunities into actions. Optimistic biases have been often linked to an illusion of control (Taylor & Brown, 1988) . Thus, an institutional setting leading to stronger perceptions of control over one's domain may yield more entrepreneurial activity. Harper (1998) has argued explicitly that the nature of political and economic institutions influences individuals' perceptions. Those institutions and policies that improve transparency and entitlement tend to increase the subjective perception of the link between actions and outcome. They may increase, therefore, the number of individuals having an internal locus of control. Along similar lines, Baumol (1990) argues that institutional arrangements affect the distribution of entrepreneurial efforts between productive and unproductive. Finally, a relevant question is what function overconfidence may serve for either the individual or for society as a whole. Hoffrage (2004) argues that, at the individual level, there can be situations in which the benefits of being overconfident clearly outweigh the costs. For example, a physician may be overconfident that a particular treatment will help her patient, and showing high confidence that the treatment will help may be essential for a placebo effect to occur. With respect to entrepreneurial activity, some people might start a business with the erroneous belief that they have the sufficient skills and experience. However, the effort and steps necessary to starting may help them to acquire the skills and the experience that they actually need. Hvide (2002) shed light on why overconfidence emerges by proposing the existence of pragmatic beliefs. Busenitz and Barney (1997) argue that the use of biases and heuristics can be an effective and efficient guide for decisions with high environmental uncertainty and complexity, such as starting a business. Busenitz and Barney also mention that overconfidence may be beneficial in implementing a specific decision and persuading others to be enthusiastic about it as well. Overconfidence may be beneficial, to some extent, even at the aggregate level. Without over-optimistic judgments, we would probably see fewer business start-ups but higher average success rates and returns among those who become entrepreneurs. It is not clear if excess entry is desirable in terms of social returns and, if so, in what quantity. In fact, unsuccessful businesses create negative externalities if the costs of their failure have to be absorbed -at least in parts -by others. On the other hand, overconfident and potentially unsuccessful entrepreneurs may also generate valuable information that would not be available otherwise (Bernardo & Welch, 2001; Minniti, 2005) . In addition, new entry, albeit unsuccessful, might help spur competition and push incumbent businesses towards efficiency. Given the potential costs and benefits of excess entry, its optimal level may be dependent on the degree of its concentration across industries. Further explorations of this matter are clearly beyond the scope of this article, but may provide an interesting avenue for future research.",
+        "token_count": 1024,
+        "char_count": 6881
+      },
+      "decision": {
+        "section_id": "section_64750b720c57178a",
+        "should_extract": true,
+        "reason": "The section contains specific results and localized qualifiers regarding the impact of overconfidence on entrepreneurial behavior.",
+        "expected_claim_types": [
+          "impact of overconfidence",
+          "relationship between entrepreneurial confidence and survival rates",
+          "optimal levels of overconfidence"
+        ],
+        "expected_evidence_types": [
+          "statistical evidence",
+          "case studies",
+          "theoretical references"
+        ],
+        "likely_claim_density": "medium",
+        "likely_evidence_density": "medium",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_64750b720c57178a",
+        "section_name": "Discussion and implications",
+        "section_type": "DISCUSSION",
+        "summary_text": "This section discusses the significant impact of subjective perceptions, particularly overconfidence, on entrepreneurial behavior and decision-making. It highlights how entrepreneurs' belief in their skills can lead to biased judgments about their chances of success and associated risks, which in turn affects their survival rates. The section also explores the dual nature of overconfidence, suggesting that while it may lead to excessive business entry, it can also facilitate the acquisition of necessary skills and spur competition, raising questions about the optimal level of such behavior in society.",
+        "section_role": "discussion",
+        "key_entities": [
+          "entrepreneurial confidence",
+          "overconfidence",
+          "Camerer and Lovallo",
+          "Baumol",
+          "Taylor & Brown"
+        ],
+        "key_findings": [
+          "Entrepreneurial confidence is a major factor influencing business start decisions.",
+          "Overconfidence is prevalent in entrepreneurs and negatively relates to survival rates.",
+          "Optimistic biases and institutional settings influence entrepreneurial behavior.",
+          "Overconfidence may have both individual and aggregate benefits for entrepreneurship."
+        ],
+        "extractability_assessment": "This section contains self-contained claims supported by evidence and references.",
+        "locality_confidence": 0.85
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "Entrepreneurial confidence significantly influences the decision to start a business.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "entrepreneurial confidence",
+              "entity_type": "concept",
+              "ontology": "entrepreneurial behavior"
+            },
+            "predicate": {
+              "value": "significantly influences",
+              "entity_type": "action",
+              "ontology": "influence"
+            },
+            "object": {
+              "value": "the decision to start a business",
+              "entity_type": "concept",
+              "ontology": "entrepreneurial behavior"
+            },
+            "context": {
+              "analysis_context": "DISCUSSION"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "There is a significant negative relation between entrepreneurial self-confidence and survival rates of nascent entrepreneurs.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "entrepreneurial self-confidence",
+              "entity_type": "concept",
+              "ontology": "entrepreneurial behavior"
+            },
+            "predicate": {
+              "value": "has negative relation with",
+              "entity_type": "action",
+              "ontology": "relationship"
+            },
+            "object": {
+              "value": "survival rates of nascent entrepreneurs",
+              "entity_type": "concept",
+              "ontology": "entrepreneurial behavior"
+            },
+            "context": {
+              "analysis_context": "DISCUSSION"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "Overconfidence among entrepreneurs is higher than among managers.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "overconfidence among entrepreneurs",
+              "entity_type": "concept",
+              "ontology": "entrepreneurial behavior"
+            },
+            "predicate": {
+              "value": "is higher than",
+              "entity_type": "comparison",
+              "ontology": "comparison"
+            },
+            "object": {
+              "value": "overconfidence among managers",
+              "entity_type": "concept",
+              "ontology": "entrepreneurial behavior"
+            },
+            "context": {
+              "analysis_context": "DISCUSSION"
+            },
+            "details": {}
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "supporting claim",
+            "summary_text": "The belief in one's skills significantly impacts entrepreneurial decisions and perceived chances of success.",
+            "evidence_method": "observation",
+            "outcome_type": "behavioral_outcome",
+            "presentation_type": "text",
+            "context": {
+              "analysis_context": "DISCUSSION"
+            },
+            "details": {
+              "outcome_name": "entrepreneurial decisions",
+              "value": "subjective and possibly biased perceptions"
+            },
+            "ontology": "entrepreneurial behavior"
+          },
+          {
+            "role": "supporting claim",
+            "summary_text": "Entrepreneurs perceive their chances of success to be higher than competing businesses, indicating biased overconfidence.",
+            "evidence_method": "observation",
+            "outcome_type": "behavioral_outcome",
+            "presentation_type": "text",
+            "context": {
+              "analysis_context": "DISCUSSION"
+            },
+            "details": {
+              "outcome_name": "perception of success",
+              "value": "chances of success"
+            },
+            "ontology": "entrepreneurial behavior"
+          },
+          {
+            "role": "supporting claim",
+            "summary_text": "The notion that optimistic biases contribute to perceived control over outcomes suggests that institutional settings play a role in entrepreneurial behavior.",
+            "evidence_method": "theoretical_argument",
+            "outcome_type": "mechanistic_pathway",
+            "presentation_type": "text",
+            "context": {
+              "analysis_context": "DISCUSSION"
+            },
+            "details": {
+              "outcome_name": "entrepreneurial activity",
+              "value": "optimistic biases linked to control"
+            },
+            "ontology": "entrepreneurial behavior"
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.85
+          },
+          {
+            "claim_index": 1,
+            "evidence_index": 1,
+            "relation": "supports",
+            "confidence": 0.85
+          },
+          {
+            "claim_index": 2,
+            "evidence_index": 2,
+            "relation": "supports",
+            "confidence": 0.85
+          }
+        ]
+      },
+      "gated_claim_count": 0
+    },
+    {
+      "section": {
+        "section_id": "section_035e6f569438e912",
+        "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+        "section_name": "Conclusion",
+        "section_type": "DISCUSSION",
+        "section_source": "tei_header",
+        "section_title_quality": "high",
+        "original_section_name": "Conclusion",
+        "page_numbers": [],
+        "span_ids": [
+          "JOEP_Koellinger_Minniti_Schade_2007-span-0037"
+        ],
+        "text": "Starting a business is an intentional act that involves repeated attempts to exercise control over a process in order to achieve the desired outcome. If, indeed, entrepreneurial decisions are largely based on perceptions, and the cognitive mechanism we have discussed leads to overconfidence, it is likely that entrepreneurs overestimate their control over events. As a result, the entrepreneurial environment may be populated by individuals who adopt an ''inside view'' and act on overconfident self-perceptions. Overconfident perceptions may lead these individuals to overestimate their skills and make them think ''they can''. In general, individual perceptions are influenced by various factors, including economic framework conditions, history, culture and psychological phenomena such as heuristics and biases. Thus, perceptions of individual ability and risk may differ from actual abilities and risks. Yet, these possibly biased perceptions are strongly associated with actual start-up activities and have real economic consequences. This is not to say that perceptual biases are generally bad. Ironically, individual overconfidence may even lead to better economic outcomes for society at large than more unbiased decision making.",
+        "token_count": 174,
+        "char_count": 1239
+      },
+      "decision": {
+        "section_id": "section_035e6f569438e912",
+        "should_extract": true,
+        "reason": "The section contains specific claims about the relationship between overconfidence and entrepreneurial outcomes, supported by localized observations.",
+        "expected_claim_types": [
+          "perceptions of control",
+          "economic achievements",
+          "differences in actual abilities vs perceived abilities"
+        ],
+        "expected_evidence_types": [
+          "cognitive biases",
+          "entrepreneurial behaviors",
+          "outcomes of decisions"
+        ],
+        "likely_claim_density": "medium",
+        "likely_evidence_density": "medium",
+        "likely_context_completeness": "good"
+      },
+      "section_summary": {
+        "section_id": "section_035e6f569438e912",
+        "section_name": "Conclusion",
+        "section_type": "DISCUSSION",
+        "summary_text": "This conclusion section discusses the relationship between entrepreneurial decision-making and overconfidence. It posits that entrepreneurs often perceive a higher level of control over their business outcomes, influenced by cognitive biases and various external factors. These overconfident perceptions can lead to better economic achievements, despite often being at odds with actual capabilities and risks. Overall, the section highlights the dual nature of perceptual biases in entrepreneurship.",
+        "section_role": "discussion",
+        "key_entities": [
+          "entrepreneurs",
+          "perceptions",
+          "cognitive mechanisms",
+          "overconfidence",
+          "skills",
+          "economic outcomes"
+        ],
+        "key_findings": [
+          "Entrepreneurs may overestimate their control over events due to overconfidence.",
+          "Perceptions of ability and risk may differ from actual abilities and risks.",
+          "Overconfidence can lead to positive economic outcomes despite potential biases."
+        ],
+        "extractability_assessment": "This section contains self-contained claims related to entrepreneurial behavior and perceptions.",
+        "locality_confidence": 0.8
+      },
+      "raw_output": {
+        "claims": [
+          {
+            "claim_text": "Entrepreneurs often overestimate their control over events due to overconfidence.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "entrepreneurs",
+              "entity_type": "human",
+              "ontology": "Entrepreneurial Behavior Ontology"
+            },
+            "predicate": {
+              "value": "overestimate",
+              "entity_type": "action",
+              "ontology": "Cognitive Bias Ontology"
+            },
+            "object": {
+              "value": "control over events",
+              "entity_type": "concept",
+              "ontology": "Control Perception Ontology"
+            },
+            "context": {
+              "analysis_context": "entrepreneurial decision-making",
+              "setting": "entrepreneurial environment"
+            },
+            "details": {}
+          },
+          {
+            "claim_text": "Biases in perceptions may lead to better economic outcomes for society despite risk.",
+            "claim_profile": "generic_result",
+            "subject": {
+              "value": "overconfident perceptions",
+              "entity_type": "concept",
+              "ontology": "Cognitive Bias Ontology"
+            },
+            "predicate": {
+              "value": "lead to",
+              "entity_type": "action",
+              "ontology": "Outcome Relationship Ontology"
+            },
+            "object": {
+              "value": "better economic outcomes",
+              "entity_type": "economic outcome",
+              "ontology": "Economic Outcome Ontology"
+            },
+            "context": {
+              "analysis_context": "economic achievements",
+              "setting": "society"
+            },
+            "details": {}
+          }
+        ],
+        "evidence_items": [
+          {
+            "role": "evidence",
+            "summary_text": "The text discusses how entrepreneurs' cognitive mechanisms lead to overconfident self-perceptions.",
+            "evidence_method": "observation",
+            "outcome_type": "behavioral_outcome",
+            "presentation_type": "text",
+            "context": {
+              "analysis_context": "entrepreneurial decision-making",
+              "cohort": "entrepreneurs"
+            },
+            "details": {
+              "outcome_name": "control over events",
+              "value": "overestimated"
+            },
+            "ontology": "Cognitive Bias Ontology"
+          },
+          {
+            "role": "evidence",
+            "summary_text": "The conclusion states that overconfidence can yield positive economic outcomes despite its biases.",
+            "evidence_method": "observation",
+            "outcome_type": "economic outcome",
+            "presentation_type": "text",
+            "context": {
+              "analysis_context": "economic achievements",
+              "setting": "society"
+            },
+            "details": {
+              "outcome_name": "better economic outcomes",
+              "value": "positive impact"
+            },
+            "ontology": "Economic Outcome Ontology"
+          }
+        ],
+        "claim_evidence_links": [
+          {
+            "claim_index": 0,
+            "evidence_index": 0,
+            "relation": "supports",
+            "confidence": 0.8
+          },
+          {
+            "claim_index": 1,
+            "evidence_index": 1,
+            "relation": "supports",
+            "confidence": 0.8
+          }
+        ]
+      },
+      "gated_claim_count": 0
+    }
+  ]
+}

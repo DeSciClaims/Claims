@@ -1,0 +1,1544 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">Associations between alcohol consumption and gray and white matter volumes in the UK Biobank</title>
+				<funder>
+					<orgName type="full">Open Science Foundation</orgName>
+				</funder>
+				<funder ref="#_bFV2W7h">
+					<orgName type="full">National Science Foundation</orgName>
+					<orgName type="abbreviated">NSF</orgName>
+				</funder>
+				<funder>
+					<orgName type="full">VISN 4 Mental Illness Research, Education and Clinical Center at the Crescenz VA Medical Center</orgName>
+				</funder>
+				<funder ref="#_xzxbf3R">
+					<orgName type="full">National Institute on Alcohol Abuse and Alcoholism</orgName>
+				</funder>
+				<funder ref="#_TaFctkC">
+					<orgName type="full">European Research Council</orgName>
+					<orgName type="abbreviated">ERC</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher>Springer Science and Business Media LLC</publisher>
+				<availability status="unknown"><p>Copyright Springer Science and Business Media LLC</p>
+				</availability>
+				<date type="published" when="2022-03-04">2022-03-04</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author>
+							<persName><forename type="first">Remi</forename><surname>Daviet</surname></persName>
+							<email>daviet@wisc.edu</email>
+							<affiliation key="aff0">
+								<orgName type="department">Wisconsin School of Business</orgName>
+								<orgName type="institution">University of Wisconsin-Madison</orgName>
+								<address>
+									<settlement>Madison</settlement>
+									<region>WI</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Gökhan</forename><surname>Aydogan</surname></persName>
+							<affiliation key="aff1">
+								<orgName type="department">Department of Economics</orgName>
+								<orgName type="institution">University of Zurich</orgName>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Kanchana</forename><surname>Jagannathan</surname></persName>
+							<affiliation key="aff3">
+								<orgName type="department" key="dep1">Department of Psychiatry</orgName>
+								<orgName type="department" key="dep2">Perelman School of Medicine</orgName>
+								<orgName type="institution">University of Pennsylvania</orgName>
+								<address>
+									<settlement>Philadelphia</settlement>
+									<region>PA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Nathaniel</forename><surname>Spilka</surname></persName>
+							<affiliation key="aff3">
+								<orgName type="department" key="dep1">Department of Psychiatry</orgName>
+								<orgName type="department" key="dep2">Perelman School of Medicine</orgName>
+								<orgName type="institution">University of Pennsylvania</orgName>
+								<address>
+									<settlement>Philadelphia</settlement>
+									<region>PA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Philipp</forename><forename type="middle">D</forename><surname>Koellinger</surname></persName>
+							<idno type="ORCID">0000-0001-7413-0412</idno>
+							<affiliation key="aff4">
+								<orgName type="department">La Follette School of Public Affairs</orgName>
+								<orgName type="institution">University of Wisconsin-Madison</orgName>
+								<address>
+									<settlement>Madison</settlement>
+									<region>WI</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff5">
+								<orgName type="department" key="dep1">Department of Economics</orgName>
+								<orgName type="department" key="dep2">School of Business and Economics</orgName>
+								<orgName type="institution">Vrije Universiteit Amsterdam</orgName>
+								<address>
+									<settlement>Amsterdam</settlement>
+									<country key="NL">the Netherlands</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Henry</forename><forename type="middle">R</forename><surname>Kranzler</surname></persName>
+							<idno type="ORCID">0000-0002-1018-0450</idno>
+							<affiliation key="aff3">
+								<orgName type="department" key="dep1">Department of Psychiatry</orgName>
+								<orgName type="department" key="dep2">Perelman School of Medicine</orgName>
+								<orgName type="institution">University of Pennsylvania</orgName>
+								<address>
+									<settlement>Philadelphia</settlement>
+									<region>PA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff6">
+								<orgName type="institution">Crescenz VAMC</orgName>
+								<address>
+									<settlement>Philadelphia</settlement>
+									<region>PA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Gideon</forename><surname>Nave</surname></persName>
+							<email>gnave@wharton.upenn.edu</email>
+							<idno type="ORCID">0000-0001-6251-5630</idno>
+							<affiliation key="aff7">
+								<orgName type="department" key="dep1">Marketing Department</orgName>
+								<orgName type="department" key="dep2">The Wharton School</orgName>
+								<orgName type="institution">University of Pennsylvania</orgName>
+								<address>
+									<settlement>Philadelphia</settlement>
+									<region>PA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Reagan</forename><forename type="middle">R</forename><surname>Wetherill</surname></persName>
+							<idno type="ORCID">0000-0002-1991-6292</idno>
+							<affiliation key="aff3">
+								<orgName type="department" key="dep1">Department of Psychiatry</orgName>
+								<orgName type="department" key="dep2">Perelman School of Medicine</orgName>
+								<orgName type="institution">University of Pennsylvania</orgName>
+								<address>
+									<settlement>Philadelphia</settlement>
+									<region>PA</region>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff2">
+								<address>
+									<settlement>Zurich</settlement>
+									<country key="CH">Switzerland</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">Associations between alcohol consumption and gray and white matter volumes in the UK Biobank</title>
+					</analytic>
+					<monogr>
+						<title level="j" type="main">Nature Communications</title>
+						<title level="j" type="abbrev">Nat Commun</title>
+						<idno type="eISSN">2041-1723</idno>
+						<imprint>
+							<publisher>Springer Science and Business Media LLC</publisher>
+							<biblScope unit="volume">13</biblScope>
+							<biblScope unit="issue">1</biblScope>
+							<date type="published" when="2022-03-04" />
+						</imprint>
+					</monogr>
+					<idno type="MD5">0922E156417B8A069777A6CF873CD7F4</idno>
+					<idno type="DOI">10.1038/s41467-022-28735-5</idno>
+					<note type="submission">Received: 27 March 2020; Accepted: 26 January 2022;</note>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-06-25T15:14+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Heavy alcohol consumption has been associated with brain atrophy, neuronal loss, and poorer white matter fiber integrity. However, there is conflicting evidence on whether lightto-moderate alcohol consumption shows similar negative associations with brain structure. To address this, we examine the associations between alcohol intake and brain structure using multimodal imaging data from 36,678 generally healthy middle-aged and older adults from the UK Biobank, controlling for numerous potential confounds. Consistent with prior literature, we find negative associations between alcohol intake and brain macrostructure and microstructure. Specifically, alcohol intake is negatively associated with global brain volume measures, regional gray matter volumes, and white matter microstructure. Here, we show that the negative associations between alcohol intake and brain macrostructure and microstructure are already apparent in individuals consuming an average of only one to two daily alcohol units, and become stronger as alcohol intake increases.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>A lcohol consumption is one of the leading contributors to the global burden of disease and to high healthcare and economic costs. Alcohol use disorder (AUD) <ref type="bibr" target="#b0">1</ref> is one of the most prevalent mental health conditions worldwide <ref type="bibr" target="#b1">2</ref> , with harmful effects on physical, cognitive, and social functioning <ref type="bibr" target="#b2">3</ref> . Chronic excessive alcohol consumption is associated with direct and indirect adverse effects, including (but not limited to) cardiovascular disease <ref type="bibr" target="#b3">4</ref> , nutritional deficiency 5 , cancer <ref type="bibr" target="#b5">6</ref> , and accelerated aging <ref type="bibr" target="#b6">[7]</ref><ref type="bibr" target="#b7">[8]</ref><ref type="bibr" target="#b8">[9]</ref> .</p><p>Chronic alcohol use is associated with changes in brain structure and connectivity <ref type="bibr" target="#b8">[9]</ref><ref type="bibr" target="#b9">[10]</ref><ref type="bibr" target="#b10">[11]</ref> . Neuroimaging studies have shown that chronic heavy alcohol consumption (3 or more drinks for women and 4 or more drinks for men on any day) is associated with widespread patterns of macrostructural and microstructural changes, primarily affecting frontal, diencephalic, hippocampal, and cerebellar structures <ref type="bibr" target="#b8">9,</ref><ref type="bibr" target="#b9">10,</ref><ref type="bibr" target="#b11">12</ref> . A recent meta-analysis of individuals with AUD (n = 433) showed lower gray matter volume (GMV) in the corticostriatal-limbic circuits, including regions of the prefrontal cortex, insula, superior temporal gyrus, striatum, thalamus, and hippocampus compared to healthy controls (n = 498) <ref type="bibr" target="#b12">13</ref> . Notably, lower GMV in striatal, frontal, and thalamic regions was associated with AUD duration or lifetime alcohol consumption. Although alcohol consumption can produce global and regional tissue volume changes, frontal regions are particularly associated with these effects <ref type="bibr" target="#b13">[14]</ref><ref type="bibr" target="#b14">[15]</ref><ref type="bibr" target="#b15">[16]</ref> . Further, research suggests that the effects of alcohol consumption on brain volume interact with the effects of aging <ref type="bibr" target="#b8">9,</ref><ref type="bibr" target="#b16">17</ref> .</p><p>Alcohol-consumption related white matter (WM) microstructural alterations are a hallmark change associated with AUD <ref type="bibr" target="#b17">[18]</ref><ref type="bibr" target="#b18">[19]</ref><ref type="bibr" target="#b19">[20]</ref> . Neuroimaging studies have consistently shown WM degeneration of the corpus callosum in AUD <ref type="bibr" target="#b2">3,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b21">22</ref> . However, the effects of AUD on WM microstructure, as evidenced by decreased fractional anisotropy (FA) and increased mean diffusivity (MD), are not limited to the corpus callosum but are also seen in the internal and external capsules, fornix, frontal forceps, superior cingulate, and longitudinal fasciculi <ref type="bibr" target="#b2">3,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b22">23</ref> . Further, research indicates that anterior and superior WM systems are more likely to show changes associated with AUD than posterior and inferior systems <ref type="bibr" target="#b23">24</ref> . However, because conventional diffusion tensor imaging (DTI) measures (FA and MD) are based on a simplistic brain tissue microstructure model, they fail to account for the complexities of neurite geometry <ref type="bibr" target="#b24">25</ref> . For example, the lower FA observed in individuals with AUD may reflect lower neurite density and/or greater orientation dispersion of neurites, which conventional DTI measures do not differentiate <ref type="bibr" target="#b25">26,</ref><ref type="bibr" target="#b26">27</ref> .</p><p>Despite an extensive literature on the associations of alcohol consumption with brain structure and microstructure in individuals with AUD, there is limited research exploring these associations in individuals who consume alcohol but do not have AUD.</p><p>In some studies of middle-aged and older adults, moderate alcohol consumption was associated with lower total cerebral volume <ref type="bibr" target="#b27">28</ref> , gray matter atrophy <ref type="bibr" target="#b28">29,</ref><ref type="bibr" target="#b29">30</ref> , and lower density of gray matter in frontal and parietal brain regions <ref type="bibr" target="#b29">30</ref> . However, other studies have failed to show an association <ref type="bibr" target="#b30">31</ref> , and one study showed a positive association of light-to-moderate alcohol consumption and GMV in older men <ref type="bibr" target="#b31">32</ref> . One interpretation of these findings is that an inverse U-shaped, dose-dependent association exists between alcohol consumption and brain structure <ref type="bibr" target="#b31">32</ref> . However, this interpretation was not supported by a longitudinal cohort study, which showed no difference in structural brain measures between individuals who did not consume alcohol and those who consumed between 1 and &lt;7 alcohol units per week (i.e., light alcohol consumption), while individuals who consumed moderate-to-high amounts of alcohol (i.e., 14 or more alcohol units per week) showed GMV atrophy in the hippocampi and altered WM microstructure (lower FA, higher MD) in the corpus callosum <ref type="bibr" target="#b32">33</ref> .</p><p>The inconclusive evidence regarding the association between moderate alcohol intake and brain structure in the general population may be because the literature consists of mostly small, unrepresentative studies with limited statistical power <ref type="bibr" target="#b33">34,</ref><ref type="bibr" target="#b34">35</ref> . Moreover, most studies have not accounted for the effects of many relevant covariates and, therefore, have yielded potentially biased findings. Potential confounds that may be associated with individual differences in both alcohol intake and neuroanatomy include sex <ref type="bibr" target="#b35">36</ref> , body mass index (BMI) <ref type="bibr" target="#b36">37</ref> , age <ref type="bibr" target="#b37">38,</ref><ref type="bibr" target="#b38">39</ref> , and genetic population structure <ref type="bibr" target="#b39">40</ref> . Similar to other research fields, progress in this area may also be limited by publication bias, as positive findings are more likely to be published than null results <ref type="bibr" target="#b40">41</ref> .</p><p>The current study examines the associations between alcohol intake and measures of GM structure and WM microstructure in the brain in a large population sample. We perform a preregistered analysis of multimodal imaging data from the UK Biobank (UKB) <ref type="bibr" target="#b41">[42]</ref><ref type="bibr" target="#b42">[43]</ref><ref type="bibr" target="#b43">[44]</ref> , which controls for numerous potential confounds. The UKB, a prospective cohort study representative of the United Kingdom (UK) population aged 40-69 years, is the largest available collection of high-quality MRI brain scans, alcohol-related behavioral phenotypes, and measurements of the socioeconomic environment. The UKB brain imaging data include three structural modalities, resting and task-based fMRI, and diffusion imaging <ref type="bibr" target="#b41">[42]</ref><ref type="bibr" target="#b42">[43]</ref><ref type="bibr" target="#b43">[44]</ref> . The WM fiber integrity measures available in the UKB include the conventional FA and MD metrics and neurite orientation dispersion and density imaging (NODDI) measures <ref type="bibr" target="#b25">26</ref> . Such measures offer information on WM microstructure and estimates of neurite density (i.e., intracellular volume fraction; ICVF), extracellular water diffusion (i.e., isotropic volume fraction; ISOVF), and tract complexity/fanning (i.e., orientation dispersion, OD). Specifically, we assess associations between alcohol intake (i.e., mean daily alcohol units; one unit = 10 ml or 8 g of ethanol) and imaging derived phenotypes (IDPs) of brain structure (total GMV, total WMV, and 139 regional GMVs), as well as 375 IDPs of WM microstructure (DTI and NODDI indices), using data from 36,678 UKB participants. Our analyses adjust for numerous covariates (see Methods for full list).</p><p>Our sample size provides us statistical power of 90% to detect effects as small as f 2 &lt; 0.00078 at the 5% significance level, after accounting for multiple hypotheses testing (p uncorrected &lt; 1.64 × 10 -4 ). Given previous findings, we hypothesized a negative relationship between alcohol intake and global GMV and WMV in individuals who consume large amounts of alcohol (i.e., females who report consuming more than 18 units/week and males who report consuming more than 24 units/week). The large general population sample provided sufficient sensitivity to qualitatively and quantitatively assess how associations vary across the drinking spectrum and test at which threshold associations emerge. Our design also allowed us to explore whether the associations between alcohol intake and GMV and WM microstructure are localized in specific regions or widespread across the brain and compare the associations across various WM integrity indicators.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Results</head><p>Figure <ref type="figure" target="#fig_0">1</ref> summarizes the characteristics of the 36,678 participants (52.8% female), including the distributions of age, daily alcohol units, and global GMV and WMV. Participants were healthy adults of middle age or older. We normalize all IDPs for head size by multiplying the raw IDP by the head size scaling factor.</p><p>Relationship between Global GMV and WMV and alcohol intake. The scatter plots in Figs. <ref type="figure" target="#fig_1">2</ref> and<ref type="figure" target="#fig_2">3</ref> illustrate the relationships of the global IDPs (GMV and WMV, both normalized for head size) with age and daily alcohol intake (in log scale) within sex. The figures include local polynomial regression lines (LOWESS), which indicate negative trends on every dimension. This preliminary analysis also demonstrates slight non-linearities in both dimensions, with curves appearing concave. Therefore, our subsequent regression models include both linear and quadratic terms for age and logged alcohol intake, test the joint significance of the associations of the two terms with brain structure via an F-test (see "Methods"), and quantify the effect size via the IDP variance explained by alcohol intake, above the other covariates (4R 2 ).</p><p>We estimate linear regressions to quantify the relationships between daily alcohol intake and its interactions with age, sex, and the global IDPs. Our primary analyses (N = 36,585) control for age, height, handedness, sex, smoking status, socioeconomic status, genetic ancestry, and county of residence (see Methods). Table <ref type="table" target="#tab_1">1</ref> summarizes the results, revealing that both global IDPs decrease as a function of daily alcohol intake. Alcohol intake explains 1% of the variance in global GMV and 0.3% of the variance in global WMV across individuals beyond all other control variables (both p &lt; 10 -16 ). Additional analyses excluding abstainers (N = 33,733) or excluding individuals who consume a high level of alcohol (i.e., females who report consuming more than 18 units/week and males who report consuming more than 24 units/week) (N = 34,383) and models using an extended set of covariates (including BMI, educational attainment, and weight; N = 36,678) yield similar findings, though the variance explained by alcohol intake beyond other control variables is reduced to 0.4% for GMV and 0.1% for WMV when individuals who consume a high level of alcohol are excluded (Supplementary Tables <ref type="table" target="#tab_1">1</ref> and<ref type="table" target="#tab_2">2</ref>).</p><p>In the eight regressions we tested, the interaction between alcohol intake and sex is not significant at the 1% level, except weakly for GMV when including the extended control variables (BMI, weight, and educational attainment). Similarly, none of the interactions between alcohol intake and age are significant at the 10% level. Only the regressions that exclude abstainers were significant at the 10% level (p = 0.034 for GMV, p = 0.0014 for WMV). Consequently, we excluded the interaction terms from the analyses of local IDPs.</p><p>We further used our regression models to calculate the predicted change in global GMV and WMV associated with increasing daily alcohol intake by one unit (Table <ref type="table" target="#tab_2">2</ref>). This prediction is similar when using different sets of control variables and when excluding individuals who did not consume alcohol or those who consume a high level of alcohol (for illustration, the change resulting from increasing alcohol intake from zero to one daily unit results in a reduction of -0.030 SD in global GMV and -0.020 SD in global WMV in the model estimated on the full sample and the model that excludes individuals who consume a high level of alcohol yields negative associations of similar magnitudes: -0.034 SD in global GMV and -0.019 SD in WMV. Given the non-linear relationship between global IDPs and alcohol intake, the associations vary across the drinking range. The change in the predicted global GMV and WMV when shifting from no daily alcohol consumption to one daily alcohol unit was less than 0.03 standard deviations. However, the  observed associations between alcohol intake and global IDPs increase as the number of daily units increases. An increase from one to two daily units is associated with a decrease of 0.127 and 0.074 standard deviations in predicted global GMV and WMV, respectively. A change from two to three daily units is associated with a 75% greater decrease of 0.223 and 1.28 standard deviations in GMV and WMV, respectively. Table <ref type="table" target="#tab_3">3</ref> benchmarks the predicted effect magnitudes against the effects associated with aging for an average 50-year-old UKB participant, based on our regression models in the full sample. Table <ref type="table" target="#tab_4">4</ref> replicates these results using the models that exclude individuals who consume a high level of alcohol. For illustration, the effect associated with a change from one to two daily alcohol units is equivalent to the effect of aging 2 years (or 1.7 years in the model that excludes individuals who consume a high level of alcohol), where the increase from two to three daily units is equivalent to aging 3.5 years (or 2.9 years in the model that excludes individuals who consume a high level of alcohol). Figure <ref type="figure" target="#fig_3">4</ref> displays the averages of the two global IDPs in subsamples binned according to their daily alcohol consumption range, illustrating the non-linear nature of the relationship between daily units and the global measures. The figure includes statistical tests that compare the average of the IDPs in the different sub-samples to their average in participants who consume one daily unit or less. These tests identify statistically significant associations for all bins of participants consuming more than one daily unit, including those consuming 1-2 daily units. These associations are observed both in the full sample and within sex. Supplementary Figure <ref type="figure" target="#fig_0">1</ref> replicates Fig. <ref type="figure" target="#fig_3">4</ref> with the exclusion of individuals who consume a high level of alcohol, similarly demonstrating significant associations in participants who consume 1-2 units daily. Relationship between regional GMV and alcohol intake. To investigate whether the reduction in global GMV associated with alcohol intake stems from relationships in specific regions, we estimate regression models to quantify the association of alcohol intake with a total of 139 regional GMV IDPs. These IDPs were derived using parcellations from the Harvard-Oxford cortical and subcortical atlases and Diedrichsen cerebellar atlas. Of the 139 GMV IDPs, 125 (88.9%) are significantly associated with log alcohol intake (see Supplementary Table <ref type="table" target="#tab_3">3</ref>). We observe the strongest associations in frontal, parietal, and insular cortices, temporal and cingulate regions, putamen, amygdala, and the brain stem. In these regions, alcohol intake explains between 0.3 and 0.4% of the variance in local GMV above the other covariates. Supplementary Figure <ref type="figure" target="#fig_1">2</ref> illustrates the marginal effect of increasing daily alcohol units on regional GMV IDPs, grouped by lobe. All associations are negative, except that involving the right pallidum-where the effect size is positive but very small (4R 2 = 0.0005). Importantly, the largest regional association was   less than half the size of the association between alcohol consumption and global GMV, indicating that the global reduction in GMV associated with alcohol intake results from aggregating smaller associations that are widespread across the brain (rather than constrained to specific areas).</p><p>In a similar fashion to the analysis using the global IDPs, we calculate the average localized GMV IDP for each daily alcohol unit bin (Supplementary Fig. <ref type="figure" target="#fig_2">3</ref>) and test their difference against the average of the group drinking up to one unit per day, within sexes and in the overall sample. As expected, the number of regional GMV IDPs showing a significant negative association with alcohol intake, and the magnitude of these associations increase as the average number of daily alcohol units increases. There are few regions (e.g., fusiform cortex) where lower GMV is either not observed as a function of alcohol intake or only apparent among individuals who consume a high level of alcohol (i.e., females who report consuming more than 18 units/week and males who report consuming more than 24 units/week). However, in most regions, GMV reduction is already visible in the groups that report moderate alcohol consumption (i.e., consuming 1-2 or 2-3 daily units). Thus, the association between moderate alcohol intake and GMV appears widespread across the brain and is detectable in males and females. Relationship between regional WM microstructure and alcohol intake. To evaluate the relationship between alcohol intake and different indicators of WM integrity at the regional level, we estimate linear regressions to quantify the association of alcohol intake with 375 IDPs, including FA, MD, ICVF, ISOVF, and OD measures extracted via averaging parameters across 74 WM tract regions <ref type="bibr" target="#b44">45</ref> . Of the 375 WM microstructure IDPs, 179 (47.7%) are significantly associated with alcohol intake (see Supplementary Table <ref type="table" target="#tab_4">4</ref>). Generally, alcohol intake is related to lower coherence of water diffusion, lower neurite density, and higher magnitude of water diffusion, indicating less healthy WM microstructure with increasing alcohol intake.</p><p>To visualize the magnitude of WM microstructure IDP associations with alcohol intake, Fig. <ref type="figure" target="#fig_4">5</ref> displays the statistically significant and non-significant associations, alongside the average change in normalized WM microstructure IDPs associated with a mean daily alcohol intake increasing from 1 to 2 units (for a similar visualization of the changes associated with the increase from 2 to 3 units, see Supplementary Fig. <ref type="figure" target="#fig_3">4</ref>). Thirteen WM tract regions show consistent associations with lower FA and higher ISOVF and MD. The strongest of these are in the fornix, where WM integrity was previously found to be associated with alcohol intake in studies of populations with AUD <ref type="bibr" target="#b2">3,</ref><ref type="bibr" target="#b20">21,</ref><ref type="bibr" target="#b22">23</ref> . In the fornix, alcohol intake accounts for 0.45% of the variance in ISOVF, 0.35% of the variance in MD, and 0.32% of the variance in FA. Other WM tract regions showing a similar pattern yet with associations of weaker magnitude include commissural fibers (genu and body of the corpus callosum, bilateral tapetum), projection fibers (bilateral anterior corona radiata), associative fibers (fornix cres+stria terminalis, left inferior longitudinal fasciculus), and the bilateral anterior thalamic radiations.</p><p>Among the NODDI measures, ISOVF showed the strongest associations of alcohol intake all over the brain, most notably in the tract regions discussed above. The associations between alcohol intake and ICVF are also consistently negative yet smaller   in size. Daily alcohol intake explains no more than 0.1% of the variance beyond control variables in all ICVF IDPs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Discussion</head><p>We report a multimodal brain imaging study of 36,678 middleaged and older adults of European descent, a population sample whose reported alcohol consumption ranged from low (i.e., 1-2 alcohol units per day) to high (i.e., more than 4 alcohol units per day) levels of intake. The scale and granularity of the data provide ample statistical power to identify small associations while accounting for important potential confounds. We observe negative relationships between alcohol intake and global gray and white matter measures, regional GMVs, and WM microstructure indices. The associations we identify are widespread across the brain, and their magnitude increases with the average absolute number of daily alcohol units consumed. Notably, the negative associations we observe with global IDPs are detectable in individuals who consume between 1 and 2 alcohol units daily. Thus, in the UK, consuming just one alcoholic drink daily (or two units of alcohol) could be associated with changes in GMV and WMV in the brain.</p><p>The negative associations between alcohol intake and total GMV and WMV are consistent with prior studies of early middle-aged <ref type="bibr" target="#b45">46</ref> and older adults <ref type="bibr" target="#b27">28,</ref><ref type="bibr" target="#b46">47</ref> . Based on Figs. <ref type="figure" target="#fig_1">2</ref> and<ref type="figure" target="#fig_2">3</ref>, which show that males consumed more alcohol units per day and had larger global GMV and WMV, we further examine the influence of sex in detail. We find negative associations between alcohol intake and the global IDPs for both sexes and weak evidence for interactive effects between alcohol intake and sex on the brain. These findings are similar to a recent study of early middleaged adult moderate drinkers that showed smaller brain volumes associated with moderate alcohol consumption in men and women <ref type="bibr" target="#b45">46</ref> . The weak sex-by-alcohol interactions also comport with the findings of an earlier longitudinal study in individuals with AUD <ref type="bibr" target="#b37">38</ref> ; however, other cross-sectional studies have reported greater volume changes in women than men <ref type="bibr" target="#b47">48,</ref><ref type="bibr" target="#b48">49</ref> .</p><p>Although nearly 90% of all regional GMVs show significant negative associations with alcohol intake, the most extensively affected regions included the frontal, parietal, and insular cortices, with changes also in temporal and cingulate regions. Associations are also marked in the brain stem, putamen, and amygdala. The share of variance explained by alcohol intake for these regions is smaller in size than for global GMV, suggesting that the latter results from an aggregation of many small effects that are widespread, rather than a localized effect that is limited to specific regions. Alcohol intake is further associated with poorer WM microstructure (lower FA and higher ISOVF and MD) in specific classes of WM tract regions. The commissural fibers (genu and body of the corpus callosum, bilateral tapetum), projection fibers (bilateral anterior corona radiata), associative bundles (fornix, fornix cres+stria terminalis, left inferior longitudinal fasciculus), and the bilateral anterior thalamic radiations show the most consistent associations with alcohol intake, with the fornix showing the strongest associations. The fornix is the primary outgoing pathway from the hippocampus <ref type="bibr" target="#b49">50</ref> , and WM microstructural alterations in the fornix are consistently associated with heavy alcohol consumption and memory impairments <ref type="bibr" target="#b2">3,</ref><ref type="bibr" target="#b50">51</ref> .</p><p>Our findings are partly consistent with studies of individuals with AUD <ref type="bibr" target="#b17">18,</ref><ref type="bibr" target="#b51">52</ref> . The pattern of microstructural alterations in our general population sample show that widespread WM alterations are present across multiple WM systems. Like individuals with AUD, alcohol intake in this healthy population sample is associated with microstructural differences in superficial WM systems functionally related to GM networks, including the frontoparietal control and attention networks, and the default mode, sensorimotor, and cerebellar networks. Deeper WM systems (superior longitudinal fasciculus and dorsal frontoparietal systems, inferior longitudinal fasciculus system, and deep frontal WM) thought to be involved in cognitive functioning by regulating reciprocal connectivity <ref type="bibr" target="#b51">52,</ref><ref type="bibr" target="#b52">53</ref> are also associated with alcohol intake. Within these WM systems, alcohol intake is most strongly associated with ISOVF, MD, and FA WM microstructure indices; whereas, associations with ICVF are small, and OD associations are inconsistent or nonexistent. Alcohol intake shows positive associations with ISOVF and MD and negative associations with FA. This pattern of alcohol-associated WM microstructural disruption supports previous research showing excessive intracellular and extracellular fluid in individuals with AUD <ref type="bibr" target="#b19">20</ref> .</p><p>Our study has several limitations. First, we rely on a sample of middle-aged individuals of European ancestry living in the UK. We hope that future work will test the generalizability of our findings to individuals from other populations and in other age groups. It is reasonable to expect that the relationship we observe would differ in younger individuals who have not experienced the chronic effects of alcohol on the brain. An additional limitation stems from the self-reported alcohol intake measures in the UK Biobank, which cover only the year prior to participation. Such estimates may not adequately reflect drinking prior to past year and are susceptible to reporting and recall bias <ref type="bibr" target="#b37">38,</ref><ref type="bibr" target="#b38">39</ref> .</p><p>Further, our analyses do not account for individuals with a past diagnosis of AUD. Earlier studies have shown that the brain shows some recovery with the cessation of drinking in individuals with AUD, but this varies with age and sex, and recovery might be incomplete <ref type="bibr" target="#b53">[54]</ref><ref type="bibr" target="#b54">[55]</ref><ref type="bibr" target="#b55">[56]</ref> . Thus, a past diagnosis of AUD would likely influence our results. We hope future studies will shed light on how a history of AUD with prolonged recovery is associated with brain structure in middle-aged and older adults. Moreover, partial volume effects (e.g., voxels containing cerebrospinal fluid (CSF)) can reduce the accuracy of tissue characterization and WM microstructural estimates. Previous research indicates that partial volume effects can bias diffusion measures toward a pattern of high diffusivity (MD) and reduced FA, particularly in intraventricular locations like the fornix <ref type="bibr" target="#b56">57,</ref><ref type="bibr" target="#b57">58</ref> . As such, our findings could reflect partial volume effects; however, it should be noted that the structural data were acquired using T2-weighted FLAIR imaging, a structural technique that mitigates CSF contamination by suppressing signal from fluid (i.e., CSF).</p><p>Finally, our study relies on a cross-sectional design, which does not allow for the identification of causal effects. While our models account for more potential confounding variables than earlier observational studies in this area of research, we cannot rule out the possibility of reverse-causality or a confounding influence of other factors that are not included in our models. Further investigation of the causal nature of the relationships between alcohol intake and brain anatomy (e.g., via longitudinal studies or natural experiments) would be of interest.</p><p>In summary, this study provides additional evidence for a negative association between alcohol intake and brain macrostructure and microstructure in a general population sample of middle-aged and older adults. Alcohol intake is negatively associated with global brain volume measures, regional GMVs, and WM microstructure. The associations between alcohol intake and regional GMV are evident across the entire brain, with the largest volume changes observed in frontal, parietal, and insular cortices, temporal and cingulate regions, the brain stem, putamen, and amygdala. Alcohol intake is related to WM microstructural alterations in several WM tract regions connecting large-scale networks and deeper WM systems. Most of these negative associations are apparent in individuals consuming an average of only one to two daily alcohol units. Thus, this multimodal imaging study highlights the potential for even moderate drinking to be associated with changes in brain volume in middle-aged and older adults.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Methods</head><p>Sample, procedure, and exclusion criteria. Our sample comprised 36,678 individuals of European ancestry from the UKB, all study participants whose data were available of September 1, 2020. All UK Biobank (www.ukbiobank.ac.uk) participants provided written informed consent, and the North West Multi-Center Ethics committee granted ethical approval. Participants provided demographic and health information via touchscreen questionnaires. A nurse conducted a medical history interview, which included self-report of medical diagnoses and other conditions or life events that were used to evaluate eligibility to participate (study details are available at https://www.ukbiobank.ac.uk/media/gnkeyh2q/study-rationale.pdf). Vital signs were obtained, and BMI was calculated as weight (kg)/height 2 (m).</p><p>The data was provided by the UK Biobank and was already subject to quality control <ref type="bibr" target="#b58">59</ref> . We excluded individuals with IDP values outside a range of four standard deviations (SDs). Given the large sample size, we chose this lenient threshold as a non-trivial number of observations (97 for GM, 127 for WM) fall between three and four SDs away from the mean. The IDPs beyond the four SD range are likely the results of processing errors, or the corresponding individuals present severe brain irregularities (5 individuals for GM, 7 for WM). Note that excluding these outliers does not change the statistical significance or magnitude of our reported effects. The exclusion of individuals falling within three SDs of the mean does not change the results either.</p><p>Measures of alcohol consumption. Participants self-reported the number of alcohol units (10 ml of pure ethanol) consumed, in "units per week" (for frequent drinkers) or "units per month" (for less frequent drinkers), across several beverage categories (red wine, white wine/champagne, beer/cider, spirits, fortified wine, and "other"). The UKB assessment defined units of alcohol as follows: a pint or can of beer/lager/cider = two units; a 25 ml single shot of spirits = one unit; and a standard glass of wine (175 ml) = two units. We computed the number of weekly units by summing the weekly units consumed in all categories. When reported monthly, the intake was converted to units per week by dividing by 4.3. The number of weekly units was divided by 7 to determine units per day.</p><p>MRI data acquisition and processing. MRI data were acquired using a Siemens Skyra 3T scanner (Siemens Healthcare, Erlangen, Germany) using a standard 32channel head coil, according to a freely available protocol (http://www.fmrib.ox.ac.uk/ ukbiobank/protocol/V4_23092014.pdf). As part of the scanning protocol, highresolution T1-weighted images, three-dimensional T2-weighted fluid-attenuated inversion recovery (FLAIR) images, and diffusion data were obtained. High-resolution T1-weighted images were obtained using an MPRAGE sequence with the following parameters: Structural imaging and diffusion data were processed by the UK Biobank team and made available to approved researchers as imaging-derived phenotypes (IDPs); the full details of the image processing and QC pipeline are available in an open-access article <ref type="bibr" target="#b41">42,</ref><ref type="bibr" target="#b59">60</ref> . IDPs used in analyses included whole-brain GMV, whole-brain WMV, 139 regional GMV IDPs derived using parcellations from the Harvard-Oxford cortical and subcortical atlases and Diedrichsen cerebellar atlas (UKB fields 25782-25920), and 375 tract-averaged measures of FA, MD, ICVF, ISOVF, and orientation diffusion (OD) extracted by averaging parameters over 74 different white-matter tract regions based on subject-specific tractography <ref type="bibr" target="#b60">61</ref> and from population-average WM masks <ref type="bibr" target="#b44">45</ref> . Volumetric IDPs were normalized for head size by multiplying the raw IDP by the T1-based "head size scaling factor" <ref type="bibr" target="#b59">60</ref> .</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Statistical analyses</head><p>Descriptive analysis using global IDPs. We plot global GMV and WMV in males and females separately, normalized for head size, against age (Fig. <ref type="figure" target="#fig_1">2</ref>) and alcohol intake (i.e., alcohol units/day on a log scale) (Fig. <ref type="figure" target="#fig_2">3</ref>).</p><p>Global IDPs, regional GMV, and WM microstructure analyses. Our primary analysis estimates a linear regression of several IDPs on alcohol intake in log(1 + daily units), including various control variables and interactions. Given the slight concavity of the LOWESS regression lines in the descriptive analysis of the global IDPs, we included both linear and quadratic terms for alcohol intake and age in the regression:</p><formula xml:id="formula_0">IDP i ¼ β 0 þ β 1 X i þ β 2 X 2 i þ β 3 X i x SEX i þ β 4 X i x AGE i þ γ Z i þ e i ;</formula><p>where IDP i is the IDP normalized for head size, X i is the standardized alcohol intake in log(1 + daily units), AGE i is standardized age, Z i is a vector of control variables, and e i is an error term.</p><p>Our analyses comprise models that include two different sets of control variables. The standard set includes standardized age, standardized age squared standardized height, handedness (right/left/ambidextrous; dummy-coded), sex (female:0, male:1), current smoker status, former light smoker, former heavy smoker, and standardized Townsend index of social deprivation measured at the zip code level <ref type="bibr" target="#b61">62</ref> . To control for genetic population structure, the models also include the first 40 genetic principal components <ref type="bibr" target="#b62">63</ref> and county of residence (dummy-coded) <ref type="bibr" target="#b61">62</ref> . A second set of extended control variables includes all standard control variables and in addition standardized BMI, standardized educational attainment <ref type="bibr" target="#b63">64</ref> , and standardized weight. To determine whether observations at the extreme ends of the drinking distribution bias the estimates of the relationship between alcohol intake and IDPs, we also estimate a model that excludes abstainers and a model that excludes heavy drinkers (i.e., women who reported consuming more than 18 units/week and men who consumed more than 24 units/week), both with standard controls. For each IDP, we test the null hypothesis that alcohol did not affect the outcome measure via an F-test that compares our model against a model with only the control variables (excluding alcohol intake and related interaction terms).</p><p>We separate the analysis into two parts: (1) global analysis and (2) regional GMV and WM microstructure analysis, including 514 IDPs in total (139 GMV IDPs, 375 WM microstructure IDPs). The interactions of alcohol intake variables with sex and age are not significant in the global analysis (p &gt; 0.001), so we exclude them from the regional analyses. To control the family-wise error rate in the regional GMV and WM microstructure analysis, we determine the significance thresholds for all regressions using the Holm method <ref type="bibr" target="#b64">65</ref> , ensuring a family-wise error rate below 5%. When testing for M hypotheses, this method orders the corresponding p-values from lowest to highest: p 0 ,…, p M , and identifies the minimal index k such that p k &gt; 0.05/(M + 1k). All hypotheses with an index m &lt; k are then considered to be statistically significant. In our application, the significance threshold was determined to be 1.64 × 10 -4 .</p><p>To quantify and visualize associations between alcohol intake and IDPs (i.e., global GMV and WMV, and regional GMV IDPs), we bin participants in the following six categories based on average alcohol intake: (1) abstainers, (2) individuals who drank less than one unit/day, (3) individuals who drank between one (included) and two (excluded) units/day (recommended maximal alcohol consumption based on the UK Chief Medical Officers "low-risk" guidelines <ref type="bibr" target="#b31">32</ref> ), (4)  individuals who drank between two (included) and three (excluded) units/day, (5)  individuals who drank between three (included) and four (excluded) units/day, and (6) individuals who drank at least four units/day. After regressing the influence of the standard control variables, we then calculate the mean residual values (measured in standard deviations of IDPs) and 95% confidence intervals (CI). By first regressing the dependent variables on the standard control variables, the estimated effect can be interpreted as the part of the change in IDP that is not explained by these other variables, and it is represented in terms of standard deviations from the average. Results are available to the readers in supplementary data figures and tables. For example, Supplementary Fig. <ref type="figure" target="#fig_2">3</ref> includes the average GMV of all regions tested (both significant and non-significant) in bins of participants with different daily alcohol intake levels.</p></div><figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_0"><head>Fig. 1</head><label>1</label><figDesc>Fig. 1 Empirical distributions of variables. SD standard deviation, GMV gray matter volume, WMV white matter volume.</figDesc><graphic coords="3,240.34,113.30,231.40,273.04" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_1"><head>Fig. 2</head><label>2</label><figDesc>Fig. 2 Scatter plots of whole-brain standardized gray matter volume (females, upper left; males, upper right) and standardized white matter volume (females, lower left; males, lower right), all normalized for head size, against the individual's age (x-axis). The plots also show the LOWESS regression line (smoothness: a = 0.2). The 95% confidence interval is indistinguishable from the regression line. The colors are representative of the average daily alcohol consumption.</figDesc><graphic coords="4,93.66,50.80,408.02,352.69" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_2"><head>Fig. 3</head><label>3</label><figDesc>Fig. 3 Scatter plots of whole-brain standardized gray matter volume (females, upper left; males, upper right) and standardized white matter volume (females, lower left; males, lower right), all normalized for head size, against the individual's daily alcohol consumption (x-axis, in log scale). The plots also show the LOWESS regression line (smoothness: a = 0.2), with its 95% confidence interval. The dashed line represents the average standardized volume of the full sample (males and females).</figDesc><graphic coords="5,92.41,50.80,410.40,346.56" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_3"><head>Fig. 4</head><label>4</label><figDesc>Fig. 4 Bar plots representing the average residual volume of whole-brain gray and white matter volume for individuals grouped by the number of daily alcohol units after controlling for standard control variables. The mean residuals are in terms of standard deviations of the dependent variable, where zero represents the average residual in the full sample. The error bars represent the 95% confidence interval. *p &lt; 0.01 and **p &lt; .0001 for groups showing a significant difference against the group consuming up to one alcohol unit daily. Supplementary Figure 1 replicates this Figure following the exclusion of individuals who consume a high level of alcohol (i.e., females who report consuming more than 18 units/week and males who report consuming more than 24 units/week).</figDesc><graphic coords="7,90.65,50.80,414.03,141.62" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_4"><head>Fig. 5</head><label>5</label><figDesc>Fig. 5 Associations between daily alcohol units and white matter microstructure indices of interest across white matter tract regions. Asterisks denote statistically significant effects, p &lt; 1.64 × 10 -4 . Colors represent the expected change in each imaging derived phenotype resulting from the increase in daily consumption from 1 to 2 units, based on the regression model. FA fractional anisotropy, ICVF intracellular volume fraction, ISOVF isotropic volume fraction, MD mean diffusivity, OD orientation dispersion, r right, l left.</figDesc><graphic coords="8,152.71,56.84,383.56,424.60" type="bitmap" /></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" xml:id="fig_5"><head></head><label></label><figDesc>TR = 2000 ms; TE = 2.01 ms; 208 sagittal slices; flip angle, 8°; FOV = 256 mm; matrix = 256 × 256; slice thickness = 1.0 mm (voxel size 1 × 1 × 1 mm); total scan time = 4 min 54 s. 3D FLAIR images were obtained with the following TR = 1800 ms; TE = 395.0 ms; 192 sagittal slices; FOV = 256 mm; 256 × 256; slice thickness = 1.05 mm (voxel size 1.05 × 1×1 mm); total scan time = 5 min 52 s. Diffusion acquisition comprised a spin-echo echo-planar sequence with 10 T2-weighted (b ≈ 0 s mm -2 ) baseline volumes, 50 b = 1000 s mm -2 and 50 b = 2000 s mm -2 diffusion-weighted volumes, with 100 distinct diffusion-encoding directions and 2 mm isotropic voxels; total scan time = 6 min 32 s.</figDesc></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 1</head><label>1</label><figDesc>Regression analysis with global IDPs as outcome variables. IDPs imaging derived phenotypes, GMV gray matter volume, WMV white matter volume, df degrees of freedom, SE standard error, CI confidence interval, std. age standard age. All regressions include standard control variables. Intake is measured in log(1 + daily units of alcohol).</figDesc><table><row><cell></cell><cell>Dependent variable: global GMV</cell><cell></cell><cell>Dependent variable: global WMV</cell><cell></cell></row><row><cell></cell><cell>N: 36,678 (df: 36,585), R 2 : 0.514</cell><cell></cell><cell>N: 36,678 (df: 36,585), R 2 : 0.514</cell><cell></cell></row><row><cell>Variable</cell><cell>Regression coefficient (SE), 95% CI</cell><cell>t-stat (p-value)</cell><cell>Regression coefficient (SE), 95% CI</cell><cell>t-stat (p-value)</cell></row><row><cell>Intake</cell><cell>-0.1095 (0.0058),</cell><cell>-19.0</cell><cell>-0.0650 (0.0078),</cell><cell>-8.4</cell></row><row><cell></cell><cell>CI: [-0.1209, -0.0982]</cell><cell>(p &lt; 1.0e-16)</cell><cell>CI: [-0.0802, -0.0498]</cell><cell>(p &lt; 1.0e-16)</cell></row><row><cell>Intake 2</cell><cell>-0.0651 (0.0037),</cell><cell>-17.7</cell><cell>-0.0370 (0.0050),</cell><cell>-7.5</cell></row><row><cell></cell><cell>CI: [-0.0723, -0.0579]</cell><cell>(p &lt; 1.0e-16)</cell><cell>CI: [-0.0468, -0.0273]</cell><cell>(p = 7.8e-14)</cell></row><row><cell>Intake × male</cell><cell>0.0174 (0.0080),</cell><cell>2.2</cell><cell>0.0164 (0.0107),</cell><cell>1.5</cell></row><row><cell></cell><cell>CI: [0.0018, 0.0330]</cell><cell>(p = 2.9e-02)</cell><cell>CI: [-0.0046, 0.0374]</cell><cell>(p = 1.2e-01)</cell></row><row><cell>Intake × std. age</cell><cell>0.0080 (0.0037),</cell><cell>2.2</cell><cell>0.0111 (0.0050),</cell><cell>2.2</cell></row><row><cell></cell><cell>CI: [0.0008, 0.0152]</cell><cell>(p = 3.0e-02)</cell><cell>CI: [0.0014, 0.0208]</cell><cell>(p = 2.5e-02)</cell></row><row><cell>Std. age</cell><cell>-0.5991 (0.0038),</cell><cell>-157.0</cell><cell>-0.3213 (0.0051),</cell><cell>-62.6</cell></row><row><cell></cell><cell>CI: [-0.6066, -0.5916]</cell><cell>(p &lt; 1.0e-16)</cell><cell>CI: [-0.3313, -0.3112]</cell><cell>(p &lt; 1.0e-16)</cell></row><row><cell>Std. age 2</cell><cell>-0.0378 (0.0034),</cell><cell>-11.0</cell><cell>-0.0127 (0.0046),</cell><cell>-2.8</cell></row><row><cell></cell><cell>CI: [-0.0445, -0.0311]</cell><cell>(p &lt; 1.0e-16)</cell><cell>CI: [-0.0217, -0.0037]</cell><cell>(p = 5.7e-03)</cell></row><row><cell></cell><cell cols="2">Against model without intake and interactions</cell><cell cols="2">Against model without intake and interactions</cell></row><row><cell></cell><cell>Delta R 2 : 0.0099, F-test: p &lt; 1.0e-16</cell><cell></cell><cell>Delta R</cell><cell></cell></row></table><note><p><p><p><ref type="bibr" target="#b1">2</ref> </p>: 0.0033, F-test: p &lt; 1.0e-16</p>Note.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head>Table 2</head><label>2</label><figDesc>Predicted average additional effect (in standard deviations of IDP) of increasing alcohol intake by one daily unit on whole-brain gray matter volume and white matter volume, for models with different sets of control variables (first and second columns), and for standard control variables with samples excluding abstainers (third column) and individuals who consume a high level of alcohol (last column).</figDesc><table><row><cell></cell><cell cols="2">Standard control variables</cell><cell cols="2">Extended control variables</cell><cell cols="2">Excluding abstainers</cell><cell cols="2">Excluding those that</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell cols="2">consume a high level of</cell></row><row><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell></cell><cell>alcohol</cell><cell></cell></row><row><cell>Intake changes</cell><cell>Global GMV</cell><cell>Global WMV</cell><cell>Global GMV</cell><cell>Global WMV</cell><cell>Global GMV</cell><cell>Global WMV</cell><cell>Global GMV</cell><cell>Global WMV</cell></row><row><cell>0-1 unit</cell><cell>-0.030</cell><cell>-0.020</cell><cell>-0.038</cell><cell>-0.017</cell><cell>-0.019</cell><cell>-0.015</cell><cell>-0.034</cell><cell>-0.019</cell></row><row><cell>1-2 units</cell><cell>-0.127</cell><cell>-0.074</cell><cell>-0.126</cell><cell>-0.073</cell><cell>-0.123</cell><cell>-0.070</cell><cell>-0.107</cell><cell>-0.067</cell></row><row><cell>2-3 units</cell><cell>-0.223</cell><cell>-0.129</cell><cell>-0.214</cell><cell>-0.129</cell><cell>-0.226</cell><cell>-0.124</cell><cell>-0.181</cell><cell>-0.116</cell></row><row><cell>3-4 units</cell><cell>-0.319</cell><cell>-0.184</cell><cell>-0.302</cell><cell>-0.185</cell><cell>-0.330</cell><cell>-0.179</cell><cell>-0.255</cell><cell>-0.164</cell></row><row><cell>0-4 units</cell><cell>-0.699</cell><cell>-0.407</cell><cell>-0.682</cell><cell>-0.404</cell><cell>-0.699</cell><cell>-0.388</cell><cell>-0.577</cell><cell>-0.367</cell></row></table><note><p>Note. IDP imaging derived phenotype, GMV gray matter volume; WMV white matter volume.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 3</head><label>3</label><figDesc>Predicted equivalent effect of aging in terms of additional years for an average 50-year-old individual (model includes all participants).</figDesc><table><row><cell></cell><cell cols="2">Standard control variables</cell><cell></cell><cell></cell></row><row><cell>Intake</cell><cell cols="2">Global GMV Equivalent</cell><cell cols="2">Global WMV Equivalent</cell></row><row><cell>changes</cell><cell></cell><cell>aging at 50</cell><cell></cell><cell>aging at 50</cell></row><row><cell>0-1 unit</cell><cell>-0.030</cell><cell>0.5 years</cell><cell>-0.020</cell><cell>0.5 years</cell></row><row><cell>1-2 units</cell><cell>-0.127</cell><cell>2.0 years</cell><cell>-0.074</cell><cell>2.0 years</cell></row><row><cell cols="2">2-3 units -0.223</cell><cell>3.5 years</cell><cell>-0.129</cell><cell>3.5 years</cell></row><row><cell cols="2">3-4 units -0.319</cell><cell>4.9 years</cell><cell>-0.184</cell><cell>4.9 years</cell></row><row><cell cols="2">0-4 units -0.699</cell><cell>10.2 years</cell><cell>-0.407</cell><cell>10.4 years</cell></row></table><note><p>Note. GMV gray matter volume.</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 4</head><label>4</label><figDesc></figDesc><table><row><cell></cell><cell cols="4">Predicted equivalent effect of aging in terms of</cell></row><row><cell cols="5">additional years for an average 50-year-old individual</cell></row><row><cell cols="5">(model excludes individuals who consume a high level of</cell></row><row><cell cols="5">alcohol (i.e., females who report consuming more than 18</cell></row><row><cell cols="5">units/week and males who report consuming more than 24</cell></row><row><cell cols="2">units/week).</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell cols="2">Standard control variables</cell><cell></cell><cell></cell></row><row><cell>Intake</cell><cell cols="2">Global GMV Equivalent</cell><cell cols="2">Global WMV Equivalent</cell></row><row><cell>changes</cell><cell></cell><cell>aging at 50</cell><cell></cell><cell>aging at 50</cell></row><row><cell>0-1 unit</cell><cell>-0.034</cell><cell>0.5 years</cell><cell>-0.019</cell><cell>0.5 years</cell></row><row><cell>1-2 units</cell><cell>-0.107</cell><cell>1.7 years</cell><cell>-0.067</cell><cell>1.8 years</cell></row><row><cell cols="2">2-3 units -0.181</cell><cell>2.9 years</cell><cell>-0.116</cell><cell>3.1 years</cell></row><row><cell cols="2">3-4 units -0.255</cell><cell>4.0 years</cell><cell>-0.164</cell><cell>4.4 years</cell></row><row><cell cols="2">0-4 units -0.577</cell><cell>8.6 years</cell><cell>-0.367</cell><cell>9.5 years</cell></row></table><note><p>Note. GMV gray matter volume.</p></note></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>NATURE COMMUNICATIONS | (2022) 13:1175 | https://doi.org/10.1038/s41467-022-28735-5 | www.nature.com/naturecommunications</p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><p>Pre-registration. We registered the analysis plan was preregistered with the <rs type="funder">Open Science Foundation</rs> (https://osf.io/trauf/).</p></div>
+<div><head>Acknowledgements</head><p>This research was carried out under the auspices of the <rs type="projectName">Brain Imaging and Genetics in Behavioral Research Consortium</rs> (https://big-bear-research.org/), using UK Biobank resources under application 40830. The study was supported by funding from an <rs type="funder">ERC</rs> <rs type="grantName">Consolidator Grant</rs> to PK (647648 EdGe), <rs type="funder">NSF</rs> <rs type="grantName">Early Career Development Program grant</rs> (<rs type="grantNumber">1942917</rs>) to GN, the <rs type="funder">National Institute on Alcohol Abuse and Alcoholism</rs> to RRW (<rs type="grantNumber">K23 AA023894</rs>), and the <rs type="funder">VISN 4 Mental Illness Research, Education and Clinical Center at the Crescenz VA Medical Center</rs>. GN thanks Carlos and <rs type="person">Rosa de la Cruz</rs> for their ongoing support.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funded-project" xml:id="_TaFctkC">
+					<orgName type="grant-name">Consolidator Grant</orgName>
+					<orgName type="project" subtype="full">Brain Imaging and Genetics in Behavioral Research Consortium</orgName>
+				</org>
+				<org type="funding" xml:id="_bFV2W7h">
+					<idno type="grant-number">1942917</idno>
+					<orgName type="grant-name">Early Career Development Program grant</orgName>
+				</org>
+				<org type="funding" xml:id="_xzxbf3R">
+					<idno type="grant-number">K23 AA023894</idno>
+				</org>
+			</listOrg>
+
+			<div type="availability">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Data availability</head><p>Data and materials are available via UK Biobank at http://www.ukbiobank.ac.uk/.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Code availability</head><p>The analysis code used in this study is publicly available with the Open Science Framework (https://osf.io/trauf/?view_only=a3795f76c5a54830b2ca443e3e07c0f0).</p></div>
+			</div>
+
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>Reporting summary. Further information on research design is available in the Nature Research Reporting Summary linked to this article.</p><p>Author contributions R.D., P.K., H.R.K., G.N., and R.R.W. conceived and designed the study. R.D. analyzed data. R.D., G.A., K.J., P.K., H.R.K., G.N., and R.R.W. interpreted data. R.D., G.N., and R.R.W. wrote the paper. G.A., N.S., P.K., and H.R.K. critically edited the work. R.D., G.N., and R.R.W. finalized all edits. All authors approved the final version to be submitted for publication and agree to be accountable for all aspects of this work.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Competing interests</head><p>H.R.K. is a member of an advisory board for Dicerna Pharmaceuticals, Sophrosyne Pharmaceuticals, and Entheon Pharmaceuticals; a consultant to Sobrera Pharmaceuticals; a member of the American Society of Clinical Psychopharmacology's Alcohol Clinical Trials Initiative, which was supported in the last three years by AbbVie, Alkermes, Dicerna, Ethypharm, Indivior, Lilly, Lundbeck, Otsuka, Pfizer, Arbor, and Amygdala Neurosciences; and is named as an inventor on PCT patent application #15/878,640 entitled: "Genotype-guided dosing of opioid agonists," filed January 24, 2018. All other authors declare no competing interests.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Additional information</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Supplementary information</head><p>The online version contains supplementary material available at https://doi.org/10.1038/s41467-022-28735-5.</p><p>Correspondence and requests for materials should be addressed to Remi Daviet, Gideon Nave or Reagan R. Wetherill.</p><p>Peer review information Nature Communications thanks Simon Davis and the other, anonymous, reviewer(s) for their contribution to the peer review of this work. Peer reviewer reports are available.</p><p>Reprints and permission information is available at http://www.nature.com/reprints Publisher's note Springer Nature remains neutral with regard to jurisdictional claims in published maps and institutional affiliations.</p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">Diagnostic and Statistical Manual of Mental Disorders</title>
+		<idno type="DOI">10.1176/appi.books.9780890425596</idno>
+		<ptr target="https://doi.org/10.1176/appi.books.9780890425596" />
+		<imprint>
+			<date type="published" when="2013">2013</date>
+			<publisher>American Psychiatric Association</publisher>
+		</imprint>
+	</monogr>
+	<note>th ed.</note>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<analytic>
+		<ptr target="https://apps.who.int/iris/handle/10665/274603" />
+	</analytic>
+	<monogr>
+		<title level="m">License: CC BY-NC-SA 3.0 IGO</title>
+		<imprint>
+			<publisher>World Health Organization</publisher>
+			<date type="published" when="2018">2018. 2018</date>
+		</imprint>
+	</monogr>
+	<note>World Health Organization</note>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">Alcohol&apos;s effects on the brain: Neuroimaging results in humans and animal models</title>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">M</forename><surname>Zahr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pfefferbaum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Alcohol Res</title>
+		<imprint>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="page" from="183" to="206" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Alcohol and mortality in Russia: Prospective observational study of 151,000 adults</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Zaridze</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Lancet</title>
+		<imprint>
+			<biblScope unit="volume">383</biblScope>
+			<biblScope unit="page" from="1465" to="1473" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<analytic>
+		<title level="a" type="main">Concomitants of alcoholism: Differential effects of thiamine deficiency, liver damage, and food deprivation on the rat brain in vivo</title>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">M</forename><surname>Zahr</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychopharmacology</title>
+		<imprint>
+			<biblScope unit="volume">233</biblScope>
+			<biblScope unit="page" from="2675" to="2686" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Alcohol consumption. A leading risk factor for cancer</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Rehm</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">D</forename><surname>Shield</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Weiderpass</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Chem. Biol. Interact</title>
+		<imprint>
+			<biblScope unit="volume">331</biblScope>
+			<biblScope unit="page">109280</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Determinants of accelerated metabolomic and epigenetic aging in a UK cohort</title>
+		<author>
+			<persName><forename type="first">O</forename><surname>Robinson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Aging Cell</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page">13149</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">Epigenetic aging is accelerated in alcohol use disorder and regulated by genetic variation in APOL2</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Luo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuropsychopharmacology</title>
+		<imprint>
+			<biblScope unit="volume">45</biblScope>
+			<biblScope unit="page" from="327" to="336" />
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<analytic>
+		<title level="a" type="main">Brain-behavior relations and effects of aging and common comorbidities in alcohol use disorder: A review</title>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">V</forename><surname>Sullivan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pfefferbaum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuropsychology</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="760" to="780" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">Human alcohol-related neuropathology</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>De La Monte</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">J</forename><surname>Kril</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Acta Neuropathol</title>
+		<imprint>
+			<biblScope unit="volume">127</biblScope>
+			<biblScope unit="page" from="71" to="90" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">The alcoholic brain: Neural bases of impaired reward-based decision-making in alcohol use disorders</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Galandra</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><surname>Basso</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Cappa</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Canessa</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neurol. Sci</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="page" from="423" to="435" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Structural and microstructral imaging of the brain in alcohol use disorders</title>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">M</forename><surname>Zahr</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Handb. Clin. Neurol</title>
+		<imprint>
+			<biblScope unit="volume">125</biblScope>
+			<biblScope unit="page" from="275" to="290" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Cortical and subcortical gray matter shrinkage in alcohol-use disorders: A voxel-based meta-analysis</title>
+		<author>
+			<persName><forename type="first">X</forename><surname>Yang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neurosci. Biobehav Rev</title>
+		<imprint>
+			<biblScope unit="volume">66</biblScope>
+			<biblScope unit="page" from="92" to="103" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<analytic>
+		<title level="a" type="main">Decreased volume of the brain reward system in alcoholism</title>
+		<author>
+			<persName><forename type="first">N</forename><surname>Makris</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Biol. Psychiatry</title>
+		<imprint>
+			<biblScope unit="volume">64</biblScope>
+			<biblScope unit="page" from="192" to="202" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Association of frontal and posterior cortical gray matter volume with time to alcohol relapse: A prospective study</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Rando</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Am. J. Psychiatry</title>
+		<imprint>
+			<biblScope unit="volume">168</biblScope>
+			<biblScope unit="page" from="183" to="192" />
+			<date type="published" when="2011">2011</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Perspectives on fronto-fugal circuitry from human imaging of alcohol use disorders</title>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">M</forename><surname>Zahr</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pfefferbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">V</forename><surname>Sullivan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuropharmacology</title>
+		<imprint>
+			<biblScope unit="volume">122</biblScope>
+			<biblScope unit="page" from="189" to="200" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Age-related gray matter shrinkage in a treatment naive actively drinking alcohol-dependent sample</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Fein</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Shimotsu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Barakos</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Alcohol Clin. Exp. Res</title>
+		<imprint>
+			<biblScope unit="volume">34</biblScope>
+			<biblScope unit="page" from="175" to="182" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">White matter volume in alcohol use disorders: A meta-analysis</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Monnig</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">S</forename><surname>Tonigan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">A</forename><surname>Yeo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">J</forename><surname>Thoma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">S</forename><surname>Mccrady</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Addict. Biol</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="page" from="581" to="592" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Acute effects of alcohol on the human brain: Diffusion tensor imaging study</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">M</forename><surname>Kong</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">B</forename><surname>Zheng</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">G</forename><forename type="middle">P</forename><surname>Lian</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">D</forename><surname>Zhang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">AJNR Am. J. Neuroradiol</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="928" to="934" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Disruption of brain white matter microstructure by excessive intracellular and extracellular fluid in alcoholism: Evidence from diffusion tensor imaging</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pfefferbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">V</forename><surname>Sullivan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuropsychopharmacology</title>
+		<imprint>
+			<biblScope unit="volume">30</biblScope>
+			<biblScope unit="page" from="423" to="432" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Widespread effects of alcohol on white matter microstructure</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">B</forename><surname>Fortier</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Alcohol Clin. Exp. Res</title>
+		<imprint>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="page" from="2925" to="2933" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Dysmorphology and microstructural degradation of the corpus callosum: Interaction of age and alcoholism</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pfefferbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Adalsteinsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">V</forename><surname>Sullivan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neurobiol. Aging</title>
+		<imprint>
+			<biblScope unit="volume">27</biblScope>
+			<biblScope unit="page" from="994" to="1009" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">Neuroimaging in alcohol use disorder: From mouse to man</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Fritz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">M</forename><surname>Klawonn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">M</forename><surname>Zahr</surname></persName>
+		</author>
+		<idno type="DOI">10.1002/jnr.24423</idno>
+		<ptr target="https://doi.org/10.1002/jnr.24423" />
+	</analytic>
+	<monogr>
+		<title level="j">J. Neurosci. Res</title>
+		<imprint>
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Degradation of association and projection white matter systems in alcoholism detected with quantitative fiber tracking</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pfefferbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Rosenbloom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Rohlfing</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">V</forename><surname>Sullivan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Biol. Psychiatry</title>
+		<imprint>
+			<biblScope unit="volume">65</biblScope>
+			<biblScope unit="page" from="680" to="690" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">White matter during concussion recovery: Comparing diffusion tensor imaging (DTI) and neurite orientation dispersion and density imaging (NODDI). Hum</title>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">W</forename><surname>Churchill</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Caverzasi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">J</forename><surname>Graham</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">G</forename><surname>Hutchison</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">A</forename><surname>Schweizer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Brain Mapp</title>
+		<imprint>
+			<biblScope unit="volume">40</biblScope>
+			<biblScope unit="page" from="1908" to="1918" />
+			<date type="published" when="2019">2019</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">NODDI: Practical in vivo neurite orientation dispersion and density imaging of the human brain</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>Zhang</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><surname>Schneider</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">A</forename><surname>Wheeler-Kingshott</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">C</forename><surname>Alexander</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuroimage</title>
+		<imprint>
+			<biblScope unit="volume">61</biblScope>
+			<biblScope unit="page" from="1000" to="1016" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">The basis of anisotropic water diffusion in the nervous system-a technical review</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Beaulieu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NMR Biomed</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="435" to="455" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Association of alcohol consumption with brain volume in the Framingham study</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">A</forename><surname>Paul</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Arch. Neurol</title>
+		<imprint>
+			<biblScope unit="volume">65</biblScope>
+			<biblScope unit="page" from="1363" to="1367" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Alcohol consumption and subclinical findings on magnetic resonance imaging of the brain in older adults: The cardiovascular health study</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">J</forename><surname>Mukamal</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">T</forename><surname>Longstreth</surname><genName>Jr</genName></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">A</forename><surname>Mittleman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">M</forename><surname>Crum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">S</forename><surname>Siscovick</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Stroke</title>
+		<imprint>
+			<biblScope unit="volume">32</biblScope>
+			<biblScope unit="page" from="1939" to="1946" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title level="a" type="main">Alcohol intake in relation to brain magnetic resonance imaging findings in older persons without dementia</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Den Heijer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Am. J. Clin. Nutr</title>
+		<imprint>
+			<biblScope unit="volume">80</biblScope>
+			<biblScope unit="page" from="992" to="997" />
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Alcohol intake and brain structure in a multiethnic elderly cohort</title>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Gu</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Clin. Nutr</title>
+		<imprint>
+			<biblScope unit="volume">33</biblScope>
+			<biblScope unit="page" from="662" to="667" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Light to moderate alcohol use is associated with increased cortical gray matter in middle-aged men: A voxel-based morphometric study</title>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">S</forename><surname>Sachdev</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">X</forename><surname>Chen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><surname>Wen</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">J</forename><surname>Anstey</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychiatry Res</title>
+		<imprint>
+			<biblScope unit="volume">163</biblScope>
+			<biblScope unit="page" from="61" to="69" />
+			<date type="published" when="2008">2008</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Moderate alcohol consumption as risk factor for adverse brain outcomes and cognitive decline: Longitudinal cohort study</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Topiwala</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">BMJ</title>
+		<imprint>
+			<biblScope unit="volume">357</biblScope>
+			<biblScope unit="page">2353</biblScope>
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Power failure: Why small sample size undermines the reliability of neuroscience</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">S</forename><surname>Button</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nat. Rev. Neurosci</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="365" to="376" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Beyond power calculations: Assessing type s (sign) and type m (magnitude) errors</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Gelman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Carlin</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Perspect. Psychol. Sci</title>
+		<imprint>
+			<biblScope unit="volume">9</biblScope>
+			<biblScope unit="page" from="641" to="651" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">Cortical and subcortical volumes in adolescents with alcohol dependence but without substance or psychiatric comorbidities</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Fein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychiatry Res</title>
+		<imprint>
+			<biblScope unit="volume">214</biblScope>
+			<biblScope unit="page" from="1" to="8" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">Cross-sectional and longitudinal association of body mass index and brain volume</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">F</forename><surname>Bobb</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">S</forename><surname>Schwartz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Davatzikos</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Caffo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Hum. Brain Mapp</title>
+		<imprint>
+			<biblScope unit="volume">35</biblScope>
+			<biblScope unit="page" from="75" to="88" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<analytic>
+		<title level="a" type="main">The role of aging, drug dependence, and hepatitis c comorbidity in alcoholism cortical compromise</title>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">V</forename><surname>Sullivan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">JAMA Psychiatry</title>
+		<imprint>
+			<biblScope unit="volume">75</biblScope>
+			<biblScope unit="page" from="474" to="483" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<analytic>
+		<title level="a" type="main">Negative and interactive effects of sex, aging, and alcohol abuse on gray matter morphometry</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">E</forename><surname>Thayer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Hum. Brain Mapp</title>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="page" from="2276" to="2292" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Population stratification and spurious allelic association</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">R</forename><surname>Cardon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">J</forename><surname>Palmer</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Lancet</title>
+		<imprint>
+			<biblScope unit="volume">361</biblScope>
+			<biblScope unit="page" from="598" to="604" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Publication bias in neuroimaging research: Implications for meta-analyses</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">G</forename><surname>Jennings</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Van Horn</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuroinformatics</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page" from="67" to="80" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">Multimodal population brain imaging in the UK Biobank prospective epidemiological study</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">L</forename><surname>Miller</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nat. Neurosci</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="1523" to="1536" />
+			<date type="published" when="2016">2016</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<analytic>
+		<title level="a" type="main">UK Biobank: An open access resource for identifying the causes of a wide range of complex diseases of middle and old age</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Sudlow</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">PLoS Med</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page">1001779</biblScope>
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Genetic underpinnings of risky behavior relate to altered neuroanatomy</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Aydogan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nat. Human Behavior</title>
+		<imprint/>
+	</monogr>
+	<note>in the press</note>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Reproducibility of quantitative tractography methods applied to cerebral white matter</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Wakana</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuroimage</title>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page" from="630" to="644" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">Moderate alcohol use is associated with decreased brain volume in early middle age in both sexes</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Immonen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Sci. Rep</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page">13998</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<analytic>
+		<title level="a" type="main">Alcohol intake and quantitative MRI findings among community dwelling Japanese subjects</title>
+		<author>
+			<persName><forename type="first">K</forename><surname>Fukuda</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Neurol. Sci</title>
+		<imprint>
+			<biblScope unit="volume">278</biblScope>
+			<biblScope unit="page" from="30" to="34" />
+			<date type="published" when="2009">2009</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Evidence for a genderrelated effect of alcoholism on brain volumes</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Hommer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Momenan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Kaiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><surname>Rawlings</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Am. J. Psychiatry</title>
+		<imprint>
+			<biblScope unit="volume">158</biblScope>
+			<biblScope unit="page" from="198" to="204" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Frontal lobe volume loss observed with magnetic resonance imaging in older chronic alcoholics</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pfefferbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">V</forename><surname>Sullivan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">H</forename><surname>Mathalon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">O</forename><surname>Lim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Alcohol Clin. Exp. Res</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="page" from="521" to="529" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Connectome-derived diffusion characteristics of the fornix in Alzheimer&apos;s disease</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">D</forename><surname>Perea</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuroimage Clin</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="331" to="342" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">Neural correlate of anterograde amnesia in Wernicke-Korsakoff syndrome</title>
+		<author>
+			<persName><forename type="first">L</forename><surname>Nahum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Brain Topogr</title>
+		<imprint>
+			<biblScope unit="volume">28</biblScope>
+			<biblScope unit="page" from="760" to="770" />
+			<date type="published" when="2015">2015</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Microstructural damage of white-matter tracts connecting large-scale networks is related to impaired executive profile in alcohol use disorder</title>
+		<author>
+			<persName><forename type="first">C</forename><surname>Crespi</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuroimage Clin</title>
+		<imprint>
+			<biblScope unit="volume">25</biblScope>
+			<biblScope unit="page">102141</biblScope>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">Evidence for functional networks within the human brain&apos;s white matter</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Peer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Nitzan</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">S</forename><surname>Bick</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Levin</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Arzy</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">J. Neurosci</title>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="page" from="6394" to="6407" />
+			<date type="published" when="2017">2017</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">White matter microstructural recovery with abstinence and decline with relapse in alcohol dependence interacts with normal ageing: A controlled longitudinal DTI study</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pfefferbaum</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Lancet Psychiatry</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="page" from="202" to="212" />
+			<date type="published" when="2014">2014</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Cerebral white matter recovery in abstinent alcoholics-a multimodality magnetic resonance study</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Gazdzinski</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">C</forename><surname>Durazzo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Mon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">H</forename><surname>Yeh</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">J</forename><surname>Meyerhoff</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Brain</title>
+		<imprint>
+			<biblScope unit="volume">133</biblScope>
+			<biblScope unit="page" from="1043" to="1053" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Callosal white matter microstructural recovery in abstinent alcoholics: A longitudinal diffusion tensor imaging study</title>
+		<author>
+			<persName><forename type="first">O</forename><forename type="middle">M</forename><surname>Alhassoon</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Alcohol Clin. Exp. Res</title>
+		<imprint>
+			<biblScope unit="volume">36</biblScope>
+			<biblScope unit="page" from="1922" to="1931" />
+			<date type="published" when="2012">2012</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Increased brain white matter diffusivity in normal adult aging: Relationship to anisotropy and partial voluming</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Pfefferbaum</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">V</forename><surname>Sullivan</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Magn. Reson. Med</title>
+		<imprint>
+			<biblScope unit="volume">49</biblScope>
+			<biblScope unit="page" from="953" to="961" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Twenty-five pitfalls in the analysis of diffusion MRI data</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">K</forename><surname>Jones</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Cercignani</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">NMR Biomed</title>
+		<imprint>
+			<biblScope unit="volume">23</biblScope>
+			<biblScope unit="page" from="803" to="820" />
+			<date type="published" when="2010">2010</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<monogr>
+		<title/>
+		<author>
+			<persName><forename type="first">S</forename><surname>Smith</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">F</forename><surname>Alfaro-Almagro</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Miller</surname></persName>
+		</author>
+		<author>
+			<persName><surname>Biobank</surname></persName>
+		</author>
+		<ptr target="https://biobank.ctsu.ox.ac.uk/crystal/crystal/docs/brain_mri.pdf" />
+		<imprint>
+			<date type="published" when="2020">2020</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">Image processing and quality control for the first 10,000 brain imaging datasets from UK Biobank</title>
+		<author>
+			<persName><forename type="first">F</forename><surname>Alfaro-Almagro</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuroimage</title>
+		<imprint>
+			<biblScope unit="volume">166</biblScope>
+			<biblScope unit="page" from="400" to="424" />
+			<date type="published" when="2018">2018</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title level="a" type="main">Improving alignment in tract-based spatial statistics: Evaluation and optimization of image registration</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>De Groot</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Neuroimage</title>
+		<imprint>
+			<biblScope unit="volume">76</biblScope>
+			<biblScope unit="page" from="400" to="411" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b61">
+	<monogr>
+		<title level="m" type="main">Health and Deprivation: Inequality and the North 211 p</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Townsend</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Phillimore</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Beattie</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1988">1988</date>
+			<publisher>Croom Helm</publisher>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b62">
+	<analytic>
+		<title level="a" type="main">Principal components analysis corrects for stratification in genome-wide association studies</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">L</forename><surname>Price</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Nat. Genet</title>
+		<imprint>
+			<biblScope unit="volume">38</biblScope>
+			<biblScope unit="page" from="904" to="909" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b63">
+	<analytic>
+		<title level="a" type="main">GWAS of 126,559 individuals genetic variants associated with educational attainment</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">A</forename><surname>Rietveld</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Science</title>
+		<imprint>
+			<biblScope unit="volume">340</biblScope>
+			<biblScope unit="page" from="1467" to="1471" />
+			<date type="published" when="2013">2013</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b64">
+	<analytic>
+		<title level="a" type="main">A simple sequentially rejective multiple test procedure</title>
+		<author>
+			<persName><forename type="first">S</forename><surname>Holm</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Scand. J. Stat</title>
+		<imprint>
+			<biblScope unit="volume">6</biblScope>
+			<biblScope unit="page" from="65" to="70" />
+			<date type="published" when="1979">1979</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

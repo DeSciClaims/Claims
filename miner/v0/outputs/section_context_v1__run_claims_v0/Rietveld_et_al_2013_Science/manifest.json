@@ -1,0 +1,11 @@
+{
+  "paper_id": "Rietveld_et_al_2013_Science",
+  "paper_title": "An Airborne Transmissible Avian Influenza H5 Hemagglutinin Seen at the Atomic Level",
+  "output_dir": "/Users/ogbanugot/Workspace/claims/Claims/miner/v0/outputs/section_context_v1__run_claims_v0/Rietveld_et_al_2013_Science",
+  "claim_count": 19,
+  "evidence_item_count": 18,
+  "link_count": 19,
+  "input_source": "pdf",
+  "input_pdf_path": "/Users/ogbanugot/Workspace/claims/ml-llm-benchmark/data/Rietveld_et_al_2013_Science.pdf",
+  "pdf_extraction_method": "grobid"
+}

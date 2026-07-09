@@ -1,0 +1,11 @@
+{
+  "paper_id": "JOEP_Koellinger_Minniti_Schade_2007",
+  "paper_title": "“I think I can, I think I can”: Overconfidence and entrepreneurial behavior",
+  "output_dir": "/Users/ogbanugot/Workspace/claims/Claims/miner/section_context_v1/outputs/section_context_v1__run_profile_schema_v3/JOEP_Koellinger_Minniti_Schade_2007",
+  "claim_count": 1,
+  "evidence_item_count": 13,
+  "link_count": 1,
+  "input_source": "pdf",
+  "input_pdf_path": "/Users/ogbanugot/Workspace/claims/ml-llm-benchmark/data/JOEP_Koellinger_Minniti_Schade_2007.pdf",
+  "pdf_extraction_method": "grobid"
+}

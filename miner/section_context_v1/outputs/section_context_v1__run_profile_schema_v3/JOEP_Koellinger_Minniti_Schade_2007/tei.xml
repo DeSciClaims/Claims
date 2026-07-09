@@ -1,0 +1,1372 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TEI xml:space="preserve" xmlns="http://www.tei-c.org/ns/1.0" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:schemaLocation="http://www.tei-c.org/ns/1.0 https://raw.githubusercontent.com/kermitt2/grobid/master/grobid-home/schemas/xsd/Grobid.xsd"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+	<teiHeader xml:lang="en">
+		<fileDesc>
+			<titleStmt>
+				<title level="a" type="main">“I think I can, I think I can”: Overconfidence and entrepreneurial behavior</title>
+				<funder ref="#_GNF8Us9">
+					<orgName type="full">unknown</orgName>
+				</funder>
+			</titleStmt>
+			<publicationStmt>
+				<publisher>Elsevier BV</publisher>
+				<availability status="unknown"><p>Copyright Elsevier BV</p>
+				</availability>
+				<date type="published" when="2007-01-04">4 January 2007</date>
+			</publicationStmt>
+			<sourceDesc>
+				<biblStruct>
+					<analytic>
+						<author role="corresp">
+							<persName><forename type="first">Philipp</forename><surname>Koellinger</surname></persName>
+							<email>koellinger@few.eur.nl</email>
+							<affiliation key="aff0">
+								<orgName type="institution">German Institute for Economic Research (DIW Berlin)</orgName>
+								<address>
+									<settlement>Berlin</settlement>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+							<affiliation key="aff1">
+								<orgName type="department">Department of Applied Economics</orgName>
+								<orgName type="institution">Erasmus University Rotterdam</orgName>
+								<address>
+									<postBox>P.O. Box 1738</postBox>
+									<postCode>3000 DR</postCode>
+									<settlement>Rotterdam</settlement>
+									<country key="NL">The Netherlands</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Maria</forename><surname>Minniti</surname></persName>
+							<affiliation key="aff2">
+								<orgName type="department">Economics Division and Entrepreneurship Division</orgName>
+								<orgName type="institution">Babson College</orgName>
+								<address>
+									<country key="US">USA</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<persName><forename type="first">Christian</forename><surname>Schade</surname></persName>
+							<affiliation key="aff3">
+								<orgName type="department">Institute for Entrepreneurial Studies and Innovation Management</orgName>
+								<orgName type="institution">Humboldt-Universita ¨t zu Berlin</orgName>
+								<address>
+									<settlement>Berlin</settlement>
+									<country key="DE">Germany</country>
+								</address>
+							</affiliation>
+						</author>
+						<author>
+							<affiliation key="aff4">
+								<orgName type="department">Department of Applied Economics</orgName>
+								<orgName type="institution">Erasmus University Rotterdam</orgName>
+								<address>
+									<postBox>P.O. Box 1738</postBox>
+									<postCode>3000 DR</postCode>
+									<settlement>Rotterdam</settlement>
+									<country key="NL">The Netherlands</country>
+								</address>
+							</affiliation>
+						</author>
+						<title level="a" type="main">“I think I can, I think I can”: Overconfidence and entrepreneurial behavior</title>
+					</analytic>
+					<monogr>
+						<title level="j" type="main">Journal of Economic Psychology</title>
+						<title level="j" type="abbrev">Journal of Economic Psychology</title>
+						<idno type="ISSN">0167-4870</idno>
+						<imprint>
+							<publisher>Elsevier BV</publisher>
+							<biblScope unit="volume">28</biblScope>
+							<biblScope unit="issue">4</biblScope>
+							<biblScope unit="page" from="502" to="527"/>
+							<date type="published" when="2007-01-04">4 January 2007</date>
+						</imprint>
+					</monogr>
+					<idno type="MD5">C2507302F5AD894CF3E22F403F7B57C8</idno>
+					<idno type="DOI">10.1016/j.joep.2006.11.002</idno>
+					<note type="submission">Received 13 December 2005; received in revised form 5 September 2006; accepted 12 November 2006</note>
+				</biblStruct>
+			</sourceDesc>
+		</fileDesc>
+		<encodingDesc>
+			<appInfo>
+				<application version="0.8.0" ident="GROBID" when="2026-06-25T15:10+0000">
+					<desc>GROBID - A machine learning software for extracting information from scholarly documents</desc>
+					<ref target="https://github.com/kermitt2/grobid"/>
+				</application>
+			</appInfo>
+		</encodingDesc>
+		<profileDesc>
+			<textClass>
+				<keywords>Perceptions; Overconfidence</keywords>
+			</textClass>
+			<abstract>
+<div xmlns="http://www.tei-c.org/ns/1.0"><p>High failure rates and low average returns suggest that too many people may be entering markets as entrepreneurs. Thus, anticipating how one will perform in the market is a fundamental component of the decision to start a business. Using a large sample obtained from population surveys conducted in 18 countries, we study what variables are significantly associated with the decision to start a business. We find strong evidence that subjective, and often biased, perceptions have a crucial impact on new business creation across all countries in our sample. The strongest cross-national covariate of an individual's entrepreneurial propensity is shown to be whether the person believes herself to have the sufficient skills, knowledge and ability to start a business. In addition, we find a significant negative correlation between this reported level of entrepreneurial confidence and the approximate survival chances of nascent entrepreneurs across countries. Our results suggest that some countries exhibit relatively high rates of start-up activity because their inhabitants are more (over)confident than in other countries.</p></div>
+			</abstract>
+		</profileDesc>
+	</teiHeader>
+	<text xml:lang="en">
+		<body>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="1.">Introduction</head><p>Many new businesses fail shortly after inception <ref type="bibr" target="#b4">(Baldwin, 1995;</ref><ref type="bibr" target="#b18">Dunne, Roberts, &amp; Samuelson, 1988)</ref>, and entrepreneurship is a career choice that does not pay on average. <ref type="bibr" target="#b25">Hamilton (2000)</ref> has shown that, except for the highest 25% of entrepreneurial incomes, staying in a wage job or moving back to it makes more economic sense than starting a new business. Along similar lines, <ref type="bibr" target="#b45">Moskovitz and Vissing-Jørgensen (2002)</ref> have investigated the risk-return profile of investments in private enterprises and found them to be inferior to those in publicly traded assets such as stocks. High business failure rates and low average financial returns to entrepreneurship suggest that, at least with respect to pecuniary interests and individual welfare, too many people may be entering markets as entrepreneurs.</p><p>Given the social and economic relevance of creating new businesses, it is important to understand how entry decisions are made, what factors influence individuals who make these decisions, and what kinds of errors these individuals are likely to make. Excess entrepreneurial entry into markets has also been demonstrated in experimental studies and causally linked to overconfidence. <ref type="bibr" target="#b12">Camerer and Lovallo (1999)</ref> run a simultaneous market-entry experiment where the payoffs of participants decrease with the number of entrants, i.e. the intensity of competition. Their findings showed that entering subjects thought that the total profit earned by all entrants would be negative but estimated that their own profit would be positive. <ref type="bibr" target="#b12">Camerer and Lovallo (1999)</ref> also suggest that the analysis conducted with field data would be a very desirable way to study further the possibility of overconfidence as an explanation for excess entry and an especially compelling complement to experimental evidence. Finding empirical evidence of overconfidence requires measuring entrepreneurial confidence and linking such measure to actual startup activities. Our paper contributes to this area of inquiry.</p><p>Using a large sample obtained from surveys conducted in 18 countries, we use probit analyses to study what variables have a significant impact on an individual's decision to start a business. Data used in our analysis were collected for the 2001 population survey of the Global Entrepreneurship Monitor (GEM) project. GEM is an ongoing large scale academic project designed to study the causes and implications of entrepreneurial behavior across countries. The main purpose of the survey was to create a representative random sample of population in each country and to identify individuals in each sample who, at the time of the survey, owned and managed a business or were in the process of starting one. Our data are original and exceptionally well suited for our purpose since they do not rely on the respondents ex post explanations for their own decisions. In other words, our data do not suffer from ''hindsight bias'' <ref type="bibr" target="#b23">(Fischhoff, 1975;</ref><ref type="bibr" target="#b52">Thaler, 2000)</ref>.</p><p>Our results provide significant evidence that subjective and possibly biased perceptions have a crucial impact on new business creation. In particular, confidence in one's own entrepreneurial skills emerges as a major driver in the decision to start a business across all countries in our sample. First, large variations in perceptions about one's own skills exist across countries. Yet, across countries, we found only weak or no positive correlation between education and confidence in one's own skill. Second, we find nascent entrepreneurs to be more confident in their own skills than individuals who have been successfully in business for some times. That is, confidence in one's own skills appears to be stronger among individuals in early stages of the entrepreneurial process, when the outcome of the business is still based on expectations, than among individuals whose skills have been tested by the market. In fact, our regression models indicate that perceptions about one's own skills provide a higher relative contribution to the difference between nascent entrepreneurs and non-entrepreneurs than to the difference between established entrepreneurs and non-entrepreneurs. Finally, we find that countries exhibiting a high rate of entrepreneurial confidence exhibit significantly higher start-up activity but lower average chances that a business will survive in the market for more than 42 months.</p><p>Overall, our evidence suggests that potential entrepreneurs may be overconfident in their own skills and abilities. In addition to socio-economic and demographic factors, differences in subjective perceptions and the extent to which such perceptions are biased may help us to understand why some people start businesses while others do not. Our results complement and support the experimental findings of <ref type="bibr" target="#b12">Camerer and Lovallo (1999)</ref> and suggest that, rather than an accurate assessment of one's own abilities, it may be overconfidence that often leads individuals to start a business. The connection between entrepreneurial decisions and overconfidence may explain, in part, the high failure rate of new business owners.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="2.">Theoretical background</head><p>In microeconomic models of entrepreneurial behavior, objectively measurable variables as well as subjective preferences and perceptions influence the decision to start a business. Among objectively measurable variables, age and gender have been shown to play some role in entrepreneurial decisions. For example, the probability of starting a business has been shown to increase with age up to a threshold point and to decrease thereafter <ref type="bibr" target="#b41">(Levesque &amp; Minniti, 2006)</ref>, and men have been shown to be more likely to start a business than women <ref type="bibr" target="#b8">(Blanchflower, 2004)</ref>. Evidence also suggests that entrepreneurs are significantly hindered by liquidity constraints <ref type="bibr" target="#b22">(Evans &amp; Jovanovic, 1989</ref>) and that individuals with greater family wealth are more likely to switch from employment to self-employment <ref type="bibr" target="#b36">(Kihlstrom &amp; Laffont, 1979)</ref>. Education has been shown to be negatively related to the probability of being self-employed, except in some rich countries where post-graduate training has been found to have some positive effects <ref type="bibr" target="#b8">(Blanchflower, 2004;</ref><ref type="bibr" target="#b46">Reynolds, Autio, &amp; Hay, 2003)</ref>, and conditions in the labor market have been identified as an important determinant of employment status choice, though the nature of the relationship is still under debate <ref type="bibr" target="#b2">(Acs, Carlsson, &amp; Karlsson, 1999;</ref><ref type="bibr" target="#b9">Blanchflower &amp; Oswald, 1998)</ref>. <ref type="foot" target="#foot_1">1</ref> Finally, different cultural and economic characteristics have been linked to variations in rates of new firm formation across countries and regions <ref type="bibr" target="#b1">(Acs, Arenius, Michael, &amp; Minniti, 2005;</ref><ref type="bibr" target="#b17">Davidsson &amp; Wiklund, 1997)</ref>.</p><p>Since starting a business is a risky decision, in addition to objectively measurable sociodemographic variables, subjective preferences and perceptions have also been suggested as important determinants of entrepreneurial behavior. <ref type="bibr" target="#b37">Kirzner (1973</ref><ref type="bibr" target="#b38">Kirzner ( , 1979) )</ref> argues that entrepreneurship is alertness, that is, the ability to perceive unexploited opportunities. Similarly, <ref type="bibr" target="#b13">Casson (1982)</ref> argues that the essence of entrepreneurship is different perceptions about the environment. Higher entrepreneurial propensity has also been linked to self-confidence and an illusion of control. Building on <ref type="bibr" target="#b48">Rotter (1966)</ref>, <ref type="bibr" target="#b26">Harper (1998)</ref> discusses the interdependence between entrepreneurship and locus of control. An individual with an internal locus of control tends to believe that events are contingent upon his own behavior or his own relatively permanent characteristics. In Harper's theory, an internal locus of control increases entrepreneurial alertness. This increased alertness, in turn, leads to more opportunity perception and, therefore, to more entrepreneurship. An individual's tolerance for risk may also be important for entrepreneurial decisions <ref type="bibr" target="#b32">(Iyigun &amp; Owen, 1998;</ref><ref type="bibr" target="#b36">Kihlstrom &amp; Laffont, 1979;</ref><ref type="bibr" target="#b59">Wu &amp; Knott, 2006)</ref>. Although data support the existence of some negative effects of risk aversion on entrepreneurial choices, the direction of causality is unclear <ref type="bibr" target="#b16">(Cramer, Hartog, Jonker, &amp; Van Praag, 2002)</ref>. <ref type="bibr" target="#b59">Wu and Knott (2006)</ref> demonstrate that it is important to discriminate entrepreneur's preferences regarding demand risk and ability risk -the latter being closely related to our work. <ref type="bibr" target="#b55">Weber and Milliman (1997)</ref>, for example, have shown that subjective risk perceptions may be systematically distorted by, e.g., prior gains and losses. In addition, since most individuals are not only risk averse but also ambiguity averse <ref type="bibr" target="#b21">(Ellsberg, 1961;</ref><ref type="bibr" target="#b54">Tversky &amp; Kahneman, 1992)</ref> knowing other entrepreneurs may increase the propensity of an individual to start a business. <ref type="bibr" target="#b43">Minniti (2005)</ref> emphasizes the ambiguity-reducing effects of knowing other entrepreneurs. Reducing ambiguity changes the weighting of probabilities so that reducing ambiguity may lead individuals to accept more risk <ref type="bibr" target="#b19">(Einhorn &amp; Hogarth, 1985)</ref>.</p><p>For decisions made under uncertainty, such as starting a new business, perceptions are a mediator between preferences and behavior, affecting perceptions of both probabilities and outcomes <ref type="bibr" target="#b34">(Kahneman &amp; Tversky, 1979;</ref><ref type="bibr" target="#b53">Tversky &amp; Kahneman, 1991</ref><ref type="bibr" target="#b54">, 1992)</ref>. For an individual to start a new business, the sum of perceived potential outcomes weighted by their respective perceived probabilities has to be larger than the perceived potential outcomes of a wage job, weighted by its perceived probabilities (for similar arguments see <ref type="bibr" target="#b49">Simon, Houghton, &amp; Aquino, 1999;</ref><ref type="bibr" target="#b24">Forlani &amp; Mullins, 2000)</ref>. Smaller perceived downside risks and greater perceived chances of success may increase an individual's entrepreneurial propensity. The connection between perception and action matters because an individual's perceptions with respect to starting a business may be systematically distorted by overconfidence.</p><p>Overconfidence has been defined differently in different disciplines. It has been defined as an overestimation of one's own ability to make accurate forecasts, or, alternatively, as an overestimation of one's own ability relative to others (often referred to as the 'betterthan-average' effect) or relative to one's actual ability <ref type="bibr" target="#b44">(Moore &amp; Kim, 2003)</ref>. In the study by <ref type="bibr" target="#b12">Camerer and Lovallo (1999)</ref>, overconfidence means overestimation of one's own abilities relative to others. Our study is similar to Camerer and Lovallo's research because we are looking at the combination of self-assessed abilities to be a successful entrepreneur, actual entry at the individual level and estimated survival at the aggregate level. However, in contrast to Camerer and Lovallo's experimental approach, market capacities and probability distributions are unknown in field data and in the real world. Therefore, our entrepreneurs do not know ex ante how good they need to be in order to survive in the market. Consequently, our evidence for overconfidence is more indirect than Camerer and Lovallo's because self-perceptions cannot be compared to objectively required skill levels.</p><p>Recent studies on the related better-than-average effect have shown that this effect is very common, and some of its characterizing factors have been identified. For example, individuals have been shown to exhibit less bias when they believe themselves to have little or no control over events. Some work has shown that, when faced with a difficult task, people often report that they have below average skills <ref type="bibr" target="#b14">(Chambers, Windschitl, &amp; Suls, 2003;</ref><ref type="bibr" target="#b28">Hoelzl &amp; Rustichini, 2005;</ref><ref type="bibr" target="#b40">Kruger &amp; Burrus, 2004)</ref>. <ref type="bibr" target="#b39">Kruger (1999)</ref> showed that people rate themselves above average in domains for which the average individual feels skilled and capable. The same people, however, rate themselves below average in more challenging or unfamiliar domains. These results are consistent with Camerer and Lovallo's reference group neglect and with Harper's theory that the perception of more internal control increases entrepreneurial alertness. It is also consistent with our argument that individuals exhibiting more self-confidence are more likely to become involved in starting a business.</p><p>The related better-than-average effect provides compelling evidence that individuals maintain unrealistically positive images of themselves relative to others and, specifically, that the average individual tends to rate himself above the average in positive situations <ref type="bibr" target="#b3">(Alicke, Klotz, Breitenbecher, Yurak, &amp; Vredenburg, 1995;</ref><ref type="bibr" target="#b20">Eiser, Pahl, &amp; Prins, 2001)</ref>. In our data, unlike other respondents, nascent and new entrepreneurs frequently report having the necessary skills to successfully start a business. Also, <ref type="bibr" target="#b58">Windschitl, Kruger, and Simms (2003)</ref> suggest that when people judge their likelihood of success, their assessment of their own strengths and weaknesses have greater impact than their assessments of their competitors' strengths and weaknesses. This is consistent with our argument that individuals who believe themselves to have the skills and ability to start a new business are more likely to take an optimistic view of their prospects and overestimate their chances of success.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="3.">Data and method</head><p>Data used in our analysis were collected for the 2001 population survey of the Global Entrepreneurship Monitor (GEM) project. GEM is an ongoing large scale academic project designed to study the causes and implications of entrepreneurial behavior across countries.<ref type="foot" target="#foot_3">2</ref> Initiated in 1999 with 10 countries, the project collects data annually and has grown to include more than 40 countries in 2006. GEM data used in this paper were collected in 2001 in 29 countries. A harmonized, representative population survey with at least 2000 observations was conducted in each of the participating countries, yielding over 74,000 completed interviews collected between June and July 2001. <ref type="foot" target="#foot_4">3</ref> The main purpose of the survey was to create a representative random sample of population in each country and to identify what percentage of these individuals, at the time of the survey, owned and man-aged a business or were in the process of starting one. If either or both of these criteria applied, respondents were asked follow-up questions that allowed the construction of a profile of the respondents and of their businesses. Among other things, respondents were asked the age of their venture and whether or not the business had already paid wages. These criteria were then used to identify the number of people involved in entrepreneurial activity in each country, and to distinguish between nascent entrepreneurs, new entrepreneurs, established entrepreneurs, and non-entrepreneurs. <ref type="foot" target="#foot_5">4</ref>Individuals were coded as nascent entrepreneurs (nascent) if they claimed to have been engaged in start-up activities during the 12 months preceding the survey, to have been full or part owners of the new business, and to have paid wages to the owners or others for a period not exceeding 3 months. Individuals were coded as new entrepreneurs (newentr) if they claimed to be managing and owning a business at the time of the survey, and to have paid wages for at least 3 but no more than 42 months. Finally, respondents were classified as established entrepreneurs (establ) if, at the time of the survey, they owned all or part of a business they helped manage and had paid wages or profits for longer than 42 months. All three variables nascent, newentr, and establ are binary variables computed at the individual level (individual fits definition ''Yes'' = 1 or ''No'' = 0). All respondents in our sample fit into one of the three above groups or into none of the above. In the latter case, they are labeled as non-entrepreneurs. There are no missing values for these categories. Although individuals in the three entrepreneurial groups (nascent, newentr, or establ) are all entrepreneurs, they are distinct because of the length of time they have been involved in their ventures.</p><p>The dataset contains basic demographic information for each respondent, including age and gender. For most countries, data are also available about working status, education level, and relative income group.<ref type="foot" target="#foot_6">5</ref> 11 countries had data gaps in one or more of the demographic and socio-economic variables and, therefore, were excluded from our analysis, reducing the working sample to 18 countries for a total of more than 40,000 observations. Countries included in our study are Argentina, Canada, Denmark, Finland, Germany, Hungary, India, Israel, Italy, Japan, New Zealand, Poland, Portugal, Russia, Singapore, South Korea, Sweden, and USA.</p><p>Each survey participant was also asked six questions related to perceptual variables often associated with entrepreneurial behavior. Specifically, respondents were asked whether they believed they had the knowledge, skill and experience required to start a business (suskill). This variable describes the subjective assessment of one's own skills, knowledge and ability with respect to starting a business; it is expected to have a positive influence on entrepreneurial propensity. Respondents were asked whether they thought that good opportunities for starting a business would exist in the area where they lived in the 6 months following the survey (opport). This variable describes a personal assessment of the existence of opportunities and is also expected to have a positive impact on entrepreneurial propensity. Respondents were also asked whether fear of failure would prevent them from starting a business. This variable is expected to have a negative effect on individuals' entrepreneurial propensity. In fact, fear of failure (fearfail) may be viewed as a proxy for downside risk tolerance.</p><p>Respondents were also asked two questions related to their expectations about the future which, in turn, can be influenced by objectively measurable conditions and subjective attitudes, i.e. optimism and pessimism. Respondents were asked whether they expected the business conditions in their country to be better, worse, or about the same, 1 year after the survey (ctrfutur), and whether they thought that, 1 year after the survey, their family would be financially better off, worse off, or about the same (famfutur). The possible impact of these perceptions on the propensity to start a business could be positive or negative. If, for example, the country's future is expected to be unsatisfactory, the individual may avoid founding a business because it seems too risky to do so. On the other hand, bad conditions in a country may imply a lack of employment opportunities and, as a result, lead to more attempts to start businesses.</p><p>Finally, respondents were asked whether they knew personally someone who had started a business in the 2 years preceding the survey (knowent). This variable provides some indication of how direct exposure to other entrepreneurs provides information about the entrepreneurial process. We expect that knowing other entrepreneurs might influence the perception of entrepreneurial opportunities by providing social clues in the uncertain environment characterizing the creation of a new business. In other words, knowing other entrepreneurs might reduce ambiguity and, as a result, have a positive influence on startup propensity <ref type="bibr" target="#b43">(Minniti, 2005)</ref>. A detailed description of all independent variables is presented in the Appendix together with descriptive statistics for the co-variables used in the estimated models.</p><p>The GEM project provides analogous aggregate data at the country level from 2002 through 2005, including the same measures for entrepreneurial activity and most of the perceptual variables discussed above. These aggregate data, combined with those for 2001, allowed us to construct an unbalanced panel, which we used to test the relationship between sufficient skill perceptions, entrepreneurial activity, and survival chances.</p><p>Overall, GEM data are exceptionally well suited for our purpose. To our knowledge, the dataset is the only major cross-country study of entrepreneurial behavior that uses a consistent methodology and a set of simple, comparable variables measuring relevant individual perceptions in each country. Earlier studies dealing with the influence of perceptions and overconfidence on entrepreneurial activity were based on experimental data with students <ref type="bibr" target="#b12">(Camerer &amp; Lovallo, 1999)</ref>, or had to rely on noticeably smaller samples of established entrepreneurs from just one country <ref type="bibr" target="#b11">(Busenitz &amp; Barney, 1997;</ref><ref type="bibr" target="#b15">Cooper, Woo, &amp; Dunkelberg, 1988)</ref>. Our data, instead, allow us to relate prevalence rates of perceptual variables, including a self-assessment of entrepreneurial skills, to cross-country differences in entrepreneurial activity and performance. Finally, our data are unique because they include perceptions of individuals who were in the process of starting a new business at the time of the interview, thereby allowing us to relate individual perceptions to the actual activity of starting a business.</p><p>To identify the effects associated with entrepreneurial activity we ran probit regressions and calculated a robust covariance matrix of the parameter estimates using the sandwich estimation procedure <ref type="bibr" target="#b57">(White, 1982)</ref>. The sandwich estimation procedure has the desirable property of yielding asymptotically consistent covariance standard error estimates that are independent from distributional assumptions. The large sample size in our study makes robust covariance estimates particularly attractive <ref type="bibr" target="#b35">(Kauermann &amp; Carroll, 2001)</ref>. <ref type="foot" target="#foot_7">6</ref> In addition, preparatory tests revealed only weak correlations among the explanatory variables and no indication of multicollinearity.</p><p>All independent variables in the regression are dummies. The estimated model is a transformed probit model, where the reported coefficients are computed with a discrete calculation associated with the dummy changing from 0 to 1. Each probit model is calculated as EðyjX j Þ ¼ P ðy 6 ¼ 0jX j Þ ¼ UðX j bÞ, where U is the cumulative standard normal distribution. The transformed probit models report coefficients b Ã i ¼ UðX 1 bÞ À UðX 0 bÞ where X 0 ¼ X 1 ¼ X except that the ith element of X 1 and X 0 are set to 1 and 0, respectively. The coefficients have an intuitive interpretation. They indicate the percentage change in the observed outcome if the explanatory variable changes from 0 to 1. For example, a coefficient value of 5% means thatceteris paribus -a population where all individuals report x = 1 would have 5% more entrepreneurs than a population in which all individuals report x = 0. Thus, the coefficients can be thought of as reporting the difference in entrepreneurial activity due to x, holding everything else constant. In all models, we contrast the relevant dependent variable (nascent, newentr or establ) against the control group of non-entrepreneurs. <ref type="foot" target="#foot_8">7</ref> Finally, we run additional regressions and correlations using the panel of aggregate country data from 2001 to 2005 to test whether sufficient skill perceptions are related to survival chances.</p><p>In the first step of our analysis, nascent, newentr, and establ are used as dependent variables in separate models to test which covariables are significantly associated with an individual's decision to start a business and to analyze how entrepreneurs differ from non-entrepreneurs.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="4.">Results</head><p>We estimate two different models for each of the three dependent variables nascent, newentr and establ. For each individual, the first model includes as explanatory variables only country of residence, age, income group, education, and current work status. The second model includes all available variables. All model results suggest that perceptual variables have a significant impact on the creation of businesses and model diagnostics indicate that the fit of the regressions increase substantially when perceptual variables are added. Regression results are reported in The first two models (1a and 1b) refer to nascent entrepreneurs as the dependent variable (nascent). The strongest cross-national influence on the individual propensity to start a business is shown to be whether that person believes she has sufficient skills, knowledge and ability to start a business (suskill). According to the second probit model on nascent (Model 1b), the individual probability of starting a business increases by 5.6% on average, if the individual believes she has sufficient skills. This is a very strong contribution for a single co-variable, especially considering that only 6.03% of the individuals included in Model 1b are actually nascent entrepreneurs (nascent = 1).</p><p>In addition to the strong influence of the suskill variable, other perceptual variables are also strongly associated with the decision to start a business. The perception of good business opportunities (opport) and optimism about the financial situation of the family in the near future (famfutur) all have strong positive coefficients in the model on nascent. Knowing other entrepreneurs (knowent) is also positively associated with start-up propensity. Fear of failure (fearfail), on the other hand, seems to reduce the propensity to start a new business. Socio-economic factors, such as household income and education, have a relatively small influence on entrepreneurial activity. Also, the relevance of socio-economic factors is clearly biased upward in model 1, where perceptual variables are not explicitly controlled for. This suggests that instead of having a direct impact, socio-demographic variables like high educational attainment and high income are, rather, mediators of individual perceptions.</p><p>In Table <ref type="table">1</ref>, Models 2a and 2b report regression results for new entrepreneurs (newentr) without and with perceptual variables, respectively. Models 3a and 3b, instead, report regression results for established entrepreneurs (establ) without and with perceptual variables, respectively. Together, these models describe differences between new entrepreneurs, established entrepreneurs and non-entrepreneurs. Again, we find that entrepreneurs and non-entrepreneurs differ significantly in their perceptions. Both new entrepreneurs and established entrepreneurs are more likely than non-entrepreneurs to perceive themselves as skilled (suskill), to know other individuals who have recently started a business (knowent), and to perceive good business opportunities (opport). Also, entrepreneurs are less prone than non-entrepreneurs to state that fear of failure would stop them from starting a business (fearfail). In general, these results are consistent with the ones obtained for nascent entrepreneurs (nascent). In contrast to nascent entrepreneurs, however, both new entrepreneurs and established entrepreneurs are more likely to have a high income. This result may suggest that high income is a consequence rather than a prerequisite of successful entrepreneurial activity. Alternatively, it could also imply that individuals with a high income are more likely to survive the first months of new business ownership. As in the case of nascent entrepreneurs, suskill turns out to be the single most important factor that distinguishes entrepreneurs from non-entrepreneurs in all models.</p><p>Our results also support existing empirical evidence reporting strong country effects <ref type="bibr" target="#b2">(Acs et al., 1999;</ref><ref type="bibr" target="#b8">Blanchflower, 2004)</ref>. Interestingly, the coefficients' signs change for some country dummies when perceptual variables are added to the models. For each dependent variable, the country dummy variables in the second model (Models 1b, 2b, and 3b, respectively) show country-specific effects after controlling for observable differences in socio-economic factors and individual perceptions. Thus, the country effects in all ''b'' models approximate deviations of the expected level of entrepreneurial activity from the comparison country (US) that would occur if demographic, socio-economic, and perceptual variables were equally distributed across all countries in the sample. To illustrate, Table <ref type="table" target="#tab_1">2</ref> shows the prevalence rates of nascent entrepreneurs (nascent), new entrepreneurs (newentr) and established entrepreneurs (establ) across countries. Table <ref type="table" target="#tab_1">2</ref> shows that fewer people are involved in start-up activities in Japan than in the US (À4.2%). Model 1a in Table <ref type="table">1</ref> shows that Japan would still be significantly less entrepreneurial than the US (À2.8%), even if the socio-economic and demographic characteristics of the two populations were equally distributed. However, on average, Japanese differ substantially in their individual perceptions from Americans, i.e. they are less confident in their skills and less optimistic about good business opportunities. After controlling for these perceptual factors explicitly, in fact, Model 1b in Table <ref type="table">1</ref> indicates that Japanese would be more likely to start a business than Americans if demographic and socio-economic characteristics and perceptual variables were equally distributed in both countries (+1.3%). Obviously, these country-specific differences in perceptions could result from different economic conditions, and some perceptual biases could be more common in some countries than in others. <ref type="foot" target="#foot_10">9</ref>The evidence discussed above points out the importance of perceptual variables. It also contains significant evidence of the bias characterizing subjective perceptions. The belief that one has sufficient skills, knowledge and ability to start a business originates from the subjective perception of the individual and need not necessarily correspond to his actual skill level. In fact, Table <ref type="table">3</ref> shows a surprisingly strong variance in the suskill variable across countries. For example, about 55% of individuals in Hungary and Argentina believe they have sufficient skills to start a new business, compared to only 11% in Japan or 24% in Sweden. Interestingly, countries that exhibit a high percentage of individuals with confidence in their own entrepreneurial skills also exhibit the highest percentage of entrepreneurs.</p><p>Analyzing the relationship of sufficient skill perception and educational attainment levels yields additional evidence for our argument that relevant perceptions might be systematically distorted. Education is often used as a proxy measuring potential skills. To the extent that education is indeed a good proxy, individuals with high levels of educational attainment should be more confident in their entrepreneurial skills. However, if the perception of one's own skills to start a business is only loosely related to a potentially important aspect of these skills, namely education levels, something else must be driving this perception. Table <ref type="table">4</ref> shows that, in general, skill perception and educational attainment are only weakly correlated (coefficients &lt;0.1). In addition, results in Table <ref type="table">5</ref>, showing group-means for the suskill variable by educational attainment among countries, suggest that individuals with high education are not necessarily more confident in their entrepreneurial skills. <ref type="foot" target="#foot_11">10</ref>In addition to providing information on the existence of perceptual biases, our results contain significant evidence on their direction. Confidence in ones own skills and abilities to start a business should increase as individuals gain relevant entrepreneurial experience and successfully survive in the market for some time. In other words, if individual perceptions were unbiased, established entrepreneurs should be more confident in their own skills than individuals who are just starting a business. We use a v 2 -test to evaluate the null hypothesis that perceptions among nascent entrepreneurs (nascent) and established business owners (establ) are equal. The results are reported in Table <ref type="table" target="#tab_3">6</ref> and show that nascent entrepreneurs are significantly more confident in their skills, knowledge, and experience than established entrepreneurs. This finding suggests that nascent entrepreneurs may exhibit a perceptual bias reflecting overconfidence. We observe that the suskill variable has its strongest effect in the regression on nascent entrepreneurs (nascent), together with the v 2 -test, this suggests that strong confidence in entrepreneurial ability may be driving start-up decisions rather than being the consequence of a start-up decision made in the past. According to Table <ref type="table">1</ref>, for nascent entrepreneurs (nascent), suskill = ''yes'' increases the average individual probability of starting a new business by 5.62%. The average probability in the sample is 6.03%. Thus, individuals who believe they have sufficient skills are (5.62/6.03) + 1 = 1.93 times more likely to be nascent entrepreneurs than non-entrepreneurs, everything else being the same. Similarly, suskill = ''yes'' increases the chance to be in the group of new entrepreneurs (newentr) by 1.82 times, compared to being in the group of non-entrepreneur. For established entrepreneurs, the ratio is 1.75. Thus, although sufficient skill perception is the single most important variable in all regression models, its relative explanatory power is strongest for the group of nascent entrepreneurs, and declines as groups of more established entrepreneurs are considered. Finally, we link entrepreneurial confidence to performance using country level prevalence rates and examine the relationship between sufficient skill perceptions, current and future levels of entrepreneurial activity, and survival chances. Table <ref type="table" target="#tab_1">2</ref> displays the ratio of established to nascent entrepreneurs (establ/nascent) and the ratio of established entrepreneurs to new entrepreneurs (establ/newentr) in each country. The ratios are positively correlated to each other. 11 Table <ref type="table" target="#tab_1">2</ref> shows strong variation of the ratios and of entrepreneurial activity in general across countries. 12 The two ratios can be interpreted as rough proxies for the average survival chances of nascent and new entrepreneurs in each country under the assumption that both the prevalence of entrepreneurial activity and the survival chances of new businesses are structural characteristics of a country and constant over time. The higher the ratio of established entrepreneurs to nascent or new entrepreneurs, the greater is the chance of those early stage entrepreneurs to succeed with their businesses. 11 The correlation coefficient is 0.54 for the countries covered by the 2001 GEM survey, and it is significant at above 99% confidence. Pooling all available country observations from 2001 to 2005 yields a correlation coefficient of 0.596, also significant at above 99%.</p><p>12 For example, only 2.3% of Japanese were involved in start-up activities (nascent) at the time of the survey compared to 6.5% of Americans. Yet, the ratio of established entrepreneurs to nascent entrepreneurs (establ/ nascent) is more favorable in Japan (2.3) than in the US (0.8). The same holds for the ratio of established entrepreneurs to new entrepreneurs (establ/newentr): Japan exhibits a ratio of 7.6 compared to 1.9 in the US.</p><p>Assuming that these ratios do not change much over time, these results suggests that the average chances for new business survival are better in Japan than in the US.</p><p>We test this assumption by constructing a cross-country panel including all participating countries in the GEM project from 2001 to 2005. The panel covers 40 countries and has an unbalanced structure since not all countries participated in the GEM project in all years. The stability of our proxies for survival rates over time is tested using correlations over various time lags. The results are reported in Table <ref type="table" target="#tab_4">7</ref>. Although there is some variation in the ratios, they are highly positively correlated over time. For example, the correlation coefficient for the ratio of established to nascent entrepreneurs in 2001 and 2005 is 0.755. Table <ref type="table" target="#tab_4">7</ref> also shows that the prevalence rates of sufficient skill perceptions in each country are very robust over time.</p><p>Using this cross-country panel, we calculate the Pearson correlation coefficients between the past and current prevalence of suskill, ranging from t À 4 to t, and our two proxies for survival as well as for the prevalence of established entrepreneurs for all available countries. In addition, we estimate an unbalanced random effects linear model <ref type="bibr" target="#b5">(Baltagi &amp; Chang, 1994;</ref><ref type="bibr" target="#b50">Swamy &amp; Arora, 1972)</ref> with suskill and a constant as explanatory variables. 13 The results are reported in Table <ref type="table" target="#tab_5">8</ref>. As expected, sufficient skill perceptions are positively associated with the prevalence of established entrepreneurs. Yet, the relationship with established entrepreneurial activity becomes insignificant for larger time gaps. At the same time, and consistently with our overconfidence argument, perceptions of having sufficient skills and ability are significantly and negatively associated with future survival rates. We find negative coefficients for all time gaps and for both ratios approximating survival chances. 14 13 The appropriateness of the random effects assumption was tested in all 12 models using a <ref type="bibr" target="#b27">Hausman (1978)</ref> test. In 9 models, random effects were supported by the test. In 3 cases, a fixed effects model was indicated but the estimated fixed effects model was not significantly different from an empty model because suskill does not explain variations in the data within countries (R 2 within &lt;1% in all models, compared to R 2 between ranging from 6% to 21%). This suggests that variations in sufficient skill perceptions can help to explain cross-country differences in entrepreneurial activity, but not variations in entrepreneurial activity in a particular country over time. 14 We chose to report the results for all 40 countries participating in the GEM study to highlight the robustness and generality of our results. However, when the analysis is replicated using only the 18 countries included in our probit models, the results are even stronger showing higher negative coefficient values for all time gaps between suskill and the two proxies for survival. For example, the correlation coefficient in this sample between suskill in t À 3 and establ/nascent is À0.65, significant at 95% confidence. These findings imply that the average survival chances of nascent entrepreneurs are actually lower in countries that exhibit high prevalence rates of entrepreneurial self-confidence. The combination of high self-assessed abilities, high actual entry rates and low estimated survival chances lends indirect support to our hypothesis that overconfidence may, in fact, drive market entry decisions not only in the laboratory but also in the real world, and that some countries may exhibit relatively high rates of business start-ups because their inhabitants are more (over)confident than those of other countries.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="5.">Discussion and implications</head><p>Overall, our results suggest that subjective and possibly biased perceptions have a major impact on the decision to start a business. We argue that this is the case because these variables influence the perceived chances of positive outcomes and perceived risks associated with starting one's own business. In particular, entrepreneurial confidence, the subjective belief that one has sufficient skills, knowledge, and ability to start a business, is the most important factor in our regressions. In addition, we find a significant negative relation between entrepreneurial self-confidence and survival rates of nascent entrepreneurs across countries. This result provides some evidence that the perception of entrepreneurial skills is likely to be biased by overconfidence.</p><p>Our results are consistent with existing evidence that overconfidence is common among individuals in general <ref type="bibr" target="#b30">(Hoffrage, 2004;</ref><ref type="bibr" target="#b56">Weinstein, 1980)</ref>, and among entrepreneurs in particular. For example, <ref type="bibr" target="#b11">Busenitz and Barney (1997)</ref> have shown overconfidence in entrepreneurs to be higher than overconfidence in managers. Also, <ref type="bibr" target="#b15">Cooper et al. (1988)</ref> have found strong evidence of overconfidence among entrepreneurs. Their results suggest that 81% of entrepreneurs believe their chances of success to be at least 70%, and that a third of the entrepreneurs believe they will be successful with certainty. Participants in the study of Cooper et al.'s also estimated their own chances of survival to be higher than those of competing businesses. Unfortunately, however, at the time of the study, 66% of all newly founded businesses were failing. <ref type="bibr" target="#b12">Camerer and Lovallo (1999)</ref> have shown that overconfidence in one's own skills leads to excess entry in experimental market conditions and that participants neglect to adjust their expectations to reflect the fact that other group members also judge themselves as skilled. Thus, the importance of perceptual variables, and their associated bias, in the decision to start a business may explain some of the observable inconsistencies between returns to entrepreneurship and entrepreneurial decisions found in the literature <ref type="bibr" target="#b12">(Camerer &amp; Lovallo, 1999;</ref><ref type="bibr" target="#b25">Hamilton, 2000)</ref>.</p><p>Why could entrepreneurial behavior be characterized by overconfidence? A possible reason is that entrepreneurs have a strong tendency to consider their situation as unique. After all, by definition, entrepreneurs are individuals who deviate from the norm. Once they identify a profit opportunity, they isolate their present situation, namely starting a new business, and treat it as an original and unrepeatable event. As a result, they neglect the available statistics of past and future similar situations that could help them to form more accurate forecasts of their likelihood of success. <ref type="bibr" target="#b33">Kahneman and Lovallo (1993)</ref> define a situation in which forecasting individuals focus on the case at hand as the ''inside view''. In the inside view, the way to think about a problem is to consider all that one knows about it, with special attention to its unique features. In an alternative, Kahneman and Lovallo define the ''outside view'' as the one in which forecasting individuals focus on the statistics of a class of cases chosen to be similar, in relevant ways, to the current situation. Individuals in general, and entrepreneurs in particular, tend to base their choices on the predictions generated by the inside view. This suggests that entrepreneurs may base their decisions largely on subjective perceptions.</p><p>Ultimately, numerous effects including evolution, history, culture and the institutional framework contribute to determine the quantity and quality of entrepreneurial behavior. They influence individuals' perceptions and thus their incentives to transform perceived opportunities into actions. Optimistic biases have been often linked to an illusion of control <ref type="bibr" target="#b51">(Taylor &amp; Brown, 1988)</ref>. Thus, an institutional setting leading to stronger perceptions of control over one's domain may yield more entrepreneurial activity. <ref type="bibr" target="#b26">Harper (1998)</ref> has argued explicitly that the nature of political and economic institutions influences individuals' perceptions. Those institutions and policies that improve transparency and entitlement tend to increase the subjective perception of the link between actions and outcome. They may increase, therefore, the number of individuals having an internal locus of control. Along similar lines, <ref type="bibr" target="#b6">Baumol (1990)</ref> argues that institutional arrangements affect the distribution of entrepreneurial efforts between productive and unproductive.</p><p>Finally, a relevant question is what function overconfidence may serve for either the individual or for society as a whole. <ref type="bibr" target="#b30">Hoffrage (2004)</ref> argues that, at the individual level, there can be situations in which the benefits of being overconfident clearly outweigh the costs. For example, a physician may be overconfident that a particular treatment will help her patient, and showing high confidence that the treatment will help may be essential for a placebo effect to occur. With respect to entrepreneurial activity, some people might start a business with the erroneous belief that they have the sufficient skills and experience. However, the effort and steps necessary to starting may help them to acquire the skills and the experience that they actually need. <ref type="bibr" target="#b31">Hvide (2002)</ref> shed light on why overconfidence emerges by proposing the existence of pragmatic beliefs. <ref type="bibr" target="#b11">Busenitz and Barney (1997)</ref> argue that the use of biases and heuristics can be an effective and efficient guide for decisions with high environmental uncertainty and complexity, such as starting a business. Busenitz and Barney also mention that overconfidence may be beneficial in implementing a specific decision and persuading others to be enthusiastic about it as well.</p><p>Overconfidence may be beneficial, to some extent, even at the aggregate level. Without over-optimistic judgments, we would probably see fewer business start-ups but higher average success rates and returns among those who become entrepreneurs. It is not clear if excess entry is desirable in terms of social returns and, if so, in what quantity. In fact, unsuccessful businesses create negative externalities if the costs of their failure have to be absorbed -at least in parts -by others. On the other hand, overconfident and potentially unsuccessful entrepreneurs may also generate valuable information that would not be available otherwise <ref type="bibr" target="#b7">(Bernardo &amp; Welch, 2001;</ref><ref type="bibr" target="#b43">Minniti, 2005)</ref>. In addition, new entry, albeit unsuccessful, might help spur competition and push incumbent businesses towards efficiency. Given the potential costs and benefits of excess entry, its optimal level may be dependent on the degree of its concentration across industries. Further explorations of this matter are clearly beyond the scope of this article, but may provide an interesting avenue for future research.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head n="6.">Conclusion</head><p>Starting a business is an intentional act that involves repeated attempts to exercise control over a process in order to achieve the desired outcome. If, indeed, entrepreneurial decisions are largely based on perceptions, and the cognitive mechanism we have discussed leads to overconfidence, it is likely that entrepreneurs overestimate their control over events. As a result, the entrepreneurial environment may be populated by individuals who adopt an ''inside view'' and act on overconfident self-perceptions. Overconfident perceptions may lead these individuals to overestimate their skills and make them think ''they can''. In general, individual perceptions are influenced by various factors, including economic framework conditions, history, culture and psychological phenomena such as heuristics and biases. Thus, perceptions of individual ability and risk may differ from actual abilities and risks. Yet, these possibly biased perceptions are strongly associated with actual start-up activities and have real economic consequences. This is not to say that perceptual biases are generally bad. Ironically, individual overconfidence may even lead to better economic outcomes for society at large than more unbiased decision making. </p></div><figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_0"><head>Table 1 . 8 Table 1</head><label>181</label><figDesc>Probit regressions for nascent entrepreneurs, new entrepreneurs, and established entrepreneurs, 2001 All models contrast individuals of the dependent variable category against the group of non-entrepreneurs -observations that are coded as other types of entrepreneurs than the ones included in the dependent variable category are dropped. Age 85-97 predicts failure perfectly -variable and observations dropped. * dF/dx is for discrete change of dummy variable from 0 to 1. P. Koellinger et al. / Journal of Economic Psychology 28 (2007) 502-527</figDesc><table><row><cell>Probit regressions</cell><cell cols="2">Y = nascent entrepreneur</cell><cell cols="2">Y = new entrepreneur</cell><cell cols="2">Y = established entrepreneur</cell></row><row><cell></cell><cell>Model 1a</cell><cell>Model 1b</cell><cell>Model 2a</cell><cell>Model 2b</cell><cell>Model 3a</cell><cell>Model 3b</cell></row><row><cell></cell><cell>dF/dx ** in %</cell><cell>dF/dx ** in %</cell><cell>dF/dx ** in %</cell><cell>dF/dx ** in %</cell><cell>dF/dx ** in %</cell><cell>dF/dx ** in %</cell></row><row><cell>Russia</cell><cell>À2.5 *</cell><cell>À0.9</cell><cell>0.1</cell><cell>0.5</cell><cell>À1.8 *</cell><cell>À1.3 *</cell></row><row><cell>Hungary</cell><cell>0.8</cell><cell>1.9 *</cell><cell>0.0</cell><cell>0.0</cell><cell>0.2</cell><cell>0.3</cell></row><row><cell>Italy</cell><cell>0.5</cell><cell>0.9</cell><cell>À0.4</cell><cell>1.2 *</cell><cell>À0.5</cell><cell>1.1</cell></row><row><cell>Denmark</cell><cell>À1.8 *</cell><cell>À1.1 *</cell><cell>À0.3</cell><cell>À0.1</cell><cell>À0.4</cell><cell>0.3</cell></row><row><cell>Sweden</cell><cell>À2.3 *</cell><cell>À1.5 *</cell><cell>À0.7 *</cell><cell>À0.3</cell><cell>À0.1</cell><cell>0.3</cell></row><row><cell>Poland</cell><cell>À0.1</cell><cell>2.4 *</cell><cell>0.0</cell><cell>1.3 *</cell><cell>À0.4</cell><cell>1.0 *</cell></row><row><cell>Germany</cell><cell>À1.6 *</cell><cell>0.9 *</cell><cell>À0.4</cell><cell>0.3</cell><cell>À1.0 *</cell><cell>0.0</cell></row><row><cell>Argentina</cell><cell>2.1 *</cell><cell>3.3 *</cell><cell>0.0</cell><cell>0.2</cell><cell>À0.3</cell><cell>0.2</cell></row><row><cell>New Zealand</cell><cell>2.3 *</cell><cell>1.7 *</cell><cell>2.7 *</cell><cell>1.4 *</cell><cell>1.8 *</cell><cell>1.3 *</cell></row><row><cell>Singapore</cell><cell>À1.8 *</cell><cell>2.0 *</cell><cell>À0.4</cell><cell>0.5</cell><cell>À1.0 *</cell><cell>0.3</cell></row><row><cell>Japan</cell><cell>À2.8 *</cell><cell>1.3</cell><cell>À0.9 *</cell><cell>1.3 *</cell><cell>0.6</cell><cell>4.4 *</cell></row><row><cell>Korea</cell><cell>0.4</cell><cell>3.8 *</cell><cell>3.2 *</cell><cell>5.3 *</cell><cell>5.0 *</cell><cell>8.1 *</cell></row><row><cell>India</cell><cell>2.2 *</cell><cell>2.8 *</cell><cell>1.2 *</cell><cell>1.4 *</cell><cell>3.1 *</cell><cell>3.9 *</cell></row><row><cell>Canada</cell><cell>0.2</cell><cell>1.4 *</cell><cell>0.4</cell><cell>0.6 *</cell><cell>À0.9 *</cell><cell>À0.3</cell></row><row><cell>Portugal</cell><cell>À1.9 *</cell><cell>À1.0</cell><cell>À0.3</cell><cell>0.1</cell><cell>À0.6</cell><cell>À0.2</cell></row><row><cell>Finland</cell><cell>À1.6 *</cell><cell>À0.3</cell><cell>À0.3</cell><cell>0.3</cell><cell>1.1 *</cell><cell>2.2 *</cell></row><row><cell>Israel</cell><cell>À3.8 *</cell><cell>À2.5 *</cell><cell>0.5</cell><cell>1.1 *</cell><cell>À1.6 *</cell><cell>À0.8</cell></row><row><cell>Age 14-17</cell><cell>À0.4</cell><cell>0.4</cell><cell>0.1</cell><cell>1.2</cell><cell>À0.5</cell><cell>0.4</cell></row><row><cell>Age 18-24</cell><cell>À0.3</cell><cell>0.0</cell><cell>À0.5 *</cell><cell>À0.3</cell><cell>À1.4 *</cell><cell>À1.0 *</cell></row><row><cell>Age 35-44</cell><cell>0.0</cell><cell>0.3</cell><cell>À0.2</cell><cell>À0.1</cell><cell>1.6 *</cell><cell>1.4 *</cell></row><row><cell>Age 44-54</cell><cell>0.1</cell><cell>0.6</cell><cell>À0.4 *</cell><cell>À0.2</cell><cell>2.7 *</cell><cell>2.5 *</cell></row><row><cell>Age 55-64</cell><cell>À1.1 *</cell><cell>À0.2</cell><cell>À0.5 *</cell><cell>À0.2</cell><cell>3.7 *</cell><cell>3.3 *</cell></row><row><cell>Age 65-74</cell><cell>À2.9 *</cell><cell>À1.9 *</cell><cell>À0.9 *</cell><cell>À0.4</cell><cell>4.8 *</cell><cell>5.7 *</cell></row><row><cell>Age 75-84</cell><cell>À3.8 *</cell><cell>À2.6 *</cell><cell>À0.7</cell><cell>À0.7</cell><cell>0.0</cell><cell>0.6</cell></row><row><cell>Female</cell><cell>À2.4 *</cell><cell>À0.9 *</cell><cell>À0.9 *</cell><cell>À0.3 *</cell><cell>À1.2 *</cell><cell>À0.4 *</cell></row></table><note><p>Reference categories: USA, male, age 25-34, country future (worse), family future (worse), household income (lowest 33%), working status (full or part-time job), education (some secondary schooling). Note: * Coefficient significant at 95%. *</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_1"><head>Table 2</head><label>2</label><figDesc>Unweighted ratios for the dependent variables in 18 countries, 2001</figDesc><table><row><cell>Country</cell><cell>Nascent</cell><cell>New</cell><cell>Established</cell><cell>Ratio established/</cell><cell>Ratio established/</cell><cell>N</cell></row><row><cell></cell><cell>entrepreneurs in %</cell><cell>entrepreneurs in %</cell><cell>entrepreneurs in %</cell><cell>nascent entrepreneurs</cell><cell>new entrepreneurs</cell><cell></cell></row><row><cell>NZ -New Zealand</cell><cell>8.9</cell><cell>6.2</cell><cell>7.4</cell><cell>0.8</cell><cell>1.2</cell><cell>1960</cell></row><row><cell>IN -India</cell><cell>8.6</cell><cell>3.4</cell><cell>6.9</cell><cell>0.8</cell><cell>2.0</cell><cell>2011</cell></row><row><cell>HU -Hungary</cell><cell>7.6</cell><cell>3.7</cell><cell>5.6</cell><cell>0.7</cell><cell>1.5</cell><cell>2000</cell></row><row><cell>AR -Argentina</cell><cell>7.5</cell><cell>2.5</cell><cell>3.3</cell><cell>0.4</cell><cell>1.3</cell><cell>1992</cell></row><row><cell>KR -South Korea</cell><cell>7.0</cell><cell>6.8</cell><cell>9.6</cell><cell>1.4</cell><cell>1.4</cell><cell>2008</cell></row><row><cell>IT -Italy</cell><cell>6.6</cell><cell>1.7</cell><cell>2.8</cell><cell>0.4</cell><cell>1.6</cell><cell>1973</cell></row><row><cell>US -United States</cell><cell>6.5</cell><cell>2.9</cell><cell>5.5</cell><cell>0.8</cell><cell>1.9</cell><cell>2954</cell></row><row><cell>CA -Canada</cell><cell>6.1</cell><cell>3.2</cell><cell>3.3</cell><cell>0.5</cell><cell>1.0</cell><cell>1939</cell></row><row><cell>PL -Poland</cell><cell>5.0</cell><cell>2.2</cell><cell>3.9</cell><cell>0.8</cell><cell>1.8</cell><cell>2000</cell></row><row><cell>D -Germany</cell><cell>4.2</cell><cell>1.9</cell><cell>3.5</cell><cell>0.8</cell><cell>1.8</cell><cell>7058</cell></row><row><cell>SG -Singapore</cell><cell>4.0</cell><cell>2.1</cell><cell>3.0</cell><cell>0.8</cell><cell>1.4</cell><cell>2004</cell></row><row><cell>DK -Denmark</cell><cell>3.7</cell><cell>2.3</cell><cell>5.2</cell><cell>1.4</cell><cell>2.3</cell><cell>2022</cell></row><row><cell>P -Portugal</cell><cell>3.6</cell><cell>3.2</cell><cell>4.4</cell><cell>1.2</cell><cell>1.4</cell><cell>2000</cell></row><row><cell>FIN -Finland</cell><cell>3.2</cell><cell>1.9</cell><cell>6.2</cell><cell>1.9</cell><cell>3.3</cell><cell>2001</cell></row><row><cell>S -Sweden</cell><cell>3.2</cell><cell>1.9</cell><cell>5.4</cell><cell>1.7</cell><cell>2.8</cell><cell>2056</cell></row><row><cell>RU -Russia</cell><cell>3.0</cell><cell>3.0</cell><cell>1.1</cell><cell>0.4</cell><cell>0.4</cell><cell>2012</cell></row><row><cell>JP -Japan</cell><cell>2.3</cell><cell>0.7</cell><cell>5.3</cell><cell>2.3</cell><cell>7.6</cell><cell>2000</cell></row><row><cell>IL -Israel</cell><cell>0.6</cell><cell>3.4</cell><cell>1.1</cell><cell>1.7</cell><cell>0.3</cell><cell>2055</cell></row><row><cell>Total</cell><cell>5.0</cell><cell>2.8</cell><cell>4.5</cell><cell>1.1</cell><cell>1.6</cell><cell>42,045</cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_2"><head></head><label></label><figDesc>.Koellinger et al. / Journal of Economic Psychology 28 (2007) 502-527  </figDesc><table><row><cell>Table 3</cell><cell></cell></row><row><cell>Sufficient skill perceptions by country, 2001</cell><cell></cell></row><row><cell>Country</cell><cell>Suskill in % of respondents</cell></row><row><cell></cell><cell>saying ''yes''</cell></row><row><cell>NZ -New Zealand</cell><cell>61</cell></row><row><cell>HU -Hungary</cell><cell>56</cell></row><row><cell>AR -Argentina</cell><cell>55</cell></row><row><cell>US -United States</cell><cell>55</cell></row><row><cell>CA -Canada</cell><cell>50</cell></row><row><cell>IN -India</cell><cell>44</cell></row><row><cell>PL -Poland</cell><cell>42</cell></row><row><cell>SG -Singapore</cell><cell>42</cell></row><row><cell>D -Germany</cell><cell>37</cell></row><row><cell>DK -Denmark</cell><cell>34</cell></row><row><cell>P -Portugal</cell><cell>34</cell></row><row><cell>FIN -Finland</cell><cell>31</cell></row><row><cell>IT -Italy</cell><cell>31</cell></row><row><cell>IL -Israel</cell><cell>30</cell></row><row><cell>RU -Russia</cell><cell>30</cell></row><row><cell>KR -South Korea</cell><cell>27</cell></row><row><cell>S -Sweden</cell><cell>24</cell></row><row><cell>JP -Japan</cell><cell>11</cell></row><row><cell>Total</cell><cell>38</cell></row><row><cell>Table 4</cell><cell></cell></row><row><cell cols="2">Correlation of sufficient skill perception (suskill) and educational attainment (gemeduc), 2001</cell></row><row><cell>Educational attainment level</cell><cell>Suskill</cell></row><row><cell>Some secondary schooling</cell><cell>À0.086 **</cell></row><row><cell>Secondary degree</cell><cell>À0.016 **</cell></row><row><cell>Post-secondary degree</cell><cell>0.074 **</cell></row><row><cell>Graduate exposure</cell><cell>0.070 **</cell></row><row><cell>Kendall-Tau-b correlation coefficients for dummy variables.</cell><cell></cell></row></table><note><p>** Denotes significances at 99%. P</p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_3"><head>Table 6</head><label>6</label><figDesc>Test for different means of perceptual variables among nascent entrepreneurs and established entrepreneurs, 2001</figDesc><table><row><cell>Variable</cell><cell>Group</cell><cell>N</cell><cell>Mean in % of group</cell><cell>v 2 -Test that means are</cell></row><row><cell></cell><cell></cell><cell></cell><cell>respondents saying ''yes''</cell><cell>equal (Sign.)</cell></row><row><cell>Knowent</cell><cell>Established</cell><cell>1864</cell><cell>52</cell><cell>0.000</cell></row><row><cell></cell><cell>entrepreneurs</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>Nascent</cell><cell>2086</cell><cell>62</cell><cell></cell></row><row><cell></cell><cell>entrepreneurs</cell><cell></cell><cell></cell><cell></cell></row><row><cell>Opport</cell><cell>Established</cell><cell>1654</cell><cell>37</cell><cell>0.000</cell></row><row><cell></cell><cell>entrepreneurs</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>Nascent</cell><cell>1867</cell><cell>52</cell><cell></cell></row><row><cell></cell><cell>entrepreneurs</cell><cell></cell><cell></cell><cell></cell></row><row><cell>Suskill</cell><cell>Established</cell><cell>1837</cell><cell>79</cell><cell>0.020</cell></row><row><cell></cell><cell>entrepreneurs</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>Nascent</cell><cell>2026</cell><cell>82</cell><cell></cell></row><row><cell></cell><cell>entrepreneurs</cell><cell></cell><cell></cell><cell></cell></row><row><cell>Fearfail</cell><cell>Established</cell><cell>1838</cell><cell>22</cell><cell>0.740</cell></row><row><cell></cell><cell>entrepreneurs</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>Nascent</cell><cell>2043</cell><cell>22</cell><cell></cell></row><row><cell></cell><cell>entrepreneurs</cell><cell></cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_4"><head>Table 7</head><label>7</label><figDesc>Stability of approximated survival rates and sufficient skill perceptions acrosscountries, 2001-2005    </figDesc><table><row><cell cols="2">Pearson correlation</cell><cell>Variable in t</cell><cell></cell><cell></cell></row><row><cell>coefficients</cell><cell></cell><cell>Ratio established to</cell><cell>Ratio established entrepreneurs</cell><cell>Sufficient skill</cell></row><row><cell></cell><cell></cell><cell>nascent entrepreneurs</cell><cell>to new entrepreneurs</cell><cell>perceptions</cell></row><row><cell></cell><cell></cell><cell>(establ/nascent)</cell><cell>(establ/newentr)</cell><cell>(suskill)</cell></row><row><cell>Variable in</cell><cell>t + 1</cell><cell>0.485 ***</cell><cell>0.607 ***</cell><cell>0.917 ***</cell></row><row><cell></cell><cell>(N = 107)</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>t + 2</cell><cell>0.711 ***</cell><cell>0.667 ***</cell><cell>0.820 ***</cell></row><row><cell></cell><cell>(N = 76)</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>t + 3</cell><cell>0.514 ***</cell><cell>0.677 ***</cell><cell>0.711 ***</cell></row><row><cell></cell><cell>(N = 55)</cell><cell></cell><cell></cell><cell></cell></row><row><cell></cell><cell>t + 4</cell><cell>0.755 ***</cell><cell>0.692 ***</cell><cell>0.654 ***</cell></row><row><cell></cell><cell>(N = 23)</cell><cell></cell><cell></cell><cell></cell></row><row><cell cols="3">*** Denotes 2-sided significance at 99% confidence.</cell><cell></cell><cell></cell></row></table></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_5"><head>Table 8</head><label>8</label><figDesc>Correlation of sufficient skill perceptions and approximated survival rates across countries,[2001][2002][2003][2004][2005] Note: calculations based on the % of a population saying that they have the sufficient skills, knowledge and experience to start a business (suskill = ''yes'').</figDesc><table><row><cell>Ratio established entrepreneurs to nascent entrepreneurs (establ/nascent) Pearson correlation Random effects coefficient À0.262 *** À0.014 À0.285 *** À0.029 *** À0.290 *** À0.040 ** À0.390 *** À0.045 ** À0.340 n/a Denotes 2-sided significance at 90% confidence. Suskill (40 countries, 158 obs) Suskill (t À 1) (37 countries, 107 obs) Suskill (t À 2) (33 countries, 76 obs) Suskill (t À 3) (33 countries, 55 obs) Suskill (t À 4) (23 countries, 23 obs) ** Denotes 2-sided significance at 95% confidence. *** Denotes 2-sided significance at 99% confidence.</cell><cell>Ratio established entrepreneurs to new entrepreneurs (establ/newentr) Pearson correlation Random effects coefficient À0.331 *** À0.021 ** À0.277 *** À0.023 ** À0.252 ** À0.021 À0.398 *** À0.025 * À0.566 *** n/a</cell><cell>Established entrepreneurs, % of pop (establ) Pearson correlation Random effects coefficient 0.482 *** 0.111 *** 0.548 *** 0.089 *** 0.559 *** 0.091 *** 0.324 ** 0.047 0.319 n/a</cell><cell>P. Koellinger et al. / Journal of Economic Psychology 28 (2007) 502-527</cell></row></table><note><p>* </p></note></figure>
+<figure xmlns="http://www.tei-c.org/ns/1.0" type="table" xml:id="tab_6"><head></head><label></label><figDesc>Working status (Present working status of the individual) Household income (Household income of the individual recoded into thirds relative to income distribution in the relevant country) Base: AR, CA, D, DK, FIN, HU, IN, IL, IT, JP, KR, NZ, P, PL, RU, S, SG, US. N = 42,045. P. Koellinger et al. / Journal of Economic Psychology 28 (2007) 502-527</figDesc><table><row><cell></cell><cell>Full/Full or part time</cell><cell>50</cell></row><row><cell></cell><cell>Part time only</cell><cell>7</cell></row><row><cell></cell><cell>Retired/disabled</cell><cell>10</cell></row><row><cell></cell><cell>Homemaker</cell><cell>10</cell></row><row><cell></cell><cell>Student</cell><cell>5</cell></row><row><cell></cell><cell>Not working: other</cell><cell>17</cell></row><row><cell></cell><cell>Missing</cell><cell>1</cell></row><row><cell></cell><cell>Lowest 33</cell><cell>26</cell></row><row><cell></cell><cell>Middle 33</cell><cell>31</cell></row><row><cell></cell><cell>Upper 33</cell><cell>21</cell></row><row><cell></cell><cell>Missing</cell><cell>22</cell></row><row><cell>Education (Educational attainment of the individual)</cell><cell>Some secondary schooling</cell><cell>27</cell></row><row><cell></cell><cell>Secondary degree</cell><cell>35</cell></row><row><cell></cell><cell>Post secondary degree</cell><cell>33</cell></row><row><cell></cell><cell>Grad exp</cell><cell>1</cell></row><row><cell></cell><cell>Missing</cell><cell>4</cell></row><row><cell>Age -in 8 categories (What year were you born?)</cell><cell>14-17 yrs old</cell><cell>2</cell></row><row><cell></cell><cell>18-24 yrs old</cell><cell>13</cell></row><row><cell></cell><cell>24-34 yrs old</cell><cell>19</cell></row><row><cell></cell><cell>35-44 yrs old</cell><cell>22</cell></row><row><cell></cell><cell>45-54 yrs old</cell><cell>18</cell></row><row><cell></cell><cell>55-64 yrs old</cell><cell>15</cell></row><row><cell></cell><cell>65-74 yrs old</cell><cell>8</cell></row><row><cell></cell><cell>75-84 yrs old</cell><cell>3</cell></row></table></figure>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_0"><p>P.Koellinger et al. / Journal of Economic Psychology 28 (2007) 502-527  </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="1" xml:id="foot_1"><p>In general, it is not clear whether high unemployment discourages self-employment by reducing its potential markets or increases it by providing an income producing activity for otherwise displaced workers. Most likely, both effects co-exist and their relative strength is contingent upon other macroeconomic circumstances.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" xml:id="foot_2"><p>P.Koellinger et al. / Journal of Economic Psychology 28 (2007) 502-527   </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="2" xml:id="foot_3"><p>More information about the GEM project may be found at www.gemconsortium.org.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="3" xml:id="foot_4"><p>Survey questions are standardized and conducted simultaneously in all countries. In each country, surveys are stratified geographically and conducted by phone, except in countries with low phone penetration rates, where surveys are conducted face to face. Population samples are random and are either based on direct dialing or use listed numbers with callbacks.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="4" xml:id="foot_5"><p>Details about the procedures used to collect and harmonize GEM data can be found in<ref type="bibr" target="#b47">Reynolds et al. (2005)</ref>.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="5" xml:id="foot_6"><p>Specifically, the income distribution of each country is divided into 3 groups, low, middle and high income (each including 33% of the population). Given his income, each individual is then classified as belonging to the low, middle, or high income group in his country. The specific income distribution of each country determines the monetary values included in each group. Thus, a US respondent with an income of, say, US$5000 would be included in the low income group. A respondent with an identical income in another country, however, could be included in the middle or high income group. P.Koellinger et al. / Journal of Economic Psychology 28 (2007) 502-527  </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="6" xml:id="foot_7"><p>Robust variance estimates and significance tests turned out to be nearly equivalent to the parametric estimates in test regressions.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="7" xml:id="foot_8"><p>Without this filtering procedure, the control group would always contain entrepreneurs of the two other entrepreneurial categories. This would contaminate results and make their interpretation problematic. Hence, we excluded the two inappropriate entrepreneurial groups from the models whenever necessary. For example, in the probit model on nascent entrepreneurs, we excluded new entrepreneurs and established entrepreneurs from the sample in order to find out what differentiates nascent entrepreneurs from non-entrepreneurs.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="8" xml:id="foot_9"><p>The difference in the number of cases between the descriptive statistics and the probit model originates from missing values in the database that occurred if respondents did not answer all survey questions. The probit model rejects all observations where at least one of the variables is missing. Note that the database contains only observations for which all three dependent variables could be successfully computed. Thus, all missing observations result from missing information in the explanatory variables. P.Koellinger et al. / Journal of Economic Psychology 28 (2007) 502-527  </p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="9" xml:id="foot_10"><p>The remaining significant cross-country differences in start-up activity reported in Model 1b could be due to differences in culture, institutions, policy, technological development or other factors that might influence the expected payoff from entrepreneurial activity relative to alternative occupations.</p></note>
+			<note xmlns="http://www.tei-c.org/ns/1.0" place="foot" n="10" xml:id="foot_11"><p>For example, in Finland we find no effect of educational attainment on skill perception at all, i.e. there are no significant differences in skill perception between individuals with different educational backgrounds. In Argentina, only 33% of individuals with graduate exposure believed they had sufficient skills and knowledge to start a business, compared to 63.9% of individuals with only a secondary degree. These results complement<ref type="bibr" target="#b10">Burson, Klayman, and Larrick (2006)</ref> who found that individuals at all skill levels are subject to similar degrees of error.P.Koellinger et al. / Journal of Economic Psychology 28 (2007) 502-527  </p></note>
+		</body>
+		<back>
+
+			<div type="acknowledgement">
+<div><head>Acknowledgment</head><p>We thank the <rs type="grantName">Global Entrepreneurship Monitor</rs> (<rs type="institution">GEM) Consortium</rs> for granting us the use of the data. Kristin Djorup provided excellent bibliographic assistance. All errors are ours.</p></div>
+			</div>
+			<listOrg type="funding">
+				<org type="funding" xml:id="_GNF8Us9">
+					<orgName type="grant-name">Global Entrepreneurship Monitor</orgName>
+				</org>
+			</listOrg>
+			<div type="annex">
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Appendix. Data description</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Dependent variables</head></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Definition of entrepreneurial activity</head><p>The GEM adult population survey includes a representative sample of at least 2000 adults in each of 29 countries. Included in the survey were:</p><p>• Those older than the normal school leaving age (age varying from 14 to 18 years of age depending on the country). • Those up to 64 years of age (a sample including those older than 64 was acceptable).</p><p>• Urban and rural areas.</p><p>• All geographic regions of the country.</p><p>All respondents were asked three basic questions: 1a. Are you, alone or with others, currently trying to start a new business, including any type of self-employment? (yes, no, don't know, refuse). 1b. Are you, alone or with others, trying to start a new business or a new venture with your employer -an effort that is part of your normal work? (yes, no, don't know, refuse). 1c. Are you, alone or with others, the owner of a company you help manage? (yes, no, don't know, refuse).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Nascent entrepreneurs (nascent)</head><p>Respondents who answered ''yes'' to items 1a or 1b, were then asked:</p><p>2a. You mentioned that you are trying to start a new business. Over the past 12 months have you done anything to help start this new business, such as looking for equipment or a location, organizing a start-up team, working on a business plan, beginning to save money, or any other activity that would help launch a business? (yes, no, don't know, refuse). 2b. Will you personally own all, part, or none of this business? (all, part, none, don't know, refuse). 2c. Has the new business paid any salaries, wages, or payments in kind, including your own, for more than 3 months? (yes, no, don't know, refused).</p><p>Respondents were coded as ''nascent entrepreneur'' (nascent = 1) if, in addition to 1a and 1b, they answered ''yes'' to 2a and 2b, and ''no'' to 2c. In the original GEM dataset, this variable is abbreviated as ''suboanw''.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>New entrepreneurs (newentr)</head><p>In order to make the distinction between individuals involved in starting a new business (nascent entrepreneurs) and those involved in managing a very young business (new entrepreneurs), respondents who answered ''yes'' to question 1c were asked: 3a. You said you were the owner or manager of a company. Do you personally own all, part, or none of this business? (all, part, none, don't know, refuse). 3c. What was the first year the owners received wages, profits, or payments in kind? (4 digit year, or no profits yet, don't know, refuse).</p><p>Respondents who classify as full or part owners of the business and had received wages or salaries paid up to 42 months were coded as ''new entrepreneurs'' (newentr = 1).</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Established entrepreneurs (establ)</head><p>This variable is not part of the original GEM survey data and was computed by the authors for the purposes of this paper. Establ includes all individuals who own all or part of a business they help to manage, and have paid wages or received profits for more than 42 months.</p></div>
+<div xmlns="http://www.tei-c.org/ns/1.0"><head>Independent variables</head><p>All independent variables used in the analysis are described in Table <ref type="table">A1</ref>. All items were part of the GEM adult population survey questionnaire and were asked to all respondents, independently from their involvement in entrepreneurial activities. The socio-demographic variables working status, household income, and education were not explicitly part of the questionnaire, but were collected as background information for the surveys in 18 of the 29 countries included in GEM 2001. These items were then recoded following uniform scales by the GEM consortium. See <ref type="bibr" target="#b47">Reynolds et al. (2005)</ref> for further details. </p></div>			</div>
+			<div type="references">
+
+				<listBibl>
+
+<biblStruct xml:id="b0">
+	<monogr>
+		<title level="m" type="main">$ -see front matter Ó 2006 Elsevier B.V. All rights reserved</title>
+		<idno type="DOI">10.1016/j.joep.2006.11.002</idno>
+		<imprint>
+			<biblScope unit="volume">4870</biblScope>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b1">
+	<monogr>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">J</forename><surname>Acs</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><surname>Arenius</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">H</forename><surname>Michael</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Minniti</surname></persName>
+		</author>
+		<title level="m">Global entrepreneurship monitor report</title>
+		<meeting><address><addrLine>London, GB; MA</addrLine></address></meeting>
+		<imprint>
+			<publisher>Babson College</publisher>
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b2">
+	<analytic>
+		<title level="a" type="main">The Linkages among Entrepreneurship, SMEs and the Macroeconomy</title>
+		<author>
+			<persName><forename type="first">Z</forename><forename type="middle">J</forename><surname>Acs</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Carlsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><surname>Karlsson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Entrepreneurship, Small and Medium-Sized Enterprises and the Macroeconomy</title>
+		<editor>
+			<persName><forename type="first">Z</forename><forename type="middle">J</forename><surname>Acs</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">B</forename><surname>Carlsson</surname></persName>
+		</editor>
+		<editor>
+			<persName><forename type="first">C</forename><surname>Karlsson</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Cambridge, UK</addrLine></address></meeting>
+		<imprint>
+			<publisher>Cambridge University Press</publisher>
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b3">
+	<analytic>
+		<title level="a" type="main">Personal contact, individuation, and the better-than-average effect</title>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">D</forename><surname>Alicke</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">L</forename><surname>Klotz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">L</forename><surname>Breitenbecher</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">J</forename><surname>Yurak</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">S</forename><surname>Vredenburg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Personality and Social Psychology</title>
+		<imprint>
+			<biblScope unit="volume">68</biblScope>
+			<biblScope unit="issue">5</biblScope>
+			<biblScope unit="page" from="804" to="825" />
+			<date type="published" when="1995">1995</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b4">
+	<monogr>
+		<title level="m" type="main">The Dynamics of Industrial Competition</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Baldwin</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1995">1995</date>
+			<publisher>Cambridge University Press</publisher>
+			<pubPlace>Cambridge, UK</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b5">
+	<analytic>
+		<title level="a" type="main">Incomplete panels: A comparative study of alternative estimators for the unbalanced one-way error component regression model</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">H</forename><surname>Baltagi</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><surname>Chang</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Econometrics</title>
+		<imprint>
+			<biblScope unit="volume">62</biblScope>
+			<biblScope unit="page" from="67" to="89" />
+			<date type="published" when="1994">1994</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b6">
+	<analytic>
+		<title level="a" type="main">Entrepreneurship: Productive, unproductive, and destructive</title>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">J</forename><surname>Baumol</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">98</biblScope>
+			<biblScope unit="page" from="893" to="921" />
+			<date type="published" when="1990">1990</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b7">
+	<analytic>
+		<title level="a" type="main">On the evolution of overconfidence and entrepreneurs</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">E</forename><surname>Bernardo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Welch</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economics and Management Strategy</title>
+		<imprint>
+			<biblScope unit="volume">10</biblScope>
+			<biblScope unit="page" from="301" to="330" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b8">
+	<monogr>
+		<title level="m" type="main">Self-employment: More may not be better</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">G</forename><surname>Blanchflower</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="2004">2004. 10286</date>
+		</imprint>
+	</monogr>
+	<note type="report_type">NBER Working Paper</note>
+</biblStruct>
+
+<biblStruct xml:id="b9">
+	<analytic>
+		<title level="a" type="main">What makes an entrepreneur</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">G</forename><surname>Blanchflower</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">J</forename><surname>Oswald</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Labor Economics</title>
+		<imprint>
+			<biblScope unit="volume">16</biblScope>
+			<biblScope unit="page" from="26" to="60" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b10">
+	<analytic>
+		<title level="a" type="main">Skilled or unskilled, but still unaware of it: How perceptions of difficulty drive miscalibration in relative comparisons</title>
+		<author>
+			<persName><forename type="first">K</forename><forename type="middle">A</forename><surname>Burson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Klayman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">P</forename><surname>Larrick</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Personality and Social Psychology</title>
+		<imprint>
+			<biblScope unit="volume">90</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="60" to="77" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b11">
+	<analytic>
+		<title level="a" type="main">Differences between entrepreneurs and managers in large organizations: Biases and heuristics in strategic decision-making</title>
+		<author>
+			<persName><forename type="first">L</forename><forename type="middle">W</forename><surname>Busenitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">B</forename><surname>Barney</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Business Venturing</title>
+		<imprint>
+			<biblScope unit="volume">12</biblScope>
+			<biblScope unit="page" from="9" to="30" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b12">
+	<analytic>
+		<title level="a" type="main">Overconfidence and excess entry: An experimental approach</title>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">F</forename><surname>Camerer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lovallo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">89</biblScope>
+			<biblScope unit="page" from="306" to="318" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b13">
+	<monogr>
+		<title level="m" type="main">The Entrepreneur</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Casson</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1982">1982</date>
+			<publisher>Barnes and Nobles Books</publisher>
+			<pubPlace>Totowa, NJ, US</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b14">
+	<analytic>
+		<title level="a" type="main">Egocentrism, event frequency, and comparative optimism: When what happens frequently is more likely to happen to me</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Chambers</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">D</forename><surname>Windschitl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Suls</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Personality and Social Psychology Bulletin</title>
+		<imprint>
+			<biblScope unit="volume">29</biblScope>
+			<biblScope unit="issue">11</biblScope>
+			<biblScope unit="page" from="1343" to="1356" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b15">
+	<analytic>
+		<title level="a" type="main">Entrepreneurs&apos; perceived chances for success</title>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">C</forename><surname>Cooper</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">Y</forename><surname>Woo</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">W</forename><forename type="middle">C</forename><surname>Dunkelberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Business Venturing</title>
+		<imprint>
+			<biblScope unit="volume">3</biblScope>
+			<biblScope unit="page" from="97" to="108" />
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b16">
+	<analytic>
+		<title level="a" type="main">Low risk aversion encourages the choice for entrepreneurship: An empirical test of a truism</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">S</forename><surname>Cramer</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Hartog</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>Jonker</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">C</forename><forename type="middle">M</forename><surname>Van Praag</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Behavior and Organization</title>
+		<imprint>
+			<biblScope unit="volume">48</biblScope>
+			<biblScope unit="page" from="29" to="36" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b17">
+	<analytic>
+		<title level="a" type="main">Values, beliefs and regional variations in new firm formation rates</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Davidsson</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Wiklund</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Psychology</title>
+		<imprint>
+			<biblScope unit="volume">18</biblScope>
+			<biblScope unit="page" from="179" to="199" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b18">
+	<analytic>
+		<title level="a" type="main">Patterns of firm entry and exit in US manufacturing industries</title>
+		<author>
+			<persName><forename type="first">T</forename><surname>Dunne</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><forename type="middle">J</forename><surname>Roberts</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">L</forename><surname>Samuelson</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Rand Journal of Economics</title>
+		<imprint>
+			<biblScope unit="volume">19</biblScope>
+			<biblScope unit="page" from="495" to="515" />
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b19">
+	<analytic>
+		<title level="a" type="main">Ambiguity and uncertainty in probabilistic inference</title>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">J</forename><surname>Einhorn</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">M</forename><surname>Hogarth</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychological Review</title>
+		<imprint>
+			<biblScope unit="volume">92</biblScope>
+			<biblScope unit="page" from="433" to="461" />
+			<date type="published" when="1985">1985</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b20">
+	<analytic>
+		<title level="a" type="main">Optimism, pessimism, and the direction of self-other comparisons</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">R</forename><surname>Eiser</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Pahl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">Y</forename><forename type="middle">R A</forename><surname>Prins</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Experimental Social Psychology</title>
+		<imprint>
+			<biblScope unit="volume">37</biblScope>
+			<biblScope unit="issue">1</biblScope>
+			<biblScope unit="page" from="77" to="84" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b21">
+	<analytic>
+		<title level="a" type="main">Risk, ambiguity, and the Savage axioms</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Ellsberg</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Quarterly Journal of Economics</title>
+		<imprint>
+			<biblScope unit="volume">75</biblScope>
+			<biblScope unit="page" from="643" to="669" />
+			<date type="published" when="1961">1961</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b22">
+	<analytic>
+		<title level="a" type="main">An estimated model of entrepreneurial choice under liquidity constraints</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Evans</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">B</forename><surname>Jovanovic</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="808" to="827" />
+			<date type="published" when="1989">1989</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b23">
+	<analytic>
+		<title level="a" type="main">Hindsight is not equal to foresight: The effect of outcome knowledge on judgment under uncertainty</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Fischhoff</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Experimental Psychology: Human Perception and Performance</title>
+		<imprint>
+			<biblScope unit="volume">1</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="288" to="299" />
+			<date type="published" when="1975">1975</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b24">
+	<analytic>
+		<title level="a" type="main">Perceived risks and choices in entrepreneurs&apos; new venture decisions</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Forlani</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">M</forename><surname>Mullins</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Business Venturing</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="305" to="322" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b25">
+	<analytic>
+		<title level="a" type="main">Does entrepreneurship pay? An empirical analysis of the returns to self-employment</title>
+		<author>
+			<persName><forename type="first">B</forename><forename type="middle">H</forename><surname>Hamilton</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">108</biblScope>
+			<biblScope unit="page" from="604" to="631" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b26">
+	<analytic>
+		<title level="a" type="main">Institutional conditions for entrepreneurship</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Harper</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Advances in Austrian Economics</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page" from="241" to="275" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b27">
+	<analytic>
+		<title level="a" type="main">Specification tests in econometrics</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">A</forename><surname>Hausman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">46</biblScope>
+			<biblScope unit="page" from="1251" to="1271" />
+			<date type="published" when="1978">1978</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b28">
+	<analytic>
+		<title level="a" type="main">Overconfident: Do you put your money on it?</title>
+		<author>
+			<persName><forename type="first">E</forename><surname>Hoelzl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Rustichini</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Economic Journal</title>
+		<imprint>
+			<biblScope unit="volume">115</biblScope>
+			<biblScope unit="issue">503</biblScope>
+			<biblScope unit="page" from="305" to="318" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b29">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">P</forename><surname>Koellinger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Psychology</title>
+		<imprint>
+			<biblScope unit="volume">28</biblScope>
+			<biblScope unit="page" from="502" to="527" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b30">
+	<analytic>
+		<title level="a" type="main">Overconfidence</title>
+		<author>
+			<persName><forename type="first">U</forename><surname>Hoffrage</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="m">Cognitive illusions: Fallacies and biases in thinking, judgement, and memory</title>
+		<editor>
+			<persName><forename type="first">R</forename><forename type="middle">F</forename><surname>Pohl</surname></persName>
+		</editor>
+		<meeting><address><addrLine>Hove, UK</addrLine></address></meeting>
+		<imprint>
+			<publisher>Psychology Press</publisher>
+			<date type="published" when="2004">2004</date>
+			<biblScope unit="page" from="235" to="254" />
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b31">
+	<analytic>
+		<title level="a" type="main">Pragmatic beliefs and overconfidence</title>
+		<author>
+			<persName><forename type="first">H</forename><forename type="middle">K</forename><surname>Hvide</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Behavior and Organization</title>
+		<imprint>
+			<biblScope unit="volume">48</biblScope>
+			<biblScope unit="page" from="15" to="28" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b32">
+	<analytic>
+		<title level="a" type="main">Risk, entrepreneurship and human capital accumulation</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Iyigun</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Owen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">88</biblScope>
+			<biblScope unit="page" from="454" to="457" />
+			<date type="published" when="1998">1998</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b33">
+	<analytic>
+		<title level="a" type="main">Timid choices and bold forecasts: A cognitive perspective on risk taking</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kahneman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Lovallo</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Management Science</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="page" from="17" to="31" />
+			<date type="published" when="1993">1993</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b34">
+	<analytic>
+		<title level="a" type="main">Prospect theory: An analysis of decision under risk</title>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kahneman</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tversky</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">47</biblScope>
+			<biblScope unit="page" from="263" to="291" />
+			<date type="published" when="1979">1979</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b35">
+	<analytic>
+		<title level="a" type="main">The sandwich variance estimator: Efficiency properties and coverage probabilities of confidence intervals</title>
+		<author>
+			<persName><forename type="first">G</forename><surname>Kauermann</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">J</forename><surname>Carroll</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of the American Statistical Association</title>
+		<imprint>
+			<biblScope unit="volume">97</biblScope>
+			<biblScope unit="page" from="482" to="493" />
+			<date type="published" when="2001">2001</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b36">
+	<analytic>
+		<title level="a" type="main">A general equilibrium entrepreneurial theory of firm formation based on risk aversion</title>
+		<author>
+			<persName><forename type="first">R</forename><surname>Kihlstrom</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Laffont</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Political Economy</title>
+		<imprint>
+			<biblScope unit="volume">87</biblScope>
+			<biblScope unit="page" from="719" to="740" />
+			<date type="published" when="1979">1979</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b37">
+	<monogr>
+		<title level="m" type="main">Competition and entrepreneurship</title>
+		<author>
+			<persName><forename type="first">I</forename><forename type="middle">M</forename><surname>Kirzner</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1973">1973</date>
+			<publisher>University of Chicago Press</publisher>
+			<pubPlace>Chicago, IL</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b38">
+	<monogr>
+		<title level="m" type="main">Perception, opportunity, and profit</title>
+		<author>
+			<persName><forename type="first">I</forename><forename type="middle">M</forename><surname>Kirzner</surname></persName>
+		</author>
+		<imprint>
+			<date type="published" when="1979">1979</date>
+			<publisher>University of Chicago Press</publisher>
+			<pubPlace>Chicago, IL</pubPlace>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b39">
+	<analytic>
+		<title level="a" type="main">Lake Wobegon be gone! The below-average effect and the egocentric nature of comparative ability judgments</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kruger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Personality and Social Psychology</title>
+		<imprint>
+			<biblScope unit="volume">77</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="221" to="232" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b40">
+	<analytic>
+		<title level="a" type="main">Egocentrism and focalism in unrealistic optimism (and pessimism)</title>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kruger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Burrus</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Experimental Social Psychology</title>
+		<imprint>
+			<biblScope unit="volume">40</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="332" to="340" />
+			<date type="published" when="2004">2004</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b41">
+	<analytic>
+		<title level="a" type="main">The effect of aging on entrepreneurial behavior</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Levesque</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Minniti</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Business Venturing</title>
+		<imprint>
+			<biblScope unit="volume">21</biblScope>
+			<biblScope unit="issue">2</biblScope>
+			<biblScope unit="page" from="177" to="194" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b42">
+	<monogr>
+		<author>
+			<persName><forename type="first">A</forename><surname>Marshall</surname></persName>
+		</author>
+		<title level="m">Principles of economics</title>
+		<meeting><address><addrLine>London, UK</addrLine></address></meeting>
+		<imprint>
+			<publisher>Macmillan and Co. Ltd</publisher>
+			<date type="published" when="1920">1920</date>
+		</imprint>
+	</monogr>
+	<note>eith ed.</note>
+</biblStruct>
+
+<biblStruct xml:id="b43">
+	<analytic>
+		<title level="a" type="main">Entrepreneurship and network externalities</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Minniti</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Behavior and Organization</title>
+		<imprint>
+			<biblScope unit="volume">57</biblScope>
+			<biblScope unit="page" from="1" to="27" />
+			<date type="published" when="2005">2005</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b44">
+	<analytic>
+		<title level="a" type="main">Myopic social prediction and the solo comparison effect</title>
+		<author>
+			<persName><forename type="first">D</forename><forename type="middle">A</forename><surname>Moore</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">G</forename><surname>Kim</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Personality and Social Psychology</title>
+		<imprint>
+			<biblScope unit="volume">85</biblScope>
+			<biblScope unit="issue">6</biblScope>
+			<biblScope unit="page" from="1121" to="1135" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b45">
+	<analytic>
+		<title level="a" type="main">The returns to entrepreneurial investment: A private equity premium puzzle?</title>
+		<author>
+			<persName><forename type="first">T</forename><forename type="middle">J</forename><surname>Moskovitz</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><surname>Vissing-Jørgensen</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">American Economic Review</title>
+		<imprint>
+			<biblScope unit="volume">92</biblScope>
+			<biblScope unit="page" from="745" to="778" />
+			<date type="published" when="2002">2002</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b46">
+	<monogr>
+		<author>
+			<persName><forename type="first">P</forename><surname>Reynolds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Autio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">M</forename><surname>Hay</surname></persName>
+		</author>
+		<title level="m">Global Entrepreneurship Monitor Report</title>
+		<meeting><address><addrLine>Kansas City, MO, US</addrLine></address></meeting>
+		<imprint>
+			<publisher>E.M. Kauffmann Foundation</publisher>
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b47">
+	<analytic>
+		<title level="a" type="main">Global entrepreneurship monitor: Data collection design and implementation</title>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">D</forename><surname>Reynolds</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">S</forename><surname>Bosma</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Autio</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Hunt</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">N</forename><surname>De Bono</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">I</forename><surname>Servais</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Small Business Economics</title>
+		<imprint>
+			<biblScope unit="volume">24</biblScope>
+			<biblScope unit="page" from="205" to="231" />
+			<date type="published" when="1998">2005. 1998. 2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b48">
+	<analytic>
+		<title level="a" type="main">Generalized expectancies for internal versus external control of reinforcement</title>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">B</forename><surname>Rotter</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychological Monographs</title>
+		<imprint>
+			<biblScope unit="volume">80</biblScope>
+			<biblScope unit="page">609</biblScope>
+			<date type="published" when="1966">1966</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b49">
+	<analytic>
+		<title level="a" type="main">Cognitive biases, risk perception, and venture formation: How individuals decide to start companies</title>
+		<author>
+			<persName><forename type="first">M</forename><surname>Simon</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">M</forename><surname>Houghton</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">K</forename><surname>Aquino</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Business Venturing</title>
+		<imprint>
+			<biblScope unit="volume">15</biblScope>
+			<biblScope unit="page" from="113" to="134" />
+			<date type="published" when="1999">1999</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b50">
+	<analytic>
+		<title level="a" type="main">The exact finite sample properties of the estimators of coefficients in the error components regression models</title>
+		<author>
+			<persName><forename type="first">P</forename><surname>Swamy</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">S</forename><surname>Arora</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">40</biblScope>
+			<biblScope unit="page" from="643" to="657" />
+			<date type="published" when="1972">1972</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b51">
+	<analytic>
+		<title level="a" type="main">Illusion and well-being: A social psychological perspective on mental health</title>
+		<author>
+			<persName><forename type="first">S</forename><forename type="middle">E</forename><surname>Taylor</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><forename type="middle">D</forename><surname>Brown</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Psychological Bulletin</title>
+		<imprint>
+			<biblScope unit="volume">103</biblScope>
+			<biblScope unit="page" from="193" to="205" />
+			<date type="published" when="1988">1988</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b52">
+	<analytic>
+		<title level="a" type="main">From homo economicus to homo sapiens</title>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">H</forename><surname>Thaler</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">The Journal of Economic Perspectives</title>
+		<imprint>
+			<biblScope unit="volume">14</biblScope>
+			<biblScope unit="page" from="133" to="141" />
+			<date type="published" when="2000">2000</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b53">
+	<analytic>
+		<title level="a" type="main">Loss aversion in riskless choice: A reference-dependent model</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tversky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kahneman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Quarterly Journal of Economics</title>
+		<imprint>
+			<biblScope unit="volume">106</biblScope>
+			<biblScope unit="page" from="1039" to="1061" />
+			<date type="published" when="1991">1991</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b54">
+	<analytic>
+		<title level="a" type="main">Advances in prospect theory: Cumulative representation of uncertainty</title>
+		<author>
+			<persName><forename type="first">A</forename><surname>Tversky</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">D</forename><surname>Kahneman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Risk and Uncertainty</title>
+		<imprint>
+			<biblScope unit="volume">5</biblScope>
+			<biblScope unit="page" from="297" to="323" />
+			<date type="published" when="1992">1992</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b55">
+	<analytic>
+		<title level="a" type="main">Perceived risk attitudes: Relating risk perception to risky choice</title>
+		<author>
+			<persName><forename type="first">E</forename><forename type="middle">U</forename><surname>Weber</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">R</forename><forename type="middle">A</forename><surname>Milliman</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Management Science</title>
+		<imprint>
+			<biblScope unit="volume">43</biblScope>
+			<biblScope unit="page" from="123" to="144" />
+			<date type="published" when="1997">1997</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b56">
+	<analytic>
+		<title level="a" type="main">Unrealistic optimism about future life events</title>
+		<author>
+			<persName><forename type="first">N</forename><forename type="middle">D</forename><surname>Weinstein</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Personality and Social Psychology</title>
+		<imprint>
+			<biblScope unit="volume">39</biblScope>
+			<biblScope unit="page" from="806" to="820" />
+			<date type="published" when="1980">1980</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b57">
+	<analytic>
+		<title level="a" type="main">Maximum likelihood estimation of misspecified models</title>
+		<author>
+			<persName><forename type="first">H</forename><surname>White</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Econometrica</title>
+		<imprint>
+			<biblScope unit="volume">56</biblScope>
+			<biblScope unit="page" from="997" to="1019" />
+			<date type="published" when="1982">1982</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b58">
+	<analytic>
+		<title level="a" type="main">The influence of egocentrism and focalism on people&apos;s optimism in competitions: When what affects us equally affects me more</title>
+		<author>
+			<persName><forename type="first">P</forename><forename type="middle">D</forename><surname>Windschitl</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">J</forename><surname>Kruger</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">E</forename><surname>Simms</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Personality and Social Psychology</title>
+		<imprint>
+			<biblScope unit="volume">85</biblScope>
+			<biblScope unit="issue">3</biblScope>
+			<biblScope unit="page" from="389" to="408" />
+			<date type="published" when="2003">2003</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b59">
+	<analytic>
+		<title level="a" type="main">Entrepreneurial risk and market entry</title>
+		<author>
+			<persName><forename type="first">B</forename><surname>Wu</surname></persName>
+		</author>
+		<author>
+			<persName><forename type="first">A</forename><forename type="middle">M</forename><surname>Knott</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Management Science</title>
+		<imprint>
+			<biblScope unit="volume">52</biblScope>
+			<biblScope unit="issue">9</biblScope>
+			<biblScope unit="page" from="1315" to="1330" />
+			<date type="published" when="2006">2006</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+<biblStruct xml:id="b60">
+	<analytic>
+		<title/>
+		<author>
+			<persName><forename type="first">P</forename><surname>Koellinger</surname></persName>
+		</author>
+	</analytic>
+	<monogr>
+		<title level="j">Journal of Economic Psychology</title>
+		<imprint>
+			<biblScope unit="volume">28</biblScope>
+			<biblScope unit="page" from="502" to="527" />
+			<date type="published" when="2007">2007</date>
+		</imprint>
+	</monogr>
+</biblStruct>
+
+				</listBibl>
+			</div>
+		</back>
+	</text>
+</TEI>

@@ -5,11 +5,12 @@ material plus self-contained runnable packages for:
 
 - `miner`
 - `validator`
+- `neurons`
 
 Those folders are ongoing work areas. The current public implementation scope is
-pipeline-version packages, with `miner/section_context_v1` and
-`validator/judge_v1` vendoring the actual benchmark-derived code instead of only
-carrying a toy scaffold.
+pipeline-version packages. `miner/v0` and `validator/v0` are the first flat
+localnet-ready loop, while `miner/section_context_v1` and `validator/judge_v1`
+carry the richer benchmark-derived claim schema work.
 
 ## Repository Layout
 
@@ -23,13 +24,23 @@ claims-subnet-rfc/
 ├── docs/
 ├── schemas/
 ├── miner/
+│   ├── v0/
+│   │   ├── README.md
+│   │   └── CLAIM_EXTRACTION_FIELDS.md
 │   └── section_context_v1/
 │       ├── README.md
 │       └── requirements.txt
 ├── validator/
+│   ├── v0/
+│   │   ├── README.md
+│   │   └── AUDIT_RECORD_FIELDS.md
 │   └── judge_v1/
 │       ├── README.md
 │       └── requirements.txt
+├── neurons/
+│   ├── miner.py
+│   ├── validator.py
+│   └── protocol.py
 └── examples/
 ```
 
@@ -56,7 +67,36 @@ Copy `.env.example` to `.env` and fill in `OPENROUTER_API_KEY`. If you want PDF
 ingest through TEI, run GROBID and set `GROBID_URL`. Official setup guide:
 https://grobid.readthedocs.io/en/latest/Grobid-docker/
 
-Run the miner on a PDF:
+Run the flat v0 miner on a PDF:
+
+```bash
+python -m miner.v0 --pdf /path/to/paper.pdf
+```
+
+Run the flat v0 validator:
+
+```bash
+python -m validator.v0 \
+  --extraction-output-json miner/v0/outputs/section_context_v1__run_<label>/<paper_id>/section_context_v1_output.json
+```
+
+Run the v0 Bittensor miner and validator on localnet:
+
+```bash
+python -m neurons.miner --netuid 2 --wallet.name test-miner --wallet.hotkey default --subtensor.chain_endpoint ws://127.0.0.1:9945
+
+python -m neurons.validator \
+  --netuid 2 \
+  --wallet.name test-validator \
+  --wallet.hotkey default \
+  --subtensor.chain_endpoint ws://127.0.0.1:9945 \
+  --claims.task-artifact miner/v0/outputs/section_context_v1__run_claims_v0/<paper_id>/artifact.json
+```
+
+See `docs/0010-bittensor-localnet.md` for the localnet setup, wallet funding,
+subnet registration, and neuron runbook.
+
+Run the richer section-context miner on a PDF:
 
 ```bash
 python -m miner.section_context_v1 --pdf /path/to/paper.pdf
@@ -90,9 +130,11 @@ python -m validator.judge_v1 \
 ## Public Structure
 
 - `miner/` is the public miner root and will grow as more pipeline versions are published.
-- `miner/section_context_v1/` is the current self-contained miner pipeline package.
+- `miner/v0/` is the first flat claim-evidence miner for localnet testing.
+- `miner/section_context_v1/` is the richer self-contained miner pipeline package.
 - `validator/` is the public validator root and is likewise currently scoped to packaged judge versions.
-- `validator/judge_v1/` is the current self-contained validator judge package.
+- `validator/v0/` is the first deterministic flat claim-evidence validator.
+- `validator/judge_v1/` is the richer self-contained validator judge package.
 
 ## Suggested Reading Order
 
@@ -100,8 +142,13 @@ python -m validator.judge_v1 \
 2. `docs/0001-miner-task.md`
 3. `docs/0002-validator-scoring.md`
 4. `docs/0003-schema.md`
-5. `miner/section_context_v1/runner.py`
-6. `validator/judge_v1/runner.py`
+5. `docs/0009-v0-miner-validator.md`
+6. `docs/0010-bittensor-localnet.md`
+7. `neurons/README.md`
+8. `miner/v0/runner.py`
+9. `validator/v0/runner.py`
+10. `miner/section_context_v1/runner.py`
+11. `validator/judge_v1/runner.py`
 
 ## Contributing
 
