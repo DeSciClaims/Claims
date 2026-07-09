@@ -171,10 +171,32 @@ btcli subnet register \
   --network ws://127.0.0.1:9945
 ```
 
-## Prepare a Task Artifact
+## Prepare a PDF URL Task
 
-The validator sends miners an `artifact.json` containing the paper and source
-spans. You can create one by running the v0 miner once in file mode:
+The network-facing task input is a downloadable PDF URL. The validator sends the
+URL, and each miner chooses how to download, parse, cache, and extract from the
+paper.
+
+For one task, pass the URL directly to the validator:
+
+```bash
+--claims.paper-url https://example.org/paper.pdf
+```
+
+For multiple tasks, create a JSONL manifest:
+
+```json
+{"task_id":"claims_task_001","paper_url":"https://example.org/paper.pdf","source_sha256":""}
+```
+
+Then pass:
+
+```bash
+--claims.task-manifest examples/tasks/localnet_urls.jsonl
+```
+
+Artifact mode is still available for deterministic smoke tests. Create an
+artifact by running the v0 miner once in file mode:
 
 ```bash
 SUBNET_CLAIMS_RUN_LABEL=claims_v0 python -m miner.v0 \
@@ -198,10 +220,12 @@ python -m neurons.miner \
   --wallet.name test-miner \
   --wallet.hotkey default \
   --subtensor.chain_endpoint ws://127.0.0.1:9945 \
-  --axon.port 8091
+  --axon.port 8091 \
+  --claims.pdf-extraction-method grobid
 ```
 
-Use a different port for each miner process.
+Use a different port for each miner process. The extraction method is miner
+policy; validators do not prescribe how miners parse PDFs.
 
 ## Run the Validator
 
@@ -213,7 +237,7 @@ python -m neurons.validator \
   --wallet.name test-validator \
   --wallet.hotkey default \
   --subtensor.chain_endpoint ws://127.0.0.1:9945 \
-  --claims.task-artifact miner/v0/outputs/section_context_v1__run_claims_v0/<paper_id>/artifact.json \
+  --claims.paper-url https://example.org/paper.pdf \
   --claims.task-id claims_v0_localnet \
   --claims.audit-method deterministic
 ```
@@ -226,11 +250,15 @@ python -m neurons.validator \
   --wallet.name test-validator \
   --wallet.hotkey default \
   --subtensor.chain_endpoint ws://127.0.0.1:9945 \
-  --claims.task-artifact miner/v0/outputs/section_context_v1__run_claims_v0/<paper_id>/artifact.json \
+  --claims.paper-url https://example.org/paper.pdf \
   --claims.task-id claims_v0_localnet \
   --claims.audit-method deterministic \
   --claims.max-steps 1
 ```
+
+Use `--claims.audit-only` to write validator audits without submitting weights.
+Use `--claims.task-artifact` instead of `--claims.paper-url` when you want to
+debug with a prebuilt local artifact.
 
 ## Other Networks
 
@@ -250,10 +278,22 @@ python -m neurons.validator \
   --wallet.name <WALLET> \
   --wallet.hotkey <HOTKEY> \
   --subtensor.network finney \
-  --claims.task-artifact /path/to/artifact.json
+  --claims.paper-url https://example.org/paper.pdf
 ```
 
-Use funded, registered wallets for the target network.
+Use funded, registered wallets for the target network. Mainnet miners also need
+a reachable public axon:
+
+```bash
+python -m neurons.miner \
+  --netuid <NETUID> \
+  --wallet.name <WALLET> \
+  --wallet.hotkey <HOTKEY> \
+  --subtensor.network finney \
+  --axon.port 8091 \
+  --axon.external_ip <PUBLIC_IP> \
+  --axon.external_port 8091
+```
 
 ## File-Based Smoke Tests
 

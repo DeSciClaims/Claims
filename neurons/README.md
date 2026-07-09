@@ -13,9 +13,13 @@ The neuron scripts are intentionally thin. Core extraction behavior remains in
 
 `ClaimExtractionSynapse` carries one extraction task:
 
+- `protocol_version`: Claims protocol version, currently `claims.v0`
+- `schema_version`: output schema version expected by the validator
 - `task_id`: stable task identifier chosen by the validator
 - `paper_id`: source paper identifier
-- `artifact`: input `ExtractionArtifact` JSON containing paper metadata and source spans
+- `paper_url`: downloadable PDF URL for network tasks
+- `source_sha256`: optional expected SHA-256 hash for the PDF
+- `artifact`: optional `ExtractionArtifact` JSON for local smoke tests
 - `extraction`: miner response in the v0 `section_context_v1_output.json` shape
 - `miner_version`: miner implementation version
 - `error`: miner-side error message, if extraction fails
@@ -28,11 +32,13 @@ python -m neurons.miner \
   --wallet.name test-miner \
   --wallet.hotkey default \
   --subtensor.chain_endpoint ws://127.0.0.1:9945 \
-  --axon.port 8091
+  --axon.port 8091 \
+  --claims.pdf-extraction-method grobid
 ```
 
-The miner uses `miner.v0` to process the artifact supplied by the validator.
-It requires the same LLM and parsing environment used by `python -m miner.v0`.
+The miner uses `miner.v0` to process PDF URL tasks or artifact smoke-test tasks
+supplied by the validator. It caches completed extractions by source hash,
+protocol version, miner version, and model/parser configuration.
 
 ## Validator
 
@@ -42,13 +48,15 @@ python -m neurons.validator \
   --wallet.name test-validator \
   --wallet.hotkey default \
   --subtensor.chain_endpoint ws://127.0.0.1:9945 \
-  --claims.task-artifact miner/v0/outputs/section_context_v1__run_claims_v0/Rietveld_et_al_2013_Science/artifact.json \
+  --claims.paper-url https://example.org/paper.pdf \
   --claims.task-id claims_v0_localnet \
   --claims.audit-method deterministic
 ```
 
-The validator loads one artifact, sends it to registered miners, scores each
+The validator loads URL tasks, sends them to registered miners, scores each
 response with `validator.v0`, maintains a moving average, and sets weights on
-the subnet.
+the subnet. Use `--claims.task-artifact` for local smoke tests with a prebuilt
+artifact, or `--claims.task-manifest` for a JSONL list of tasks.
 
 Use `--claims.max-steps 1` for a single validation round.
+Use `--claims.audit-only` to score miners without submitting weights.

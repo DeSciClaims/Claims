@@ -36,6 +36,12 @@ Mine directly from a PDF with GROBID:
 python -m miner.v0 --pdf /path/to/paper.pdf --pdf-extraction-method grobid
 ```
 
+Mine from a downloadable PDF URL:
+
+```bash
+python -m miner.v0 --pdf-url https://example.org/paper.pdf --pdf-extraction-method grobid
+```
+
 Mine from a PDF with `pypdf` only:
 
 ```bash

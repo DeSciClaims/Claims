@@ -72,6 +72,12 @@ Run the flat v0 miner on a PDF:
 python -m miner.v0 --pdf /path/to/paper.pdf
 ```
 
+Run the flat v0 miner on a downloadable PDF URL:
+
+```bash
+python -m miner.v0 --pdf-url https://example.org/paper.pdf
+```
+
 Run the flat v0 validator:
 
 ```bash
@@ -89,7 +95,8 @@ python -m neurons.validator \
   --wallet.name test-validator \
   --wallet.hotkey default \
   --subtensor.chain_endpoint ws://127.0.0.1:9945 \
-  --claims.task-artifact miner/v0/outputs/section_context_v1__run_claims_v0/<paper_id>/artifact.json
+  --claims.paper-url https://example.org/paper.pdf \
+  --claims.task-id claims_v0_localnet
 ```
 
 See `docs/0010-bittensor-localnet.md` for the localnet setup, wallet funding,
