@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import sys
 import time
@@ -13,6 +14,7 @@ from miner.v0.runner import SectionContextV1Runner
 from miner.v0.schema_models import ExtractionArtifact
 
 from .protocol import ClaimExtractionSynapse
+from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsTask, safe_task_id, task_cache_key
 
 
 def _require_bittensor() -> tuple[Any, Any, Any, Any, Any]:
@@ -32,6 +34,8 @@ class ClaimsMiner:
         self.Axon, self.Config, self.Subtensor, self.Wallet, self.bt_logging = _require_bittensor()
         self.config = self._get_config()
         self._setup_logging()
+        self._request_times_by_hotkey: dict[str, list[float]] = {}
+        self._in_progress_keys: set[str] = set()
         if self.config.claims_dry_run:
             self.runner = self._build_runner()
             self.wallet = None
@@ -64,6 +68,20 @@ class ClaimsMiner:
             help="Allow requests from hotkeys that are not currently registered on the subnet.",
         )
         parser.add_argument(
+            "--claims.pdf-extraction-method",
+            dest="claims_pdf_extraction_method",
+            choices=("grobid", "pypdf"),
+            default="grobid",
+            help="Miner-side PDF parsing method used for URL tasks.",
+        )
+        parser.add_argument(
+            "--claims.max-requests-per-hotkey-minute",
+            dest="claims_max_requests_per_hotkey_minute",
+            type=int,
+            default=2,
+            help="Maximum accepted extraction requests per validator hotkey per minute.",
+        )
+        parser.add_argument(
             "--claims.dry-run",
             dest="claims_dry_run",
             action="store_true",
@@ -81,6 +99,8 @@ class ClaimsMiner:
         _apply_bittensor_args(config, parsed_args)
         config.claims_output_dir = parsed_args.claims_output_dir
         config.claims_allow_unregistered = parsed_args.claims_allow_unregistered
+        config.claims_pdf_extraction_method = parsed_args.claims_pdf_extraction_method
+        config.claims_max_requests_per_hotkey_minute = parsed_args.claims_max_requests_per_hotkey_minute
         config.claims_dry_run = parsed_args.claims_dry_run
         config.claims_subtensor_network_arg = _subtensor_network_arg(parsed_args)
         config.full_path = os.path.expanduser(
@@ -128,24 +148,41 @@ class ClaimsMiner:
         return False, "registered hotkey"
 
     def forward(self, synapse: ClaimExtractionSynapse) -> ClaimExtractionSynapse:
-        if not synapse.artifact:
-            synapse.error = "Missing task artifact."
-            synapse.extraction = None
-            return synapse
         try:
-            artifact = ExtractionArtifact.model_validate(synapse.artifact)
-            task_id = _safe_task_id(synapse.task_id or artifact.paper.paper_id)
-            output_dir = Path(self.config.claims_output_dir) / task_id / artifact.paper.paper_id
-            synapse.extraction = self.runner.run_from_artifact(
-                artifact,
-                output_dir=output_dir,
-                manifest_extra={
-                    "input_source": "bittensor_synapse",
+            self._validate_synapse(synapse)
+            validator_hotkey = str(getattr(getattr(synapse, "dendrite", None), "hotkey", ""))
+            self._enforce_rate_limit(validator_hotkey)
+            task = ClaimsTask.from_dict(
+                {
                     "task_id": synapse.task_id,
-                    "validator_hotkey": getattr(getattr(synapse, "dendrite", None), "hotkey", ""),
-                },
+                    "paper_id": synapse.paper_id,
+                    "paper_url": synapse.paper_url,
+                    "source_sha256": synapse.source_sha256,
+                    "artifact": synapse.artifact,
+                    "protocol_version": synapse.protocol_version,
+                    "schema_version": synapse.schema_version,
+                }
             )
-            synapse.paper_id = artifact.paper.paper_id
+            cache_key = task_cache_key(
+                task,
+                miner_version="v0",
+                model_config=f"{self.runner.config.openrouter_model}:{self.config.claims_pdf_extraction_method}",
+            )
+            cached = self._read_cached_extraction(cache_key)
+            if cached is not None:
+                synapse.extraction = cached
+                synapse.paper_id = str((cached.get("paper") or {}).get("paper_id") or task.paper_id)
+                synapse.miner_version = "v0"
+                synapse.error = ""
+                return synapse
+            if cache_key in self._in_progress_keys:
+                raise RuntimeError("Task is already being processed by this miner.")
+            self._in_progress_keys.add(cache_key)
+            try:
+                synapse.extraction = self._run_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
+            finally:
+                self._in_progress_keys.discard(cache_key)
+            synapse.paper_id = str((synapse.extraction.get("paper") or {}).get("paper_id") or task.paper_id)
             synapse.miner_version = "v0"
             synapse.error = ""
         except Exception as exc:
@@ -153,6 +190,70 @@ class ClaimsMiner:
             synapse.extraction = None
             synapse.error = str(exc)
         return synapse
+
+    def _validate_synapse(self, synapse: ClaimExtractionSynapse) -> None:
+        if synapse.protocol_version != PROTOCOL_VERSION:
+            raise ValueError(f"Unsupported protocol_version: {synapse.protocol_version}")
+        if synapse.schema_version != SCHEMA_VERSION:
+            raise ValueError(f"Unsupported schema_version: {synapse.schema_version}")
+        if not synapse.artifact and not synapse.paper_url:
+            raise ValueError("Missing task input: provide artifact or paper_url.")
+
+    def _enforce_rate_limit(self, validator_hotkey: str) -> None:
+        limit = int(self.config.claims_max_requests_per_hotkey_minute)
+        if limit <= 0 or not validator_hotkey:
+            return
+        now = time.time()
+        recent = [item for item in self._request_times_by_hotkey.get(validator_hotkey, []) if now - item < 60.0]
+        if len(recent) >= limit:
+            raise RuntimeError(f"Rate limit exceeded for validator hotkey {validator_hotkey}")
+        recent.append(now)
+        self._request_times_by_hotkey[validator_hotkey] = recent
+
+    def _run_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> dict[str, Any]:
+        if task.artifact is not None:
+            artifact = ExtractionArtifact.model_validate(task.artifact)
+            paper_id = artifact.paper.paper_id
+            output_dir = Path(self.config.claims_output_dir) / task.task_id / paper_id
+            payload = self.runner.run_from_artifact(
+                artifact,
+                output_dir=output_dir,
+                manifest_extra={
+                    "input_source": "bittensor_artifact_synapse",
+                    "task_id": task.task_id,
+                    "validator_hotkey": validator_hotkey,
+                    "protocol_version": task.protocol_version,
+                    "schema_version": task.schema_version,
+                    "cache_key": cache_key,
+                },
+            )
+            self._write_cached_extraction(cache_key, payload)
+            return payload
+        paper_dir = safe_task_id(task.paper_id) if task.paper_id else cache_key[:12]
+        output_dir = Path(self.config.claims_output_dir) / task.task_id / paper_dir
+        payload = self.runner.run_from_pdf_url(
+            task.paper_url,
+            output_dir=output_dir,
+            expected_sha256=task.source_sha256,
+            extraction_method=str(self.config.claims_pdf_extraction_method),
+        )
+        self._write_cached_extraction(cache_key, payload)
+        return payload
+
+    def _cache_path(self, cache_key: str) -> Path:
+        return Path(self.config.claims_output_dir) / ".cache" / f"{cache_key}.json"
+
+    def _read_cached_extraction(self, cache_key: str) -> dict[str, Any] | None:
+        path = self._cache_path(cache_key)
+        if not path.exists():
+            return None
+        self.bt_logging.info(f"Returning cached Claims extraction for cache_key={cache_key[:12]}")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def _write_cached_extraction(self, cache_key: str, payload: dict[str, Any]) -> None:
+        path = self._cache_path(cache_key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def setup_axon(self) -> None:
         self.axon = self.Axon(wallet=self.wallet, config=self.config)

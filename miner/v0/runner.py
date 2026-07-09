@@ -16,6 +16,7 @@ from .section_gating import gate_section_local_claims, plan_section_extraction
 from .section_inventory import build_section_inventory
 from .section_summary import summarize_sections
 from .tei_parser import TEIParser, extract_text_spans_from_pdf
+from neurons.tasks import download_pdf
 
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,36 @@ class SectionContextV1Runner:
             manifest_extra={
                 "input_source": "pdf",
                 "input_pdf_path": str(pdf_path),
+                "pdf_extraction_method": extraction_method,
+            },
+            ingest_artifacts=ingest_artifacts,
+        )
+
+    def run_from_pdf_url(
+        self,
+        pdf_url: str,
+        *,
+        output_dir: Path | None = None,
+        expected_sha256: str = "",
+        extraction_method: str = "grobid",
+    ) -> dict[str, Any]:
+        logger.info("section_context_v1: downloading %s", pdf_url)
+        download = download_pdf(
+            pdf_url,
+            output_dir=self.config.cache_dir / "pdf_downloads",
+            expected_sha256=expected_sha256,
+        )
+        artifact, ingest_artifacts = self._artifact_from_pdf(download.path, extraction_method=extraction_method)
+        return self.run_from_artifact(
+            artifact,
+            output_dir=output_dir,
+            manifest_extra={
+                "input_source": "pdf_url",
+                "input_pdf_url": pdf_url,
+                "input_pdf_path": str(download.path),
+                "input_pdf_sha256": download.sha256,
+                "input_pdf_size_bytes": download.size_bytes,
+                "input_pdf_content_type": download.content_type,
                 "pdf_extraction_method": extraction_method,
             },
             ingest_artifacts=ingest_artifacts,

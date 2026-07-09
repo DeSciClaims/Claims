@@ -13,6 +13,8 @@ from .runner import SectionContextV1Runner
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the v0 claim-evidence miner pipeline on one paper.")
     parser.add_argument("--pdf", type=Path)
+    parser.add_argument("--pdf-url")
+    parser.add_argument("--pdf-sha256", default="")
     parser.add_argument("--tei-xml", type=Path)
     parser.add_argument("--artifact-json", type=Path)
     parser.add_argument(
@@ -23,8 +25,8 @@ def main() -> int:
     )
     parser.add_argument("--output-dir", type=Path)
     args = parser.parse_args()
-    if sum(bool(value) for value in (args.pdf, args.tei_xml, args.artifact_json)) != 1:
-        raise SystemExit("Provide exactly one of --pdf, --tei-xml, or --artifact-json.")
+    if sum(bool(value) for value in (args.pdf, args.pdf_url, args.tei_xml, args.artifact_json)) != 1:
+        raise SystemExit("Provide exactly one of --pdf, --pdf-url, --tei-xml, or --artifact-json.")
     base_dir = Path(__file__).resolve().parents[2]
     load_dotenv(base_dir / ".env")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
@@ -34,6 +36,13 @@ def main() -> int:
         runner.run_from_pdf(
             args.pdf,
             output_dir=args.output_dir,
+            extraction_method=args.pdf_extraction_method,
+        )
+    elif args.pdf_url:
+        runner.run_from_pdf_url(
+            args.pdf_url,
+            output_dir=args.output_dir,
+            expected_sha256=args.pdf_sha256,
             extraction_method=args.pdf_extraction_method,
         )
     elif args.tei_xml:
