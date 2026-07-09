@@ -1,0 +1,11 @@
+{
+  "paper_id": "Daviet_et_al_2022_Nature_Communications",
+  "paper_title": "Associations between alcohol consumption and gray and white matter volumes in the UK Biobank",
+  "output_dir": "/Users/ogbanugot/Workspace/claims/Claims/miner/section_context_v1/outputs/section_context_v1__run_profile_schema_v3/Daviet_et_al_2022_Nature_Communications",
+  "claim_count": 0,
+  "evidence_item_count": 4,
+  "link_count": 0,
+  "input_source": "pdf",
+  "input_pdf_path": "/Users/ogbanugot/Workspace/claims/ml-llm-benchmark/data/Daviet_et_al_2022_Nature_Communications.pdf",
+  "pdf_extraction_method": "grobid"
+}
