@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION
+
 try:
     from bittensor import Synapse
 except ImportError:  # pragma: no cover - used only when the SDK is not installed.
@@ -17,8 +19,12 @@ except ImportError:  # pragma: no cover - used only when the SDK is not installe
 class ClaimExtractionSynapse(Synapse):
     """Request and response envelope for v0 claim extraction."""
 
+    protocol_version: str = PROTOCOL_VERSION
+    schema_version: str = SCHEMA_VERSION
     task_id: str = ""
     paper_id: str = ""
+    paper_url: str = ""
+    source_sha256: str = ""
     artifact: dict[str, Any] | None = None
     extraction: dict[str, Any] | None = None
     miner_version: str = "v0"
