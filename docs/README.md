@@ -3,22 +3,24 @@
 ## Table of Contents
 
 - [Docs Overview](./README.md)
-- [RFC 0001: Miner Task](./0001-miner-task.md)
-- [RFC 0002: Validator Scoring](./0002-validator-scoring.md)
-- [RFC 0003: Schema](./0003-schema.md)
-- [RFC 0004: Incentive Mechanism](./0004-incentive-mechanism.md)
-- [RFC 0005: Ontology Linking](./0005-ontology-linking.md)
-- [RFC 0006: Schema Epistemic Ontology](./0006-schema-epistemic-ontology.md)
-- [RFC 0007: Roadmap To Subnet](./0007-roadmap-to-subnet.md)
-- [RFC 0008: Extraction Audit Flow](./0008-extraction-audit-flow.md)
-- [RFC 0009: Miner v0 and Validator v0](./0009-v0-miner-validator.md)
-- [RFC 0010: Bittensor Localnet Operation](./0010-bittensor-localnet.md)
+- [Miner Task](./0001-miner-task.md)
+- [Validator Scoring](./0002-validator-scoring.md)
+- [Schema](./0003-schema.md)
+- [Incentive Mechanism](./0004-incentive-mechanism.md)
+- [Ontology Linking](./0005-ontology-linking.md)
+- [Schema Epistemic Ontology](./0006-schema-epistemic-ontology.md)
+- [Implementation Roadmap](./0007-roadmap-to-subnet.md)
+- [Extraction Audit Flow](./0008-extraction-audit-flow.md)
+- [Miner v0 and Validator v0](./0009-v0-miner-validator.md)
+- [Bittensor Localnet Operation](./0010-bittensor-localnet.md)
 
 ## Purpose
 
-The Claims subnet is proposed as a market for extracting machine-readable scientific claims from source papers and linking those claims to evidence.
+The Claims subnet is a market for extracting machine-readable scientific claims
+from source papers and linking those claims to evidence.
 
-This repository captures the shape of that idea in a way that is easy to inspect:
+This repository implements that loop with inspectable schemas, examples, and
+runnable miner and validator packages:
 
 - a task envelope
 - a miner response bundle

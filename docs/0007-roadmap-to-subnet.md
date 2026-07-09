@@ -1,6 +1,6 @@
-# RFC 0007: Roadmap To Subnet
+# Implementation Roadmap
 
-## Phase 1: Documentation and Demo
+## Phase 1: Public Schema and Demo
 
 - Freeze a lightweight public schema
 - Share miner and validator examples
@@ -24,4 +24,8 @@
 - Finalize incentive design
 - Prepare launch-ready documentation
 
-This repo is aimed at Phase 1.
+## Current Focus
+
+The repository now includes runnable v0 miner, validator, and Bittensor neuron
+entry points. Current work is focused on hardening the localnet loop, improving
+validator scoring, and preparing the implementation for broader network testing.

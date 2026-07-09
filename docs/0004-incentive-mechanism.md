@@ -1,8 +1,8 @@
-# RFC 0004: Incentive Mechanism
+# Incentive Mechanism
 
-## Status
-
-Placeholder design note.
+This document records the current incentive-design direction. The runnable v0
+loop uses validator scores to set weights, while the full incentive policy will
+continue to evolve with benchmark and network results.
 
 ## Design Goal
 
@@ -26,4 +26,5 @@ Validators should be rewarded for:
 - How do we discourage shallow copying or consensus gaming?
 - How should downstream utility feed back into on-chain incentives?
 
-This repository does not attempt to answer those questions. It only makes the data product concrete.
+The current implementation makes the data product and scoring loop concrete so
+these policy questions can be tested against real miner outputs.

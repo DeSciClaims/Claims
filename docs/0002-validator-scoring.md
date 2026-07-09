@@ -1,4 +1,4 @@
-# RFC 0002: Validator Scoring
+# Validator Scoring
 
 ## Summary
 

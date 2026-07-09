@@ -1,4 +1,4 @@
-# RFC 0005: Ontology Linking
+# Ontology Linking
 
 ## Summary
 

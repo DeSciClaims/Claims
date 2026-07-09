@@ -1,21 +1,20 @@
 # Claims Subnet
 
-This repository is the public Claims subnet repo. It includes the docs
-material plus self-contained runnable packages for:
+This repository contains the Claims subnet implementation, including runnable
+miner, validator, and Bittensor neuron packages:
 
 - `miner`
 - `validator`
 - `neurons`
 
-Those folders are ongoing work areas. The current public implementation scope is
-pipeline-version packages. `miner/v0` and `validator/v0` are the first flat
-localnet-ready loop, while `miner/section_context_v1` and `validator/judge_v1`
-carry the richer benchmark-derived claim schema work.
+`miner/v0` and `validator/v0` provide the flat claim-evidence loop used by the
+Bittensor neuron entry points. `miner/section_context_v1` and
+`validator/judge_v1` carry the richer benchmark-derived claim schema work.
 
 ## Repository Layout
 
 ```text
-claims-subnet-rfc/
+Claims/
 ├── README.md
 ├── LICENSE
 ├── pyproject.toml
@@ -155,8 +154,9 @@ python -m validator.judge_v1 \
 See [CONTRIBUTING.md](./CONTRIBUTING.md)
 for the expected workflow and the current pipeline-scoped contribution model.
 
-## Status
+## Current Scope
 
-This repository is still documentation-first. The miner and validator folders
-now contain runnable benchmark-derived code, but they should still be read as
-ongoing pipeline-version work rather than a finished top-level framework.
+The repository includes runnable local miner and validator pipelines plus
+Bittensor-facing neuron entry points. The v0 subnet loop is intended for localnet
+and early network testing; production operation still requires hardened task
+distribution, deployment, monitoring, and incentive-policy work.

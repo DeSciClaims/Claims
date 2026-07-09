@@ -1,4 +1,4 @@
-# RFC 0001: Miner Task
+# Miner Task
 
 ## Summary
 

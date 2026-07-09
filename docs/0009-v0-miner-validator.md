@@ -1,4 +1,4 @@
-# RFC 0009: Miner v0 and Validator v0
+# Miner v0 and Validator v0
 
 ## Purpose
 

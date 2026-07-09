@@ -1,4 +1,4 @@
-# RFC 0003: Schema
+# Schema
 
 ## Core Objects
 

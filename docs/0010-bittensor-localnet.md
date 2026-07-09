@@ -1,4 +1,4 @@
-# RFC 0010: Bittensor Localnet Operation
+# Bittensor Localnet Operation
 
 This guide runs the Claims v0 miner and validator on a Bittensor subnet. The
 same neuron scripts accept localnet, testnet, and mainnet subtensor endpoints;
