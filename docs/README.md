@@ -10,6 +10,9 @@
 - [RFC 0005: Ontology Linking](./0005-ontology-linking.md)
 - [RFC 0006: Schema Epistemic Ontology](./0006-schema-epistemic-ontology.md)
 - [RFC 0007: Roadmap To Subnet](./0007-roadmap-to-subnet.md)
+- [RFC 0008: Extraction Audit Flow](./0008-extraction-audit-flow.md)
+- [RFC 0009: Miner v0 and Validator v0](./0009-v0-miner-validator.md)
+- [RFC 0010: Bittensor Localnet Operation](./0010-bittensor-localnet.md)
 
 ## Purpose
 
@@ -42,6 +45,7 @@ This repo uses the canonical object names defined across the public schemas in `
 - `ClaimEvidenceLink`
 - `SemanticField`
 - `OntologyAnnotation`
+- `miner.v0` uses a flat claim-evidence payload for the first localnet loop.
 
 ## Repo Philosophy
 

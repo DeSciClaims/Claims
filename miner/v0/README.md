@@ -26,7 +26,7 @@ From the `Claims/` directory:
 pip install -r requirements.txt
 ```
 
-Set up env vars from `.env.example`. The miner needs `OPENROUTER_API_KEY`. For PDF ingestion with TEI extraction it also expects a GROBID endpoint configured by `SUBNET_CLAIMS_GROBID_URL` or `GROBID_URL`.
+Set up env vars from `.env.example`. The miner needs `OPENROUTER_API_KEY`. For PDF ingestion with TEI extraction it also expects a GROBID endpoint configured by `GROBID_URL`.
 
 ## Run
 

@@ -9,6 +9,7 @@ description = "Public Claims subnet repo with self-contained miner, ontology enr
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "bittensor",
     "dspy-ai",
     "lxml",
     "openpyxl",
@@ -19,4 +20,4 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["miner*", "validator*"]
+include = ["miner*", "validator*", "neurons*"]
