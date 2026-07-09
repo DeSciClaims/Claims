@@ -147,7 +147,6 @@ class SectionContextV1Runner:
                     "section": section.model_dump(mode="json"),
                     "decision": decision.model_dump(mode="json"),
                     "section_summary": summary_by_id[section.section_id].model_dump(mode="json"),
-                    "raw_output": raw_output,
                     "gated_claim_count": len(gated_claims),
                 }
             )
@@ -158,8 +157,8 @@ class SectionContextV1Runner:
             "section_summaries": [item.model_dump(mode="json") for item in section_summaries],
             "paper_summary": paper_summary.model_dump(mode="json"),
             "section_extraction_plan": [item.model_dump(mode="json") for item in decisions],
-            "claims": [item.model_dump(mode="json") for item in claims],
-            "evidence_items": [item.model_dump(mode="json") for item in evidence_items],
+            "claims": [_v0_claim_payload(item) for item in claims],
+            "evidence_items": [_v0_evidence_item_payload(item) for item in evidence_items],
             "claim_evidence_links": [item.model_dump(mode="json") for item in links],
             "raw_section_outputs": raw_section_outputs,
         }
@@ -264,3 +263,29 @@ def _assert_output_dir_compatible(output_dir: Path, paper: Paper) -> None:
                 f"Output directory `{output_dir}` already contains {filename} with DOI `{existing_doi}`, "
                 f"but this run is for `{incoming_doi}`. Use a new run/output directory or clean the stale output."
             )
+
+
+def _v0_claim_payload(claim: Claim) -> dict[str, Any]:
+    return {
+        "claim_id": claim.claim_id,
+        "paper_id": claim.paper_id,
+        "claim_text": claim.claim_text,
+        "claim_kind": claim.claim_kind,
+        "epistemic_status": claim.epistemic_status,
+        "support_origin": claim.support_origin,
+        "source_span_ids": list(claim.source_span_ids),
+        "extractor_confidence": claim.extractor_confidence,
+    }
+
+
+def _v0_evidence_item_payload(item: EvidenceItem) -> dict[str, Any]:
+    return {
+        "evidence_id": item.evidence_id,
+        "paper_id": item.paper_id,
+        "role": item.role,
+        "summary_text": item.summary_text,
+        "evidence_method": item.evidence_method.value,
+        "outcome_type": item.outcome_type.value if item.outcome_type else "",
+        "presentation_type": item.presentation_type.value if item.presentation_type else "",
+        "source_span_ids": list(item.source_span_ids),
+    }

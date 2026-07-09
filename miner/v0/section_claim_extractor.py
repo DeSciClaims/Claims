@@ -6,17 +6,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .id_factory import stable_id
-from .profiles import (
-    EVIDENCE_METHOD_PROFILES,
-    OUTCOME_TYPE_PROFILES,
-    PRESENTATION_TYPE_PROFILES,
-    evidence_method_prompt_json,
-)
 from .schema_models import (
     Claim,
     ClaimEvidenceLink,
     EvidenceItem,
-    OntologyAnnotation,
     SemanticField,
 )
 
@@ -49,29 +42,7 @@ def create_section_claim_extractor_program(dspy_module, *, instructions: str):
 
 
 def load_section_claim_extraction_instructions() -> str:
-    template = PROMPT_PATH.read_text(encoding="utf-8").strip()
-    evidence_context_keys = sorted(
-        {
-            key
-            for profile in EVIDENCE_METHOD_PROFILES.values()
-            for key in profile.get("allowed_context_keys", [])
-        }
-    )
-    evidence_detail_keys = sorted(
-        {
-            key
-            for profile in EVIDENCE_METHOD_PROFILES.values()
-            for key in profile.get("allowed_details_keys", [])
-        }
-    )
-    return (
-        template.replace("__EVIDENCE_METHOD_SPECS__", evidence_method_prompt_json())
-        .replace("__EVIDENCE_METHOD_VALUES__", ", ".join(EVIDENCE_METHOD_PROFILES.keys()))
-        .replace("__OUTCOME_TYPE_VALUES__", ", ".join(OUTCOME_TYPE_PROFILES.keys()))
-        .replace("__PRESENTATION_TYPE_VALUES__", ", ".join(PRESENTATION_TYPE_PROFILES.keys()))
-        .replace("__EVIDENCE_CONTEXT_KEYS__", ", ".join(evidence_context_keys))
-        .replace("__EVIDENCE_DETAIL_KEYS__", ", ".join(evidence_detail_keys))
-    )
+    return PROMPT_PATH.read_text(encoding="utf-8").strip()
 
 
 def extract_section_claims(
@@ -136,7 +107,6 @@ def _materialize_claims(section: SectionRecord, raw_claims: list[Any]) -> list[C
         claim_text = str(raw.get("claim_text", "")).strip()
         if not claim_text:
             continue
-        claim_profile = str(raw.get("claim_profile") or "claim_text_v0").strip() or "claim_text_v0"
         claim = Claim(
             claim_id=stable_id("claim", section.paper_id, section.section_id, str(index), claim_text),
             paper_id=section.paper_id,
@@ -145,7 +115,7 @@ def _materialize_claims(section: SectionRecord, raw_claims: list[Any]) -> list[C
             predicate=_semantic_field(raw.get("predicate"), default_entity_type="v0_compat"),
             object=_semantic_field(raw.get("object"), default_entity_type="v0_compat"),
             claim_kind=str(raw.get("claim_kind", "paper_claim")).strip() or "paper_claim",
-            claim_profile=claim_profile,
+            claim_profile=None,
             epistemic_status=str(raw.get("epistemic_status", "asserted_by_paper")).strip() or "asserted_by_paper",
             support_origin=str(raw.get("support_origin", "own_work")).strip() or "own_work",
             source_span_ids=list(section.span_ids),
@@ -241,42 +211,11 @@ def _semantic_field(
     value: Any,
     *,
     default_entity_type: str,
-    field_path: str | None = None,
-    claim_profile: str | None = None,
 ) -> SemanticField:
-    from .reviewer_export_utils import normalize_semantic_field
-
-    normalized = normalize_semantic_field(
-        value,
-        default_entity_type=default_entity_type,
-        field_path=field_path,
-        claim_profile=claim_profile,
-    )
-    return SemanticField(
-        value=normalized["value"],
-        entity_type=normalized["entity_type"],
-        ontology=_ontology_annotation(normalized.get("ontology")),
-    )
-
-
-def _ontology_annotation(value: Any) -> OntologyAnnotation | dict[str, Any] | None:
-    if value in (None, "", {}):
-        return None
-    if isinstance(value, OntologyAnnotation):
-        return value
     if isinstance(value, dict):
-        return value
-    if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            return None
-        return {
-            "annotation_type": "classification",
-            "raw_text": text,
-            "normalized_text": text,
-            "mapping_status": "unresolved",
-            "candidate_mappings": [],
-            "selected_mapping": None,
-            "mapping_method": "section_context_v1_string_fallback",
-        }
-    return None
+        raw = value.get("value", "")
+        entity_type = value.get("entity_type") or default_entity_type
+    else:
+        raw = value or ""
+        entity_type = default_entity_type
+    return SemanticField(value=str(raw or "").strip(), entity_type=str(entity_type or default_entity_type), ontology=None)

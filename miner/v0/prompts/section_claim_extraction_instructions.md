@@ -1,77 +1,61 @@
-You are extracting structured scientific claims from the ORIGINAL RAW TEXT of one section of a paper.
+You are extracting scientific claim-evidence pairs from the ORIGINAL RAW TEXT of one section of a paper.
 
 You are also given:
 - a whole-paper summary
 - a section summary
 - optional validation feedback from a previous extraction attempt
 
-These summaries are only for context.
-
-Critical rules:
-- Do NOT extract claims from the summaries.
-- Do NOT treat the summaries as evidence.
-- Every emitted claim and evidence item must be grounded in the raw section text.
-- If a scientifically interesting claim would require evidence or qualifiers from another section, skip it in this v1 pipeline.
-- Prefer fewer stronger claims over many partial claims.
-- Return STRICT JSON ONLY. Do not include markdown fences, explanations, or commentary.
-- If `validation_feedback_json` is non-empty, treat it as feedback about a previous failed extraction attempt for this same raw section. Re-read the raw section text and return a complete corrected JSON object.
+The summaries are context only. Do not extract claims from summaries, and do not treat summaries as evidence.
 
 Return STRICT JSON ONLY with keys:
 - `claims`
 - `evidence_items`
 - `claim_evidence_links`
 
+Critical rules:
+- Extract claims this paper is making, especially the paper's own findings, methods/results interpretations, and central conclusions.
+- Do not extract claims that are only background, prior-work claims, motivation, literature review, or generic context unless the paper is directly adopting them as part of its own contribution.
+- Every claim and evidence item must be grounded in the raw section text.
+- If a claim needs evidence or qualifiers from another section, skip it.
+- Prefer fewer stronger claim-evidence pairs over many partial pairs.
+- Do not include markdown fences, explanations, or commentary.
+
 For each claim:
-- require non-empty `claim_text`
-- optional `claim_profile` may be `claim_text_v0`
-- do not extract ontology mappings
-- do not extract rich claim `context` or `details`; these fields are ignored in v0
-- `subject`, `predicate`, and `object` are optional compatibility fields. Prefer leaving them empty unless the raw text explicitly gives a concise surface phrase.
-- Do not force profile-specific SPO structure. This v0 miner is claim-text first.
-- Keep sample size, counts, proportions, p-values, confidence intervals, effect sizes, modality, scope, and qualifiers inside `claim_text` when they are meaning-critical.
-- If a qualifier is meaning-critical, keep it in `claim_text`; do not split it into structured context/details.
-- Do not make the claim more categorical than the source sentence.
-- If the raw text is a genetic-association sentence, a polygenic-score sentence, or a statistical-result sentence, preserve the full result in `claim_text` rather than decomposing it into profile-specific fields.
+- Include `claim_text`.
+- Make `claim_text` atomic and self-contained.
+- If one sentence contains multiple separable findings, emit one claim per finding.
+- Keep meaning-critical sample size, count, P value, confidence interval, effect size, odds ratio, modality, scope, comparator, and qualifier language inside `claim_text`.
+- Do not make the claim more categorical than the source text.
+- Return only the claim fields described here.
 
 For each evidence item:
-- require a concrete `summary_text`
-- do not extract rich evidence `context`, `details`, or `ontology`; these fields are ignored in v0
-- keep provenance local to this section
-- include:
-  - `role`
-  - `summary_text`
-  - `evidence_method`
-  - `outcome_type`
-  - `presentation_type`
-- `context`, `details`, and `ontology` may be omitted or empty
-- `evidence_method` is the HOW and must use one of:
-  - `__EVIDENCE_METHOD_VALUES__`
-- `outcome_type` is the WHAT and should use one of:
-  - `__OUTCOME_TYPE_VALUES__`
-- `presentation_type` is the paper presentation format and should use one of:
-  - `__PRESENTATION_TYPE_VALUES__`
-- Allowed evidence `context` keys are drawn from:
-  - `__EVIDENCE_CONTEXT_KEYS__`
-- Allowed evidence `details` keys are drawn from:
-  - `__EVIDENCE_DETAIL_KEYS__`
-- Prefer `evidence_method=textual_evidence` and `presentation_type=text` unless the raw section clearly says otherwise.
-
-Evidence method specs:
-```json
-__EVIDENCE_METHOD_SPECS__
-```
+- Include `summary_text`.
+- Make `summary_text` the specific evidence text that supports one or more claims.
+- Keep evidence local to this section.
+- Include `role`, `evidence_method`, `outcome_type`, and `presentation_type` when clear.
+- Prefer `evidence_method=textual_evidence` and `presentation_type=text` unless the raw section clearly indicates another presentation format.
+- Return only the evidence fields described here.
 
 For links:
-- only link a claim to evidence that directly supports it
-- use `claim_index` and `evidence_index`
-- include `relation`
-- include `confidence`
+- Link every claim to at least one evidence item.
+- Only link a claim to evidence that directly supports it.
+- Use `claim_index` and `evidence_index`.
+- Include `relation`.
+- Include `confidence` when possible.
 
-Important v0 distinction:
-- Preserve meaning in `claim_text` and `summary_text`.
-- Do not split meaning into ontology, context, details, or SPO fields unless the copied code path requires an empty compatibility field.
+Atomic claim examples:
+- Source meaning: "rs11584700 has an odds ratio of 0.912 for college completion."
+  - claim_text: `rs11584700 has an odds ratio of 0.912 for college completion.`
+- Source meaning: "rs9320913 explains 0.022% of variance in educational years."
+  - claim_text: `rs9320913 explains 0.022% of variance in educational years.`
+- Source meaning: "The linear polygenic score accounts for approximately 2% of variance in educational attainment."
+  - claim_text: `The linear polygenic score accounts for approximately 2% of variance in educational attainment.`
+- Source meaning: "The same polygenic scores explain individual differences in cognitive function with R2 ~= 2.5%."
+  - claim_text: `The same polygenic scores explain individual differences in cognitive function with R2 ~= 2.5%.`
+- Source meaning: "The upper bound for explanatory power of a linear polygenic score is 22.4% (SE = 4.2%)."
+  - claim_text: `The upper bound for explanatory power of a linear polygenic score is 22.4% (SE = 4.2%).`
 
 Use the summaries only to understand the paper-level context and section role.
 Do not copy wording from the summaries unless the same content is explicitly grounded in the raw section text.
 
-If no fully localizable claims exist in this section, return empty arrays.
+If no fully localizable claim-evidence pairs exist in this section, return empty arrays.

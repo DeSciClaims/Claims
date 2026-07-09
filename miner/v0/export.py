@@ -127,7 +127,7 @@ def write_extraction_rows(
     for claim in claims:
         linked_ids = linked_evidence_ids_for_claim(claim.claim_id, claim_links)
         group_evidence_items = [
-            evidence_by_id[link.evidence_id].model_dump(mode="json")
+            _v0_evidence_item_payload(evidence_by_id[link.evidence_id])
             for link in links
             if link.claim_id == claim.claim_id and link.evidence_id in evidence_by_id
         ]
@@ -138,15 +138,15 @@ def write_extraction_rows(
             "section_name": str((section or {}).get("section_name", "")).strip(),
             "section_type": str((section or {}).get("section_type", "")).strip(),
             "claim_id": claim.claim_id,
-            "claim_profile": claim.claim_profile or "",
+            "claim_profile": "",
             "claim_text": claim.claim_text,
-            "subject": claim.subject.value,
-            "predicate": claim.predicate.value,
-            "object": claim.object.value,
-            "context_summary": summarize_context(claim.context),
-            "context_json": serialize_export_value(claim.context),
-            "details_summary": summarize_details(claim.details),
-            "details_json": serialize_export_value(claim.details),
+            "subject": "",
+            "predicate": "",
+            "object": "",
+            "context_summary": "",
+            "context_json": serialize_export_value({}),
+            "details_summary": "",
+            "details_json": serialize_export_value({}),
             "linked_evidence_ids": linked_ids,
             "evidence_count": len(group_evidence_items),
             "evidence_summary": summarize_evidence_items(group_evidence_items),
@@ -165,6 +165,19 @@ def _section_for_claim(claim: Claim, section_by_span_id: dict[str, dict[str, Any
         if span_key and span_key in section_by_span_id:
             return section_by_span_id[span_key]
     return None
+
+
+def _v0_evidence_item_payload(item: EvidenceItem) -> dict[str, Any]:
+    return {
+        "evidence_id": item.evidence_id,
+        "paper_id": item.paper_id,
+        "role": item.role,
+        "summary_text": item.summary_text,
+        "evidence_method": item.evidence_method.value,
+        "outcome_type": item.outcome_type.value if item.outcome_type else "",
+        "presentation_type": item.presentation_type.value if item.presentation_type else "",
+        "source_span_ids": list(item.source_span_ids),
+    }
 
 
 def write_evaluation_rows(
