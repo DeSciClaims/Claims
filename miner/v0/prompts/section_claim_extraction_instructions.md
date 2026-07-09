@@ -37,6 +37,7 @@ Internal atomization discipline:
 - Before emitting a claim, mentally identify a single subject, relation, and object or target, even though v0 does not output SPO fields.
 - Emit one proposition per claim. A claim should not bundle multiple relations, multiple mechanisms, or multiple independent outcomes.
 - If a sentence reports multiple separable findings, split them into multiple claims.
+- Do not skip a multi-entity result merely because it mentions several entities. If each entity/result has its own checkable payload, split the sentence into one claim per entity/result and link each claim to the shared or entity-specific evidence.
 - If a sentence reports the same relation under multiple samples, thresholds, timepoints, models, or conditions, split when the numeric payload or condition differs materially.
 - If the relation depends on a mechanism or interpretation, keep the mechanism in the claim only when it is the proposition being asserted; otherwise keep the measured result as evidence.
 - Do not emit broad setup claims such as "trait X is heritable" or "X is associated with social outcomes" from introductory/background material unless the local section presents them as this paper's own result or central conclusion.
@@ -80,23 +81,27 @@ Atomic claim examples:
   - evidence summary_text: `X was associated with Y.`
 - Source meaning: "We hypothesize that inflammation mediates the association."
   - claim_text: `Inflammation may mediate the association.`
-- Source meaning: "The linear polygenic score from all measured SNPs accounts for approximately 2% of variance in EduYears in STR and approximately 3% in QIMR."
-  - claim_text: `The linear polygenic score from all measured SNPs accounts for approximately 2% of variance in EduYears in the STR sample.`
-  - evidence summary_text: `In the STR sample, the linear polygenic score from all measured SNPs accounts for approximately 2% of variance in EduYears.`
-  - claim_text: `The linear polygenic score from all measured SNPs accounts for approximately 3% of variance in EduYears in the QIMR sample.`
-  - evidence summary_text: `In the QIMR sample, the linear polygenic score from all measured SNPs accounts for approximately 3% of variance in EduYears.`
-- Source meaning: "Educational attainment is strongly associated with social outcomes, and there is a well-documented health-education gradient."
+- Source meaning: "Variant A and variant B are associated with trait Y, with P values p1 and p2, respectively."
+  - Do not emit one bundled claim and do not skip the finding. Split it into one claim per variant.
+  - claim_text: `Variant A is associated with trait Y with P value p1.`
+  - evidence summary_text: `Variant A is associated with trait Y with P value p1.`
+  - claim_text: `Variant B is associated with trait Y with P value p2.`
+  - evidence summary_text: `Variant B is associated with trait Y with P value p2.`
+- Source meaning: "Score S explains approximately 2% of variance in outcome Y in sample A and approximately 3% in sample B."
+  - claim_text: `Score S explains approximately 2% of variance in outcome Y in sample A.`
+  - evidence summary_text: `In sample A, Score S explains approximately 2% of variance in outcome Y.`
+  - claim_text: `Score S explains approximately 3% of variance in outcome Y in sample B.`
+  - evidence summary_text: `In sample B, Score S explains approximately 3% of variance in outcome Y.`
+- Source meaning: "Trait A is strongly associated with social outcomes, and there is a well-documented association between trait A and health."
   - Do not emit as a v0 claim-evidence pair unless this paper reports local evidence for that association in this section.
-- Source meaning: "rs11584700 has an odds ratio of 0.912 for college completion."
-  - claim_text: `rs11584700 has an odds ratio of 0.912 for college completion.`
-- Source meaning: "rs9320913 explains 0.022% of variance in educational years."
-  - claim_text: `rs9320913 explains 0.022% of variance in educational years.`
-- Source meaning: "The linear polygenic score accounts for approximately 2% of variance in educational attainment."
-  - claim_text: `The linear polygenic score accounts for approximately 2% of variance in educational attainment.`
-- Source meaning: "The same polygenic scores explain individual differences in cognitive function with R2 ~= 2.5%."
-  - claim_text: `The same polygenic scores explain individual differences in cognitive function with R2 ~= 2.5%.`
-- Source meaning: "The upper bound for explanatory power of a linear polygenic score is 22.4% (SE = 4.2%)."
-  - claim_text: `The upper bound for explanatory power of a linear polygenic score is 22.4% (SE = 4.2%).`
+- Source meaning: "Variant A has an odds ratio of r for outcome Y."
+  - claim_text: `Variant A has an odds ratio of r for outcome Y.`
+- Source meaning: "Variant A explains q% of variance in outcome Y."
+  - claim_text: `Variant A explains q% of variance in outcome Y.`
+- Source meaning: "Score S explains individual differences in outcome Y with R2 = r."
+  - claim_text: `Score S explains individual differences in outcome Y with R2 = r.`
+- Source meaning: "The upper bound for explanatory power of score S is q% (SE = s%)."
+  - claim_text: `The upper bound for explanatory power of score S is q% (SE = s%).`
 
 Use the summaries only to understand the paper-level context and section role.
 Do not copy wording from the summaries unless the same content is explicitly grounded in the raw section text.
