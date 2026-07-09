@@ -13,6 +13,7 @@ from validator.judge_v1.config import JudgeV1Config
 from validator.v0.runner import JudgeV2Runner
 
 from .protocol import ClaimExtractionSynapse
+from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsTask, load_task_manifest, safe_task_id
 
 
 def _require_bittensor() -> tuple[Any, Any, Any, Any, Any]:
@@ -38,7 +39,9 @@ class ClaimsValidator:
             self.dendrite = None
             self.metagraph = None
             self.uid = -1
-            self.moving_avg_scores = []
+            self.target_neurons = []
+            self.moving_avg_scores = {}
+            self.tasks = self._load_tasks()
             self.runner = self._build_runner()
             return
         self.wallet = self.Wallet(config=self.config)
@@ -46,6 +49,8 @@ class ClaimsValidator:
         self.dendrite = self.Dendrite(wallet=self.wallet)
         self.metagraph = self.subtensor.metagraph(netuid=self.config.netuid, lite=False)
         self.uid = self._registered_uid()
+        self._preflight_validator()
+        self.tasks = self._load_tasks()
         self.target_neurons = self._load_target_neurons()
         self.moving_avg_scores = {int(neuron.uid): 0.0 for neuron in self.target_neurons}
         self.runner = self._build_runner()
@@ -57,8 +62,25 @@ class ClaimsValidator:
             "--claims.task-artifact",
             dest="claims_task_artifact",
             type=Path,
-            required=True,
-            help="Path to an extraction artifact JSON file sent to miners.",
+            help="Path to an extraction artifact JSON file sent to miners for smoke tests.",
+        )
+        parser.add_argument(
+            "--claims.paper-url",
+            dest="claims_paper_url",
+            default="",
+            help="Downloadable PDF URL to send as a Claims task.",
+        )
+        parser.add_argument(
+            "--claims.paper-sha256",
+            dest="claims_paper_sha256",
+            default="",
+            help="Expected SHA-256 hash of the PDF at --claims.paper-url.",
+        )
+        parser.add_argument(
+            "--claims.task-manifest",
+            dest="claims_task_manifest",
+            type=Path,
+            help="JSONL manifest of URL or artifact tasks.",
         )
         parser.add_argument(
             "--claims.task-id",
@@ -109,6 +131,25 @@ class ClaimsValidator:
             help="Stop after this many validation rounds. Zero runs indefinitely.",
         )
         parser.add_argument(
+            "--claims.audit-only",
+            dest="claims_audit_only",
+            action="store_true",
+            help="Score miners and write audits without submitting weights.",
+        )
+        parser.add_argument(
+            "--claims.require-validator-permit",
+            dest="claims_require_validator_permit",
+            action="store_true",
+            help="Exit at startup unless the validator hotkey currently has permit.",
+        )
+        parser.add_argument(
+            "--claims.weight-period",
+            dest="claims_weight_period",
+            type=int,
+            default=16,
+            help="Minimum block period passed to subtensor.set_weights.",
+        )
+        parser.add_argument(
             "--claims.dry-run",
             dest="claims_dry_run",
             action="store_true",
@@ -124,6 +165,9 @@ class ClaimsValidator:
         config = self.Config(parser)
         _apply_bittensor_args(config, parsed_args)
         config.claims_task_artifact = parsed_args.claims_task_artifact
+        config.claims_paper_url = parsed_args.claims_paper_url
+        config.claims_paper_sha256 = parsed_args.claims_paper_sha256
+        config.claims_task_manifest = parsed_args.claims_task_manifest
         config.claims_task_id = parsed_args.claims_task_id
         config.claims_audit_method = parsed_args.claims_audit_method
         config.claims_output_dir = parsed_args.claims_output_dir
@@ -131,7 +175,11 @@ class ClaimsValidator:
         config.claims_timeout = parsed_args.claims_timeout
         config.claims_alpha = parsed_args.claims_alpha
         config.claims_max_steps = parsed_args.claims_max_steps
+        config.claims_audit_only = parsed_args.claims_audit_only
+        config.claims_require_validator_permit = parsed_args.claims_require_validator_permit
+        config.claims_weight_period = parsed_args.claims_weight_period
         config.claims_dry_run = parsed_args.claims_dry_run
+        _validate_task_args(config)
         config.claims_subtensor_network_arg = _subtensor_network_arg(parsed_args)
         config.full_path = os.path.expanduser(
             "{}/{}/{}/netuid{}/validator".format(
@@ -162,23 +210,40 @@ class ClaimsValidator:
         return int(uid)
 
     def _load_target_neurons(self) -> list[Any]:
+        self._sync_metagraph()
+        candidates = list(getattr(self.metagraph, "neurons", []) or [])
+        if not candidates:
+            candidates = self._load_neurons_by_uid()
+        neurons = [neuron for neuron in candidates if self._is_eligible_miner(neuron)]
+        self.bt_logging.info(f"Discovered target miner UIDs: {[int(neuron.uid) for neuron in neurons]}")
+        return neurons
+
+    def _sync_metagraph(self) -> None:
+        try:
+            self.metagraph.sync(lite=False, subtensor=self.subtensor)
+        except Exception:
+            self.bt_logging.warning("Metagraph sync failed; using cached metagraph state.")
+
+    def _load_neurons_by_uid(self) -> list[Any]:
         neurons = []
-        for uid in range(256):
+        uid_count = len(getattr(self.metagraph, "hotkeys", []) or [])
+        for uid in range(uid_count):
             try:
                 neuron = self.subtensor.neuron_for_uid(uid=uid, netuid=self.config.netuid)
             except Exception:
                 continue
-            if getattr(neuron, "is_null", True):
-                continue
-            axon = getattr(neuron, "axon_info", None)
-            axon_port = int(getattr(axon, "port", 0) or 0)
-            if axon_port <= 0:
-                continue
-            if str(getattr(neuron, "hotkey", "")) == self.wallet.hotkey.ss58_address:
-                continue
-            neurons.append(neuron)
-        self.bt_logging.info(f"Discovered target miner UIDs: {[int(neuron.uid) for neuron in neurons]}")
+            if not getattr(neuron, "is_null", True):
+                neurons.append(neuron)
         return neurons
+
+    def _is_eligible_miner(self, neuron: Any) -> bool:
+        if getattr(neuron, "is_null", True):
+            return False
+        if str(getattr(neuron, "hotkey", "")) == self.wallet.hotkey.ss58_address:
+            return False
+        axon = getattr(neuron, "axon_info", None)
+        axon_port = int(getattr(axon, "port", 0) or 0)
+        return axon_port > 0
 
     def _build_runner(self) -> JudgeV2Runner:
         base_dir = Path(__file__).resolve().parents[1]
@@ -186,18 +251,17 @@ class ClaimsValidator:
         return JudgeV2Runner(JudgeV1Config.from_env(base_dir))
 
     def run(self) -> None:
-        artifact = self._load_task_artifact()
         if self.config.claims_dry_run:
-            paper_id = str((artifact.get("paper") or {}).get("paper_id") or "")
-            self.bt_logging.info(f"Dry run completed; loaded task artifact for paper_id={paper_id}.")
+            self.bt_logging.info(f"Dry run completed; loaded {len(self.tasks)} task(s).")
             return
         step = 0
         while True:
             try:
+                task = self.tasks[step % len(self.tasks)]
                 self.target_neurons = self._load_target_neurons()
                 self._resize_scores()
-                responses = self._query_miners(artifact)
-                scores = self._score_responses(responses)
+                responses = self._query_miners(task)
+                scores = self._score_responses(responses, task=task)
                 self._update_scores(scores)
                 self._set_weights()
                 step += 1
@@ -212,39 +276,59 @@ class ClaimsValidator:
                 self.bt_logging.error(traceback.format_exc())
                 time.sleep(float(self.config.claims_query_interval))
 
-    def _load_task_artifact(self) -> dict[str, Any]:
-        path = Path(self.config.claims_task_artifact)
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict) or not isinstance(payload.get("paper"), dict):
-            raise SystemExit(f"Task artifact is not a valid extraction artifact: {path}")
-        return payload
+    def _load_tasks(self) -> list[ClaimsTask]:
+        if self.config.claims_task_manifest:
+            return load_task_manifest(Path(self.config.claims_task_manifest))
+        if self.config.claims_task_artifact:
+            path = Path(self.config.claims_task_artifact)
+            artifact = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(artifact, dict) or not isinstance(artifact.get("paper"), dict):
+                raise SystemExit(f"Task artifact is not a valid extraction artifact: {path}")
+            paper_id = str((artifact.get("paper") or {}).get("paper_id") or "")
+            return [
+                ClaimsTask.from_dict(
+                    {
+                        "task_id": self.config.claims_task_id,
+                        "paper_id": paper_id,
+                        "artifact": artifact,
+                    }
+                )
+            ]
+        return [
+            ClaimsTask.from_dict(
+                {
+                    "task_id": self.config.claims_task_id,
+                    "paper_url": self.config.claims_paper_url,
+                    "source_sha256": self.config.claims_paper_sha256,
+                }
+            )
+        ]
 
-    def _query_miners(self, artifact: dict[str, Any]) -> list[Any]:
-        paper_id = str((artifact.get("paper") or {}).get("paper_id") or "")
-        synapse = ClaimExtractionSynapse(
-            task_id=self.config.claims_task_id,
-            paper_id=paper_id,
-            artifact=artifact,
-        )
+    def _query_miners(self, task: ClaimsTask) -> list[Any]:
+        synapse = ClaimExtractionSynapse(**task.to_synapse_kwargs())
         axons = [neuron.axon_info for neuron in self.target_neurons]
-        self.bt_logging.info(f"Querying {len(axons)} miner axons for paper_id={paper_id}")
+        label = task.paper_id or task.paper_url or task.task_id
+        self.bt_logging.info(f"Querying {len(axons)} miner axons for task={label}")
         return self.dendrite.query(
             axons=axons,
             synapse=synapse,
             timeout=float(self.config.claims_timeout),
         )
 
-    def _score_responses(self, responses: list[Any]) -> dict[int, float]:
+    def _score_responses(self, responses: list[Any], *, task: ClaimsTask) -> dict[int, float]:
         scores = {int(neuron.uid): 0.0 for neuron in self.target_neurons}
         for index, response in enumerate(responses):
             if index >= len(self.target_neurons):
                 continue
             uid = int(self.target_neurons[index].uid)
             score = 0.0
-            if response is not None and getattr(response, "extraction", None):
+            if response is not None and not self._is_protocol_compatible(response):
+                self.bt_logging.warning(f"Miner uid={uid} returned incompatible Claims protocol response.")
+            elif response is not None and getattr(response, "extraction", None):
                 score = self._score_extraction(
                     response.extraction,
                     uid=uid,
+                    task=task,
                 )
             elif response is not None and getattr(response, "error", ""):
                 self.bt_logging.warning(f"Miner response error: {response.error}")
@@ -252,8 +336,8 @@ class ClaimsValidator:
         self.bt_logging.info(f"Current scores: {sorted(scores.items())}")
         return scores
 
-    def _score_extraction(self, extraction: dict[str, Any], *, uid: int) -> float:
-        output_dir = Path(self.config.claims_output_dir) / str(self.config.claims_task_id) / f"uid_{uid}"
+    def _score_extraction(self, extraction: dict[str, Any], *, uid: int, task: ClaimsTask) -> float:
+        output_dir = Path(self.config.claims_output_dir) / task.task_id / f"uid_{uid}"
         output_dir.mkdir(parents=True, exist_ok=True)
         extraction_path = output_dir / "section_context_v1_output.json"
         extraction_path.write_text(json.dumps(extraction, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -281,15 +365,18 @@ class ClaimsValidator:
         self.bt_logging.info(f"Moving average scores: {sorted(self.moving_avg_scores.items())}")
 
     def _set_weights(self) -> None:
+        if self.config.claims_audit_only:
+            self.bt_logging.info("Audit-only mode enabled; skipping set_weights.")
+            return
         if not self.moving_avg_scores:
             self.bt_logging.warning("No target miner scores available; skipping set_weights.")
             return
         total = sum(max(score, 0.0) for score in self.moving_avg_scores.values())
+        if total <= 0:
+            self.bt_logging.warning("All target miner scores are zero; skipping set_weights.")
+            return
         uids = sorted(self.moving_avg_scores)
-        if total > 0:
-            weights = [max(self.moving_avg_scores[uid], 0.0) / total for uid in uids]
-        else:
-            weights = [0.0] * len(uids)
+        weights = [max(self.moving_avg_scores[uid], 0.0) / total for uid in uids]
         self.bt_logging.info(f"Setting weights: {list(zip(uids, weights))}")
         try:
             response = self.subtensor.set_weights(
@@ -297,7 +384,7 @@ class ClaimsValidator:
                 netuid=self.config.netuid,
                 uids=uids,
                 weights=weights,
-                period=16,
+                period=int(self.config.claims_weight_period),
                 raise_error=True,
                 wait_for_inclusion=True,
             )
@@ -310,6 +397,27 @@ class ClaimsValidator:
                 )
         except Exception as exc:
             self.bt_logging.error(f"Failed to set weights: {type(exc).__name__}: {exc}")
+
+    def _preflight_validator(self) -> None:
+        try:
+            neuron = self.subtensor.neuron_for_uid(uid=self.uid, netuid=self.config.netuid)
+        except Exception as exc:
+            self.bt_logging.warning(f"Validator preflight could not load neuron info: {exc}")
+            return
+        stake = getattr(neuron, "stake", 0)
+        permit = bool(getattr(neuron, "validator_permit", False))
+        self.bt_logging.info(f"Validator preflight: uid={self.uid} stake={stake} validator_permit={permit}")
+        if self.config.claims_require_validator_permit and not permit:
+            raise SystemExit(
+                "Validator hotkey does not currently have validator permit. "
+                "Use --claims.audit-only for scoring without weight submission."
+            )
+
+    def _is_protocol_compatible(self, response: Any) -> bool:
+        return (
+            getattr(response, "protocol_version", "") == PROTOCOL_VERSION
+            and getattr(response, "schema_version", "") == SCHEMA_VERSION
+        )
 
 
 def _coerce_score(value: Any) -> float:
@@ -334,6 +442,18 @@ def _apply_bittensor_args(config: Any, parsed_args: argparse.Namespace) -> None:
     config.logging.record_log = getattr(parsed_args, "logging.record_log")
     config.logging.logging_dir = getattr(parsed_args, "logging.logging_dir")
     config.logging.enable_third_party_loggers = getattr(parsed_args, "logging.enable_third_party_loggers")
+
+
+def _validate_task_args(config: Any) -> None:
+    provided = [
+        bool(config.claims_task_artifact),
+        bool(config.claims_paper_url),
+        bool(config.claims_task_manifest),
+    ]
+    if sum(provided) != 1:
+        raise SystemExit("Provide exactly one of --claims.task-artifact, --claims.paper-url, or --claims.task-manifest.")
+    if config.claims_task_artifact and not config.claims_task_id:
+        config.claims_task_id = safe_task_id(str(Path(config.claims_task_artifact).stem))
 
 
 def _subtensor_network_arg(parsed_args: argparse.Namespace) -> str | None:
