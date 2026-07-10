@@ -46,3 +46,4 @@ pip-wheel-metadata/
 data
 
 .cache
+outputs
