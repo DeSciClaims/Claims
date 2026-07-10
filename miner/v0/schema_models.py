@@ -94,9 +94,14 @@ class Claim(BaseModel):
     object: SemanticField = Field(default_factory=lambda: SemanticField(value="", entity_type="v0_compat"))
     claim_kind: str = "paper_claim"
     claim_profile: Optional[str] = None
+    claim_subtype: Optional[str] = None
+    modality: Optional[str] = None
+    polarity: Optional[str] = None
+    attribution: Optional[str] = None
     epistemic_status: str = "asserted_by_paper"
     support_origin: str = "own_work"
     source_span_ids: List[str] = Field(default_factory=list)
+    source_candidate_ids: List[str] = Field(default_factory=list)
     context: Dict[str, SemanticField] = Field(default_factory=dict)
     details: Dict[str, Any] = Field(default_factory=dict)
     extractor_confidence: Optional[float] = None
@@ -114,15 +119,19 @@ class EvidenceItem(BaseModel):
     paper_id: str
     role: str
     summary_text: str
+    evidence_type: Optional[str] = None
+    rhetorical_role: Optional[str] = None
     evidence_method: SemanticField = Field(
         default_factory=lambda: SemanticField(value="textual_evidence", entity_type="evidence_method")
     )
     outcome_type: Optional[SemanticField] = None
     presentation_type: Optional[SemanticField] = None
     source_span_ids: List[str] = Field(default_factory=list)
+    source_candidate_ids: List[str] = Field(default_factory=list)
     context: Dict[str, SemanticField] = Field(default_factory=dict)
     details: Dict[str, Any] = Field(default_factory=dict)
     ontology: Optional[OntologyAnnotation] = None
+    extractor_confidence: Optional[float] = None
 
     @model_validator(mode="before")
     @classmethod

@@ -178,7 +178,16 @@ class SectionContextV1Runner:
                     "section": section.model_dump(mode="json"),
                     "decision": decision.model_dump(mode="json"),
                     "section_summary": summary_by_id[section.section_id].model_dump(mode="json"),
+                    "candidate_span_count": len(raw_output.get("candidate_spans", [])),
+                    "classified_span_count": len(raw_output.get("classified_spans", [])),
+                    "decomposed_unit_count": len(raw_output.get("decomposed_units", [])),
+                    "atomicity_repair_action_count": len(raw_output.get("atomicity_repair_actions", [])),
                     "gated_claim_count": len(gated_claims),
+                    "candidate_spans": raw_output.get("candidate_spans", []),
+                    "classified_spans": raw_output.get("classified_spans", []),
+                    "decomposed_units": raw_output.get("decomposed_units", []),
+                    "atomicity_repair_actions": raw_output.get("atomicity_repair_actions", []),
+                    "pre_atomicity_repair": raw_output.get("pre_atomicity_repair", {}),
                 }
             )
 
@@ -302,9 +311,14 @@ def _v0_claim_payload(claim: Claim) -> dict[str, Any]:
         "paper_id": claim.paper_id,
         "claim_text": claim.claim_text,
         "claim_kind": claim.claim_kind,
+        "claim_subtype": claim.claim_subtype,
+        "modality": claim.modality,
+        "polarity": claim.polarity,
+        "attribution": claim.attribution,
         "epistemic_status": claim.epistemic_status,
         "support_origin": claim.support_origin,
         "source_span_ids": list(claim.source_span_ids),
+        "source_candidate_ids": list(claim.source_candidate_ids),
         "extractor_confidence": claim.extractor_confidence,
     }
 
@@ -315,8 +329,12 @@ def _v0_evidence_item_payload(item: EvidenceItem) -> dict[str, Any]:
         "paper_id": item.paper_id,
         "role": item.role,
         "summary_text": item.summary_text,
+        "evidence_type": item.evidence_type,
+        "rhetorical_role": item.rhetorical_role,
         "evidence_method": item.evidence_method.value,
         "outcome_type": item.outcome_type.value if item.outcome_type else "",
         "presentation_type": item.presentation_type.value if item.presentation_type else "",
         "source_span_ids": list(item.source_span_ids),
+        "source_candidate_ids": list(item.source_candidate_ids),
+        "extractor_confidence": item.extractor_confidence,
     }
