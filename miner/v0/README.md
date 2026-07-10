@@ -16,6 +16,7 @@ SPO fields, ontology mappings, rich context, and details are compatibility field
 - `dspy_runtime.py`: DSPy/OpenRouter setup for section planning and extraction
 - `grobid_client.py` and `tei_parser.py`: ingest helpers
 - `prompts/`: prompt files used by the pipeline
+- `CLAIM_EXTRACTION_SYSTEM.md`: staged extraction architecture and runtime contract
 - `CLAIM_EXTRACTION_FIELDS.md`: v0 output field reference
 
 ## Install
