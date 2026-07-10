@@ -18,6 +18,90 @@ Return STRICT JSON ONLY with this shape:
 
 Scores must be numbers from 0.0 to 1.0.
 
+## Validator v0 Pipeline
+
+The validator audits miner v0 output at two levels:
+
+1. Claim-level audit: each extracted claim-evidence packet is checked for claim fidelity and evidence support.
+2. Run-level audit: claim-level scores and coverage diagnostics are aggregated into a holistic run score.
+
+```mermaid
+flowchart TD
+  A[Miner v0 output<br/>section_context_v1_output.json] --> B[Build intrinsic source rows]
+  B --> C{Audit method}
+  C -->|deterministic| D[Deterministic structure and provenance checks]
+  C -->|llm| E[LLM claim-level audit<br/>this prompt]
+  E --> F[LLM missing-claims discovery<br/>JUDGE_V2_MISSING_CLAIMS_SYSTEM.md]
+  D --> G[claim_audit_records.csv]
+  E --> G
+  F --> H[candidate_missing_claims.csv]
+  G --> I[weak_or_unsupported_claims.csv]
+  G --> J[Aggregate run-level scores]
+  H --> J
+  I --> J
+  J --> K[run_audit_record.csv]
+```
+
+In `gold_comparison` mode, the validator also loads reviewed/gold quote groups and compares extracted claims against gold targets:
+
+```mermaid
+flowchart LR
+  A[Miner v0 extracted claims] --> C[Gold comparison rows]
+  B[Reviewed/gold quote groups] --> C
+  C --> D[Claim-level audit]
+  D --> E[claim_audit_records.csv]
+  C --> F[missing_gold_claims.csv]
+  C --> G[extra_extracted_claims.csv]
+  E --> H[run_audit_record.csv]
+  F --> H
+  G --> H
+```
+
+## Claim-Level Scoring Flow
+
+For each claim row, judge only the provided extraction packet and optional gold target. Do not infer facts outside the supplied source/gold context.
+
+```mermaid
+flowchart TD
+  A[Extracted claim_text] --> B{Is it a claim made by this paper?}
+  B -->|No: background or prior work| C[Lower accurate_extraction_score]
+  B -->|Yes| D{Is it faithful and atomic?}
+  D -->|No: overbroad, bundled, overstated, or missing qualifiers| C
+  D -->|Yes| E[High accurate_extraction_score]
+
+  F[Linked evidence items] --> G{Evidence exists in or is grounded by source span?}
+  G -->|No| H[Lower evidence_evaluation_score]
+  G -->|Yes| I{Evidence is distinct from claim and supports it?}
+  I -->|No: repeats claim or weakly supports| H
+  I -->|Yes| J[High evidence_evaluation_score]
+
+  C --> K[overall_score = mean accuracy/evidence]
+  E --> K
+  H --> K
+  J --> K
+```
+
+## Run-Level Aggregation
+
+Complete coverage is not scored on individual claim rows. It is computed at run level from missing-claim diagnostics and combined with aggregate claim-level quality.
+
+```mermaid
+flowchart TD
+  A[Claim audit rows] --> B[Mean accurate_extraction_score]
+  A --> C[Mean evidence_evaluation_score]
+  D[Candidate missing claims] --> E[complete_coverage_score]
+  B --> F[Run overall_score]
+  C --> F
+  E --> F
+  A --> G[Counts: accepted, needs_correction, rejected]
+  D --> H[n_candidate_missing_claims]
+  I[Weak or unsupported diagnostics] --> J[n_weak_or_unsupported_claims]
+  F --> K[run_audit_record.csv]
+  G --> K
+  H --> K
+  J --> K
+```
+
 Claim-level audit dimensions:
 - accurate_extraction_score: whether the extracted claim_text is faithful to the cited source span or gold target, is atomic, is a claim made by this paper rather than background/prior-work attribution, preserves important qualifiers/modality/scope/numeric payloads in the claim text, and does not overstate or invent content.
 - evidence_evaluation_score: whether every claim has linked evidence items, the evidence text exists in or is directly grounded by the cited span/section, is distinct from the claim, and actually supports the claim.
