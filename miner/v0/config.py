@@ -29,6 +29,7 @@ class SectionContextV1Config(BaseModel):
     max_section_summary_chars: int = 2500
     fallback_section_max_chars: int = 4000
     fallback_section_max_spans: int = 4
+    abstract_evidence_candidate_limit_per_claim: int = 25
     dspy_temperature: float = 1.0
     dspy_max_tokens: int = 32768
     artifact_search_roots: list[Path] = Field(default_factory=list)
@@ -57,6 +58,9 @@ class SectionContextV1Config(BaseModel):
             run_label=run_label,
             fallback_section_max_chars=int(os.getenv("SUBNET_CLAIMS_FALLBACK_SECTION_MAX_CHARS", "4000")),
             fallback_section_max_spans=int(os.getenv("SUBNET_CLAIMS_FALLBACK_SECTION_MAX_SPANS", "4")),
+            abstract_evidence_candidate_limit_per_claim=int(
+                os.getenv("SUBNET_CLAIMS_ABSTRACT_EVIDENCE_CANDIDATE_LIMIT_PER_CLAIM", "25")
+            ),
             artifact_search_roots=[package_dir / "outputs"],
         )
 

@@ -24,6 +24,12 @@ def main() -> int:
         help="How to parse a PDF input before mining.",
     )
     parser.add_argument("--output-dir", type=Path)
+    parser.add_argument(
+        "--mode",
+        choices=("section-local", "abstract-full-paper"),
+        default="section-local",
+        help="Extraction mode. section-local preserves the existing v0 behavior; abstract-full-paper extracts claims from the abstract and links full-paper evidence.",
+    )
     args = parser.parse_args()
     if sum(bool(value) for value in (args.pdf, args.pdf_url, args.tei_xml, args.artifact_json)) != 1:
         raise SystemExit("Provide exactly one of --pdf, --pdf-url, --tei-xml, or --artifact-json.")
@@ -37,6 +43,7 @@ def main() -> int:
             args.pdf,
             output_dir=args.output_dir,
             extraction_method=args.pdf_extraction_method,
+            mode=args.mode,
         )
     elif args.pdf_url:
         runner.run_from_pdf_url(
@@ -44,11 +51,12 @@ def main() -> int:
             output_dir=args.output_dir,
             expected_sha256=args.pdf_sha256,
             extraction_method=args.pdf_extraction_method,
+            mode=args.mode,
         )
     elif args.tei_xml:
-        runner.run_from_tei_xml(args.tei_xml, output_dir=args.output_dir)
+        runner.run_from_tei_xml(args.tei_xml, output_dir=args.output_dir, mode=args.mode)
     else:
-        runner.run_from_artifact_json(args.artifact_json, output_dir=args.output_dir)
+        runner.run_from_artifact_json(args.artifact_json, output_dir=args.output_dir, mode=args.mode)
     return 0
 
 

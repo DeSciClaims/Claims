@@ -12,7 +12,12 @@ It covers:
 
 ## Purpose
 
-`miner.v0` is a section-local claim-evidence extraction pipeline for the Claims subnet.
+`miner.v0` is a claim-evidence extraction pipeline for the Claims subnet.
+
+It supports two extraction modes:
+
+- `section-local`: the original/default flow, where claims and evidence must come from the same selected section.
+- `abstract-full-paper`: a claim-first flow, where all claims are extracted from the abstract and evidence is linked from non-abstract full-paper sections.
 
 Its core design choices are:
 
@@ -23,6 +28,13 @@ Its core design choices are:
 - only then produce final claim-evidence pairs
 - run a narrow atomicity repair pass over final claim-evidence pairs
 - keep the final review output simple: claim text, evidence item text, links, and provenance
+
+In `abstract-full-paper` mode, the claim/evidence boundary is different:
+
+- the abstract is the only source for claim extraction
+- full-paper sections are searched for evidence candidates
+- each abstract claim is retained even when evidence linking fails
+- evidence items must still be grounded in raw full-paper section text
 
 This separates two decisions that are often conflated:
 
@@ -37,12 +49,19 @@ Input paper
   -> build section inventory
   -> summarize each section
   -> summarize the paper from section summaries
-  -> plan which sections are worth extracting
-  -> Stage 1: extract raw candidate spans from each eligible section
-  -> Stage 2: classify candidates, split compound spans into decomposed units, normalize claims/evidence, and link them
-  -> Stage 3: repair compound final claims into atomic claim-evidence pairs
+  -> choose extraction mode
+  -> section-local:
+       -> plan which sections are worth extracting
+       -> Stage 1: extract raw candidate spans from each eligible section
+       -> Stage 2: classify candidates, split compound spans into decomposed units, normalize claims/evidence, and link them
+       -> Stage 3: repair compound final claims into atomic claim-evidence pairs
+  -> abstract-full-paper:
+       -> extract all abstract claims
+       -> extract evidence candidates from non-abstract sections
+       -> retrieve candidate evidence per abstract claim
+       -> link abstract claims to full-paper evidence items
   -> materialize claims / evidence items / claim-evidence links
-  -> gate out incomplete or unlinked local claim-evidence objects
+  -> gate out incomplete or unlinked local claim-evidence objects in section-local mode
   -> write JSON + CSV outputs
 ```
 
@@ -60,7 +79,8 @@ flowchart TD
     G --> H[Build section inventory]
     H --> I[Summarize sections]
     I --> J[Summarize paper]
-    J --> K[Plan extractable sections]
+    J --> V{Extraction mode}
+    V -->|section-local| K[Plan extractable sections]
     K --> L[Stage 1: candidate span extraction]
     L --> M[Stage 2: classify candidates]
     M --> N[Decompose compound spans into atomic units]
@@ -68,6 +88,13 @@ flowchart TD
     O --> P[Stage 3: atomicity repair]
     P --> Q[Materialize claims, evidence items, links]
     Q --> U[Gate incomplete or unlinked records]
+    V -->|abstract-full-paper| AA[Extract abstract claims]
+    AA --> AB[Extract full-paper evidence candidates]
+    AB --> AC[Retrieve candidate evidence per claim]
+    AC --> AD[Link claims to evidence]
+    AD --> R
+    AD --> S
+    AD --> T
     U --> R[Write section_context_v1_output.json]
     U --> S[Write extracted_claims.csv]
     U --> T[Write manifest.json]
@@ -91,9 +118,11 @@ The extraction pipeline is composed of these stages:
    Decides which sections are worth extracting.
 5. `section_claim_extractor.py`
    Runs candidate-span extraction, claim/evidence classification and linking, then atomicity repair.
-6. `section_gating.py`
+6. `abstract_claim_extractor.py`
+   In `abstract-full-paper` mode, extracts abstract claims, collects full-paper evidence candidates, retrieves candidates per claim, and links evidence to abstract claims.
+7. `section_gating.py`
    Applies structural gating so unlinked claims/evidence are not exported.
-7. `export.py`
+8. `export.py`
    Writes final review-compatible artifacts.
 
 ## Staged Extraction Architecture
@@ -200,6 +229,33 @@ It returns strict JSON:
 This stage has a narrow job: detect compound final claims and return a complete repaired claim/evidence/link set for the section. If no repair is needed, it returns the original objects unchanged with a repair action explaining that no compound claims were found.
 
 The stage is intentionally after normal extraction because compound claims are easiest to identify once final `claim_text`, evidence items, and links already exist.
+
+## Abstract/Full-Paper Mode
+
+The alternate mode is implemented in:
+
+- `miner/v0/abstract_claim_extractor.py`
+- `miner/v0/prompts/abstract_claim_extraction_instructions.md`
+- `miner/v0/prompts/abstract_evidence_linking_instructions.md`
+
+This mode runs after section inventory and paper summarization, but bypasses section planning and section-local claim extraction.
+
+The stages are:
+
+1. Locate an abstract section. GROBID TEI abstracts are parsed into spans with `section_type=ABSTRACT`; artifact inputs may provide those spans directly.
+2. Extract all paper-owned claims made in the abstract. The abstract is the only claim source.
+3. Run the existing candidate-span extractor across non-abstract sections to collect evidence-bearing full-paper candidates.
+4. Use lexical retrieval to select a bounded set of candidates per abstract claim. The cap is controlled by `SUBNET_CLAIMS_ABSTRACT_EVIDENCE_CANDIDATE_LIMIT_PER_CLAIM` and defaults to `25`.
+5. Link abstract claims to evidence items grounded in the selected candidates.
+6. Export all abstract claims, including claims with no evidence links.
+
+The important provenance distinction is:
+
+- `claims[*].source_span_ids` point to the abstract.
+- `evidence_items[*].source_span_ids` point to the full-paper evidence source.
+- `claim_evidence_links` connect the abstract claim IDs to full-paper evidence IDs.
+
+This mode is useful when the review target is "everything the abstract claimed" rather than "every section-local claim/evidence pair the paper makes."
 
 ```mermaid
 flowchart TD
@@ -323,6 +379,22 @@ For Stage 3, the LLM also receives the current claims, evidence items, links, an
 
 Summaries are orientation only. Claims and evidence must be grounded in raw section text.
 
+In `abstract-full-paper` mode, the abstract-claim LLM receives:
+
+- `paper_title`
+- `paper_summary_json`
+- `abstract_text`
+
+The evidence-linking LLM receives:
+
+- `paper_title`
+- `paper_summary_json`
+- `abstract_claims_json`
+- `evidence_candidates_json`
+- `validation_feedback_json`
+
+In this mode, claims must be grounded in the abstract text, while evidence must be grounded in the provided full-paper evidence candidates.
+
 ## Raw Output Contract
 
 ### `candidate_spans[*]`
@@ -432,8 +504,11 @@ The main JSON output contains:
 - `evidence_items`
 - `claim_evidence_links`
 - `raw_section_outputs`
+- `pipeline_mode`, `abstract_claim_extraction`, and `abstract_evidence_linking` in `abstract-full-paper` mode
 
 `raw_section_outputs` contains candidate spans, classified spans, decomposed units, atomicity repair actions, and pre-repair objects for debugging. It is useful for diagnosing whether a missed final claim was dropped during candidate extraction, span classification, decomposition, atomicity repair, linking, or structural gating.
+
+In `abstract-full-paper` mode, `raw_section_outputs` is empty because section-local extraction is bypassed. Debugging records are stored under `abstract_claim_extraction` and `abstract_evidence_linking`.
 
 ## Reviewer-Facing Output
 

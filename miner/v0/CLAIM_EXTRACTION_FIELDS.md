@@ -1,14 +1,20 @@
 # Miner v0 Claim Extraction Fields
 
-`miner.v0` uses a staged section-context extraction flow, but writes a simpler review schema. It first extracts raw candidate spans, then classifies those spans as claim, evidence, background/assumption, method/result, mixed, or abstain. Compound candidates are split into decomposed units before final claim/evidence normalization. A final atomicity repair stage checks linked claims and splits any remaining compound claims. The final review output contains paper-owned claim text, evidence item text, links, and source provenance. Profiles, SPO triples, rich context, details, and ontology mappings are not surfaced as v0 review data.
+`miner.v0` uses a staged section-context extraction flow, but writes a simpler review schema. In the default `section-local` mode it first extracts raw candidate spans, then classifies those spans as claim, evidence, background/assumption, method/result, mixed, or abstain. Compound candidates are split into decomposed units before final claim/evidence normalization. A final atomicity repair stage checks linked claims and splits any remaining compound claims.
+
+The alternate `abstract-full-paper` mode extracts all claims made in the abstract, keeps those abstract claims as the claim universe, then links each claim to relevant evidence candidates from non-abstract full-paper sections. Abstract claims are retained even when no supporting evidence candidate is found, so missing support remains auditable.
+
+The final review output contains paper-owned claim text, evidence item text, links, and source provenance. Profiles, SPO triples, rich context, details, and ontology mappings are not surfaced as v0 review data.
 
 ## Input Fields
 
 | Field | Description |
 | --- | --- |
 | `--artifact-json` | Path to an `artifact.json` containing paper metadata, sections, spans, and parsed text. |
+| `--mode` | `section-local` by default, or `abstract-full-paper` to extract claims from the abstract and link full-paper evidence. |
 | `SUBNET_CLAIMS_RUN_LABEL` | Optional run label used to name the output folder. |
 | `--output-dir` | Optional output directory override, if supported by the runner. |
+| `SUBNET_CLAIMS_ABSTRACT_EVIDENCE_CANDIDATE_LIMIT_PER_CLAIM` | Optional retrieval cap for evidence candidates passed to the abstract/full-paper linker. Defaults to `25`. |
 
 ## Output Files
 
@@ -31,7 +37,7 @@
 | `section_name` | Human-readable section name. |
 | `section_type` | Normalized section type, such as abstract, results, discussion. |
 | `claim_id` | Stable claim identifier. |
-| `claim_profile` | Compatibility column kept for import tooling. Blank in v0 review output. |
+| `claim_profile` | Compatibility column kept for import tooling. In `abstract-full-paper` mode this is `abstract_claim`. |
 | `claim_text` | Natural-language claim statement. |
 | `subject` | Compatibility column kept for import tooling. Blank in v0 review output. |
 | `predicate` | Compatibility column kept for import tooling. Blank in v0 review output. |
@@ -61,6 +67,9 @@
 | `raw_section_outputs` | Per-section debug records containing extraction decisions, candidate spans, classified spans, decomposed units, atomicity repair actions, and gated claim counts. |
 | `paper_summary` | Paper-level extraction summary, if generated. |
 | `section_summaries` | Section-level summaries, if generated. |
+| `pipeline_mode` | Extraction contract mode, for example `section-local` or `abstract-full-paper`. Validators use this to scope coverage. |
+| `abstract_claim_extraction` | Abstract section and raw abstract claim extraction output in `abstract-full-paper` mode. |
+| `abstract_evidence_linking` | Evidence candidates, selected candidates, and raw linker output in `abstract-full-paper` mode. |
 
 ## Internal Candidate Span Fields
 

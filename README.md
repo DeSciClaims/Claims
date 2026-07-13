@@ -72,6 +72,12 @@ Run the flat v0 miner on a PDF:
 python -m miner.v0 --pdf /path/to/paper.pdf
 ```
 
+Run v0 in abstract/full-paper mode, where claims come from the abstract and evidence is linked from the full text:
+
+```bash
+python -m miner.v0 --pdf /path/to/paper.pdf --mode abstract-full-paper
+```
+
 Run the flat v0 miner on a downloadable PDF URL:
 
 ```bash

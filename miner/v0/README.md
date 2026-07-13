@@ -8,6 +8,8 @@
 
 SPO fields, ontology mappings, rich context, and details are compatibility fields only. They should usually be empty.
 
+The default mode is still section-local extraction. A second mode, `abstract-full-paper`, extracts all claims made in the abstract first, then links those abstract claims to relevant evidence items from non-abstract full-paper sections.
+
 ## What Lives Here
 
 - `runner.py`: end-to-end mining flow
@@ -61,6 +63,14 @@ Mine from a prebuilt artifact JSON:
 python -m miner.v0 --artifact-json /path/to/artifact.json
 ```
 
+Extract claims from the abstract and link evidence from the full paper:
+
+```bash
+python -m miner.v0 --pdf /path/to/paper.pdf --mode abstract-full-paper
+```
+
+For TEI or artifact inputs, the paper must expose an abstract. GROBID TEI abstracts are parsed into a synthetic `Abstract` section with `section_type=ABSTRACT`; artifact inputs can provide spans with `section_type=ABSTRACT` directly.
+
 Override the output directory:
 
 ```bash
@@ -77,3 +87,9 @@ Each run writes a paper folder containing:
 - `manifest.json`
 
 When GROBID is used, the run also saves `tei.xml`.
+
+In `abstract-full-paper` mode, `section_context_v1_output.json` also includes:
+
+- `pipeline_mode: "abstract-full-paper"`
+- `abstract_claim_extraction`: abstract section and raw abstract-claim model output
+- `abstract_evidence_linking`: full-paper evidence candidates, selected candidates, and raw linker output

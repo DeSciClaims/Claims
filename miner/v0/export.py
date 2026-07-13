@@ -138,7 +138,7 @@ def write_extraction_rows(
             "section_name": str((section or {}).get("section_name", "")).strip(),
             "section_type": str((section or {}).get("section_type", "")).strip(),
             "claim_id": claim.claim_id,
-            "claim_profile": "",
+            "claim_profile": claim.claim_profile or "",
             "claim_text": claim.claim_text,
             "subject": "",
             "predicate": "",

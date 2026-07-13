@@ -18,6 +18,7 @@ TEI_NAMESPACE = {"tei": "http://www.tei-c.org/ns/1.0"}
 
 
 SECTION_PATTERNS = {
+    "ABSTRACT": re.compile(r"^abstract", re.IGNORECASE),
     "INTRO": re.compile(r"^(intro|background|overview)", re.IGNORECASE),
     "METHODS": re.compile(r"^(materials and methods|methods|patients and methods|methodology)", re.IGNORECASE),
     "RESULTS": re.compile(r"^(results|findings|results and discussion)", re.IGNORECASE),
@@ -74,6 +75,11 @@ class TEIParser:
 
     def extract_spans(self, tei_string: str, paper_id: str) -> List[Span]:
         root = etree.fromstring(tei_string.encode("utf-8"))
+        abstract_paragraphs = (
+            root.xpath("//tei:profileDesc/tei:abstract//tei:p", namespaces=TEI_NAMESPACE)
+            if hasattr(root, "xpath")
+            else root.findall(".//{http://www.tei-c.org/ns/1.0}profileDesc//{http://www.tei-c.org/ns/1.0}abstract//{http://www.tei-c.org/ns/1.0}p")
+        )
         sections = (
             root.xpath("//tei:body//tei:div", namespaces=TEI_NAMESPACE)
             if hasattr(root, "xpath")
@@ -82,6 +88,26 @@ class TEIParser:
         spans: List[Span] = []
         order = 1
         char_cursor = 0
+        for paragraph in abstract_paragraphs:
+            text = " ".join(paragraph.itertext()).strip()
+            if not text:
+                continue
+            start = char_cursor
+            end = start + len(text)
+            spans.append(
+                Span(
+                    span_id=f"{paper_id}-span-{order:04d}",
+                    paper_id=paper_id,
+                    section_type="ABSTRACT",
+                    section_name="Abstract",
+                    char_start=start,
+                    char_end=end,
+                    text=text,
+                    span_type="text",
+                )
+            )
+            order += 1
+            char_cursor = end + 1
         for section in sections:
             if hasattr(section, "xpath"):
                 heads = section.xpath("./tei:head/text()", namespaces=TEI_NAMESPACE)

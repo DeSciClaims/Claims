@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
 
 
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "section_summary_instructions.md"
+logger = logging.getLogger(__name__)
 
 
 def create_section_summary_program(dspy_module, *, instructions: str):
@@ -61,7 +63,16 @@ def summarize_sections(
 ) -> list[SectionSummaryRecord]:
     predictor = runtime.section_summary_program
     results: list[SectionSummaryRecord] = []
-    for section in sections:
+    logger.info("section_context_v1: summarizing %s sections", len(sections))
+    for index, section in enumerate(sections, start=1):
+        logger.info(
+            "section_context_v1: summarizing section %s/%s `%s` (%s, %s chars)",
+            index,
+            len(sections),
+            section.section_name or section.section_id,
+            section.section_type,
+            section.char_count,
+        )
         prediction = predictor(
             paper_title=paper_title,
             section_name=section.section_name,
@@ -69,4 +80,5 @@ def summarize_sections(
             section_text=section.text,
         )
         results.append(parse_section_summary(getattr(prediction, "json_output", ""), section))
+    logger.info("section_context_v1: finished section summaries")
     return results
