@@ -282,8 +282,8 @@ def build_audit_record(
     missing_elements: list[str] = []
     suggested_corrections: dict[str, Any] = {}
 
-    accuracy_score, accuracy_comment = _score_claim_extraction(row, missing_elements, issue_tags, suggested_corrections)
-    evidence_score, evidence_comment = _score_evidence(row, issue_tags, missing_elements)
+    accuracy_score, accuracy_comment = _score_source_existence(row, missing_elements, issue_tags, suggested_corrections)
+    evidence_score, evidence_comment = _score_link_validity(row, issue_tags, missing_elements)
     gold_match_status = str(row.get("gold_match_status") or "").strip()
     coverage_score: float | None = None
     coverage_comment = ""
@@ -366,19 +366,35 @@ def build_audit_record(
     }
 
 
-def _score_claim_extraction(
+def _score_source_existence(
     row: dict[str, Any],
     missing_elements: list[str],
     issue_tags: list[str],
     suggested_corrections: dict[str, Any],
 ) -> tuple[float, str]:
     metadata = row.get("extractor_metadata_json") if isinstance(row.get("extractor_metadata_json"), dict) else {}
+    evidence_items = row.get("group_evidence_items_json")
+    if not isinstance(evidence_items, list):
+        evidence_items = []
+    evidence_text_count = sum(
+        1
+        for item in evidence_items
+        if isinstance(item, dict) and str(item.get("summary_text", "") or item.get("evidence_text", "")).strip()
+    )
+    evidence_source_count = sum(
+        1
+        for item in evidence_items
+        if isinstance(item, dict) and bool(item.get("source_span_ids"))
+    )
     checks = {
         "claim_text": bool(str(row.get("selected_claim_text", "")).strip()),
         "source_span_ids": bool(metadata.get("source_span_ids")),
         "source_quote_or_section": bool(str(row.get("source_quote", "")).strip())
         or bool(row.get("section_summary_json"))
         or bool(row.get("paper_summary_json")),
+        "evidence_items": bool(evidence_items),
+        "evidence_text": bool(evidence_items) and evidence_text_count == len(evidence_items),
+        "evidence_source_span_ids": bool(evidence_items) and evidence_source_count == len(evidence_items),
     }
 
     for key, present in checks.items():
@@ -387,18 +403,18 @@ def _score_claim_extraction(
 
     missing_count = sum(1 for present in checks.values() if not present)
     if missing_count:
-        issue_tags.append("claim_evidence_packet_missing")
-    score = max(0.0, round(1.0 - min(missing_count, 3) * 0.2, 3))
+        issue_tags.append("source_existence_packet_missing")
+    score = max(0.0, round(1.0 - min(missing_count, 6) * 0.16, 3))
     comments = []
     if missing_count:
         comments.append(_coverage_comment(checks))
     if not comments:
-        comments.append("Claim text and source provenance are present for v0 audit.")
+        comments.append("Claim text and linked evidence text have source provenance for v0 audit.")
     comment = " ".join(comments)
     return score, comment
 
 
-def _score_evidence(
+def _score_link_validity(
     row: dict[str, Any],
     issue_tags: list[str],
     missing_elements: list[str],
@@ -414,15 +430,15 @@ def _score_evidence(
     score = 1.0
     comments: list[str] = []
     if not linked_ids:
-        score -= 0.45
+        score -= 0.5
         issue_tags.append("missing_evidence_links")
         missing_elements.append("linked_evidence_ids")
         comments.append("No linked evidence IDs.")
     if not evidence_items:
-        score -= 0.35
+        score -= 0.5
         issue_tags.append("missing_evidence_items")
         missing_elements.append("evidence_items")
-        comments.append("No linked evidence item payload.")
+        comments.append("No linked evidence item payload; claim-evidence link validity cannot be scored without evidence.")
     else:
         empty_text_count = sum(
             1
@@ -453,9 +469,24 @@ def _score_evidence(
         issue_tags.append("missing_claim_evidence_links")
         missing_elements.append("claim_evidence_links")
         comments.append("No claim-evidence link payload.")
+    if linked_ids and evidence_items:
+        available_ids = {
+            str(item.get("evidence_id", "") or item.get("id", "")).strip()
+            for item in evidence_items
+            if isinstance(item, dict)
+        }
+        missing_payload_ids = [item for item in linked_ids if item not in available_ids]
+        if missing_payload_ids:
+            score -= min(0.25, len(missing_payload_ids) * 0.1)
+            issue_tags.append("linked_evidence_payload_missing")
+            comments.append("One or more linked evidence IDs are absent from the evidence item payload.")
+        if _has_weak_textual_link(row, evidence_items):
+            score -= 0.15
+            issue_tags.append("weak_claim_evidence_link")
+            comments.append("Linked evidence has weak lexical overlap with the claim; deterministic audit flags this for semantic review.")
 
     score = round(max(0.0, score), 3)
-    return score, " ".join(comments) if comments else "Linked evidence is present."
+    return score, " ".join(comments) if comments else "Claim-evidence link payload is present and structurally valid."
 
 
 def _score_gold_alignment(row: dict[str, Any]) -> tuple[float, str, list[str], dict[str, Any]]:
@@ -564,6 +595,69 @@ def _text_similarity(left: Any, right: Any) -> float | None:
     right_tokens = set(right_norm.split())
     overlap = len(left_tokens & right_tokens) / max(len(right_tokens), 1)
     return round((ratio * 0.65) + (overlap * 0.35), 3)
+
+
+def _has_weak_textual_link(row: dict[str, Any], evidence_items: list[Any]) -> bool:
+    claim_terms = _content_terms(str(row.get("selected_claim_text", "")))
+    if len(claim_terms) < 3:
+        return False
+    evidence_terms: set[str] = set()
+    claim_numbers = set(re.findall(r"\b\d+(?:\.\d+)?\b", str(row.get("selected_claim_text", ""))))
+    evidence_numbers: set[str] = set()
+    for item in evidence_items:
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get("summary_text", "") or item.get("evidence_text", ""))
+        evidence_terms.update(_content_terms(text))
+        evidence_numbers.update(re.findall(r"\b\d+(?:\.\d+)?\b", text))
+    if claim_numbers and claim_numbers & evidence_numbers:
+        return False
+    if not evidence_terms:
+        return True
+    return (len(claim_terms & evidence_terms) / max(len(claim_terms), 1)) < 0.12
+
+
+def _content_terms(value: str) -> set[str]:
+    stopwords = {
+        "about",
+        "after",
+        "also",
+        "among",
+        "and",
+        "are",
+        "been",
+        "between",
+        "both",
+        "can",
+        "for",
+        "from",
+        "has",
+        "have",
+        "into",
+        "its",
+        "may",
+        "more",
+        "not",
+        "our",
+        "paper",
+        "show",
+        "shows",
+        "study",
+        "than",
+        "that",
+        "the",
+        "their",
+        "these",
+        "this",
+        "was",
+        "were",
+        "with",
+    }
+    return {
+        token
+        for token in _normalize_text(value).split()
+        if len(token) > 2 and token not in stopwords
+    }
 
 
 def _normalize_text(value: str) -> str:

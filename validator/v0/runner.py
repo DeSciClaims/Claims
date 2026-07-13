@@ -25,6 +25,7 @@ from .intrinsic_runner import (
     build_intrinsic_mode_summary,
     build_intrinsic_source_rows,
     build_weak_or_unsupported_claim_rows,
+    extraction_mode_from_output,
 )
 from .llm_adapter import JudgeV2LLMAdapter
 
@@ -52,6 +53,7 @@ class JudgeV2Runner:
     ) -> dict[str, Any]:
         paper_output = json.loads(extraction_output_json_path.read_text(encoding="utf-8"))
         paper_id = str((paper_output.get("paper") or {}).get("paper_id", "")).strip()
+        extraction_mode = extraction_mode_from_output(paper_output)
         normalized_mode = _normalize_mode(mode)
         final_output_dir = output_dir or (extraction_output_json_path.parent / f"judge_{normalized_mode}_{audit_version}")
         run_id = extraction_run_id or _derive_extraction_run_id(extraction_output_json_path)
@@ -118,6 +120,7 @@ class JudgeV2Runner:
                 candidate_missing_rows=candidate_missing_rows,
                 weak_or_unsupported_rows=weak_or_unsupported_rows,
                 missing_claims_audit=missing_claims_audit,
+                extraction_mode=extraction_mode,
             )
         else:
             mode_summary = build_gold_mode_summary(
@@ -147,6 +150,7 @@ class JudgeV2Runner:
             "audit_method": normalized_method,
             "extraction_output_json_path": str(extraction_output_json_path),
             "extraction_run_id": run_id,
+            "extraction_mode": extraction_mode,
             "paper_id": paper_id,
             "record_count": len(audit_rows),
             "claim_audit_records_path": str(output_path),

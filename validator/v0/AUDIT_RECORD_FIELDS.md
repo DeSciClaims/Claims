@@ -2,10 +2,9 @@
 
 Validator v0 is the simplified Judge V2 flow for miner v0 outputs. It keeps the compact CSV shape used by the review/upload tools, but the scoring target is now a flat claim-evidence pair:
 
-- Is `claim_text` a faithful claim made by this paper?
-- Does every claim have evidence item text?
-- Does the cited evidence exist in, or clearly ground to, the source span/section?
-- Does the run cover the paper's important contribution claims across relevant sections?
+- Do the `claim_text` and linked evidence item text exist in, or clearly ground to, the source span/section?
+- Are the claim-evidence links valid and relevant for the given claim?
+- Does the run cover the claims in its extraction scope?
 
 It does not require SPO fields, ontology mappings, rich context, or details. Some legacy columns remain for compatibility and are expected to be empty in v0.
 
@@ -57,10 +56,10 @@ It does not require SPO fields, ontology mappings, rich context, or details. Som
 | `overall_score` | Mean of available run dimension scores from `0.0` to `1.0`. |
 | `complete_coverage_score` | Run-level coverage. In intrinsic LLM mode, penalizes high-confidence missing important claims. In deterministic intrinsic mode this may be empty/unscored. |
 | `complete_coverage_comment` | Coverage explanation. |
-| `accurate_extraction_score` | Run-level mean of claim-text grounding scores. |
-| `accurate_extraction_comment` | Accuracy explanation. |
-| `evidence_evaluation_score` | Run-level mean of evidence support scores. |
-| `evidence_evaluation_comment` | Evidence explanation. |
+| `accurate_extraction_score` | Run-level mean of source-existence scores for claims and linked evidence. |
+| `accurate_extraction_comment` | Source-existence explanation. |
+| `evidence_evaluation_score` | Run-level mean of claim-evidence link-validity scores. |
+| `evidence_evaluation_comment` | Link-validity explanation. |
 | `primary_issue` | Most important recurring issue tag. |
 | `issue_tags` | JSON list of recurring issue tags. |
 | `missing_elements` | JSON list of missing fields/elements. |
@@ -71,11 +70,13 @@ It does not require SPO fields, ontology mappings, rich context, or details. Som
 
 | Dimension | Meaning |
 | --- | --- |
-| `complete_coverage_score` | Did the miner capture the paper's important contribution claims across relevant sections? More high-confidence missing claims lowers this score. |
-| `accurate_extraction_score` | Is each `claim_text` faithful to its source span/section or gold target, and is it a claim made by this paper rather than a prior-work/background claim? |
-| `evidence_evaluation_score` | Does each claim have evidence item text, source provenance, and evidence that supports the claim? |
+| `complete_coverage_score` | Did the miner capture the claims in its extraction scope? In `abstract-full-paper` mode this means claims made in the abstract, with evidence linked from the full paper. In section-local/full-text modes this means important contribution claims across relevant sections. More high-confidence missing claims lowers this score. |
+| `accurate_extraction_score` | Source existence/grounding. Do the extracted claim text and linked evidence item text exist in, or stay directly grounded by, the source span/section or gold target? Missing evidence items lower this score because claim rows without evidence cannot be fully evaluated under the v0 contract. |
+| `evidence_evaluation_score` | Link validity. For claim rows with evidence items, are the linked evidence items valid and relevant for the given claim? This is not a proof-of-truth score; it asks whether each link is appropriate for the claim. |
 
-Deterministic scoring checks structure and provenance only. LLM scoring can judge semantic support, prior-work attribution, overstatement, and evidence quality.
+In `abstract-full-paper` mode, missing/candidate claim discovery is mechanically scoped to the abstract section. Body sections and full-paper summaries are not included in the missing-claim discovery payload, and candidates citing non-abstract spans are filtered before `candidate_missing_claims.csv` is written.
+
+Deterministic scoring checks structure, provenance, and shallow claim/evidence compatibility only. LLM scoring can judge semantic source existence and link validity more deeply.
 
 ## Claim Output Fields
 
@@ -99,10 +100,10 @@ Deterministic scoring checks structure and provenance only. LLM scoring can judg
 | `overall_score` | Mean of claim-level accuracy and evidence scores. |
 | `complete_coverage_score` | Empty for claim rows; coverage is run-level. |
 | `complete_coverage_comment` | Empty for claim rows. |
-| `accurate_extraction_score` | Claim-level grounding/accuracy score. |
-| `accurate_extraction_comment` | Short explanation of claim-text fidelity. |
-| `evidence_evaluation_score` | Claim-level evidence support score. |
-| `evidence_evaluation_comment` | Short explanation of evidence quality/provenance. |
+| `accurate_extraction_score` | Claim-level source-existence score for the claim and linked evidence. |
+| `accurate_extraction_comment` | Short source-existence explanation. |
+| `evidence_evaluation_score` | Claim-level link-validity score for linked evidence items. |
+| `evidence_evaluation_comment` | Short link-validity explanation. |
 | `primary_issue` | First/primary issue tag. |
 | `issue_tags` | JSON list of issue tags. |
 | `missing_elements` | JSON list of missing fields/elements. |
@@ -116,8 +117,8 @@ Deterministic scoring checks structure and provenance only. LLM scoring can judg
 | `gold_subject` | Gold mode compatibility field. |
 | `gold_predicate` | Gold mode compatibility field. |
 | `gold_object` | Gold mode compatibility field. |
-| `source_support_status` | Intrinsic mode support label: `supported`, `partially_supported`, `unsupported`, or `uncertain`. |
-| `source_support_comment` | Evidence support explanation. |
+| `source_support_status` | Intrinsic mode compatibility label derived from link-validity score: `supported`, `partially_supported`, `unsupported`, or `uncertain`. |
+| `source_support_comment` | Link-validity explanation. |
 | `created_at` | UTC timestamp. |
 
 ## Diagnostic Fields

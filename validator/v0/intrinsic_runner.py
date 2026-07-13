@@ -7,8 +7,10 @@ from validator.judge_v1.runner import build_intrinsic_claim_rows
 
 def build_intrinsic_source_rows(paper_output: dict[str, Any]) -> list[dict[str, Any]]:
     rows = build_intrinsic_claim_rows(paper_output)
+    extraction_mode = extraction_mode_from_output(paper_output)
     for row in rows:
         row.setdefault("gold_match_status", "")
+        row.setdefault("extraction_mode", extraction_mode)
     return rows
 
 
@@ -88,20 +90,28 @@ def build_intrinsic_mode_summary(
     candidate_missing_rows: list[dict[str, Any]],
     weak_or_unsupported_rows: list[dict[str, Any]],
     missing_claims_audit: dict[str, Any] | None = None,
+    extraction_mode: str = "",
 ) -> dict[str, Any]:
     accuracy_score = _mean(row.get("accurate_extraction_score") for row in audit_rows)
     evidence_score = _mean(row.get("evidence_evaluation_score") for row in audit_rows)
+    normalized_mode = extraction_mode or _first_extraction_mode(source_rows)
+    coverage_target = (
+        "abstract claims with evidence linked from the full paper"
+        if normalized_mode == "abstract-full-paper"
+        else "important claims across relevant paper sections"
+    )
     coverage_score = None
     coverage_comment = (
         "Not scored in intrinsic mode without a gold set or full-paper missing-claim discovery pass. "
-        "Complete coverage means whether important claims were extracted exhaustively across relevant paper sections."
+        f"Complete coverage means whether the run extracted all {coverage_target}."
     )
     if missing_claims_audit is not None:
         missing_weight = sum(_score(row.get("confidence")) for row in candidate_missing_rows)
         denominator = len(source_rows) + missing_weight
         coverage_score = round(len(source_rows) / denominator, 3) if denominator else 0.0
         coverage_comment = (
-            f"Full-paper missing-claim discovery found {len(candidate_missing_rows)} candidate missing important claims. "
+            f"Missing-claim discovery for {normalized_mode or 'unknown'} mode found "
+            f"{len(candidate_missing_rows)} candidate missing claims. "
             f"{str(missing_claims_audit.get('coverage_comment') or '').strip()}"
         ).strip()
     return {
@@ -110,14 +120,38 @@ def build_intrinsic_mode_summary(
         "complete_coverage_score": coverage_score,
         "complete_coverage_comment": coverage_comment,
         "accurate_extraction_score": accuracy_score,
-        "accurate_extraction_comment": "Mean claim-text/source-provenance accuracy over extracted claims.",
+        "accurate_extraction_comment": (
+            "Mean source-existence score over claims with linked evidence; checks that claim text and evidence text "
+            "are present and source-grounded."
+        ),
         "evidence_evaluation_score": evidence_score,
         "evidence_evaluation_comment": (
-            f"Mean evidence score over extracted claims; "
-            f"{len(weak_or_unsupported_rows)} claims flagged as weak, unsupported, or uncertain."
+            f"Mean claim-evidence link-validity score over extracted claims; "
+            f"{len(weak_or_unsupported_rows)} claims flagged as weak, unlinked, or uncertain."
         ),
-        "comments": "Intrinsic run audit. Deterministic coverage cannot fully prove no claims were missed.",
+        "comments": (
+            f"Intrinsic run audit for {normalized_mode or 'unknown'} mode. "
+            "Deterministic coverage cannot fully prove no claims were missed."
+        ),
     }
+
+
+def extraction_mode_from_output(paper_output: dict[str, Any]) -> str:
+    mode = paper_output.get("pipeline_mode") or paper_output.get("extraction_mode")
+    if mode:
+        return str(mode)
+    manifest = paper_output.get("manifest") if isinstance(paper_output.get("manifest"), dict) else {}
+    if manifest.get("extraction_mode"):
+        return str(manifest.get("extraction_mode"))
+    return "section-local"
+
+
+def _first_extraction_mode(rows: list[dict[str, Any]]) -> str:
+    for row in rows:
+        mode = str(row.get("extraction_mode") or "").strip()
+        if mode:
+            return mode
+    return ""
 
 
 def _score(value: Any) -> float:

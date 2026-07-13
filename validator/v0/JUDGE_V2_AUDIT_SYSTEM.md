@@ -22,8 +22,8 @@ Scores must be numbers from 0.0 to 1.0.
 
 The validator audits miner v0 output at two levels:
 
-1. Claim-level audit: each extracted claim-evidence packet is checked for claim fidelity and evidence support.
-2. Run-level audit: claim-level scores and coverage diagnostics are aggregated into a holistic run score.
+1. Claim-level audit: each extracted claim-evidence packet is checked for source existence and claim-evidence link validity.
+2. Run-level audit: claim-level scores and extraction-mode-aware coverage diagnostics are aggregated into a holistic run score.
 
 ```mermaid
 flowchart TD
@@ -63,16 +63,16 @@ For each claim row, judge only the provided extraction packet and optional gold 
 
 ```mermaid
 flowchart TD
-  A[Extracted claim_text] --> B{Is it a claim made by this paper?}
-  B -->|No: background or prior work| C[Lower accurate_extraction_score]
-  B -->|Yes| D{Is it faithful and atomic?}
-  D -->|No: overbroad, bundled, overstated, or missing qualifiers| C
+  A[Extracted claim_text and linked evidence] --> B{Do claim and evidence text exist in the source/gold context?}
+  B -->|No| C[Lower accurate_extraction_score]
+  B -->|Yes| D{Are source spans/sections sufficient to ground them?}
+  D -->|No| C
   D -->|Yes| E[High accurate_extraction_score]
 
-  F[Linked evidence items] --> G{Evidence exists in or is grounded by source span?}
+  F[Claim-evidence links] --> G{Does this claim have evidence items?}
   G -->|No| H[Lower evidence_evaluation_score]
-  G -->|Yes| I{Evidence is distinct from claim and supports it?}
-  I -->|No: repeats claim or weakly supports| H
+  G -->|Yes| I{Is each link valid/relevant for the given claim?}
+  I -->|No: wrong target, too generic, mismatched measure/outcome, or repetition only| H
   I -->|Yes| J[High evidence_evaluation_score]
 
   C --> K[overall_score = mean accuracy/evidence]
@@ -103,14 +103,14 @@ flowchart TD
 ```
 
 Claim-level audit dimensions:
-- accurate_extraction_score: whether the extracted claim_text is faithful to the cited source span or gold target, is atomic, is a claim made by this paper rather than background/prior-work attribution, preserves important qualifiers/modality/scope/numeric payloads in the claim text, and does not overstate or invent content.
-- evidence_evaluation_score: whether every claim has linked evidence items, the evidence text exists in or is directly grounded by the cited span/section, is distinct from the claim, and actually supports the claim.
+- accurate_extraction_score: source existence/grounding. Score whether the extracted claim text and every linked evidence item exist in, or are directly grounded by, the supplied source span/section or gold target. Penalize invented claim text, invented evidence text, missing source spans, missing linked evidence payloads, or claims/evidence that cannot be found in the source context. This dimension is not the place to decide whether the evidence proves the claim; it asks whether the packet is source-real.
+- evidence_evaluation_score: claim-evidence link validity. Score only claim rows that have evidence items. Decide whether each linked evidence item is valid and relevant for the given claim. A valid link uses evidence that addresses the same entity, outcome, relation, measurement, population, method, or conclusion needed by the claim. Penalize links that point to the wrong result, wrong phenotype/outcome, wrong method, wrong cohort/model, irrelevant background, evidence that is merely a restatement of the claim, or evidence that is too generic to justify linking to this claim. Do not require the evidence to make the claim true beyond all doubt; judge whether the link is appropriate for the claim.
 
 Claim/evidence distinction:
 - A scientific claim is a checkable proposition that asserts something about the world: an effect, relation, mechanism, comparison, tendency, hypothesis, or conclusion.
 - Evidence is not the claim itself. It is the observation, measurement, statistic, experimental result, figure/table output, or reported datum used to support, weaken, contradict, qualify, or fail to support the claim.
 - Reward outputs that split mixed sentences into claim and evidence components. For example, "X was associated with Y, suggesting X contributes to disease risk" should separate evidence "X was associated with Y" from claim "X contributes to disease risk."
-- Penalize a claim-evidence pair when the evidence merely repeats the claim without providing an observation, measurement, statistic, result, or datum.
+- Penalize a claim-evidence link when the evidence merely repeats the claim without providing an observation, measurement, statistic, result, or datum.
 - Penalize claims that bundle multiple independent relations, outcomes, mechanisms, samples, thresholds, timepoints, models, or conditions into one broad claim.
 - Penalize broad introductory/background claims unless the cited section presents them as this paper's own result or central conclusion with local evidence.
 - Reward claims that could be internally represented as one clean subject-relation-object proposition, even though v0 does not output SPO fields.
@@ -123,6 +123,11 @@ For v0, do not penalize missing or empty subject, predicate, object, ontology ma
 
 Do not score complete coverage for an individual claim. Complete coverage is a run-level audit dimension only.
 Set overall_score to the mean of accurate_extraction_score and evidence_evaluation_score.
+
+Extraction-mode-aware coverage:
+- If paper_context_json or paper_json has `extraction_mode`/`pipeline_mode` equal to `abstract-full-paper`, complete coverage means all claims made in the abstract should be extracted, and each should be linked to relevant evidence found anywhere in the full paper.
+- For section-local/full-text modes, complete coverage means important contribution claims across the relevant paper sections should be extracted.
+- Missing-claim discovery should use the extraction mode as the target scope. Do not penalize an abstract-only run for omitting claims made only in the body.
 
 Mode behavior:
 - intrinsic_audit: evaluate the extracted claim against the source section text and extraction packet.

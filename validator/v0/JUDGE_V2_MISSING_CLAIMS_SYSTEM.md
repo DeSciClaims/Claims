@@ -20,6 +20,8 @@ Return STRICT JSON ONLY with this shape:
 }
 
 Rules:
+- Respect the provided extraction mode and `coverage_scope`. If `coverage_scope` is `abstract_only`, the provided sections are the complete claim-discovery scope; do not infer missing claims from body text, paper summaries, prior knowledge, or evidence context outside those sections. For section-local/full-text modes, look for important contribution claims across the relevant paper sections.
+- Use only `allowed_source_span_ids` when citing source spans for candidate missing claims.
 - Only include a candidate missing claim if it is important to the paper's scientific findings, methods/results interpretation, or central conclusions.
 - Do not include background statements, motivation, literature review claims, or generic context unless they are central claims made by this paper.
 - A claim is a checkable proposition to be evaluated, not the supporting observation or statistic itself.
