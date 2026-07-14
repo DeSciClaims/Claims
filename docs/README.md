@@ -47,7 +47,7 @@ This repo uses the canonical object names defined across the public schemas in `
 - `ClaimEvidenceLink`
 - `SemanticField`
 - `OntologyAnnotation`
-- `miner.v0` uses a flat claim-evidence payload for the first localnet loop.
+- `miner.v0` uses a flat claim-evidence payload for subnet miner and validator operation.
 
 ## Repo Philosophy
 
@@ -55,7 +55,7 @@ This repo is intentionally small and concrete.
 
 - It favors examples over abstractions.
 - It favors readability over completeness.
-- It favors hard-coded templates over hidden machinery.
+- It favors explicit contracts over hidden machinery.
 
 ## Intended Audience
 

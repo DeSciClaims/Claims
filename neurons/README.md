@@ -28,29 +28,39 @@ The neuron scripts are intentionally thin. Core extraction behavior remains in
 
 ```bash
 python -m neurons.miner \
-  --netuid 2 \
-  --wallet.name test-miner \
-  --wallet.hotkey default \
-  --subtensor.chain_endpoint ws://127.0.0.1:9945 \
+  --netuid <NETUID> \
+  --wallet.name <MINER_WALLET> \
+  --wallet.hotkey <HOTKEY> \
+  --subtensor.network <NETWORK> \
+  --axon.ip 0.0.0.0 \
+  --axon.external_ip <PUBLIC_IP> \
   --axon.port 8091 \
-  --claims.pdf-extraction-method grobid
+  --axon.external_port 8091 \
+  --claims.extraction-mode abstract-full-paper \
+  --claims.pdf-extraction-method grobid \
+  --claims.output-dir miner/v0/outputs/neuron
 ```
 
 The miner uses `miner.v0` to process PDF URL tasks or artifact smoke-test tasks
 supplied by the validator. It caches completed extractions by source hash,
-protocol version, miner version, and model/parser configuration.
+protocol version, miner version, extraction mode, and model/parser configuration.
+
+Use `--subtensor.chain_endpoint <WS_ENDPOINT>` instead of
+`--subtensor.network <NETWORK>` for a custom chain endpoint.
 
 ## Validator
 
 ```bash
 python -m neurons.validator \
-  --netuid 2 \
-  --wallet.name test-validator \
-  --wallet.hotkey default \
-  --subtensor.chain_endpoint ws://127.0.0.1:9945 \
+  --netuid <NETUID> \
+  --wallet.name <VALIDATOR_WALLET> \
+  --wallet.hotkey <HOTKEY> \
+  --subtensor.network <NETWORK> \
   --claims.paper-url https://example.org/paper.pdf \
-  --claims.task-id claims_v0_localnet \
-  --claims.audit-method deterministic
+  --claims.task-id claims_task_001 \
+  --claims.audit-method llm \
+  --claims.output-dir validator/v0/outputs/neuron \
+  --claims.timeout 1800
 ```
 
 The validator loads URL tasks, sends them to registered miners, scores each
@@ -60,3 +70,5 @@ artifact, or `--claims.task-manifest` for a JSONL list of tasks.
 
 Use `--claims.max-steps 1` for a single validation round.
 Use `--claims.audit-only` to score miners without submitting weights.
+Use `--subtensor.chain_endpoint <WS_ENDPOINT>` instead of
+`--subtensor.network <NETWORK>` for a custom chain endpoint.
