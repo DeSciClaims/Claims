@@ -2,7 +2,7 @@
 
 `miner.v0` uses a staged section-context extraction flow, but writes a simpler review schema. In the default `section-local` mode it first extracts raw candidate spans, then classifies those spans as claim, evidence, background/assumption, method/result, mixed, or abstain. Compound candidates are split into decomposed units before final claim/evidence normalization. A final atomicity repair stage checks linked claims and splits any remaining compound claims.
 
-The alternate `abstract-full-paper` mode extracts all claims made in the abstract, keeps those abstract claims as the claim universe, then links each claim to relevant evidence candidates from non-abstract full-paper sections. Abstract claims are retained even when no supporting evidence candidate is found, so missing support remains auditable.
+The alternate `abstract-full-paper` mode extracts contribution claims made in the abstract, keeps those abstract claims as the claim universe, analyzes evidence candidates from non-abstract full-paper sections, then links each claim to relevant evidence items. Abstract claims are retained even when no supporting evidence candidate is found, so missing support remains auditable.
 
 The final review output contains paper-owned claim text, evidence item text, links, and source provenance. Profiles, SPO triples, rich context, details, and ontology mappings are not surfaced as v0 review data.
 
@@ -69,7 +69,33 @@ The final review output contains paper-owned claim text, evidence item text, lin
 | `section_summaries` | Section-level summaries, if generated. |
 | `pipeline_mode` | Extraction contract mode, for example `section-local` or `abstract-full-paper`. Validators use this to scope coverage. |
 | `abstract_claim_extraction` | Abstract section and raw abstract claim extraction output in `abstract-full-paper` mode. |
-| `abstract_evidence_linking` | Evidence candidates, selected candidates, and raw linker output in `abstract-full-paper` mode. |
+| `abstract_evidence_linking` | Evidence candidates, selected candidates, analyzed evidence candidates, evidence-analysis output, and raw linker output in `abstract-full-paper` mode. |
+
+## Abstract-Full-Paper Contribution and Evidence Fields
+
+In `abstract-full-paper` mode, claims include additional metadata in `details_json`:
+
+| Field | Description |
+| --- | --- |
+| `claim_source` | `abstract`. |
+| `claim_group_id` | Shared ID for atomic claims split from the same abstract sentence or clause. |
+| `decomposition_parent_text` | Parent abstract sentence/clause when an atomic claim was split from a compound statement. |
+| `evidence_requirements` | Key entity, outcome, statistic, comparator, sample, condition, or qualifier expected from valid evidence. |
+| `contribution_role` | Contribution type, such as `main_finding`, `secondary_finding`, `method_contribution`, `estimate`, `interpretation`, or `conclusion`. |
+| `contribution_gate_reason` | Why the claim is owned by this paper rather than background or prior work. |
+
+Linked evidence items include additional metadata in their JSON payload:
+
+| Field | Description |
+| --- | --- |
+| `evidence_kind` | Analyzed evidence kind, such as `statistic`, `table_result`, `figure_result`, `replication`, `robustness`, `method_context`, `interpretation`, `result`, `observation`, `restatement_only`, or `mixed`. |
+| `new_information` | What the evidence contributes beyond restating the claim. |
+| `entities`, `outcomes`, `statistics`, `scope` | Scope atoms extracted from the evidence candidate. |
+| `restatement_risk` | `low`, `medium`, `high`, or `unclear`; high-risk restatements should not be linked as support. |
+| `can_support_multiple_claims` | Whether the same evidence item can validly link to multiple abstract claims. |
+| `analysis_confidence` | Confidence from the evidence-analysis stage. |
+
+Claim-evidence links may include `details.link_rationale` and `details.missing_requirements` to explain why the evidence is valid for that claim's exact scope.
 
 ## Internal Candidate Span Fields
 

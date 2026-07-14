@@ -8,7 +8,7 @@
 
 SPO fields, ontology mappings, rich context, and details are compatibility fields only. They should usually be empty.
 
-The default mode is still section-local extraction. A second mode, `abstract-full-paper`, extracts all claims made in the abstract first, then links those abstract claims to relevant evidence items from non-abstract full-paper sections.
+The default mode is still section-local extraction. A second mode, `abstract-full-paper`, extracts contribution claims made in the abstract first, analyzes evidence candidates from non-abstract full-paper sections, then links those abstract claims to relevant evidence items.
 
 ## What Lives Here
 
@@ -92,4 +92,6 @@ In `abstract-full-paper` mode, `section_context_v1_output.json` also includes:
 
 - `pipeline_mode: "abstract-full-paper"`
 - `abstract_claim_extraction`: abstract section and raw abstract-claim model output
-- `abstract_evidence_linking`: full-paper evidence candidates, selected candidates, and raw linker output
+- `abstract_evidence_linking`: full-paper evidence candidates, selected candidates, analyzed evidence candidates, evidence-analysis output, and raw linker output
+
+In this mode the claim universe is contribution-only: background facts, prior-work statements, motivations, and field context are excluded unless the abstract presents them as this paper's own finding, estimate, method contribution, interpretation, or conclusion. Evidence candidates are analyzed before linking so each linked evidence item can expose the source-side `new_information` it contributes; restatement-only candidates are flagged and should not be linked as support.

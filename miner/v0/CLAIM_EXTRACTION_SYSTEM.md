@@ -17,7 +17,7 @@ It covers:
 It supports two extraction modes:
 
 - `section-local`: the original/default flow, where claims and evidence must come from the same selected section.
-- `abstract-full-paper`: a claim-first flow, where all claims are extracted from the abstract and evidence is linked from non-abstract full-paper sections.
+- `abstract-full-paper`: a claim-first flow, where contribution claims are extracted from the abstract and analyzed evidence is linked from non-abstract full-paper sections.
 
 Its core design choices are:
 
@@ -32,9 +32,11 @@ Its core design choices are:
 In `abstract-full-paper` mode, the claim/evidence boundary is different:
 
 - the abstract is the only source for claim extraction
+- extracted abstract claims must be contributions from this paper, not background, prior work, or generic motivation
 - full-paper sections are searched for evidence candidates
+- selected evidence candidates are analyzed into an evidence ledger before linking
 - each abstract claim is retained even when evidence linking fails
-- evidence items must still be grounded in raw full-paper section text
+- evidence items must still be grounded in raw full-paper section text and should introduce source-side information beyond claim restatement
 
 This separates two decisions that are often conflated:
 
@@ -56,10 +58,11 @@ Input paper
        -> Stage 2: classify candidates, split compound spans into decomposed units, normalize claims/evidence, and link them
        -> Stage 3: repair compound final claims into atomic claim-evidence pairs
   -> abstract-full-paper:
-       -> extract all abstract claims
+       -> extract contribution claims from the abstract
        -> extract evidence candidates from non-abstract sections
        -> retrieve candidate evidence per abstract claim
-       -> link abstract claims to full-paper evidence items
+       -> analyze selected candidates into an evidence ledger
+       -> link abstract claims to analyzed full-paper evidence items
   -> materialize claims / evidence items / claim-evidence links
   -> gate out incomplete or unlinked local claim-evidence objects in section-local mode
   -> write JSON + CSV outputs
@@ -385,7 +388,9 @@ In `abstract-full-paper` mode, the abstract-claim LLM receives:
 - `paper_summary_json`
 - `abstract_text`
 
-The evidence-linking LLM receives:
+The abstract-claim LLM must return contribution claims only. Background facts, prior-work statements, motivation, field consensus, and generic definitions are excluded unless the abstract frames them as this paper's own finding, estimate, method contribution, interpretation, or conclusion.
+
+The evidence-analysis LLM receives:
 
 - `paper_title`
 - `paper_summary_json`
@@ -393,7 +398,15 @@ The evidence-linking LLM receives:
 - `evidence_candidates_json`
 - `validation_feedback_json`
 
-In this mode, claims must be grounded in the abstract text, while evidence must be grounded in the provided full-paper evidence candidates.
+The evidence-linking LLM receives:
+
+- `paper_title`
+- `paper_summary_json`
+- `abstract_claims_json`
+- `evidence_candidates_json` containing analyzed evidence candidates
+- `validation_feedback_json`
+
+In this mode, claims must be grounded in the abstract text, while evidence must be grounded in the provided full-paper evidence candidates. The evidence-analysis stage records `new_information`, `evidence_kind`, scope atoms, and `restatement_risk` so the linker can reject evidence that merely rewords a claim.
 
 ## Raw Output Contract
 
