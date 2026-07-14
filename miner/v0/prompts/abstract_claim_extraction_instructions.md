@@ -8,7 +8,10 @@ Return STRICT JSON ONLY with key:
 - `abstract_claims`
 
 Critical rules:
-- Extract every paper-owned claim made in the abstract.
+- Extract every contribution claim made in the abstract.
+- A contribution claim is a statement the paper presents as its own finding, result, estimate, demonstrated association, identified entity/locus/effect, method contribution, comparative result, mechanistic interpretation grounded in this study, or conclusion drawn from this study.
+- Do not extract background facts, prior-work findings, motivation, field consensus, problem importance, generic definitions, citation context, or speculative future work unless the abstract explicitly frames the statement as something this paper found, showed, estimated, identified, demonstrated, developed, tested, or concluded.
+- If a statement is attributed to prior literature, widely accepted background, or a generic motivation for the study, exclude it.
 - Include central findings, conclusions, hypotheses, method-performance claims, comparison claims, association claims, mechanistic claims, and claims about what the study identified or demonstrated.
 - Do not require evidence to be present in the abstract. Evidence will be linked in a later full-paper stage.
 - Do not extract background, prior-work motivation, or generic domain facts unless the abstract presents the statement as this paper's own conclusion or contribution.
@@ -21,11 +24,20 @@ Critical rules:
 - Preserve meaning-critical modality, scope, comparator, population, condition, and qualifier language.
 - Do not make claims stronger than the abstract wording.
 - Do not include routine support statistics such as P values, odds ratios, confidence intervals, sample size, R2, or standard errors in `claim_text` unless the proposition itself is about that numeric value.
+- Treat claim text as the paper's asserted takeaway. Put evidence payloads such as P values, table rows, replication statistics, and sample sizes into evidence later unless the numeric magnitude is itself the abstract claim.
+- Preserve parent context for atomic splits. When one abstract sentence yields multiple atomic claims, give them the same `claim_group_id` and include `decomposition_parent_text`.
+- Include evidence requirements for each claim: the key entity, outcome, statistic, comparator, sample, condition, figure/table, or qualifier that later evidence must mention to be valid.
 - Do not include markdown fences, explanations, or commentary.
 
 For each abstract claim, include:
 - `claim_text`
 - `source_candidate_ids`: use short IDs such as `a0`, `a1`, `a2` for the abstract clause or sentence that produced the claim
+- `claim_group_id`: stable short ID for the abstract sentence/clause group, such as `ag0`
+- `decomposition_parent_text`: original abstract sentence/clause text when the claim was split from a compound statement, otherwise empty string
+- `evidence_requirements`: list of key source-side requirements that valid evidence should explicitly satisfy
+- `contribution_eligible`: always `true` for returned claims
+- `contribution_role`: one of `main_finding`, `secondary_finding`, `method_contribution`, `estimate`, `interpretation`, or `conclusion`
+- `contribution_gate_reason`: short reason this is a contribution from this paper rather than background or prior work
 - `claim_subtype`: one of `hypothesis`, `causal`, `associational`, `mechanistic`, `comparative`, `descriptive`, `model_performance`, `none`, or `unclear`
 - `modality`: one of `certain`, `probable`, `possible`, `speculative`, or `unclear`
 - `polarity`: one of `positive`, `negative`, `null`, `mixed`, or `unclear`
@@ -38,6 +50,12 @@ Output example:
     {
       "claim_text": "Variant A is associated with trait Y.",
       "source_candidate_ids": ["a0"],
+      "claim_group_id": "ag0",
+      "decomposition_parent_text": "",
+      "evidence_requirements": ["Variant A", "trait Y", "association result"],
+      "contribution_eligible": true,
+      "contribution_role": "main_finding",
+      "contribution_gate_reason": "The abstract presents this association as a result identified by this study.",
       "claim_subtype": "associational",
       "modality": "certain",
       "polarity": "positive",

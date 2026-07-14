@@ -4,8 +4,10 @@ import logging
 
 from .config import SectionContextV1Config
 from .abstract_claim_extractor import (
+    create_abstract_evidence_analyzer_program,
     create_abstract_claim_extractor_program,
     create_abstract_evidence_linker_program,
+    load_abstract_evidence_analysis_instructions,
     load_abstract_claim_extraction_instructions,
     load_abstract_evidence_linking_instructions,
 )
@@ -90,6 +92,10 @@ class SectionContextV1DSPyRuntime:
         self.abstract_claim_extractor_program = create_abstract_claim_extractor_program(
             dspy_module,
             instructions=load_abstract_claim_extraction_instructions(),
+        )
+        self.abstract_evidence_analyzer_program = create_abstract_evidence_analyzer_program(
+            dspy_module,
+            instructions=load_abstract_evidence_analysis_instructions(),
         )
         self.abstract_evidence_linker_program = create_abstract_evidence_linker_program(
             dspy_module,

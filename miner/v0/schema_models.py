@@ -205,6 +205,7 @@ class ClaimEvidenceLink(BaseModel):
     evidence_id: str
     relation: str
     confidence: Optional[float] = None
+    details: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ExtractionArtifact(BaseModel):

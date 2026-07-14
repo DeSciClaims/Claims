@@ -23,6 +23,7 @@ class _FakeRuntime:
         self.paper_summary_program = self._paper_summary
         self.section_candidate_extractor_program = self._section_candidates
         self.abstract_claim_extractor_program = self._abstract_claims
+        self.abstract_evidence_analyzer_program = self._evidence_analysis
         self.abstract_evidence_linker_program = self._evidence_links
 
     def _section_summary(self, **kwargs):
@@ -89,6 +90,9 @@ class _FakeRuntime:
                     {
                         "summary_text": "The Results section reports that intervention A improved outcome B by 12 points compared with control.",
                         "source_candidate_ids": [candidates[0]["candidate_id"]],
+                        "new_information": "Reports a 12 point improvement compared with control.",
+                        "evidence_kind": "statistic",
+                        "restatement_risk": "low",
                         "role": "supports",
                         "evidence_type": "statistic",
                         "rhetorical_role": "result",
@@ -102,9 +106,33 @@ class _FakeRuntime:
                         "claim_index": 0,
                         "evidence_index": 0,
                         "relation": "supports",
+                        "link_rationale": "The evidence reports the same intervention, outcome, comparator, and result magnitude required by the claim.",
+                        "missing_requirements": [],
                         "confidence": 0.92,
                     }
                 ],
+            }
+        )
+
+    def _evidence_analysis(self, **kwargs):
+        candidates = json.loads(kwargs["evidence_candidates_json"])
+        return _Prediction(
+            {
+                "analyzed_evidence_candidates": [
+                    {
+                        "candidate_id": candidates[0]["candidate_id"],
+                        "evidence_kind": "statistic",
+                        "new_information": "Reports a 12 point improvement compared with control.",
+                        "entities": ["intervention A"],
+                        "outcomes": ["outcome B"],
+                        "statistics": ["12 points"],
+                        "scope": "randomized cohort compared with control",
+                        "restatement_risk": "low",
+                        "can_support_multiple_claims": True,
+                        "analysis_confidence": 0.94,
+                        "analysis_notes": "",
+                    }
+                ]
             }
         )
 
@@ -167,6 +195,11 @@ class AbstractFullPaperMinerTest(unittest.TestCase):
             self.assertEqual(len(output["claim_evidence_links"]), 1)
             self.assertEqual(output["claims"][0]["claim_profile"], "abstract_claim")
             self.assertEqual(output["evidence_items"][0]["source_span_ids"], ["synthetic-span-0002"])
+            self.assertEqual(output["evidence_items"][0]["details"]["new_information"], "Reports a 12 point improvement compared with control.")
+            self.assertEqual(output["evidence_items"][0]["details"]["evidence_kind"], "statistic")
+            self.assertEqual(output["claim_evidence_links"][0]["details"]["missing_requirements"], [])
+            self.assertIn("same intervention", output["claim_evidence_links"][0]["details"]["link_rationale"])
+            self.assertEqual(output["abstract_evidence_linking"]["analyzed_evidence_candidate_count"], 1)
             self.assertTrue((tmp_path / "run" / "section_context_v1_output.json").exists())
             self.assertTrue((tmp_path / "run" / "extracted_claims.csv").exists())
             manifest = json.loads((tmp_path / "run" / "manifest.json").read_text(encoding="utf-8"))
@@ -258,7 +291,84 @@ class AbstractFullPaperMinerTest(unittest.TestCase):
 
             self.assertEqual(runtime.abstract_claim_call_count, 2)
             self.assertEqual(len(output["claims"]), 2)
-            self.assertIn("abstract_claim_atomicity_retry", output["abstract_claim_extraction"]["raw_output"])
+
+    def test_abstract_full_paper_filters_non_contribution_abstract_claims(self) -> None:
+        class ContributionRuntime(_FakeRuntime):
+            def _abstract_claims(self, **kwargs):
+                return _Prediction(
+                    {
+                        "abstract_claims": [
+                            {
+                                "claim_text": "Prior studies suggest outcome B is important.",
+                                "source_candidate_ids": ["a0"],
+                                "contribution_eligible": False,
+                                "contribution_role": "background",
+                                "contribution_gate_reason": "This is prior-work motivation, not this paper's contribution.",
+                                "claim_subtype": "descriptive",
+                                "modality": "possible",
+                                "polarity": "positive",
+                                "attribution": "prior_literature",
+                                "extractor_confidence": 0.9,
+                            },
+                            {
+                                "claim_text": "Intervention A improves outcome B compared with control.",
+                                "source_candidate_ids": ["a1"],
+                                "claim_group_id": "ag1",
+                                "evidence_requirements": ["intervention A", "outcome B", "control"],
+                                "contribution_eligible": True,
+                                "contribution_role": "main_finding",
+                                "contribution_gate_reason": "The abstract presents this as this paper's result.",
+                                "claim_subtype": "comparative",
+                                "modality": "certain",
+                                "polarity": "positive",
+                                "attribution": "own_work",
+                                "extractor_confidence": 0.95,
+                            },
+                        ]
+                    }
+                )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            artifact = ExtractionArtifact(
+                paper=Paper(paper_id="synthetic", title="Synthetic Trial", source_type="journal_article"),
+                spans=[
+                    Span(
+                        span_id="synthetic-span-0001",
+                        paper_id="synthetic",
+                        section_type="ABSTRACT",
+                        section_name="Abstract",
+                        text="Prior studies suggest outcome B is important. Intervention A improves outcome B compared with control.",
+                    ),
+                    Span(
+                        span_id="synthetic-span-0002",
+                        paper_id="synthetic",
+                        section_type="RESULTS",
+                        section_name="Results",
+                        text="In the randomized cohort, intervention A improved outcome B by 12 points compared with control.",
+                    ),
+                ],
+            )
+            config = SectionContextV1Config(
+                base_dir=tmp_path,
+                package_dir=tmp_path,
+                cache_dir=tmp_path / "cache",
+                output_dir=tmp_path / "outputs",
+                abstract_evidence_candidate_limit_per_claim=10,
+            )
+            runner = SectionContextV1Runner(config)
+            runner._runtime = ContributionRuntime()
+
+            output = runner.run_from_artifact(
+                artifact,
+                output_dir=tmp_path / "run",
+                mode="abstract-full-paper",
+            )
+
+            self.assertEqual(len(output["claims"]), 1)
+            self.assertEqual(output["claims"][0]["claim_text"], "Intervention A improves outcome B compared with control.")
+            self.assertEqual(output["claims"][0]["details"]["contribution_role"], "main_finding")
+            self.assertEqual(output["claims"][0]["details"]["evidence_requirements"], ["intervention A", "outcome B", "control"])
 
     def test_generic_tei_xml_uses_parent_folder_as_paper_id(self) -> None:
         tei = """<TEI xmlns="http://www.tei-c.org/ns/1.0">
