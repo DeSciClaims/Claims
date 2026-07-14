@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import os
 import sys
 import time
@@ -75,6 +76,13 @@ class ClaimsMiner:
             help="Miner-side PDF parsing method used for URL tasks.",
         )
         parser.add_argument(
+            "--claims.extraction-mode",
+            dest="claims_extraction_mode",
+            choices=("section-local", "abstract-full-paper"),
+            default="section-local",
+            help="Miner v0 extraction mode used for validator tasks.",
+        )
+        parser.add_argument(
             "--claims.max-requests-per-hotkey-minute",
             dest="claims_max_requests_per_hotkey_minute",
             type=int,
@@ -100,6 +108,7 @@ class ClaimsMiner:
         config.claims_output_dir = parsed_args.claims_output_dir
         config.claims_allow_unregistered = parsed_args.claims_allow_unregistered
         config.claims_pdf_extraction_method = parsed_args.claims_pdf_extraction_method
+        config.claims_extraction_mode = parsed_args.claims_extraction_mode
         config.claims_max_requests_per_hotkey_minute = parsed_args.claims_max_requests_per_hotkey_minute
         config.claims_dry_run = parsed_args.claims_dry_run
         config.claims_subtensor_network_arg = _subtensor_network_arg(parsed_args)
@@ -116,6 +125,11 @@ class ClaimsMiner:
 
     def _setup_logging(self) -> None:
         self.bt_logging(config=self.config, logging_dir=self.config.full_path)
+        logging.basicConfig(
+            level=logging.DEBUG if bool(getattr(self.config.logging, "debug", False)) else logging.INFO,
+            format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+            force=True,
+        )
         self.bt_logging.info(
             f"Running Claims miner on netuid {self.config.netuid} and network {self.config.subtensor.network}"
         )
@@ -163,13 +177,22 @@ class ClaimsMiner:
                     "schema_version": synapse.schema_version,
                 }
             )
+            task_label = task.paper_id or task.paper_url or task.task_id
+            self.bt_logging.info(
+                f"Accepted Claims task={task_label} from validator_hotkey={validator_hotkey[:12]}"
+            )
             cache_key = task_cache_key(
                 task,
                 miner_version="v0",
-                model_config=f"{self.runner.config.openrouter_model}:{self.config.claims_pdf_extraction_method}",
+                model_config=(
+                    f"{self.runner.config.openrouter_model}:"
+                    f"{self.config.claims_pdf_extraction_method}:"
+                    f"{self.config.claims_extraction_mode}"
+                ),
             )
             cached = self._read_cached_extraction(cache_key)
             if cached is not None:
+                self.bt_logging.info(f"Serving cached Claims task={task_label} cache_key={cache_key[:12]}")
                 synapse.extraction = cached
                 synapse.paper_id = str((cached.get("paper") or {}).get("paper_id") or task.paper_id)
                 synapse.miner_version = "v0"
@@ -211,6 +234,11 @@ class ClaimsMiner:
         self._request_times_by_hotkey[validator_hotkey] = recent
 
     def _run_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> dict[str, Any]:
+        task_label = task.paper_id or task.paper_url or task.task_id
+        self.bt_logging.info(
+            f"Running Claims v0 task={task_label} mode={self.config.claims_extraction_mode} "
+            f"pdf_method={self.config.claims_pdf_extraction_method} cache_key={cache_key[:12]}"
+        )
         if task.artifact is not None:
             artifact = ExtractionArtifact.model_validate(task.artifact)
             paper_id = artifact.paper.paper_id
@@ -218,6 +246,7 @@ class ClaimsMiner:
             payload = self.runner.run_from_artifact(
                 artifact,
                 output_dir=output_dir,
+                mode=str(self.config.claims_extraction_mode),
                 manifest_extra={
                     "input_source": "bittensor_artifact_synapse",
                     "task_id": task.task_id,
@@ -227,6 +256,7 @@ class ClaimsMiner:
                     "cache_key": cache_key,
                 },
             )
+            self._log_finished_task(task_label, output_dir, payload)
             self._write_cached_extraction(cache_key, payload)
             return payload
         paper_dir = safe_task_id(task.paper_id) if task.paper_id else cache_key[:12]
@@ -236,9 +266,18 @@ class ClaimsMiner:
             output_dir=output_dir,
             expected_sha256=task.source_sha256,
             extraction_method=str(self.config.claims_pdf_extraction_method),
+            mode=str(self.config.claims_extraction_mode),
         )
+        self._log_finished_task(task_label, output_dir, payload)
         self._write_cached_extraction(cache_key, payload)
         return payload
+
+    def _log_finished_task(self, task_label: str, output_dir: Path, payload: dict[str, Any]) -> None:
+        claims = payload.get("claims") if isinstance(payload, dict) else None
+        claim_count = len(claims) if isinstance(claims, list) else 0
+        self.bt_logging.info(
+            f"Finished Claims v0 task={task_label} claims={claim_count} output_dir={output_dir}"
+        )
 
     def _cache_path(self, cache_key: str) -> Path:
         return Path(self.config.claims_output_dir) / ".cache" / f"{cache_key}.json"
