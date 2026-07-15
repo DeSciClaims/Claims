@@ -7,6 +7,8 @@ lxml
 pypdf>=5
 camelot-py[cv]>=0.11
 dspy==3.1.2
+langchain==1.3.13
+langchain-openai==1.3.5
 qdrant-client==1.15.1
 fastembed==0.7.4
 neo4j==6.1.0

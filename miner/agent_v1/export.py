@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .models import AraArtifact, AraClaim, AraConcept, AraEvidenceRecord, AraExperiment, AraSourceRef, AraTraceNode
+from .artifact_models import Artifact, Claim, Concept, EvidenceRecord, Experiment, SourceRef, TraceNode
 
 
 def write_json(output_path: Path, payload: Any) -> None:
@@ -13,9 +13,9 @@ def write_json(output_path: Path, payload: Any) -> None:
     output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def write_ara_directory(output_dir: Path, artifact: AraArtifact) -> None:
+def write_agent_directory(output_dir: Path, artifact: Artifact) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    write_json(output_dir / "ara_v1_output.json", artifact.model_dump(mode="json"))
+    write_json(output_dir / "agent_output.json", artifact.model_dump(mode="json"))
     _write_text(output_dir / "PAPER.md", _paper_markdown(artifact))
     _write_text(output_dir / "logic" / "problem.md", _problem_markdown(artifact))
     _write_text(output_dir / "logic" / "claims.md", _claims_markdown(artifact.logic.claims))
@@ -36,7 +36,7 @@ def _write_text(path: Path, contents: str) -> None:
     path.write_text(contents.rstrip() + "\n", encoding="utf-8")
 
 
-def _paper_markdown(artifact: AraArtifact) -> str:
+def _paper_markdown(artifact: Artifact) -> str:
     paper = artifact.paper
     frontmatter = {
         "title": paper.title,
@@ -62,12 +62,12 @@ def _paper_markdown(artifact: AraArtifact) -> str:
             "- `evidence/`: evidence ledger and result records linked to claims.",
             "- `trace/`: source-bounded exploration graph.",
             "- `src/`: environment and concrete artifact notes.",
-            "- `ara_v1_output.json`: canonical structured ARA payload.",
+            "- `agent_output.json`: Claims agent schema payload derived from the ARA-style artifact tree.",
         ]
     )
 
 
-def _problem_markdown(artifact: AraArtifact) -> str:
+def _problem_markdown(artifact: Artifact) -> str:
     logic = artifact.logic
     return "\n".join(
         [
@@ -92,7 +92,7 @@ def _problem_markdown(artifact: AraArtifact) -> str:
     )
 
 
-def _claims_markdown(claims: list[AraClaim]) -> str:
+def _claims_markdown(claims: list[Claim]) -> str:
     if not claims:
         return "# Claims\n\nNo claims were available from miner output."
     blocks = ["# Claims"]
@@ -124,7 +124,7 @@ def _claims_markdown(claims: list[AraClaim]) -> str:
     return "\n".join(blocks)
 
 
-def _concepts_markdown(concepts: list[AraConcept]) -> str:
+def _concepts_markdown(concepts: list[Concept]) -> str:
     if not concepts:
         return "# Concepts\n\nNo concepts were available from miner output."
     blocks = ["# Concepts"]
@@ -133,7 +133,7 @@ def _concepts_markdown(concepts: list[AraConcept]) -> str:
     return "\n".join(blocks)
 
 
-def _experiments_markdown(experiments: list[AraExperiment]) -> str:
+def _experiments_markdown(experiments: list[Experiment]) -> str:
     if not experiments:
         return "# Experiments\n\nNo evidence-backed experiment records were available from miner output."
     blocks = ["# Experiments"]
@@ -167,7 +167,7 @@ def _constraints_markdown(items: list[str]) -> str:
     return "# Constraints\n\n" + _bullets(items)
 
 
-def _evidence_readme_markdown(records: list[AraEvidenceRecord], notes: list[str]) -> str:
+def _evidence_readme_markdown(records: list[EvidenceRecord], notes: list[str]) -> str:
     lines = ["# Evidence Ledger", "", "## Records", ""]
     if records:
         lines.extend(f"- `{record.evidence_id}`: {record.title}" for record in records)
@@ -177,7 +177,7 @@ def _evidence_readme_markdown(records: list[AraEvidenceRecord], notes: list[str]
     return "\n".join(lines)
 
 
-def _evidence_record_markdown(record: AraEvidenceRecord) -> str:
+def _evidence_record_markdown(record: EvidenceRecord) -> str:
     return "\n".join(
         [
             f"# {record.evidence_id}: {record.title}",
@@ -209,10 +209,10 @@ def _environment_markdown(environment: list[str], artifacts: list[str]) -> str:
     return "\n".join(["# Environment", "", "## Requirements And Inputs", "", _bullets(environment), "", "## Concrete Artifacts", "", _bullets(artifacts)])
 
 
-def _trace_yaml(node: AraTraceNode) -> str:
+def _trace_yaml(node: TraceNode) -> str:
     lines: list[str] = []
 
-    def emit(current: AraTraceNode, indent: int = 0) -> None:
+    def emit(current: TraceNode, indent: int = 0) -> None:
         pad = " " * indent
         lines.append(f"{pad}id: {_yaml_scalar(current.node_id)}")
         lines.append(f"{pad}type: {_yaml_scalar(current.node_type)}")
@@ -240,7 +240,7 @@ def _trace_yaml(node: AraTraceNode) -> str:
     return "\n".join(lines)
 
 
-def _source_bullets(sources: list[AraSourceRef]) -> str:
+def _source_bullets(sources: list[SourceRef]) -> str:
     if not sources:
         return "- No source references available."
     rows = []
@@ -267,12 +267,12 @@ def _yaml_scalar(value: object) -> str:
     return json.dumps(str(value), ensure_ascii=False)
 
 
-def _manifest(artifact: AraArtifact) -> dict[str, Any]:
+def _manifest(artifact: Artifact) -> dict[str, Any]:
     return {
         "paper_id": artifact.paper.paper_id,
-        "pipeline_name": "ara_v1",
+        "pipeline_name": "agent_v1",
         "claim_count": len(artifact.logic.claims),
         "evidence_record_count": len(artifact.evidence.records),
         "experiment_count": len(artifact.logic.experiments),
-        "structured_output": "ara_v1_output.json",
+        "structured_output": "agent_output.json",
     }

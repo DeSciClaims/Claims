@@ -7,10 +7,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from .models import AraPaper
+from .artifact_models import Paper
 
 
-class AraInputSpan(BaseModel):
+class InputSpan(BaseModel):
     span_id: str
     paper_id: str
     section_name: str = ""
@@ -20,30 +20,30 @@ class AraInputSpan(BaseModel):
     span_type: str = "text"
 
 
-class AraInputDocument(BaseModel):
-    paper: AraPaper
-    spans: list[AraInputSpan] = Field(default_factory=list)
+class InputDocument(BaseModel):
+    paper: Paper
+    spans: list[InputSpan] = Field(default_factory=list)
     source_path: str | None = None
     source_type: str = "unknown"
     raw_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-def ingest_pdf(pdf_path: Path, *, max_chars: int) -> AraInputDocument:
+def ingest_pdf(pdf_path: Path, *, max_chars: int) -> InputDocument:
     paper_id = pdf_path.stem
     spans = _spans_from_pdf(pdf_path, paper_id=paper_id, max_chars=max_chars)
-    return AraInputDocument(
-        paper=AraPaper(paper_id=paper_id, title=paper_id),
+    return InputDocument(
+        paper=Paper(paper_id=paper_id, title=paper_id),
         spans=spans,
         source_path=str(pdf_path),
         source_type="pdf",
     )
 
 
-def ingest_artifact_json(path: Path, *, max_chars: int) -> AraInputDocument:
+def ingest_artifact_json(path: Path, *, max_chars: int) -> InputDocument:
     payload = json.loads(path.read_text(encoding="utf-8"))
     paper_raw = payload.get("paper", {}) if isinstance(payload, dict) else {}
     paper_id = str(paper_raw.get("paper_id") or path.stem)
-    paper = AraPaper(
+    paper = Paper(
         paper_id=paper_id,
         title=str(paper_raw.get("title") or paper_id),
         authors=[str(item) for item in paper_raw.get("authors", []) or []],
@@ -57,7 +57,7 @@ def ingest_artifact_json(path: Path, *, max_chars: int) -> AraInputDocument:
         if not text:
             continue
         spans.append(
-            AraInputSpan(
+            InputSpan(
                 span_id=str(raw.get("span_id") or f"{paper_id}-span-{index:04d}"),
                 paper_id=paper_id,
                 section_name=str(raw.get("section_name") or ""),
@@ -67,7 +67,7 @@ def ingest_artifact_json(path: Path, *, max_chars: int) -> AraInputDocument:
                 span_type=str(raw.get("span_type") or "text"),
             )
         )
-    return AraInputDocument(
+    return InputDocument(
         paper=paper,
         spans=_truncate_spans(spans, max_chars=max_chars),
         source_path=str(path),
@@ -76,12 +76,12 @@ def ingest_artifact_json(path: Path, *, max_chars: int) -> AraInputDocument:
     )
 
 
-def ingest_text(text_path: Path, *, max_chars: int) -> AraInputDocument:
+def ingest_text(text_path: Path, *, max_chars: int) -> InputDocument:
     paper_id = text_path.stem
     text = text_path.read_text(encoding="utf-8")
     chunks = _chunk_text(text, max_chars=3500)
     spans = [
-        AraInputSpan(
+        InputSpan(
             span_id=f"{paper_id}-span-{index:04d}",
             paper_id=paper_id,
             section_name=f"Chunk {index}",
@@ -90,15 +90,15 @@ def ingest_text(text_path: Path, *, max_chars: int) -> AraInputDocument:
         )
         for index, chunk in enumerate(chunks, start=1)
     ]
-    return AraInputDocument(
-        paper=AraPaper(paper_id=paper_id, title=paper_id),
+    return InputDocument(
+        paper=Paper(paper_id=paper_id, title=paper_id),
         spans=_truncate_spans(spans, max_chars=max_chars),
         source_path=str(text_path),
         source_type="text",
     )
 
 
-def document_source_payload(document: AraInputDocument, *, max_chars: int) -> dict[str, Any]:
+def document_source_payload(document: InputDocument, *, max_chars: int) -> dict[str, Any]:
     spans = _truncate_spans(document.spans, max_chars=max_chars)
     return {
         "paper": document.paper.model_dump(mode="json"),
@@ -108,13 +108,13 @@ def document_source_payload(document: AraInputDocument, *, max_chars: int) -> di
     }
 
 
-def _spans_from_pdf(pdf_path: Path, *, paper_id: str, max_chars: int) -> list[AraInputSpan]:
+def _spans_from_pdf(pdf_path: Path, *, paper_id: str, max_chars: int) -> list[InputSpan]:
     try:
         from pypdf import PdfReader  # type: ignore
     except Exception as exc:  # pragma: no cover
-        raise RuntimeError("pypdf is required for ara_v1 PDF ingestion.") from exc
+        raise RuntimeError("pypdf is required for agent_v1 PDF ingestion.") from exc
     reader = PdfReader(str(pdf_path))
-    spans: list[AraInputSpan] = []
+    spans: list[InputSpan] = []
     for page_index, page in enumerate(reader.pages, start=1):
         page_text = (page.extract_text() or "").strip()
         if not page_text:
@@ -122,7 +122,7 @@ def _spans_from_pdf(pdf_path: Path, *, paper_id: str, max_chars: int) -> list[Ar
         paragraphs = [block.strip() for block in re.split(r"\n\s*\n", page_text) if block.strip()]
         for para_index, paragraph in enumerate(paragraphs, start=1):
             spans.append(
-                AraInputSpan(
+                InputSpan(
                     span_id=f"{paper_id}-p{page_index:03d}-{para_index:03d}",
                     paper_id=paper_id,
                     section_name=f"Page {page_index}",
@@ -134,8 +134,8 @@ def _spans_from_pdf(pdf_path: Path, *, paper_id: str, max_chars: int) -> list[Ar
     return _truncate_spans(spans, max_chars=max_chars)
 
 
-def _truncate_spans(spans: list[AraInputSpan], *, max_chars: int) -> list[AraInputSpan]:
-    kept: list[AraInputSpan] = []
+def _truncate_spans(spans: list[InputSpan], *, max_chars: int) -> list[InputSpan]:
+    kept: list[InputSpan] = []
     total = 0
     for span in spans:
         if total >= max_chars:

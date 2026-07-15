@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from miner.ara_v1 import materialize_ara_artifact, validate_ara_artifact
+from miner.agent_v1 import materialize_agent_artifact, validate_agent_artifact
 
 
-def test_ara_v1_materializes_native_llm_output_contract() -> None:
+def test_agent_v1_materializes_native_llm_output_contract() -> None:
     raw = {
         "paper": {
             "paper_id": "paper1",
@@ -103,17 +103,17 @@ def test_ara_v1_materializes_native_llm_output_contract() -> None:
             "children": [],
         },
         "src": {
-            "environment": ["Native ara_v1 test."],
+            "environment": ["Native agent_v1 test."],
             "artifacts": ["No concrete code artifact."],
         },
         "metadata": {},
     }
 
-    ara = materialize_ara_artifact(raw)
+    artifact = materialize_agent_artifact(raw)
 
-    assert ara.paper.paper_id == "paper1"
-    assert ara.logic.claims[0].claim_id == "C01"
-    assert ara.logic.claims[0].proof == ["E01"]
-    assert ara.logic.claims[0].evidence_ids == ["EV01"]
-    assert ara.evidence.records[0].linked_claim_ids == ["C01"]
-    assert validate_ara_artifact(ara) == []
+    assert artifact.paper.paper_id == "paper1"
+    assert artifact.logic.claims[0].claim_id == "C01"
+    assert artifact.logic.claims[0].proof == ["E01"]
+    assert artifact.logic.claims[0].evidence_ids == ["EV01"]
+    assert artifact.evidence.records[0].linked_claim_ids == ["C01"]
+    assert validate_agent_artifact(artifact) == []

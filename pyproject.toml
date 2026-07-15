@@ -11,6 +11,8 @@ requires-python = ">=3.10"
 dependencies = [
     "bittensor",
     "dspy-ai",
+    "langchain",
+    "langchain-openai",
     "lxml",
     "openpyxl",
     "pydantic>=2",
