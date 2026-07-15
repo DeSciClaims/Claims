@@ -1,0 +1,17 @@
+Synthetic Trial of Treatment A
+
+Abstract: We tested whether Treatment A improves recovery time in a controlled
+synthetic study. In a sample of 120 participants, Treatment A reduced median
+recovery time from 10 days in the control group to 7 days in the treatment
+group. The study used random assignment and measured recovery time over a
+14-day follow-up period. The authors conclude that Treatment A improves recovery
+speed under the tested conditions, while noting that long-term outcomes were not
+measured.
+
+Methods: Participants were randomly assigned to Treatment A or control. Recovery
+time was measured as the first day on which symptoms were absent.
+
+Results: Median recovery time was 7 days with Treatment A and 10 days with
+control. No serious adverse events were observed during the 14-day follow-up.
+
+Limitations: The study was synthetic and did not evaluate long-term outcomes.

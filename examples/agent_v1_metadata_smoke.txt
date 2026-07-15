@@ -1,0 +1,14 @@
+Metadata Smoke Study
+
+Abstract: In 40 synthetic cases, Treatment B reduced median recovery from
+9 days in the control group to 6 days in the treatment group over a 14-day
+follow-up. The study used random assignment. Long-term outcomes were not
+measured.
+
+Methods: Cases were randomly assigned to Treatment B or control. Recovery time
+was measured as the first day on which symptoms were absent.
+
+Results: Median recovery time was 6 days with Treatment B and 9 days with
+control.
+
+Limitations: The study was synthetic and did not evaluate long-term outcomes.

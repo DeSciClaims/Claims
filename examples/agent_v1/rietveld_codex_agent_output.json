@@ -1,0 +1,1116 @@
+{
+  "ara_version": "1.0",
+  "paper": {
+    "paper_id": "Rietveld_et_al_2013_Science",
+    "title": "GWAS of 126,559 Individuals Identifies Genetic Variants Associated with Educational Attainment",
+    "authors": [
+      "Cornelius A. Rietveld",
+      "Sarah E. Medland",
+      "Jaime Derringer",
+      "Jian Yang",
+      "Tonu Esko",
+      "Nicolas W. Martin",
+      "Harm-Jan Westra",
+      "Peter M. Visscher",
+      "Daniel J. Benjamin",
+      "David Cesarini",
+      "Philipp D. Koellinger",
+      "Social Science Genetic Association Consortium"
+    ],
+    "year": 2013,
+    "venue": "Science",
+    "doi": "10.1126/science.1235488",
+    "domain": "social-science genetics; genome-wide association study; educational attainment",
+    "keywords": [
+      "GWAS",
+      "educational attainment",
+      "EduYears",
+      "College completion",
+      "polygenic score",
+      "social-science genetics",
+      "cognitive function"
+    ],
+    "abstract": "A genome-wide association study of educational attainment used discovery and replication samples to identify replicated genome-wide significant SNPs, estimate their small effects, evaluate linear polygenic scores, and explore biological annotation of implicated loci.",
+    "claims_summary": [
+      "Three independent SNPs reached genome-wide significance and replicated for educational attainment phenotypes.",
+      "Individual SNP effect sizes on educational attainment are very small.",
+      "Linear polygenic scores built from measured SNPs explain a modest but nonzero share of variance in educational attainment and cognitive function.",
+      "Follow-up bioinformatics analyses point to candidate loci and anterior caudate regulatory enrichment.",
+      "Educational attainment appears highly polygenic and more diffuse than complex physical traits such as height and BMI."
+    ]
+  },
+  "logic": {
+    "problem_observations": [
+      "Twin and family studies suggest many behavioral and socioeconomic traits are moderately heritable, but robust molecular associations for social-science outcomes had been scarce.",
+      "Educational attainment is available across many genotyped cohorts and can be harmonized as years of schooling or college completion.",
+      "The study used large discovery and replication samples to overcome low power expected for small genetic effects."
+    ],
+    "gaps": [
+      "Prior candidate-gene and social-science GWAS studies often lacked consistent genome-wide significant replication.",
+      "The provided source gives main-text results and selected figures/tables but not the full supplementary tables and methods details.",
+      "The study identifies associations and candidate pathways, but causal mechanisms and gene-environment interactions remain follow-up questions."
+    ],
+    "key_insight": "A very large, harmonized proxy phenotype can reveal replicable but individually tiny genetic associations and provide polygenic scores useful for social-science genetics, even when each locus has limited predictive value.",
+    "assumptions": [
+      "Cohort-level analyses followed the prespecified plan described in the source.",
+      "Restricting analyses to Caucasian participants and including principal components reduced, but did not eliminate, population stratification concerns.",
+      "EduYears and College completion are treated as harmonized proxies for educational attainment across cohorts."
+    ],
+    "claims": [
+      {
+        "claim_id": "C01",
+        "statement": "Large-scale meta-analysis can identify replicable genetic loci for educational attainment where smaller social-science genetics studies had not produced consistent hits.",
+        "conditions": "Supported for the harmonized EduYears and College phenotypes in the discovery and replication cohorts described in the provided source; not a claim that the same loci generalize across ancestries or all educational systems.",
+        "status": "supported",
+        "falsification_criteria": "The claim would be weakened if independent replication under the same phenotype definitions failed for the three genome-wide significant loci or if the reported replication were attributable to unmodeled cohort artifacts.",
+        "proof": [
+          "E01",
+          "E02"
+        ],
+        "evidence_ids": [
+          "EV01",
+          "EV02"
+        ],
+        "dependencies": [],
+        "sources": [
+          {
+            "source_id": "S01",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "Three independent single-nucleotide polymorphisms (SNPs) are genome-wide significant",
+            "role": "result"
+          },
+          {
+            "source_id": "S02",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "all three replicate",
+            "role": "result"
+          },
+          {
+            "source_id": "S03",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "discovery sample of 101,069 individuals and a replication sample of 25,490",
+            "role": "method"
+          }
+        ],
+        "source_claim_id": null,
+        "metadata": {
+          "phenotypes": [
+            "EduYears",
+            "College"
+          ],
+          "replicated_snps": [
+            "rs9320913",
+            "rs11584700",
+            "rs4851266"
+          ]
+        }
+      },
+      {
+        "claim_id": "C02",
+        "statement": "The genetic signal detected at individual educational-attainment loci is real enough to replicate but too small to support large-effect interpretations of single SNPs.",
+        "conditions": "Supported for the three replicated SNPs and effect-size estimates in the reported replication sample; does not rule out rare variants or nonadditive effects outside the measured common-SNP framework.",
+        "status": "supported",
+        "falsification_criteria": "The claim would fail if replicated individual variants for the same phenotypes routinely explained substantially larger variance under comparable GWAS controls, or if these estimates were shown to be severe downward artifacts.",
+        "proof": [
+          "E02"
+        ],
+        "evidence_ids": [
+          "EV02"
+        ],
+        "dependencies": [
+          "C01"
+        ],
+        "sources": [
+          {
+            "source_id": "S04",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p002-001"
+            ],
+            "quote": "rs9320913) explains 0.022% of phenotypic",
+            "role": "result"
+          },
+          {
+            "source_id": "S05",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "approximately 1 month of schooling per allele",
+            "role": "interpretation"
+          },
+          {
+            "source_id": "S06",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p002-001"
+            ],
+            "quote": "odds ratio of 0.912 in the replication sample",
+            "role": "result"
+          }
+        ],
+        "source_claim_id": null,
+        "metadata": {
+          "effect_size_interpretation": "small individual common-SNP effects"
+        }
+      },
+      {
+        "claim_id": "C03",
+        "statement": "Aggregating many measured SNPs captures more educational-attainment signal than focusing only on genome-wide significant loci, consistent with a highly polygenic architecture.",
+        "conditions": "Supported for linear polygenic scores tested in QIMR and STR using meta-analysis results that excluded the prediction cohort; exact portability to other populations and phenotyping schemes is not established by the provided source.",
+        "status": "supported",
+        "falsification_criteria": "The claim would be weakened if polygenic score variance explained did not increase as SNP inclusion thresholds became less conservative, or if leave-cohort-out prediction failed in comparable cohorts.",
+        "proof": [
+          "E03"
+        ],
+        "evidence_ids": [
+          "EV03"
+        ],
+        "dependencies": [],
+        "sources": [
+          {
+            "source_id": "S07",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "amount of variance accounted for increases as the P value threshold becomes less conservative",
+            "role": "result"
+          },
+          {
+            "source_id": "S08",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "accounts for ≈2%",
+            "role": "result"
+          },
+          {
+            "source_id": "S09",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "≈3%",
+            "role": "result"
+          }
+        ],
+        "source_claim_id": null,
+        "metadata": {
+          "prediction_cohorts": [
+            "QIMR",
+            "STR"
+          ],
+          "score_type": "linear polygenic score"
+        }
+      },
+      {
+        "claim_id": "C04",
+        "statement": "The educational-attainment polygenic signal overlaps with cognitive-function variation, making cognition a plausible but not fully resolved mediator.",
+        "conditions": "Supported for the STR cognitive-function subset and the available mediation analysis described in the source; the source explicitly notes that richer mediators would have been preferable.",
+        "status": "partially_supported",
+        "falsification_criteria": "The claim would be weakened if equivalent within-family or independent-cohort analyses found no cognitive-function association for the education-derived scores, or if mediation evidence disappeared under stronger mediator measurement.",
+        "proof": [
+          "E04"
+        ],
+        "evidence_ids": [
+          "EV04"
+        ],
+        "dependencies": [
+          "C03"
+        ],
+        "sources": [
+          {
+            "source_id": "S10",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "R2 ≈ 2.5%",
+            "role": "result"
+          },
+          {
+            "source_id": "S11",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "A mediation analysis (table S24) provides tentative evidence",
+            "role": "interpretation"
+          },
+          {
+            "source_id": "S12",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "preferable to explore a richer set of mediators",
+            "role": "interpretation"
+          }
+        ],
+        "source_claim_id": null,
+        "metadata": {
+          "mediator": "cognitive function",
+          "support_qualifier": "tentative"
+        }
+      },
+      {
+        "claim_id": "C05",
+        "statement": "Follow-up biological annotation links the association results to candidate regions and neural regulatory context rather than leaving the GWAS hits as isolated markers.",
+        "conditions": "Supported by supplemental follow-up analyses summarized in the main text; these analyses suggest candidate biological interpretation but do not establish causal molecular mechanisms.",
+        "status": "partially_supported",
+        "falsification_criteria": "The claim would be weakened if gene-based, eQTL, chromatin-enrichment, or coexpression follow-up failed to reproduce convergent evidence around the highlighted regions in independent data.",
+        "proof": [
+          "E05"
+        ],
+        "evidence_ids": [
+          "EV05"
+        ],
+        "dependencies": [
+          "C01"
+        ],
+        "sources": [
+          {
+            "source_id": "S13",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p002-001"
+            ],
+            "quote": "chromosome 1q32 (including LRRN2, MDM4, and PIK3C2B)",
+            "role": "result"
+          },
+          {
+            "source_id": "S14",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p002-001"
+            ],
+            "quote": "enrichment of H3K4me3 chromatin marks",
+            "role": "result"
+          },
+          {
+            "source_id": "S15",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p002-001"
+            ],
+            "quote": "pathways related to cognitive processes",
+            "role": "interpretation"
+          }
+        ],
+        "source_claim_id": null,
+        "metadata": {
+          "candidate_regions": [
+            "chromosome 1q32",
+            "chromosome 6 near major histocompatibility complex"
+          ],
+          "annotation_types": [
+            "gene-based tests",
+            "eQTL",
+            "pathway analysis",
+            "chromatin enrichment",
+            "coexpression"
+          ]
+        }
+      },
+      {
+        "claim_id": "C06",
+        "statement": "Educational attainment has a more diffuse common-variant architecture than benchmark physical traits, so social-science genetics needs much larger samples and cautious interpretation.",
+        "conditions": "Supported by comparison to height and BMI GWAS values reported in the discussion; bounded to traits with similar social-science genetic architecture and current SNP microarray capture.",
+        "status": "supported",
+        "falsification_criteria": "The claim would be weakened if comparable behavioral-trait GWAS routinely found individual common SNPs and polygenic scores with effect sizes matching physical traits at similar sample sizes.",
+        "proof": [
+          "E06"
+        ],
+        "evidence_ids": [
+          "EV06"
+        ],
+        "dependencies": [
+          "C02",
+          "C03"
+        ],
+        "sources": [
+          {
+            "source_id": "S16",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "more than an order of magnitude smaller than those observed for height and body mass index",
+            "role": "interpretation"
+          },
+          {
+            "source_id": "S17",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "genetic architecture of complex behavioral traits is far more diffuse",
+            "role": "interpretation"
+          },
+          {
+            "source_id": "S18",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p004-001"
+            ],
+            "quote": "researchers must be especially vigilant to avoid misinterpretations",
+            "role": "interpretation"
+          }
+        ],
+        "source_claim_id": null,
+        "metadata": {
+          "comparison_traits": [
+            "height",
+            "BMI"
+          ],
+          "interpretive_warning": "avoid gene-for-X and large-effect readings"
+        }
+      }
+    ],
+    "concepts": [
+      {
+        "concept_id": "K01",
+        "label": "Educational attainment",
+        "definition": "The study phenotype, harmonized as EduYears and College completion across cohorts.",
+        "source_refs": [
+          {
+            "source_id": "S19",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "years of schooling",
+            "role": "method"
+          }
+        ]
+      },
+      {
+        "concept_id": "K02",
+        "label": "Genome-wide association study",
+        "definition": "A cohort-level and meta-analytic search for SNP associations with educational attainment phenotypes.",
+        "source_refs": [
+          {
+            "source_id": "S20",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "GWAS meta-analysis was performed",
+            "role": "method"
+          }
+        ]
+      },
+      {
+        "concept_id": "K03",
+        "label": "Linear polygenic score",
+        "definition": "An aggregate score constructed from SNPs selected by meta-analysis P-value thresholds and tested in excluded cohorts.",
+        "source_refs": [
+          {
+            "source_id": "S21",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p002-001"
+            ],
+            "quote": "constructed a linear polygenic score",
+            "role": "method"
+          }
+        ]
+      },
+      {
+        "concept_id": "K04",
+        "label": "Proxy-phenotype methodology",
+        "definition": "A strategy of using a distal but widely available phenotype to gain sample size and identify variants for follow-up on more direct endophenotypes.",
+        "source_refs": [
+          {
+            "source_id": "S22",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p004-001"
+            ],
+            "quote": "proxy-phenotype methodology",
+            "role": "interpretation"
+          }
+        ]
+      },
+      {
+        "concept_id": "K05",
+        "label": "Population stratification",
+        "definition": "Confounding from ancestry-related allele-frequency and phenotype differences, addressed by sample restriction, principal components, and within-family analyses.",
+        "source_refs": [
+          {
+            "source_id": "S23",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "first four principal components",
+            "role": "method"
+          },
+          {
+            "source_id": "S24",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "within-family analyses",
+            "role": "method"
+          }
+        ]
+      }
+    ],
+    "experiments": [
+      {
+        "experiment_id": "E01",
+        "title": "Discovery-stage GWAS meta-analysis",
+        "verifies": [
+          "C01"
+        ],
+        "setup": "Meta-analyze cohort-level GWAS results for EduYears and College across the discovery cohorts under a prespecified analysis plan.",
+        "procedure": "Harmonize phenotypes, impute to HapMap 2 CEU, control principal components, quality-control cohort results, and meta-analyze at independent centers.",
+        "expected_outcome": "Genome-wide significant or suggestive loci should emerge if common variants are associated with the phenotypes.",
+        "evidence_ids": [
+          "EV01"
+        ],
+        "run": "Discovery meta-analysis across 42 cohorts",
+        "source_refs": [
+          {
+            "source_id": "S25",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "meta-analysis was performed across 42 cohorts",
+            "role": "method"
+          }
+        ]
+      },
+      {
+        "experiment_id": "E02",
+        "title": "Independent replication of lead loci",
+        "verifies": [
+          "C01",
+          "C02"
+        ],
+        "setup": "Bring forward the lead SNP from each suggestive or genome-wide significant discovery locus into independent replication cohorts.",
+        "procedure": "Use the same prespecified analysis plan in additional cohorts and compare effect direction, magnitude, and adjusted significance.",
+        "expected_outcome": "Genome-wide significant discovery signals should replicate with comparable direction and magnitude if they are robust.",
+        "evidence_ids": [
+          "EV02"
+        ],
+        "run": "Replication analysis in 12 additional cohorts",
+        "source_refs": [
+          {
+            "source_id": "S26",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "12 additional, independent cohorts",
+            "role": "method"
+          }
+        ]
+      },
+      {
+        "experiment_id": "E03",
+        "title": "Leave-cohort-out polygenic score prediction",
+        "verifies": [
+          "C03"
+        ],
+        "setup": "Construct linear polygenic scores from combined meta-analysis results while excluding the prediction cohort.",
+        "procedure": "Vary the SNP inclusion P-value threshold and regress EduYears on the resulting scores in QIMR and STR.",
+        "expected_outcome": "A highly polygenic trait should show stronger prediction as less stringent SNP thresholds include more variants.",
+        "evidence_ids": [
+          "EV03"
+        ],
+        "run": "QIMR and STR score prediction analyses",
+        "source_refs": [
+          {
+            "source_id": "S27",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "excluding the cohort",
+            "role": "method"
+          }
+        ]
+      },
+      {
+        "experiment_id": "E04",
+        "title": "Cognitive-function association and mediation analysis",
+        "verifies": [
+          "C04"
+        ],
+        "setup": "Use education-derived polygenic scores and cognitive-function data available in STR males.",
+        "procedure": "Test score associations with cognitive function and evaluate mediation evidence summarized in supplemental analyses.",
+        "expected_outcome": "If cognition partly mediates the education-associated genetic signal, the score should also associate with cognitive-function variation.",
+        "evidence_ids": [
+          "EV04"
+        ],
+        "run": "STR cognitive-function subset analysis",
+        "source_refs": [
+          {
+            "source_id": "S28",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "Swedish Enlistment Battery",
+            "role": "method"
+          }
+        ]
+      },
+      {
+        "experiment_id": "E05",
+        "title": "Bioinformatics follow-up analyses",
+        "verifies": [
+          "C05"
+        ],
+        "setup": "Use combined-stage association results for gene-based, eQTL, pathway, chromatin, functional annotation, and coexpression analyses.",
+        "procedure": "Run complementary annotation analyses to identify convergent candidate loci, tissues, and biological processes.",
+        "expected_outcome": "Convergent annotations should highlight genomic regions and biological contexts relevant to cognitive or neural phenotypes.",
+        "evidence_ids": [
+          "EV05"
+        ],
+        "run": "Supplemental bioinformatics analyses",
+        "source_refs": [
+          {
+            "source_id": "S29",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p002-001"
+            ],
+            "quote": "series of complementary and exploratory supplemental analyses",
+            "role": "method"
+          }
+        ]
+      },
+      {
+        "experiment_id": "E06",
+        "title": "Effect-size contextualization against prior GWAS",
+        "verifies": [
+          "C06"
+        ],
+        "setup": "Compare the reported educational-attainment SNP and polygenic-score effect sizes with values from height and BMI GWAS literature.",
+        "procedure": "Place the largest single-SNP and score-level estimates alongside published height and BMI estimates.",
+        "expected_outcome": "A diffuse behavioral-trait architecture should show smaller per-SNP effects than benchmark physical traits.",
+        "evidence_ids": [
+          "EV06"
+        ],
+        "run": "Discussion-level comparative analysis",
+        "source_refs": [
+          {
+            "source_id": "S30",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "Placed in the context of the GW AS literature",
+            "role": "interpretation"
+          }
+        ]
+      }
+    ],
+    "related_work": [
+      "Imports behavioral-genetics evidence that educational attainment and related behavioral traits are heritable.",
+      "Extends medical and physical phenotype GWAS meta-analysis practice to a social-science phenotype.",
+      "Contrasts with prior candidate-gene and social-science GWAS studies that lacked consistent genome-wide significant replication.",
+      "Uses height and BMI GWAS results as benchmarks for interpreting the small effect sizes observed for educational attainment.",
+      "Connects association results to prior health, central nervous system, cognitive-process, and model-animal findings through bioinformatics follow-up."
+    ],
+    "constraints": [
+      "The main analysis was restricted to Caucasians to reduce stratification concerns, limiting ancestry generalization.",
+      "Educational attainment is environmentally influenced and distal from biological mechanism, so associations should not be interpreted deterministically.",
+      "Individual SNP effects are very small, limiting direct predictive use and requiring large samples for discovery.",
+      "The source text summarizes supplemental analyses but does not provide all supplementary tables, methods, and raw cohort-level outputs.",
+      "The paper warns against gene-for-X interpretations and against assuming genetically influenced phenotypes are immune to environmental intervention."
+    ]
+  },
+  "evidence": {
+    "records": [
+      {
+        "evidence_id": "EV01",
+        "title": "Discovery-stage significant loci",
+        "role": "metadata",
+        "summary": "The discovery-stage GWAS found one genome-wide significant EduYears locus and two genome-wide significant College loci, plus additional suggestive loci.",
+        "evidence_method": "GWAS meta-analysis across discovery cohorts",
+        "outcome_type": "association_result",
+        "presentation_type": "text",
+        "source_refs": [
+          {
+            "source_id": "S31",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "one genome-wide–significant locus",
+            "role": "result"
+          }
+        ],
+        "linked_claim_ids": [
+          "C01"
+        ],
+        "metadata": {
+          "table": "Table 1"
+        }
+      },
+      {
+        "evidence_id": "EV02",
+        "title": "Replication and small individual effects",
+        "role": "metadata",
+        "summary": "The three genome-wide significant SNPs replicated, while the strongest reported individual effects corresponded to very small educational differences or odds-ratio shifts.",
+        "evidence_method": "Independent replication meta-analysis",
+        "outcome_type": "replication_result",
+        "presentation_type": "mixed",
+        "source_refs": [
+          {
+            "source_id": "S32",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "same sign and similar magnitude",
+            "role": "result"
+          },
+          {
+            "source_id": "S33",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p002-001"
+            ],
+            "quote": "equivalent to a 1.8 percentage-point difference per allele",
+            "role": "interpretation"
+          }
+        ],
+        "linked_claim_ids": [
+          "C01",
+          "C02"
+        ],
+        "metadata": {
+          "figure": "Figure 1",
+          "table": "Table 1"
+        }
+      },
+      {
+        "evidence_id": "EV03",
+        "title": "Polygenic score prediction in QIMR and STR",
+        "role": "metadata",
+        "summary": "Polygenic-score explanatory power increased when more SNPs were included, and all measured SNPs accounted for measurable EduYears variance in STR and QIMR.",
+        "evidence_method": "Leave-cohort-out score construction and prediction",
+        "outcome_type": "prediction_result",
+        "presentation_type": "mixed",
+        "source_refs": [
+          {
+            "source_id": "S34",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "educational attainment is a highly polygenic trait",
+            "role": "interpretation"
+          },
+          {
+            "source_id": "S35",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p004-001"
+            ],
+            "quote": "Solid lines show results from regressions of EduYears",
+            "role": "method"
+          }
+        ],
+        "linked_claim_ids": [
+          "C03"
+        ],
+        "metadata": {
+          "figure": "Figure 2"
+        }
+      },
+      {
+        "evidence_id": "EV04",
+        "title": "Cognitive-function score association",
+        "role": "metadata",
+        "summary": "Education-derived polygenic scores explained cognitive-function variation in the STR male subset, and mediation analysis was described as tentatively consistent with cognition as a pathway.",
+        "evidence_method": "Association analysis and supplemental mediation analysis",
+        "outcome_type": "endophenotype_result",
+        "presentation_type": "text",
+        "source_refs": [
+          {
+            "source_id": "S36",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "could explain individual differences in cognitive function",
+            "role": "method"
+          }
+        ],
+        "linked_claim_ids": [
+          "C04"
+        ],
+        "metadata": {
+          "cohort": "STR",
+          "sample_note": "male subset"
+        }
+      },
+      {
+        "evidence_id": "EV05",
+        "title": "Convergent bioinformatics annotation",
+        "role": "metadata",
+        "summary": "Follow-up analyses highlighted chromosome 1q32 and chromosome 6 near the MHC, anterior caudate H3K4me3 enrichment, and implicated genes associated with cognitive or neuronal processes.",
+        "evidence_method": "Gene-based, eQTL, pathway, chromatin enrichment, functional annotation, and coexpression analyses",
+        "outcome_type": "annotation_result",
+        "presentation_type": "text",
+        "source_refs": [
+          {
+            "source_id": "S37",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p002-001"
+            ],
+            "quote": "Two regions, in particular, showed convergent evidence",
+            "role": "result"
+          }
+        ],
+        "linked_claim_ids": [
+          "C05"
+        ],
+        "metadata": {
+          "supplemental_tables": [
+            "S20",
+            "S21",
+            "S22"
+          ],
+          "supplemental_figure": "S20"
+        }
+      },
+      {
+        "evidence_id": "EV06",
+        "title": "Comparison with physical-trait GWAS and interpretation warning",
+        "role": "metadata",
+        "summary": "The discussion compares educational-attainment effects with height and BMI and concludes behavioral-trait architecture is more diffuse, while warning against deterministic interpretations.",
+        "evidence_method": "Contextual comparison and discussion synthesis",
+        "outcome_type": "interpretive_result",
+        "presentation_type": "text",
+        "source_refs": [
+          {
+            "source_id": "S38",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "score for height reached 10%",
+            "role": "result"
+          },
+          {
+            "source_id": "S39",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p004-001"
+            ],
+            "quote": "individual SNPs have large effects",
+            "role": "interpretation"
+          }
+        ],
+        "linked_claim_ids": [
+          "C06"
+        ],
+        "metadata": {
+          "benchmark_traits": [
+            "height",
+            "BMI"
+          ]
+        }
+      }
+    ],
+    "ledger_notes": [
+      "Main-text Table 1 is represented in EV01 and EV02; exact full tabular transcription is limited by the provided text extraction.",
+      "Main-text Figure 1 is represented in EV02 as regional association plots for the three replicated loci; no pixel image was provided in the source payload.",
+      "Main-text Figure 2 is represented in EV03 as the polygenic-score explanatory-power figure; no pixel image was provided in the source payload.",
+      "Supplementary figures and tables are mentioned in the source but their contents are not included in the provided payload."
+    ]
+  },
+  "trace": {
+    "node_id": "Q0",
+    "node_type": "question",
+    "support_level": "inferred",
+    "summary": "Can a very large GWAS meta-analysis identify reliable genetic associations for educational attainment and clarify the architecture of the trait?",
+    "source_refs": [
+      {
+        "source_id": "S40",
+        "source_type": "span",
+        "path": null,
+        "span_ids": [
+          "Rietveld_et_al_2013_Science-p001-001"
+        ],
+        "quote": "complex behavioral trait—educational attainment",
+        "role": "method"
+      }
+    ],
+    "evidence": [
+      "C01",
+      "C02",
+      "C03",
+      "C04",
+      "C05",
+      "C06"
+    ],
+    "children": [
+      {
+        "node_id": "N01",
+        "node_type": "experiment",
+        "support_level": "explicit",
+        "summary": "Run discovery-stage GWAS meta-analysis across many cohorts for EduYears and College.",
+        "source_refs": [
+          {
+            "source_id": "S41",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "GW AS meta-analysis was performed across 42 cohorts",
+            "role": "method"
+          }
+        ],
+        "evidence": [
+          "E01",
+          "EV01"
+        ],
+        "children": [
+          {
+            "node_id": "N01a",
+            "node_type": "decision",
+            "support_level": "explicit",
+            "summary": "Use harmonized EduYears and College phenotypes to balance information content and cross-country comparability.",
+            "source_refs": [
+              {
+                "source_id": "S42",
+                "source_type": "span",
+                "path": null,
+                "span_ids": [
+                  "Rietveld_et_al_2013_Science-p001-001"
+                ],
+                "quote": "College may be more comparable across countries",
+                "role": "method"
+              }
+            ],
+            "evidence": [
+              "K01"
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "node_id": "N02",
+        "node_type": "experiment",
+        "support_level": "explicit",
+        "summary": "Replicate lead suggestive and significant loci in independent cohorts.",
+        "source_refs": [
+          {
+            "source_id": "S43",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p001-001"
+            ],
+            "quote": "brought forward for replication",
+            "role": "method"
+          }
+        ],
+        "evidence": [
+          "E02",
+          "EV02"
+        ],
+        "children": [
+          {
+            "node_id": "N02a",
+            "node_type": "dead_end",
+            "support_level": "explicit",
+            "summary": "Seven loci that did not reach genome-wide significance did not replicate.",
+            "source_refs": [
+              {
+                "source_id": "S44",
+                "source_type": "span",
+                "path": null,
+                "span_ids": [
+                  "Rietveld_et_al_2013_Science-p001-001"
+                ],
+                "quote": "seven loci that did not reach genome-wide significance did not replicate",
+                "role": "result"
+              }
+            ],
+            "evidence": [
+              "EV02"
+            ],
+            "children": []
+          }
+        ]
+      },
+      {
+        "node_id": "N03",
+        "node_type": "experiment",
+        "support_level": "explicit",
+        "summary": "Use combined-stage results to construct and test polygenic scores for educational attainment and cognitive function.",
+        "source_refs": [
+          {
+            "source_id": "S45",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p002-001"
+            ],
+            "quote": "constructed a linear polygenic score",
+            "role": "method"
+          }
+        ],
+        "evidence": [
+          "E03",
+          "E04",
+          "EV03",
+          "EV04"
+        ],
+        "children": []
+      },
+      {
+        "node_id": "N04",
+        "node_type": "experiment",
+        "support_level": "explicit",
+        "summary": "Run biological follow-up analyses to contextualize association signals.",
+        "source_refs": [
+          {
+            "source_id": "S46",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p002-001"
+            ],
+            "quote": "aid in interpreting and contextualizing the results",
+            "role": "method"
+          }
+        ],
+        "evidence": [
+          "E05",
+          "EV05"
+        ],
+        "children": []
+      },
+      {
+        "node_id": "N05",
+        "node_type": "interpretation",
+        "support_level": "explicit",
+        "summary": "Compare effect sizes with prior GWAS and frame cautious interpretation for social-science genetics.",
+        "source_refs": [
+          {
+            "source_id": "S47",
+            "source_type": "span",
+            "path": null,
+            "span_ids": [
+              "Rietveld_et_al_2013_Science-p003-001"
+            ],
+            "quote": "can serve as a benchmark",
+            "role": "interpretation"
+          }
+        ],
+        "evidence": [
+          "E06",
+          "EV06"
+        ],
+        "children": []
+      }
+    ]
+  },
+  "src": {
+    "environment": [
+      "No executable code, scripts, or complete computational environment were provided in the source payload.",
+      "The paper reports cohort-level analyses using genotype data imputed to HapMap 2 CEU (r22.b36), prespecified cohort analyses, principal component controls, quality control, and meta-analysis at independent centers.",
+      "Results from the meta-analysis are stated to be available at www.ssgac.org, but the run directory payload contains only extracted PDF text."
+    ],
+    "artifacts": [
+      "Source payload: source_payload.json",
+      "Original source path recorded in payload: ../ml-llm-benchmark/data/Rietveld_et_al_2013_Science.pdf",
+      "No source code artifacts were included; analytical procedures are represented in logic.experiments and evidence records."
+    ]
+  },
+  "metadata": {
+    "compiler": "claims-agent-v1",
+    "source_type": "pdf",
+    "source_bounded": true,
+    "request_file": "request.json",
+    "schema_file": "agent_schema.json",
+    "validation_feedback_file": "validation_feedback.json",
+    "notes": [
+      "Used only provided source spans and request metadata.",
+      "Unknown optional paper metadata from request was filled when present in the source spans."
+    ],
+    "pipeline_name": "agent_v1",
+    "output_schema": "agent_v1",
+    "runtime": "agent-cli",
+    "runtime_metrics": {
+      "elapsed_seconds": 497.308,
+      "attempt_count": 1,
+      "models": [],
+      "token_usage": {
+        "prompt_tokens": 497982,
+        "completion_tokens": 26042,
+        "total_tokens": 524816
+      },
+      "cost_usd": null,
+      "usage_source": "codex_exec_json"
+    },
+    "skill_name": "compiler",
+    "skill_sha256": "15c8c548238cdfe9fba8ed3620f1aff35ea92d18da842be295732f2445f7caea",
+    "source_path": "../ml-llm-benchmark/data/Rietveld_et_al_2013_Science.pdf"
+  }
+}
