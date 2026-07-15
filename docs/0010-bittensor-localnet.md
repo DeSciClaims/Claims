@@ -1,8 +1,10 @@
 # Bittensor Localnet Operation
 
-This guide runs the Claims v0 miner and validator on a Bittensor subnet. The
-same neuron scripts accept localnet, testnet, and mainnet subtensor endpoints;
-localnet is the recommended development target.
+This guide runs the Claims miner and validator on a Bittensor subnet. The miner
+defaults to the canonical `agent_v1` ARA pipeline; the validator currently uses
+the v0 compatibility audit stack. The same neuron scripts accept localnet,
+testnet, and mainnet subtensor endpoints; localnet is the recommended
+development target.
 
 ## Install
 
@@ -19,14 +21,14 @@ installed in the active environment:
 pip install bittensor
 ```
 
-Set the LLM and parser environment used by `miner.v0`:
+Set the LLM environment used by `miner.agent_v1`:
 
 ```bash
 cp .env.example .env
 ```
 
-Fill in `OPENROUTER_API_KEY`. Set `GROBID_URL` if using a GROBID service other
-than `http://localhost:8070/`.
+Fill in `OPENROUTER_API_KEY`. `GROBID_URL` is only needed for legacy
+`miner.v0` runs that use `--pdf-extraction-method grobid`.
 
 ## Start Localnet
 
@@ -195,8 +197,9 @@ Then pass:
 --claims.task-manifest examples/tasks/localnet_urls.jsonl
 ```
 
-Artifact mode is still available for deterministic smoke tests. Create an
-artifact by running the v0 miner once in file mode:
+Artifact mode is still available for deterministic smoke tests. For legacy v0
+validator compatibility tests, create an artifact by running the v0 miner once
+in file mode:
 
 ```bash
 SUBNET_CLAIMS_RUN_LABEL=claims_v0 python -m miner.v0 \
@@ -221,11 +224,12 @@ python -m neurons.miner \
   --wallet.hotkey default \
   --subtensor.chain_endpoint ws://127.0.0.1:9945 \
   --axon.port 8091 \
-  --claims.pdf-extraction-method grobid
+  --claims.agent-runtime dspy-react
 ```
 
-Use a different port for each miner process. The extraction method is miner
-policy; validators do not prescribe how miners parse PDFs.
+Use a different port for each miner process. `agent_v1` is the default
+`--claims.pipeline`. To run the legacy miner instead, pass
+`--claims.pipeline v0 --claims.pdf-extraction-method grobid`.
 
 ## Run the Validator
 
@@ -297,7 +301,18 @@ python -m neurons.miner \
 
 ## File-Based Smoke Tests
 
-The core v0 pipeline can be tested without starting subtensor:
+The canonical agent miner can be tested without starting subtensor:
+
+```bash
+python -m miner.agent_v1 --help
+python -m miner.agent_v1 \
+  --text examples/agent_v1_smoke.txt \
+  --runtime dspy-react \
+  --output-dir /tmp/claims-agent-v1-smoke
+```
+
+The legacy v0 pipeline and validator can also be tested without starting
+subtensor:
 
 ```bash
 python -m miner.v0 --help

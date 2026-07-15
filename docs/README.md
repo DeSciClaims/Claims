@@ -13,6 +13,9 @@
 - [Extraction Audit Flow](./0008-extraction-audit-flow.md)
 - [Miner v0 and Validator v0](./0009-v0-miner-validator.md)
 - [Bittensor Localnet Operation](./0010-bittensor-localnet.md)
+- [Agent v1 Canonical Miner](./0011-agent-v1-canonical-miner.md)
+- [Claims Agent Schema vs Claims v0 Schema](./0012-ara-vs-claims-v0-schema.md)
+- [Agent v1 Validator, ARA Seal, and Benchmarks](./0013-agent-v1-validator-seal-and-benchmarks.md)
 
 ## Purpose
 
@@ -47,7 +50,9 @@ This repo uses the canonical object names defined across the public schemas in `
 - `ClaimEvidenceLink`
 - `SemanticField`
 - `OntologyAnnotation`
-- `miner.v0` uses a flat claim-evidence payload for subnet miner and validator operation.
+- `miner.agent_v1` is the canonical miner path and writes Claims agent artifacts derived from the ARA markdown model.
+- `validator.agent_v1` is the canonical validator path for Claims agent artifacts.
+- `miner.v0` is the legacy flat claim-evidence compatibility path.
 
 ## Repo Philosophy
 

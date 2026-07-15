@@ -2,6 +2,10 @@
 
 ## Purpose
 
+This is a legacy compatibility runbook. New miner implementation work should
+use `miner.agent_v1`; keep this document for v0 validator/import compatibility
+and historical localnet reproduction.
+
 `miner.v0` and `validator.v0` are the first subnet-shaped implementations for localnet work.
 
 The goal is to get the core loop running before adding richer schemas:

@@ -1,5 +1,10 @@
 # Miner v0
 
+`miner.v0` is the legacy direct model miner path. New miner work should target
+`miner.agent_v1`, which is the canonical skill-capable ARA miner. Keep v0
+available for compatibility with existing validator/import tooling and for
+explicit `--claims.pipeline v0` runs.
+
 `miner.v0` is the section-context miner shape simplified for the Claims subnet v0. It keeps the existing ingest, section planning, section summaries, exports, and upload-compatible files, but the extraction target is now flat claim-evidence pairs:
 
 - paper-owned `claim_text`
