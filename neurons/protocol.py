@@ -17,7 +17,7 @@ except ImportError:  # pragma: no cover - used only when the SDK is not installe
 
 
 class ClaimExtractionSynapse(Synapse):
-    """Request and response envelope for v0 claim extraction."""
+    """Request and response envelope for Claims extraction tasks."""
 
     protocol_version: str = PROTOCOL_VERSION
     schema_version: str = SCHEMA_VERSION
@@ -27,5 +27,5 @@ class ClaimExtractionSynapse(Synapse):
     source_sha256: str = ""
     artifact: dict[str, Any] | None = None
     extraction: dict[str, Any] | None = None
-    miner_version: str = "v0"
+    miner_version: str = "agent_v1"
     error: str = ""

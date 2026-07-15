@@ -1,13 +1,16 @@
 # Claims Neurons
 
 The `neurons` package contains Bittensor-facing entry points for the Claims subnet.
-The protocol and neuron scripts wrap the file-based v0 miner and validator engines:
+The miner neuron now defaults to the skill-capable `agent_v1` miner. The
+validator and wire envelope still retain Claims v0 compatibility while the
+validator stack migrates to ARA-native scoring:
 
-- `python -m neurons.miner` serves the v0 claim-evidence miner through an axon.
+- `python -m neurons.miner` serves the `agent_v1` ARA miner through an axon by default.
 - `python -m neurons.validator` queries registered miners, audits their responses with `validator.v0`, and sets weights.
 
 The neuron scripts are intentionally thin. Core extraction behavior remains in
-`miner.v0`; core scoring behavior remains in `validator.v0`.
+`miner.agent_v1`; core scoring behavior remains in `validator.v0` for the
+current compatibility validator.
 
 ## Protocol
 
@@ -20,7 +23,7 @@ The neuron scripts are intentionally thin. Core extraction behavior remains in
 - `paper_url`: downloadable PDF URL for network tasks
 - `source_sha256`: optional expected SHA-256 hash for the PDF
 - `artifact`: optional `ExtractionArtifact` JSON for local smoke tests
-- `extraction`: miner response in the v0 `section_context_v1_output.json` shape
+- `extraction`: miner response payload; `agent_v1` miners return the structured ARA projection, while legacy miners return the v0 `section_context_v1_output.json` shape
 - `miner_version`: miner implementation version
 - `error`: miner-side error message, if extraction fails
 
@@ -36,14 +39,43 @@ python -m neurons.miner \
   --axon.external_ip <PUBLIC_IP> \
   --axon.port 8091 \
   --axon.external_port 8091 \
-  --claims.extraction-mode abstract-full-paper \
-  --claims.pdf-extraction-method grobid \
-  --claims.output-dir miner/v0/outputs/neuron
+  --claims.agent-runtime dspy-react \
+  --claims.output-dir miner/agent_v1/outputs/neuron
 ```
 
-The miner uses `miner.v0` to process PDF URL tasks or artifact smoke-test tasks
-supplied by the validator. It caches completed extractions by source hash,
-protocol version, miner version, extraction mode, and model/parser configuration.
+The miner uses `miner.agent_v1` to process PDF URL tasks or artifact smoke-test
+tasks supplied by the validator. It caches completed extractions by source hash,
+protocol version, miner version, runtime, and model/parser configuration.
+
+External agent loops can be used through the `agent-cli` runtime:
+
+```bash
+python -m neurons.miner \
+  --netuid <NETUID> \
+  --wallet.name <MINER_WALLET> \
+  --wallet.hotkey <HOTKEY> \
+  --subtensor.network <NETWORK> \
+  --axon.ip 0.0.0.0 \
+  --axon.external_ip <PUBLIC_IP> \
+  --axon.port 8091 \
+  --axon.external_port 8091 \
+  --claims.agent-runtime agent-cli \
+  --claims.agent-cli-command ".venv/bin/python -m miner.agent_v1.wrappers.hermes_prompt" \
+  --claims.output-dir miner/agent_v1/outputs/neuron
+```
+
+Run the legacy direct miner explicitly with:
+
+```bash
+python -m neurons.miner \
+  --netuid <NETUID> \
+  --wallet.name <MINER_WALLET> \
+  --wallet.hotkey <HOTKEY> \
+  --subtensor.network <NETWORK> \
+  --claims.pipeline v0 \
+  --claims.extraction-mode abstract-full-paper \
+  --claims.output-dir miner/v0/outputs/neuron
+```
 
 Use `--subtensor.chain_endpoint <WS_ENDPOINT>` instead of
 `--subtensor.network <NETWORK>` for a custom chain endpoint.

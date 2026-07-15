@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import os
+import shlex
 import sys
 import time
 import traceback
@@ -10,12 +11,14 @@ from typing import Any, Tuple
 
 from dotenv import load_dotenv
 
+from miner.agent_v1.config import AgentV1Config
+from miner.agent_v1.runner import AgentV1Runner
 from miner.v0.config import SectionContextV1Config
 from miner.v0.runner import SectionContextV1Runner
 from miner.v0.schema_models import ExtractionArtifact
 
 from .protocol import ClaimExtractionSynapse
-from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsTask, safe_task_id, task_cache_key
+from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsTask, download_pdf, safe_task_id, task_cache_key
 
 
 def _require_bittensor() -> tuple[Any, Any, Any, Any, Any]:
@@ -53,14 +56,21 @@ class ClaimsMiner:
         self.runner = self._build_runner()
 
     def _get_config(self) -> Any:
-        parser = argparse.ArgumentParser(description="Run a Claims v0 miner on a Bittensor subnet.")
+        parser = argparse.ArgumentParser(description="Run a Claims miner on a Bittensor subnet.")
         parser.add_argument("--netuid", type=int, required=True, help="Subnet netuid.")
         parser.add_argument(
             "--claims.output-dir",
             dest="claims_output_dir",
             type=Path,
-            default=Path("miner/v0/outputs/neuron"),
+            default=None,
             help="Directory for miner outputs produced from validator tasks.",
+        )
+        parser.add_argument(
+            "--claims.pipeline",
+            dest="claims_pipeline",
+            choices=("v0", "agent_v1"),
+            default="agent_v1",
+            help="Miner pipeline used for validator tasks. agent_v1 is the canonical miner path; v0 is legacy compatibility.",
         )
         parser.add_argument(
             "--claims.allow-unregistered",
@@ -81,6 +91,47 @@ class ClaimsMiner:
             choices=("section-local", "abstract-full-paper"),
             default="section-local",
             help="Miner v0 extraction mode used for validator tasks.",
+        )
+        parser.add_argument(
+            "--claims.agent-runtime",
+            dest="claims_agent_runtime",
+            choices=("dspy-react", "langchain-agent", "agent-cli"),
+            default=None,
+            help="agent_v1 runtime used for validator tasks.",
+        )
+        parser.add_argument(
+            "--claims.agent-skill-dir",
+            dest="claims_agent_skill_dir",
+            type=Path,
+            default=None,
+            help="SkillPack directory for agent_v1.",
+        )
+        parser.add_argument(
+            "--claims.agent-cli-command",
+            dest="claims_agent_cli_command",
+            default="",
+            help="Quoted wrapper command for agent-cli runtime.",
+        )
+        parser.add_argument(
+            "--claims.agent-timeout",
+            dest="claims_agent_timeout",
+            type=int,
+            default=None,
+            help="agent_v1 runtime timeout in seconds.",
+        )
+        parser.add_argument(
+            "--claims.agent-max-source-chars",
+            dest="claims_agent_max_source_chars",
+            type=int,
+            default=None,
+            help="Maximum source characters passed into agent_v1.",
+        )
+        parser.add_argument(
+            "--claims.agent-max-iters",
+            dest="claims_agent_max_iters",
+            type=int,
+            default=None,
+            help="Maximum native agent loop iterations for agent_v1 runtimes that support it.",
         )
         parser.add_argument(
             "--claims.max-requests-per-hotkey-minute",
@@ -105,10 +156,17 @@ class ClaimsMiner:
         parsed_args, _ = parser.parse_known_args()
         config = self.Config(parser)
         _apply_bittensor_args(config, parsed_args)
-        config.claims_output_dir = parsed_args.claims_output_dir
+        config.claims_output_dir = parsed_args.claims_output_dir or _default_output_dir(parsed_args.claims_pipeline)
+        config.claims_pipeline = parsed_args.claims_pipeline
         config.claims_allow_unregistered = parsed_args.claims_allow_unregistered
         config.claims_pdf_extraction_method = parsed_args.claims_pdf_extraction_method
         config.claims_extraction_mode = parsed_args.claims_extraction_mode
+        config.claims_agent_runtime = parsed_args.claims_agent_runtime
+        config.claims_agent_skill_dir = parsed_args.claims_agent_skill_dir
+        config.claims_agent_cli_command = parsed_args.claims_agent_cli_command
+        config.claims_agent_timeout = parsed_args.claims_agent_timeout
+        config.claims_agent_max_source_chars = parsed_args.claims_agent_max_source_chars
+        config.claims_agent_max_iters = parsed_args.claims_agent_max_iters
         config.claims_max_requests_per_hotkey_minute = parsed_args.claims_max_requests_per_hotkey_minute
         config.claims_dry_run = parsed_args.claims_dry_run
         config.claims_subtensor_network_arg = _subtensor_network_arg(parsed_args)
@@ -145,9 +203,25 @@ class ClaimsMiner:
         self.bt_logging.info(f"Miner registered with uid {uid}")
         return uid
 
-    def _build_runner(self) -> SectionContextV1Runner:
+    def _build_runner(self) -> SectionContextV1Runner | AgentV1Runner:
         base_dir = Path(__file__).resolve().parents[1]
         load_dotenv(base_dir / ".env")
+        if self.config.claims_pipeline == "agent_v1":
+            agent_config = AgentV1Config.from_env(base_dir)
+            agent_config.output_dir = Path(self.config.claims_output_dir)
+            if self.config.claims_agent_runtime:
+                agent_config.runtime = str(self.config.claims_agent_runtime)
+            if self.config.claims_agent_skill_dir:
+                agent_config.skill_dir = Path(self.config.claims_agent_skill_dir)
+            if self.config.claims_agent_timeout:
+                agent_config.timeout_seconds = int(self.config.claims_agent_timeout)
+            if self.config.claims_agent_max_source_chars:
+                agent_config.max_source_chars = int(self.config.claims_agent_max_source_chars)
+            if self.config.claims_agent_max_iters:
+                agent_config.max_agent_iters = int(self.config.claims_agent_max_iters)
+            if self.config.claims_agent_cli_command:
+                agent_config.cli_command = shlex.split(str(self.config.claims_agent_cli_command))
+            return AgentV1Runner(agent_config)
         miner_config = SectionContextV1Config.from_env(base_dir)
         miner_config.output_dir = Path(self.config.claims_output_dir)
         return SectionContextV1Runner(miner_config)
@@ -183,19 +257,15 @@ class ClaimsMiner:
             )
             cache_key = task_cache_key(
                 task,
-                miner_version="v0",
-                model_config=(
-                    f"{self.runner.config.openrouter_model}:"
-                    f"{self.config.claims_pdf_extraction_method}:"
-                    f"{self.config.claims_extraction_mode}"
-                ),
+                miner_version=str(self.config.claims_pipeline),
+                model_config=self._model_config_fingerprint(),
             )
             cached = self._read_cached_extraction(cache_key)
             if cached is not None:
                 self.bt_logging.info(f"Serving cached Claims task={task_label} cache_key={cache_key[:12]}")
                 synapse.extraction = cached
                 synapse.paper_id = str((cached.get("paper") or {}).get("paper_id") or task.paper_id)
-                synapse.miner_version = "v0"
+                synapse.miner_version = str(self.config.claims_pipeline)
                 synapse.error = ""
                 return synapse
             if cache_key in self._in_progress_keys:
@@ -206,7 +276,7 @@ class ClaimsMiner:
             finally:
                 self._in_progress_keys.discard(cache_key)
             synapse.paper_id = str((synapse.extraction.get("paper") or {}).get("paper_id") or task.paper_id)
-            synapse.miner_version = "v0"
+            synapse.miner_version = str(self.config.claims_pipeline)
             synapse.error = ""
         except Exception as exc:
             self.bt_logging.error(traceback.format_exc())
@@ -234,6 +304,11 @@ class ClaimsMiner:
         self._request_times_by_hotkey[validator_hotkey] = recent
 
     def _run_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> dict[str, Any]:
+        if self.config.claims_pipeline == "agent_v1":
+            return self._run_agent_v1_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
+        return self._run_v0_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
+
+    def _run_v0_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> dict[str, Any]:
         task_label = task.paper_id or task.paper_url or task.task_id
         self.bt_logging.info(
             f"Running Claims v0 task={task_label} mode={self.config.claims_extraction_mode} "
@@ -272,11 +347,72 @@ class ClaimsMiner:
         self._write_cached_extraction(cache_key, payload)
         return payload
 
+    def _run_agent_v1_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> dict[str, Any]:
+        task_label = task.paper_id or task.paper_url or task.task_id
+        self.bt_logging.info(
+            f"Running Claims agent_v1 task={task_label} runtime={self.runner.config.runtime} cache_key={cache_key[:12]}"
+        )
+        paper_dir = safe_task_id(task.paper_id) if task.paper_id else cache_key[:12]
+        output_dir = Path(self.config.claims_output_dir) / task.task_id / paper_dir
+        if task.artifact is not None:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            input_path = output_dir / "input_artifact.json"
+            input_path.write_text(json.dumps(task.artifact, indent=2, ensure_ascii=False), encoding="utf-8")
+            artifact = self.runner.run_from_artifact_json(input_path, output_dir=output_dir)
+        else:
+            download = download_pdf(
+                task.paper_url,
+                output_dir=output_dir / "downloads",
+                expected_sha256=task.source_sha256,
+            )
+            artifact = self.runner.run_from_pdf(download.path, output_dir=output_dir)
+            artifact.metadata.update(
+                {
+                    "input_source": "paper_url",
+                    "paper_url": task.paper_url,
+                    "source_sha256": download.sha256,
+                }
+            )
+        payload = artifact.model_dump(mode="json")
+        payload.setdefault("metadata", {}).update(
+            {
+                "input_source": "bittensor_artifact_synapse" if task.artifact is not None else "paper_url",
+                "task_id": task.task_id,
+                "validator_hotkey": validator_hotkey,
+                "protocol_version": task.protocol_version,
+                "schema_version": task.schema_version,
+                "cache_key": cache_key,
+            }
+        )
+        self._log_finished_task(task_label, output_dir, payload)
+        self._write_cached_extraction(cache_key, payload)
+        return payload
+
     def _log_finished_task(self, task_label: str, output_dir: Path, payload: dict[str, Any]) -> None:
         claims = payload.get("claims") if isinstance(payload, dict) else None
+        if claims is None and isinstance(payload.get("logic"), dict):
+            claims = payload.get("logic", {}).get("claims")
         claim_count = len(claims) if isinstance(claims, list) else 0
         self.bt_logging.info(
-            f"Finished Claims v0 task={task_label} claims={claim_count} output_dir={output_dir}"
+            f"Finished Claims {self.config.claims_pipeline} task={task_label} claims={claim_count} output_dir={output_dir}"
+        )
+
+    def _model_config_fingerprint(self) -> str:
+        if self.config.claims_pipeline == "agent_v1":
+            runner_config = self.runner.config
+            return (
+                f"{runner_config.runtime}:"
+                f"{runner_config.model}:"
+                f"{runner_config.skill_dir}:"
+                f"{runner_config.timeout_seconds}:"
+                f"{runner_config.max_source_chars}:"
+                f"{runner_config.max_agent_iters}:"
+                f"{' '.join(runner_config.cli_command)}"
+            )
+        return (
+            f"{self.runner.config.openrouter_model}:"
+            f"{self.config.claims_pdf_extraction_method}:"
+            f"{self.config.claims_extraction_mode}"
         )
 
     def _cache_path(self, cache_key: str) -> Path:
@@ -348,6 +484,12 @@ def _apply_bittensor_args(config: Any, parsed_args: argparse.Namespace) -> None:
     config.logging.record_log = getattr(parsed_args, "logging.record_log")
     config.logging.logging_dir = getattr(parsed_args, "logging.logging_dir")
     config.logging.enable_third_party_loggers = getattr(parsed_args, "logging.enable_third_party_loggers")
+
+
+def _default_output_dir(pipeline: str) -> Path:
+    if pipeline == "agent_v1":
+        return Path("miner/agent_v1/outputs/neuron")
+    return Path("miner/v0/outputs/neuron")
 
 
 def _subtensor_network_arg(parsed_args: argparse.Namespace) -> str | None:
