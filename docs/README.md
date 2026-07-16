@@ -16,6 +16,8 @@
 - [Agent v1 Canonical Miner](./0011-agent-v1-canonical-miner.md)
 - [Claims Agent Schema vs Claims v0 Schema](./0012-ara-vs-claims-v0-schema.md)
 - [Agent v1 Validator, ARA Seal, and Benchmarks](./0013-agent-v1-validator-seal-and-benchmarks.md)
+- [agent_v1 Miner System](./0014-agent-v1-miner-system.md)
+- [agent_v1 Validator System](./0015-agent-v1-validator-system.md)
 
 ## Purpose
 

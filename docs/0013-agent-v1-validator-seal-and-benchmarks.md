@@ -16,6 +16,11 @@ not the right validator for ARA-shaped miner responses. ARA artifacts carry
 logic, evidence, trace, source refs, experiments, and runtime metadata. The
 validator needs to read and score that richer structure.
 
+For the current implemented system contract, see
+[`0015-agent-v1-validator-system.md`](0015-agent-v1-validator-system.md). This
+document is the design, Seal alignment, and benchmark plan; the system doc is
+the concise operator-facing schema and runtime contract.
+
 ## Design Goal
 
 `validator.agent_v1` should be a Claims-aware ARA Seal validator:
@@ -172,7 +177,8 @@ Checks:
 
 - Every `source_ref.span_ids[]` exists in `source_payload.spans[]`.
 - Every non-empty `source_ref.quote` appears in the referenced span text.
-- Quote matching uses normalized whitespace and punctuation-tolerant matching.
+- Quote matching should at least normalize whitespace. Punctuation-tolerant
+  matching is a later hardening step for PDF extraction artifacts.
 - Source refs use valid roles:
   - `input`
   - `result`
@@ -180,8 +186,9 @@ Checks:
   - `interpretation`
   - `metadata`
 - Every claim has either direct source refs or evidence refs that lead to source refs.
-- Every evidence record has at least one source ref unless explicitly marked
-  unavailable from provided input.
+- Every evidence record has at least one source ref. If a source payload is
+  unavailable, the validator emits a grounding finding rather than silently
+  accepting ungrounded evidence.
 - Load-bearing numbers in claim statements, claim conditions, evidence summaries,
   and experiment descriptions appear in a quoted source ref or referenced span.
 - Evidence records should not cite spans that contradict their summaries.
@@ -208,7 +215,7 @@ agent_output.json
 source_payload.json
 structural_findings.json
 grounding_findings.json
-rigor_review_schema.json
+rigor_findings_schema.json
 rigor skill instructions
 ```
 
@@ -239,8 +246,7 @@ dspy-react validator runtime
 langchain-agent validator runtime
 agent-cli validator runtime
   codex wrapper
-  hermes wrapper
-  claude wrapper
+  additional CLI wrappers as they are added
 ```
 
 This lets validators choose an agent loop while preserving a single contract:
@@ -283,13 +289,14 @@ floor rules:
   no evidence records                 -> max 0.40
   no source refs                      -> max 0.50
   any critical grounding failure      -> max 0.50
-  rigor agent unavailable in prod     -> max 0.60
+  rigor agent skipped                 -> max 0.60
+  rigor backend failed                -> max 0.30
 ```
 
 Pass decision:
 
 ```text
-passed = score >= threshold and no blocker finding
+passed = score >= threshold and no blocker or critical finding
 ```
 
 The final report should include both the score and the findings so miners can
@@ -305,53 +312,47 @@ Proposed output:
   "artifact_path": "outputs/run/agent_output.json",
   "source_payload_path": "outputs/run/source_payload.json",
   "paper_id": "paper-id",
-  "passed": true,
-  "score": 0.87,
-  "threshold": 0.70,
+  "passed": false,
+  "score": 0.72,
+  "threshold": 0.7,
   "summary": {
+    "blocker": 0,
     "critical": 0,
-    "major": 1,
-    "minor": 3,
-    "warning": 2
+    "major": 2,
+    "minor": 1,
+    "warning": 0,
+    "suggestion": 0
   },
   "passes": {
     "structural": {
       "passed": true,
-      "finding_count": 0
+      "finding_count": 0,
+      "runtime": "deterministic"
     },
     "grounding": {
       "passed": true,
-      "finding_count": 2
+      "finding_count": 0,
+      "runtime": "deterministic"
     },
     "rigor": {
-      "passed": true,
-      "runtime": "agent-cli",
-      "finding_count": 4
+      "passed": false,
+      "finding_count": 3,
+      "runtime": "dspy-react"
     }
   },
-  "findings": [
-    {
-      "finding_id": "F001",
-      "pass_name": "grounding",
-      "dimension": "source_quote_grounding",
-      "severity": "major",
-      "target_type": "evidence",
-      "target_id": "EV03",
-      "message": "The evidence quote does not appear in the referenced source span.",
-      "evidence_span": "reported quote",
-      "suggestion": "Replace the quote with an exact excerpt from the referenced span or change the source ref."
-    }
-  ],
+  "findings": [],
   "metrics": {
-    "elapsed_seconds": 81.4,
-    "rigor_agent_elapsed_seconds": 63.2,
+    "elapsed_seconds": 12.34,
+    "rigor_agent_elapsed_seconds": 11.9,
     "token_usage": {
-      "prompt_tokens": 100000,
-      "completion_tokens": 3000,
-      "total_tokens": 103000
+      "prompt_tokens": null,
+      "completion_tokens": null,
+      "total_tokens": null
     },
-    "cost_usd": 0.08
-  }
+    "cost_usd": null,
+    "usage_source": "unavailable"
+  },
+  "metadata": {}
 }
 ```
 
@@ -374,14 +375,17 @@ validator/agent_v1/
 │   └── subprocess_cli.py
 ├── wrappers/
 │   ├── codex_prompt.py
-│   ├── hermes_prompt.py
-│   └── claude_prompt.py
+│   └── ...
 └── skills/
     └── rigor_reviewer/
         ├── SKILL.md
         └── references/
             └── claims-agent-v1-rigor-output-contract.md
 ```
+
+The implemented runtime contract is `dspy-react`, `langchain-agent`, and generic
+`agent-cli`. Concrete CLI wrappers can be added behind `agent-cli` without
+changing the validator report schema.
 
 The CLI should look like:
 
