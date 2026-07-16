@@ -121,6 +121,7 @@ different telemetry:
 - LangChain: token usage from message usage metadata; cost is provider-dependent.
 - Codex CLI: token usage from `codex exec --json`; cost is not emitted.
 - Hermes CLI: token usage and cost from `hermes sessions export`.
+- Claude CLI: elapsed time only by default.
 - Generic CLI: elapsed time only unless the wrapper output matches a known
   telemetry source.
 

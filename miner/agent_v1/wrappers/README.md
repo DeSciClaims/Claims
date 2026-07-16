@@ -111,3 +111,30 @@ python -m miner.agent_v1 \
   --runtime agent-cli \
   --output-dir /tmp/paper_agent_v1_codex
 ```
+
+## Claude Convenience Wrapper
+
+`claude_prompt` is a thin shim over `prompt_agent`. If
+`CLAIMS_AGENT_INNER_COMMAND` is not set, it finds `claude` on PATH and calls
+Claude Code in non-interactive print mode. The wrapper passes the generated
+prompt on stdin because Claude's `--add-dir` flag accepts multiple path
+arguments.
+
+```text
+claude -p --permission-mode bypassPermissions --output-format text --add-dir <claims-root>
+```
+
+```bash
+SUBNET_CLAIMS_AGENT_CLI_COMMAND=".venv/bin/python -m miner.agent_v1.wrappers.claude_prompt" \
+python -m miner.agent_v1 \
+  --text /path/to/paper.txt \
+  --runtime agent-cli \
+  --output-dir /tmp/paper_agent_v1_claude
+```
+
+Useful overrides:
+
+- `CLAIMS_CLAUDE_MODEL`: pass `--model`.
+- `CLAIMS_CLAUDE_PERMISSION_MODE`: override the default `bypassPermissions`.
+- `CLAIMS_CLAUDE_EXTRA_ARGS`: append additional Claude CLI flags.
+- `CLAIMS_AGENT_INNER_COMMAND`: replace the generated inner command entirely.
