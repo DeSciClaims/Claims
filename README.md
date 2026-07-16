@@ -18,9 +18,9 @@ The canonical miner pipeline is `agent_v1`: a skill-capable agent miner that
 uses the [ARA](https://github.com/ARA-Labs/Agent-Native-Research-Artifact)
 compiler skill and writes Claims-owned structured agent artifacts derived from
 the ARA markdown artifact model.
-The older `v0` direct model pipeline remains available as a legacy compatibility
-path while the validator and network envelope continue to support existing
-Claims v0 tasks.
+The older `v0` direct model pipeline remains available only as a legacy
+compatibility path while the validator and network envelope continue to support
+existing Claims v0 tasks.
 
 ## Repository Layout
 
@@ -165,58 +165,9 @@ python -m validator.agent_v1 \
 See [validator/agent_v1/README.md](./validator/agent_v1/README.md) for backend
 configuration and output files.
 
-### Legacy v0 Miner
-
-Extract claims from a PDF:
-
-```bash
-python -m miner.v0 \
-  --pdf /path/to/paper.pdf \
-  --pdf-extraction-method grobid \
-  --mode abstract-full-paper \
-  --output-dir miner/v0/outputs/my_run
-```
-
-Extract from an existing TEI XML file:
-
-```bash
-python -m miner.v0 \
-  --tei-xml /path/to/tei.xml \
-  --mode abstract-full-paper \
-  --output-dir miner/v0/outputs/my_run
-```
-
-The main miner output is:
-
-```text
-miner/v0/outputs/<run>/<paper_id>/section_context_v1_output.json
-```
-
-The reviewer/import-friendly CSV is:
-
-```text
-miner/v0/outputs/<run>/<paper_id>/extracted_claims.csv
-```
-
-## Run The Validator Locally
-
-Run the LLM audit:
-
-```bash
-python -m validator.v0 \
-  --extraction-output-json miner/v0/outputs/<run>/<paper_id>/section_context_v1_output.json \
-  --audit-method llm \
-  --output-dir validator/v0/outputs/<run>
-```
-
-Validator outputs include:
-
-```text
-run_audit_record.csv
-claim_audit_records.csv
-candidate_missing_claims.csv
-weak_or_unsupported_claims.csv
-```
+Legacy v0 miner and validator commands are intentionally kept out of the main
+quickstart. Use [docs/0009-v0-miner-validator.md](./docs/0009-v0-miner-validator.md)
+only when reproducing older compatibility runs.
 
 ## Run A Bittensor Miner
 
@@ -232,8 +183,9 @@ python -m neurons.miner \
   --axon.external_ip <PUBLIC_IP> \
   --axon.port 8091 \
   --axon.external_port 8091 \
+  --claims.pipeline agent_v1 \
   --claims.agent-runtime dspy-react \
-  --claims.output-dir miner/agent_v1/outputs/neuron
+  --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 
 `agent_v1` is the default `--claims.pipeline`. To run an external CLI backend:
@@ -248,27 +200,18 @@ python -m neurons.miner \
   --axon.external_ip <PUBLIC_IP> \
   --axon.port 8091 \
   --axon.external_port 8091 \
+  --claims.pipeline agent_v1 \
   --claims.agent-runtime agent-cli \
   --claims.agent-cli-command ".venv/bin/python -m miner.agent_v1.wrappers.hermes_prompt" \
-  --claims.output-dir miner/agent_v1/outputs/neuron
+  --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 
 Use `--claims.agent-runtime dspy-react` or `--claims.agent-runtime langchain-agent`
 for native Python agent runtimes.
 
-To run the legacy direct miner explicitly:
-
-```bash
-python -m neurons.miner \
-  --netuid <NETUID> \
-  --wallet.name <MINER_WALLET> \
-  --wallet.hotkey <HOTKEY> \
-  --subtensor.network <NETWORK> \
-  --claims.pipeline v0 \
-  --claims.extraction-mode abstract-full-paper \
-  --claims.pdf-extraction-method grobid \
-  --claims.output-dir miner/v0/outputs/neuron
-```
+Legacy v0 neuron commands are documented separately in
+[docs/0009-v0-miner-validator.md](./docs/0009-v0-miner-validator.md) and should
+not be used for new testnet miners.
 
 Use `--subtensor.chain_endpoint <WS_ENDPOINT>` instead of
 `--subtensor.network <NETWORK>` when connecting to a custom chain endpoint.
@@ -287,7 +230,8 @@ python -m neurons.validator \
   --claims.paper-url https://example.org/paper.pdf \
   --claims.task-id claims_task_001 \
   --claims.audit-method llm \
-  --claims.output-dir validator/v0/outputs/neuron \
+  --claims.validator-pipeline auto \
+  --claims.output-dir validator/agent_v1/outputs/neuron/testnet \
   --claims.timeout 1800
 ```
 

@@ -13,6 +13,10 @@ The neuron scripts are intentionally thin. Core extraction behavior remains in
 `miner.agent_v1`; canonical ARA scoring lives in `validator.agent_v1`, with
 `validator.v0` retained for legacy response compatibility.
 
+New testnet miners should run `agent_v1`. Legacy v0 commands live in
+[`docs/0009-v0-miner-validator.md`](../docs/0009-v0-miner-validator.md) for
+compatibility reproduction only.
+
 ## Protocol
 
 `ClaimExtractionSynapse` carries one extraction task:
@@ -41,8 +45,9 @@ python -m neurons.miner \
   --axon.external_ip <PUBLIC_IP> \
   --axon.port 8091 \
   --axon.external_port 8091 \
+  --claims.pipeline agent_v1 \
   --claims.agent-runtime dspy-react \
-  --claims.output-dir miner/agent_v1/outputs/neuron
+  --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 
 The miner uses `miner.agent_v1` to process PDF URL tasks or artifact smoke-test
@@ -61,22 +66,10 @@ python -m neurons.miner \
   --axon.external_ip <PUBLIC_IP> \
   --axon.port 8091 \
   --axon.external_port 8091 \
+  --claims.pipeline agent_v1 \
   --claims.agent-runtime agent-cli \
   --claims.agent-cli-command ".venv/bin/python -m miner.agent_v1.wrappers.hermes_prompt" \
-  --claims.output-dir miner/agent_v1/outputs/neuron
-```
-
-Run the legacy direct miner explicitly with:
-
-```bash
-python -m neurons.miner \
-  --netuid <NETUID> \
-  --wallet.name <MINER_WALLET> \
-  --wallet.hotkey <HOTKEY> \
-  --subtensor.network <NETWORK> \
-  --claims.pipeline v0 \
-  --claims.extraction-mode abstract-full-paper \
-  --claims.output-dir miner/v0/outputs/neuron
+  --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 
 Use `--subtensor.chain_endpoint <WS_ENDPOINT>` instead of
@@ -93,7 +86,8 @@ python -m neurons.validator \
   --claims.paper-url https://example.org/paper.pdf \
   --claims.task-id claims_task_001 \
   --claims.audit-method llm \
-  --claims.output-dir validator/v0/outputs/neuron \
+  --claims.validator-pipeline auto \
+  --claims.output-dir validator/agent_v1/outputs/neuron/testnet \
   --claims.timeout 1800
 ```
 

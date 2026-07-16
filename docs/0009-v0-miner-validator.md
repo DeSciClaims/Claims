@@ -72,6 +72,9 @@ The `section_context_v1_output.json` filename is retained so the ClaimsReview sc
 
 ## Commands
 
+These commands are for legacy compatibility and historical reproduction only.
+New testnet miners should use `agent_v1` from the top-level README.
+
 Run miner:
 
 ```bash
@@ -94,6 +97,24 @@ python -m validator.v0 \
   --extraction-output-json miner/v0/outputs/section_context_v1__run_claims_v0/<paper_id>/section_context_v1_output.json \
   --extraction-run-id claims_v0 \
   --audit-method llm
+```
+
+Run a legacy v0 miner neuron:
+
+```bash
+python -m neurons.miner \
+  --netuid <NETUID> \
+  --wallet.name <MINER_WALLET> \
+  --wallet.hotkey <HOTKEY> \
+  --subtensor.network <NETWORK> \
+  --axon.ip 0.0.0.0 \
+  --axon.external_ip <PUBLIC_IP> \
+  --axon.port 8091 \
+  --axon.external_port 8091 \
+  --claims.pipeline v0 \
+  --claims.extraction-mode abstract-full-paper \
+  --claims.pdf-extraction-method grobid \
+  --claims.output-dir miner/v0/outputs/neuron
 ```
 
 Upload to ClaimsReview:
