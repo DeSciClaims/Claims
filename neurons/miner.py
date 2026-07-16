@@ -264,6 +264,7 @@ class ClaimsMiner:
             if cached is not None:
                 self.bt_logging.info(f"Serving cached Claims task={task_label} cache_key={cache_key[:12]}")
                 synapse.extraction = cached
+                synapse.source_payload = self._read_cached_source_payload(cache_key)
                 synapse.paper_id = str((cached.get("paper") or {}).get("paper_id") or task.paper_id)
                 synapse.miner_version = str(self.config.claims_pipeline)
                 synapse.error = ""
@@ -272,7 +273,9 @@ class ClaimsMiner:
                 raise RuntimeError("Task is already being processed by this miner.")
             self._in_progress_keys.add(cache_key)
             try:
-                synapse.extraction = self._run_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
+                extraction, source_payload = self._run_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
+                synapse.extraction = extraction
+                synapse.source_payload = source_payload
             finally:
                 self._in_progress_keys.discard(cache_key)
             synapse.paper_id = str((synapse.extraction.get("paper") or {}).get("paper_id") or task.paper_id)
@@ -303,12 +306,12 @@ class ClaimsMiner:
         recent.append(now)
         self._request_times_by_hotkey[validator_hotkey] = recent
 
-    def _run_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> dict[str, Any]:
+    def _run_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
         if self.config.claims_pipeline == "agent_v1":
             return self._run_agent_v1_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
         return self._run_v0_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
 
-    def _run_v0_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> dict[str, Any]:
+    def _run_v0_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> tuple[dict[str, Any], None]:
         task_label = task.paper_id or task.paper_url or task.task_id
         self.bt_logging.info(
             f"Running Claims v0 task={task_label} mode={self.config.claims_extraction_mode} "
@@ -333,7 +336,7 @@ class ClaimsMiner:
             )
             self._log_finished_task(task_label, output_dir, payload)
             self._write_cached_extraction(cache_key, payload)
-            return payload
+            return payload, None
         paper_dir = safe_task_id(task.paper_id) if task.paper_id else cache_key[:12]
         output_dir = Path(self.config.claims_output_dir) / task.task_id / paper_dir
         payload = self.runner.run_from_pdf_url(
@@ -345,9 +348,9 @@ class ClaimsMiner:
         )
         self._log_finished_task(task_label, output_dir, payload)
         self._write_cached_extraction(cache_key, payload)
-        return payload
+        return payload, None
 
-    def _run_agent_v1_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> dict[str, Any]:
+    def _run_agent_v1_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
         task_label = task.paper_id or task.paper_url or task.task_id
         self.bt_logging.info(
             f"Running Claims agent_v1 task={task_label} runtime={self.runner.config.runtime} cache_key={cache_key[:12]}"
@@ -384,9 +387,11 @@ class ClaimsMiner:
                 "cache_key": cache_key,
             }
         )
+        source_payload = _read_json_object(output_dir / "source_payload.json")
         self._log_finished_task(task_label, output_dir, payload)
         self._write_cached_extraction(cache_key, payload)
-        return payload
+        self._write_cached_source_payload(cache_key, source_payload)
+        return payload, source_payload
 
     def _log_finished_task(self, task_label: str, output_dir: Path, payload: dict[str, Any]) -> None:
         claims = payload.get("claims") if isinstance(payload, dict) else None
@@ -418,6 +423,9 @@ class ClaimsMiner:
     def _cache_path(self, cache_key: str) -> Path:
         return Path(self.config.claims_output_dir) / ".cache" / f"{cache_key}.json"
 
+    def _source_payload_cache_path(self, cache_key: str) -> Path:
+        return Path(self.config.claims_output_dir) / ".cache" / f"{cache_key}.source_payload.json"
+
     def _read_cached_extraction(self, cache_key: str) -> dict[str, Any] | None:
         path = self._cache_path(cache_key)
         if not path.exists():
@@ -427,6 +435,19 @@ class ClaimsMiner:
 
     def _write_cached_extraction(self, cache_key: str, payload: dict[str, Any]) -> None:
         path = self._cache_path(cache_key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    def _read_cached_source_payload(self, cache_key: str) -> dict[str, Any] | None:
+        path = self._source_payload_cache_path(cache_key)
+        if not path.exists():
+            return None
+        return _read_json_object(path)
+
+    def _write_cached_source_payload(self, cache_key: str, payload: dict[str, Any] | None) -> None:
+        if not payload:
+            return
+        path = self._source_payload_cache_path(cache_key)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -463,6 +484,14 @@ class ClaimsMiner:
 def _safe_task_id(value: str) -> str:
     cleaned = "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in value.strip())
     return cleaned or "claims_task"
+
+
+def _read_json_object(path: Path) -> dict[str, Any] | None:
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _apply_bittensor_args(config: Any, parsed_args: argparse.Namespace) -> None:

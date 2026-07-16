@@ -27,5 +27,6 @@ class ClaimExtractionSynapse(Synapse):
     source_sha256: str = ""
     artifact: dict[str, Any] | None = None
     extraction: dict[str, Any] | None = None
+    source_payload: dict[str, Any] | None = None
     miner_version: str = "agent_v1"
     error: str = ""

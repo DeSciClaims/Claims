@@ -9,6 +9,8 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from validator.agent_v1.config import AgentV1ValidatorConfig
+from validator.agent_v1.runner import AgentV1ValidatorRunner
 from validator.judge_v1.config import JudgeV1Config
 from validator.v0.runner import JudgeV2Runner
 
@@ -56,7 +58,7 @@ class ClaimsValidator:
         self.runner = self._build_runner()
 
     def _get_config(self) -> Any:
-        parser = argparse.ArgumentParser(description="Run a Claims v0 validator on a Bittensor subnet.")
+        parser = argparse.ArgumentParser(description="Run a Claims validator on a Bittensor subnet.")
         parser.add_argument("--netuid", type=int, required=True, help="Subnet netuid.")
         parser.add_argument(
             "--claims.task-artifact",
@@ -94,6 +96,33 @@ class ClaimsValidator:
             choices=("deterministic", "llm"),
             default="deterministic",
             help="Audit method used to score miner responses.",
+        )
+        parser.add_argument(
+            "--claims.validator-pipeline",
+            dest="claims_validator_pipeline",
+            choices=("auto", "v0", "agent_v1"),
+            default="auto",
+            help="Validator scoring pipeline. auto routes ARA-shaped responses to agent_v1 and legacy responses to v0.",
+        )
+        parser.add_argument(
+            "--claims.agent-v1-runtime",
+            dest="claims_agent_v1_runtime",
+            choices=("dspy-react", "langchain-agent", "agent-cli"),
+            default=None,
+            help="Rigor runtime for agent_v1 validator responses.",
+        )
+        parser.add_argument(
+            "--claims.agent-v1-skip-rigor",
+            dest="claims_agent_v1_skip_rigor",
+            action="store_true",
+            help="Run agent_v1 deterministic checks only. Useful for smoke tests.",
+        )
+        parser.add_argument(
+            "--claims.agent-v1-threshold",
+            dest="claims_agent_v1_threshold",
+            type=float,
+            default=0.7,
+            help="Passing score threshold for agent_v1 validator reports.",
         )
         parser.add_argument(
             "--claims.output-dir",
@@ -170,6 +199,10 @@ class ClaimsValidator:
         config.claims_task_manifest = parsed_args.claims_task_manifest
         config.claims_task_id = parsed_args.claims_task_id
         config.claims_audit_method = parsed_args.claims_audit_method
+        config.claims_validator_pipeline = parsed_args.claims_validator_pipeline
+        config.claims_agent_v1_runtime = parsed_args.claims_agent_v1_runtime
+        config.claims_agent_v1_skip_rigor = parsed_args.claims_agent_v1_skip_rigor
+        config.claims_agent_v1_threshold = parsed_args.claims_agent_v1_threshold
         config.claims_output_dir = parsed_args.claims_output_dir
         config.claims_query_interval = parsed_args.claims_query_interval
         config.claims_timeout = parsed_args.claims_timeout
@@ -195,7 +228,8 @@ class ClaimsValidator:
     def _setup_logging(self) -> None:
         self.bt_logging(config=self.config, logging_dir=self.config.full_path)
         self.bt_logging.info(
-            f"Running Claims validator on netuid {self.config.netuid} and network {self.config.subtensor.network}"
+            f"Running Claims validator on netuid {self.config.netuid} and network {self.config.subtensor.network} "
+            f"pipeline={getattr(self.config, 'claims_validator_pipeline', 'auto')}"
         )
 
     def _registered_uid(self) -> int:
@@ -329,6 +363,8 @@ class ClaimsValidator:
                     response.extraction,
                     uid=uid,
                     task=task,
+                    source_payload=getattr(response, "source_payload", None),
+                    miner_metadata=self._miner_metadata(uid, response),
                 )
             elif response is not None and getattr(response, "error", ""):
                 self.bt_logging.warning(f"Miner response error: {response.error}")
@@ -336,11 +372,32 @@ class ClaimsValidator:
         self.bt_logging.info(f"Current scores: {sorted(scores.items())}")
         return scores
 
-    def _score_extraction(self, extraction: dict[str, Any], *, uid: int, task: ClaimsTask) -> float:
+    def _score_extraction(
+        self,
+        extraction: dict[str, Any],
+        *,
+        uid: int,
+        task: ClaimsTask,
+        source_payload: dict[str, Any] | None = None,
+        miner_metadata: dict[str, Any] | None = None,
+    ) -> float:
+        pipeline = self._select_validator_pipeline(extraction)
         output_dir = Path(self.config.claims_output_dir) / task.task_id / f"uid_{uid}"
         output_dir.mkdir(parents=True, exist_ok=True)
+        if miner_metadata:
+            _write_json(output_dir / "miner_metadata.json", miner_metadata)
+        if pipeline == "agent_v1":
+            return self._score_agent_v1_extraction(
+                extraction,
+                source_payload=source_payload,
+                output_dir=output_dir,
+                task=task,
+            )
+        return self._score_v0_extraction(extraction, output_dir=output_dir, task=task)
+
+    def _score_v0_extraction(self, extraction: dict[str, Any], *, output_dir: Path, task: ClaimsTask) -> float:
         extraction_path = output_dir / "section_context_v1_output.json"
-        extraction_path.write_text(json.dumps(extraction, indent=2, ensure_ascii=False), encoding="utf-8")
+        _write_json(extraction_path, extraction)
         audit = self.runner.judge_extraction_output_json(
             extraction_output_json_path=extraction_path,
             mode="intrinsic_audit",
@@ -349,6 +406,70 @@ class ClaimsValidator:
             audit_method=str(self.config.claims_audit_method),
         )
         return _coerce_score((audit.get("run_audit") or {}).get("overall_score"))
+
+    def _score_agent_v1_extraction(
+        self,
+        extraction: dict[str, Any],
+        *,
+        source_payload: dict[str, Any] | None,
+        output_dir: Path,
+        task: ClaimsTask,
+    ) -> float:
+        agent_dir = output_dir / "agent_v1"
+        agent_dir.mkdir(parents=True, exist_ok=True)
+        artifact_path = agent_dir / "received_agent_output.json"
+        _write_json(artifact_path, extraction)
+        source_payload_path = None
+        if source_payload:
+            source_payload_path = agent_dir / "received_source_payload.json"
+            _write_json(source_payload_path, source_payload)
+        config = AgentV1ValidatorConfig.from_env(Path(__file__).resolve().parents[1])
+        if self.config.claims_agent_v1_runtime:
+            config.runtime = str(self.config.claims_agent_v1_runtime)
+        if self.config.claims_agent_v1_skip_rigor:
+            config.skip_rigor_agent = True
+        report = AgentV1ValidatorRunner(config).run(
+            artifact_path=artifact_path,
+            source_payload_path=source_payload_path,
+            output_dir=agent_dir,
+            threshold=float(self.config.claims_agent_v1_threshold),
+        )
+        _write_json(
+            output_dir / "neuron_score.json",
+            {
+                "validator_pipeline": "agent_v1",
+                "task_id": task.task_id,
+                "score": report.score,
+                "passed": report.passed,
+                "summary": report.summary,
+                "report_path": str(agent_dir / "agent_v1_validation_report.json"),
+            },
+        )
+        return float(report.score)
+
+    def _select_validator_pipeline(self, extraction: dict[str, Any]) -> str:
+        requested = str(getattr(self.config, "claims_validator_pipeline", "auto"))
+        if requested != "auto":
+            return requested
+        return "agent_v1" if _is_agent_v1_artifact(extraction) else "v0"
+
+    def _miner_metadata(self, uid: int, response: Any) -> dict[str, Any]:
+        neuron = next((item for item in self.target_neurons if int(getattr(item, "uid", -1)) == uid), None)
+        axon = getattr(neuron, "axon_info", None) if neuron is not None else None
+        return {
+            "uid": uid,
+            "hotkey": str(getattr(neuron, "hotkey", "")) if neuron is not None else "",
+            "coldkey": str(getattr(neuron, "coldkey", "")) if neuron is not None else "",
+            "axon": {
+                "ip": str(getattr(axon, "ip", "")) if axon is not None else "",
+                "port": int(getattr(axon, "port", 0) or 0) if axon is not None else 0,
+                "hotkey": str(getattr(axon, "hotkey", "")) if axon is not None else "",
+            },
+            "miner_version": str(getattr(response, "miner_version", "")),
+            "protocol_version": str(getattr(response, "protocol_version", "")),
+            "schema_version": str(getattr(response, "schema_version", "")),
+            "validator_pipeline": self._select_validator_pipeline(getattr(response, "extraction", {}) or {}),
+        }
 
     def _resize_scores(self) -> None:
         target_uids = {int(neuron.uid) for neuron in self.target_neurons}
@@ -426,6 +547,17 @@ def _coerce_score(value: Any) -> float:
     except (TypeError, ValueError):
         return 0.0
     return max(0.0, min(1.0, score))
+
+
+def _is_agent_v1_artifact(extraction: dict[str, Any]) -> bool:
+    if not isinstance(extraction, dict):
+        return False
+    return all(key in extraction for key in ("paper", "logic", "evidence", "trace", "src"))
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def _apply_bittensor_args(config: Any, parsed_args: argparse.Namespace) -> None:

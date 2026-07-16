@@ -6,11 +6,12 @@ validator and wire envelope still retain Claims v0 compatibility while the
 validator stack migrates to ARA-native scoring:
 
 - `python -m neurons.miner` serves the `agent_v1` ARA miner through an axon by default.
-- `python -m neurons.validator` queries registered miners, audits their responses with `validator.v0`, and sets weights.
+- `python -m neurons.validator` queries registered miners, routes responses to
+  `validator.agent_v1` or `validator.v0`, and sets weights.
 
 The neuron scripts are intentionally thin. Core extraction behavior remains in
-`miner.agent_v1`; core scoring behavior remains in `validator.v0` for the
-current compatibility validator.
+`miner.agent_v1`; canonical ARA scoring lives in `validator.agent_v1`, with
+`validator.v0` retained for legacy response compatibility.
 
 ## Protocol
 
@@ -24,6 +25,7 @@ current compatibility validator.
 - `source_sha256`: optional expected SHA-256 hash for the PDF
 - `artifact`: optional `ExtractionArtifact` JSON for local smoke tests
 - `extraction`: miner response payload; `agent_v1` miners return the structured ARA projection, while legacy miners return the v0 `section_context_v1_output.json` shape
+- `source_payload`: source spans returned by `agent_v1` miners for grounding checks
 - `miner_version`: miner implementation version
 - `error`: miner-side error message, if extraction fails
 
@@ -96,9 +98,29 @@ python -m neurons.validator \
 ```
 
 The validator loads URL tasks, sends them to registered miners, scores each
-response with `validator.v0`, maintains a moving average, and sets weights on
-the subnet. Use `--claims.task-artifact` for local smoke tests with a prebuilt
-artifact, or `--claims.task-manifest` for a JSONL list of tasks.
+response, maintains a moving average, and sets weights on the subnet.
+By default `--claims.validator-pipeline auto` routes ARA-shaped responses to
+`validator.agent_v1` and legacy responses to `validator.v0`.
+Use `--claims.task-artifact` for local smoke tests with a prebuilt artifact, or
+`--claims.task-manifest` for a JSONL list of tasks.
+
+Force ARA-native scoring with:
+
+```bash
+python -m neurons.validator \
+  --netuid <NETUID> \
+  --wallet.name <VALIDATOR_WALLET> \
+  --wallet.hotkey <HOTKEY> \
+  --subtensor.network <NETWORK> \
+  --claims.paper-url https://example.org/paper.pdf \
+  --claims.task-id claims_task_001 \
+  --claims.validator-pipeline agent_v1 \
+  --claims.agent-v1-runtime agent-cli \
+  --claims.output-dir validator/agent_v1/outputs/neuron \
+  --claims.timeout 1800
+```
+
+For smoke tests without the rigor agent, add `--claims.agent-v1-skip-rigor`.
 
 Use `--claims.max-steps 1` for a single validation round.
 Use `--claims.audit-only` to score miners without submitting weights.
