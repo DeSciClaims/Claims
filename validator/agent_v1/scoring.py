@@ -42,4 +42,6 @@ def _score_floor(findings: list[AgentV1ValidationFinding]) -> float:
             floor = min(floor, 0.5)
         if code == "rigor_agent_skipped":
             floor = min(floor, 0.6)
+        if code == "rigor_agent_failed":
+            floor = min(floor, 0.3)
     return floor

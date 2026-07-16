@@ -14,8 +14,9 @@ def main() -> int:
     parser.add_argument("--agent-json", type=Path, help="Path to agent_output.json.")
     parser.add_argument("--source-payload", type=Path, help="Path to source_payload.json from the miner run.")
     parser.add_argument("--output-dir", type=Path, help="Directory for validator outputs.")
-    parser.add_argument("--runtime", choices=("dspy-react", "agent-cli"), help="Rigor agent runtime.")
+    parser.add_argument("--runtime", choices=("dspy-react", "langchain-agent", "agent-cli"), help="Rigor agent runtime.")
     parser.add_argument("--skill-dir", type=Path, help="Rigor reviewer skill directory.")
+    parser.add_argument("--max-agent-iters", type=int, help="Native rigor agent loop iteration budget.")
     parser.add_argument("--threshold", type=float, default=0.7, help="Passing score threshold.")
     parser.add_argument("--skip-rigor-agent", action="store_true", help="Run deterministic checks only.")
     parser.add_argument("--log-level", default="INFO")
@@ -30,6 +31,8 @@ def main() -> int:
         config.runtime = args.runtime
     if args.skill_dir:
         config.skill_dir = args.skill_dir
+    if args.max_agent_iters:
+        config.max_agent_iters = args.max_agent_iters
     if args.skip_rigor_agent:
         config.skip_rigor_agent = True
 

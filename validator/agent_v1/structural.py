@@ -114,7 +114,8 @@ def run_structural_checks(artifact_path: Path) -> tuple[dict[str, Any], Artifact
             if claim_id not in claim_ids:
                 findings.append(_unresolved("evidence", evidence.evidence_id, "linked_claim_id", claim_id, "critical"))
 
-    _check_trace_refs(artifact.trace, claim_ids, findings)
+    trace_reference_ids = claim_ids | experiment_ids | evidence_ids | {c.concept_id for c in artifact.logic.concepts}
+    _check_trace_refs(artifact.trace, trace_reference_ids, findings)
     return raw, artifact, _number_findings(findings)
 
 
@@ -147,12 +148,12 @@ def _collect_trace_ids(node, ids: list[str]) -> None:
         _collect_trace_ids(child, ids)
 
 
-def _check_trace_refs(node, claim_ids: set[str], findings: list[AgentV1ValidationFinding]) -> None:
-    for claim_id in node.evidence:
-        if claim_id not in claim_ids:
-            findings.append(_unresolved("trace_node", node.node_id, "evidence", claim_id, "major"))
+def _check_trace_refs(node, valid_reference_ids: set[str], findings: list[AgentV1ValidationFinding]) -> None:
+    for evidence_id in node.evidence:
+        if evidence_id not in valid_reference_ids:
+            findings.append(_unresolved("trace_node", node.node_id, "evidence", evidence_id, "major"))
     for child in node.children:
-        _check_trace_refs(child, claim_ids, findings)
+        _check_trace_refs(child, valid_reference_ids, findings)
 
 
 def _missing_field(target_type: str, target_id: str, field_name: str, severity: str) -> AgentV1ValidationFinding:

@@ -161,7 +161,34 @@ class AgentV1ValidatorRunner:
             json.dumps(request.model_dump(mode="json"), indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
-        result = runtime.run_rigor(skill_pack=skill_pack, run_dir=run_dir, request=request)
+        try:
+            result = runtime.run_rigor(skill_pack=skill_pack, run_dir=run_dir, request=request)
+        except Exception as exc:
+            findings = [
+                AgentV1ValidationFinding(
+                    finding_id="R001",
+                    pass_name="rigor",
+                    dimension="rigor_agent",
+                    severity="critical",
+                    target_type="artifact",
+                    message=f"Rigor agent runtime failed: {exc}",
+                    suggestion="Inspect rigor_backend_stderr.txt, backend configuration, API credentials, and retry with a working rigor runtime.",
+                    metadata={
+                        "code": "rigor_agent_failed",
+                        "runtime": self.config.runtime,
+                        "exception_type": type(exc).__name__,
+                    },
+                )
+            ]
+            manifest = {
+                "runtime": self.config.runtime,
+                "elapsed_seconds": 0.0,
+                "usage": empty_usage("runtime_failed"),
+                "error": {"type": type(exc).__name__, "message": str(exc)},
+            }
+            _write_runtime_files(run_dir, manifest, "", str(exc))
+            _write_rigor_findings(run_dir, findings)
+            return findings, manifest
         _write_runtime_files(run_dir, result.manifest, result.stdout, result.stderr)
         findings = _parse_rigor_findings(Path(result.output_path))
         _write_rigor_findings(run_dir, findings)
