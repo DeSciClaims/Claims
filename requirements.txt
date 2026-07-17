@@ -1,7 +1,7 @@
 pydantic==2.12.5
 bittensor==10.5.0
 python-dotenv==1.2.1
-requests==2.32.5
+requests>=2.33.0,<3.0
 streamlit>=1
 lxml
 pypdf>=5
