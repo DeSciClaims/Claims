@@ -143,6 +143,14 @@ class ClaimsValidator:
             help="Allow backend batch selection to reuse papers already assigned to prior batches. Intended for smoke tests.",
         )
         parser.add_argument(
+            "--claims.target-uid",
+            dest="claims_target_uids",
+            action="append",
+            type=int,
+            default=[],
+            help="Only query the given miner UID. May be passed more than once for focused smoke tests.",
+        )
+        parser.add_argument(
             "--claims.audit-method",
             dest="claims_audit_method",
             choices=("deterministic", "llm"),
@@ -257,6 +265,7 @@ class ClaimsValidator:
         config.claims_topics = parsed_args.claims_topics
         config.claims_batch_score_rule = parsed_args.claims_batch_score_rule
         config.claims_allow_paper_reuse = parsed_args.claims_allow_paper_reuse
+        config.claims_target_uids = parsed_args.claims_target_uids
         config.claims_audit_method = parsed_args.claims_audit_method
         config.claims_validator_pipeline = parsed_args.claims_validator_pipeline
         config.claims_agent_v1_runtime = parsed_args.claims_agent_v1_runtime
@@ -308,6 +317,12 @@ class ClaimsValidator:
         if not candidates:
             candidates = self._load_neurons_by_uid()
         neurons = [neuron for neuron in candidates if self._is_eligible_miner(neuron)]
+        target_uids = set(getattr(self.config, "claims_target_uids", []) or [])
+        if target_uids:
+            neurons = [neuron for neuron in neurons if int(getattr(neuron, "uid", -1)) in target_uids]
+            missing_uids = sorted(target_uids.difference({int(neuron.uid) for neuron in neurons}))
+            if missing_uids:
+                self.bt_logging.warning(f"Requested target miner UIDs were not eligible or not found: {missing_uids}")
         self.bt_logging.info(f"Discovered target miner UIDs: {[int(neuron.uid) for neuron in neurons]}")
         return neurons
 
@@ -571,6 +586,8 @@ class ClaimsValidator:
                     "severity": "blocker",
                     "target_type": "paper",
                     "target_id": paper_id,
+                    "paper_id": paper_id,
+                    "paper_title": paper.title,
                     "message": "Miner did not return a completed extraction for an assigned paper.",
                     "suggestion": "Return one completed article object for every paper in the batch.",
                     "metadata": {
@@ -601,6 +618,8 @@ class ClaimsValidator:
                         "severity": "blocker",
                         "target_type": "paper",
                         "target_id": paper_id,
+                        "paper_id": paper_id,
+                        "paper_title": paper.title,
                         "message": "Miner article response did not include an extraction object.",
                         "suggestion": "Include `agent_output` for agent_v1 responses or `extraction` for legacy compatibility.",
                         "metadata": {"paper_title": paper.title},
@@ -676,7 +695,8 @@ class ClaimsValidator:
             "article_results": article_results,
         }
         _write_json(base_dir / "batch_audit_record.json", batch_audit)
-        self._post_miner_response(run_id, task, uid, response, miner_metadata, status="completed")
+        response_status = "completed" if any(result.get("status") == "completed" for result in article_results) else "failed"
+        self._post_miner_response(run_id, task, uid, response, miner_metadata, status=response_status)
         self._post_validation_report(
             {
                 "report_id": f"audit_{run_id}_uid_{uid}",

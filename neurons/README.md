@@ -94,6 +94,7 @@ python -m neurons.validator \
   --claims.network testnet \
   --claims.backend-url http://127.0.0.1:8000 \
   --claims.batch-size 3 \
+  --claims.target-uid <MINER_UID> \
   --claims.batch-score-rule min \
   --claims.audit-method llm \
   --claims.validator-pipeline auto \
@@ -112,6 +113,8 @@ By default `--claims.validator-pipeline auto` routes ARA-shaped responses to
 `validator.agent_v1` and legacy responses to `validator.v0`.
 Use `--claims.task-artifact` for local smoke tests with a prebuilt artifact, or
 `--claims.task-manifest` for a JSONL list of tasks.
+Use `--claims.target-uid 1` to query only one miner during focused smoke tests;
+pass the flag more than once to query a small UID allowlist.
 
 Force ARA-native scoring with:
 

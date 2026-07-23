@@ -233,6 +233,7 @@ python -m neurons.validator \
   --claims.network testnet \
   --claims.backend-url http://127.0.0.1:8000 \
   --claims.batch-size 3 \
+  --claims.target-uid <MINER_UID> \
   --claims.batch-score-rule min \
   --claims.audit-method llm \
   --claims.validator-pipeline auto \
@@ -244,6 +245,7 @@ Useful validator flags:
 
 - `--claims.backend-url http://127.0.0.1:8000`: use backend paper release and audit-record APIs.
 - `--claims.batch-size 3`: request a random approved paper batch from the backend.
+- `--claims.target-uid 1`: only query a specific miner UID. May be passed more than once for focused smoke tests.
 - `--claims.topic economics`: filter backend-selected papers by topic. May be passed more than once.
 - `--claims.batch-score-rule min`: score the batch by the lowest per-paper score, the current highest-minimum rule.
 - `--claims.allow-paper-reuse`: allow already assigned backend papers to be selected again for local smoke tests.

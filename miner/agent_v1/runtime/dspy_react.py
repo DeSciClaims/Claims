@@ -36,7 +36,6 @@ class DspyReActRuntime:
             temperature=self.config.temperature,
             max_tokens=self.config.max_tokens,
         )
-        dspy_module.configure(lm=lm)
 
         class CompileSignature(dspy_module.Signature):
             """Run the mounted skill with tools and produce strict Claims agent JSON."""
@@ -50,18 +49,27 @@ class DspyReActRuntime:
             final_json: str = dspy_module.OutputField(desc="Strict JSON object matching the Claims agent artifact schema.")
 
         program = dspy_module.ReAct(CompileSignature, tools=tools, max_iters=self.config.max_agent_iters)
-        prediction = program(
-            skill_instructions=_runtime_instructions(skill_pack),
-            request_json=json.dumps(request.model_dump(mode="json"), indent=2, ensure_ascii=False),
-            source_payload_json=(run_dir / request.source_payload_path).read_text(encoding="utf-8"),
-            output_schema_json=(run_dir / request.output_schema_path).read_text(encoding="utf-8"),
-            coverage_requirements_json=json.dumps(_coverage_requirements(request), indent=2, ensure_ascii=False),
-            validation_feedback_json=(
-                (run_dir / request.validation_feedback_path).read_text(encoding="utf-8")
-                if request.validation_feedback_path
-                else "{}"
-            ),
-        )
+
+        def run_program():
+            return program(
+                skill_instructions=_runtime_instructions(skill_pack),
+                request_json=json.dumps(request.model_dump(mode="json"), indent=2, ensure_ascii=False),
+                source_payload_json=(run_dir / request.source_payload_path).read_text(encoding="utf-8"),
+                output_schema_json=(run_dir / request.output_schema_path).read_text(encoding="utf-8"),
+                coverage_requirements_json=json.dumps(_coverage_requirements(request), indent=2, ensure_ascii=False),
+                validation_feedback_json=(
+                    (run_dir / request.validation_feedback_path).read_text(encoding="utf-8")
+                    if request.validation_feedback_path
+                    else "{}"
+                ),
+            )
+
+        if hasattr(dspy_module, "context"):
+            with dspy_module.context(lm=lm):
+                prediction = run_program()
+        else:
+            dspy_module.configure(lm=lm)
+            prediction = run_program()
         raw_output = str(getattr(prediction, "final_json", ""))
         output_path = run_dir / request.expected_output_path
         if not output_path.exists():

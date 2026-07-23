@@ -37,7 +37,6 @@ class DspyRigorRuntime:
             temperature=self.config.temperature,
             max_tokens=self.config.max_tokens,
         )
-        dspy_module.configure(lm=lm)
 
         class RigorSignature(dspy_module.Signature):
             """Review a Claims agent JSON artifact and return strict rigor findings JSON."""
@@ -51,18 +50,27 @@ class DspyRigorRuntime:
             final_json: str = dspy_module.OutputField(desc="Strict JSON object with a findings array.")
 
         program = dspy_module.ReAct(RigorSignature, tools=tools, max_iters=self.config.max_agent_iters)
-        prediction = program(
-            skill_instructions=_runtime_instructions(skill_pack),
-            artifact_json=(run_dir / request.artifact_path).read_text(encoding="utf-8"),
-            source_payload_json=(
-                (run_dir / request.source_payload_path).read_text(encoding="utf-8")
-                if request.source_payload_path and (run_dir / request.source_payload_path).exists()
-                else "{}"
-            ),
-            structural_findings_json=(run_dir / request.structural_findings_path).read_text(encoding="utf-8"),
-            grounding_findings_json=(run_dir / request.grounding_findings_path).read_text(encoding="utf-8"),
-            output_schema_json=(run_dir / request.output_schema_path).read_text(encoding="utf-8"),
-        )
+
+        def run_program():
+            return program(
+                skill_instructions=_runtime_instructions(skill_pack),
+                artifact_json=(run_dir / request.artifact_path).read_text(encoding="utf-8"),
+                source_payload_json=(
+                    (run_dir / request.source_payload_path).read_text(encoding="utf-8")
+                    if request.source_payload_path and (run_dir / request.source_payload_path).exists()
+                    else "{}"
+                ),
+                structural_findings_json=(run_dir / request.structural_findings_path).read_text(encoding="utf-8"),
+                grounding_findings_json=(run_dir / request.grounding_findings_path).read_text(encoding="utf-8"),
+                output_schema_json=(run_dir / request.output_schema_path).read_text(encoding="utf-8"),
+            )
+
+        if hasattr(dspy_module, "context"):
+            with dspy_module.context(lm=lm):
+                prediction = run_program()
+        else:
+            dspy_module.configure(lm=lm)
+            prediction = run_program()
         output_path = run_dir / request.expected_output_path
         output_path.write_text(str(getattr(prediction, "final_json", "")), encoding="utf-8")
         return RigorAgentResult(
