@@ -219,16 +219,21 @@ Use `--subtensor.chain_endpoint <WS_ENDPOINT>` instead of
 ## Run A Bittensor Validator
 
 Start a validator neuron after the validator hotkey is registered and ready to
-submit weights:
+submit weights. In the v0 architecture, the validator gets paper batches from
+the Claims backend, queries miners over Bittensor, scores the returned batch,
+posts audit records back to the backend, and then sets weights.
 
 ```bash
+CLAIMS_BACKEND_URL=http://127.0.0.1:8000 \
 python -m neurons.validator \
   --netuid <NETUID> \
   --wallet.name <VALIDATOR_WALLET> \
   --wallet.hotkey <HOTKEY> \
   --subtensor.network <NETWORK> \
-  --claims.paper-url https://example.org/paper.pdf \
-  --claims.task-id claims_task_001 \
+  --claims.network testnet \
+  --claims.backend-url http://127.0.0.1:8000 \
+  --claims.batch-size 3 \
+  --claims.batch-score-rule min \
   --claims.audit-method llm \
   --claims.validator-pipeline auto \
   --claims.output-dir validator/agent_v1/outputs/neuron/testnet \
@@ -237,11 +242,19 @@ python -m neurons.validator \
 
 Useful validator flags:
 
+- `--claims.backend-url http://127.0.0.1:8000`: use backend paper release and audit-record APIs.
+- `--claims.batch-size 3`: request a random approved paper batch from the backend.
+- `--claims.topic economics`: filter backend-selected papers by topic. May be passed more than once.
+- `--claims.batch-score-rule min`: score the batch by the lowest per-paper score, the current highest-minimum rule.
+- `--claims.allow-paper-reuse`: allow already assigned backend papers to be selected again for local smoke tests.
 - `--claims.task-manifest /path/to/tasks.jsonl`: run a list of tasks.
 - `--claims.audit-only`: score miners and write audit files without setting weights.
 - `--claims.max-steps 1`: run one validation round and exit.
 - `--claims.query-interval 60`: wait time between validation rounds.
 - `--claims.require-validator-permit`: fail fast unless the hotkey has validator permit.
+
+For local smoke tests without the backend, pass exactly one of
+`--claims.paper-url`, `--claims.task-artifact`, or `--claims.task-manifest`.
 
 ## Network Runbooks
 

@@ -1,9 +1,13 @@
 import argparse
+import hashlib
 import json
 import os
+import statistics
 import sys
 import time
 import traceback
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +18,7 @@ from validator.agent_v1.runner import AgentV1ValidatorRunner
 from validator.judge_v1.config import JudgeV1Config
 from validator.v0.runner import JudgeV2Runner
 
+from .backend_client import BackendClientError, ClaimsBackendClient
 from .protocol import ClaimExtractionSynapse
 from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsTask, load_task_manifest, safe_task_id
 
@@ -56,6 +61,7 @@ class ClaimsValidator:
         self.target_neurons = self._load_target_neurons()
         self.moving_avg_scores = {int(neuron.uid): 0.0 for neuron in self.target_neurons}
         self.runner = self._build_runner()
+        self.backend_client = self._build_backend_client()
 
     def _get_config(self) -> Any:
         parser = argparse.ArgumentParser(description="Run a Claims validator on a Bittensor subnet.")
@@ -89,6 +95,52 @@ class ClaimsValidator:
             dest="claims_task_id",
             default="claims_v0_task",
             help="Stable task id included in miner requests.",
+        )
+        parser.add_argument(
+            "--claims.backend-url",
+            dest="claims_backend_url",
+            default=os.getenv("CLAIMS_BACKEND_URL", ""),
+            help="Backend API base URL. When set, validator fetches signed batch tasks and posts audit records.",
+        )
+        parser.add_argument(
+            "--claims.network",
+            dest="claims_network",
+            choices=("testnet", "mainnet"),
+            default=os.getenv("CLAIMS_NETWORK", "testnet"),
+            help="Claims dashboard/API network label.",
+        )
+        parser.add_argument(
+            "--claims.batch-size",
+            dest="claims_batch_size",
+            type=int,
+            default=int(os.getenv("CLAIMS_BATCH_SIZE", "1")),
+            help="Number of approved papers to request from the backend batch selector.",
+        )
+        parser.add_argument(
+            "--claims.task-type",
+            dest="claims_task_type",
+            default=os.getenv("CLAIMS_TASK_TYPE", "agent_v1_claim_extraction"),
+            help="Backend task type requested by the validator.",
+        )
+        parser.add_argument(
+            "--claims.topic",
+            dest="claims_topics",
+            action="append",
+            default=[],
+            help="Topic filter for backend batch selection. May be passed more than once.",
+        )
+        parser.add_argument(
+            "--claims.batch-score-rule",
+            dest="claims_batch_score_rule",
+            choices=("min", "mean", "median"),
+            default=os.getenv("CLAIMS_BATCH_SCORE_RULE", "min"),
+            help="Aggregate per-paper scores into a batch score. min implements highest-minimum scoring.",
+        )
+        parser.add_argument(
+            "--claims.allow-paper-reuse",
+            dest="claims_allow_paper_reuse",
+            action="store_true",
+            help="Allow backend batch selection to reuse papers already assigned to prior batches. Intended for smoke tests.",
         )
         parser.add_argument(
             "--claims.audit-method",
@@ -198,6 +250,13 @@ class ClaimsValidator:
         config.claims_paper_sha256 = parsed_args.claims_paper_sha256
         config.claims_task_manifest = parsed_args.claims_task_manifest
         config.claims_task_id = parsed_args.claims_task_id
+        config.claims_backend_url = parsed_args.claims_backend_url
+        config.claims_network = parsed_args.claims_network
+        config.claims_batch_size = parsed_args.claims_batch_size
+        config.claims_task_type = parsed_args.claims_task_type
+        config.claims_topics = parsed_args.claims_topics
+        config.claims_batch_score_rule = parsed_args.claims_batch_score_rule
+        config.claims_allow_paper_reuse = parsed_args.claims_allow_paper_reuse
         config.claims_audit_method = parsed_args.claims_audit_method
         config.claims_validator_pipeline = parsed_args.claims_validator_pipeline
         config.claims_agent_v1_runtime = parsed_args.claims_agent_v1_runtime
@@ -290,14 +349,28 @@ class ClaimsValidator:
             return
         step = 0
         while True:
+            task = None
+            run_id = None
+            run_started_at = None
             try:
-                task = self.tasks[step % len(self.tasks)]
+                task = self._next_task(step)
+                run_id = _make_run_id()
+                run_started_at = datetime.now(timezone.utc)
                 self.target_neurons = self._load_target_neurons()
                 self._resize_scores()
+                self._post_validator_run(run_id, task, status="running", started_at=run_started_at)
                 responses = self._query_miners(task)
-                scores = self._score_responses(responses, task=task)
+                scores = self._score_responses(responses, task=task, run_id=run_id)
                 self._update_scores(scores)
-                self._set_weights()
+                weight_event = self._set_weights()
+                self._post_weight_event(run_id, scores, weight_event)
+                self._post_validator_run(
+                    run_id,
+                    task,
+                    status="completed",
+                    started_at=run_started_at,
+                    ended_at=datetime.now(timezone.utc),
+                )
                 step += 1
                 if self.config.claims_max_steps and step >= self.config.claims_max_steps:
                     self.bt_logging.info("Reached configured max steps; exiting.")
@@ -308,9 +381,19 @@ class ClaimsValidator:
                 return
             except Exception:
                 self.bt_logging.error(traceback.format_exc())
+                if task is not None and run_id is not None and run_started_at is not None:
+                    self._post_validator_run(
+                        run_id,
+                        task,
+                        status="failed",
+                        started_at=run_started_at,
+                        ended_at=datetime.now(timezone.utc),
+                    )
                 time.sleep(float(self.config.claims_query_interval))
 
     def _load_tasks(self) -> list[ClaimsTask]:
+        if getattr(self.config, "claims_backend_url", ""):
+            return []
         if self.config.claims_task_manifest:
             return load_task_manifest(Path(self.config.claims_task_manifest))
         if self.config.claims_task_artifact:
@@ -338,6 +421,46 @@ class ClaimsValidator:
             )
         ]
 
+    def _next_task(self, step: int) -> ClaimsTask:
+        if getattr(self.config, "claims_backend_url", ""):
+            return self._fetch_backend_task()
+        return self.tasks[step % len(self.tasks)]
+
+    def _build_backend_client(self) -> ClaimsBackendClient | None:
+        backend_url = str(getattr(self.config, "claims_backend_url", "") or "").strip()
+        if not backend_url:
+            return None
+        return ClaimsBackendClient(
+            base_url=backend_url,
+            wallet=self.wallet,
+            network=str(getattr(self.config, "claims_network", "testnet")),
+            timeout_seconds=30.0,
+        )
+
+    def _fetch_backend_task(self) -> ClaimsTask:
+        if self.backend_client is None:
+            raise RuntimeError("Backend URL configured but backend client is unavailable.")
+        payload = {
+            "network": str(getattr(self.config, "claims_network", "testnet")),
+            "netuid": int(self.config.netuid),
+            "topics": list(getattr(self.config, "claims_topics", []) or []),
+            "task_type": str(getattr(self.config, "claims_task_type", "agent_v1_claim_extraction")),
+            "batch_size": int(getattr(self.config, "claims_batch_size", 1)),
+            "allow_reuse": bool(getattr(self.config, "claims_allow_paper_reuse", False)),
+        }
+        selected = self.backend_client.select_batch(payload)
+        task = ClaimsTask.from_dict(
+            {
+                **selected,
+                "protocol_version": PROTOCOL_VERSION,
+                "schema_version": SCHEMA_VERSION,
+            },
+            fallback_task_id=str(selected.get("task_id") or "claims_backend_task"),
+        )
+        if not task.papers:
+            raise RuntimeError("Backend batch selection returned no papers.")
+        return task
+
     def _query_miners(self, task: ClaimsTask) -> list[Any]:
         synapse = ClaimExtractionSynapse(**task.to_synapse_kwargs())
         axons = [neuron.axon_info for neuron in self.target_neurons]
@@ -349,25 +472,39 @@ class ClaimsValidator:
             timeout=float(self.config.claims_timeout),
         )
 
-    def _score_responses(self, responses: list[Any], *, task: ClaimsTask) -> dict[int, float]:
+    def _score_responses(self, responses: list[Any], *, task: ClaimsTask, run_id: str) -> dict[int, float]:
         scores = {int(neuron.uid): 0.0 for neuron in self.target_neurons}
-        for index, response in enumerate(responses):
-            if index >= len(self.target_neurons):
-                continue
-            uid = int(self.target_neurons[index].uid)
+        for index, neuron in enumerate(self.target_neurons):
+            response = responses[index] if index < len(responses) else None
+            uid = int(neuron.uid)
             score = 0.0
+            miner_metadata = self._miner_metadata(uid, response) if response is not None else self._miner_metadata(uid, None)
             if response is not None and not self._is_protocol_compatible(response):
                 self.bt_logging.warning(f"Miner uid={uid} returned incompatible Claims protocol response.")
+                self._post_miner_response(run_id, task, uid, response, miner_metadata, status="incompatible")
+            elif response is not None and getattr(response, "articles", None):
+                score = self._score_batch_response(
+                    response,
+                    uid=uid,
+                    task=task,
+                    run_id=run_id,
+                    miner_metadata=miner_metadata,
+                )
             elif response is not None and getattr(response, "extraction", None):
                 score = self._score_extraction(
                     response.extraction,
                     uid=uid,
                     task=task,
+                    run_id=run_id,
                     source_payload=getattr(response, "source_payload", None),
-                    miner_metadata=self._miner_metadata(uid, response),
+                    miner_metadata=miner_metadata,
                 )
+                self._post_single_report(run_id, task, uid, response, miner_metadata, score)
             elif response is not None and getattr(response, "error", ""):
                 self.bt_logging.warning(f"Miner response error: {response.error}")
+                self._post_miner_response(run_id, task, uid, response, miner_metadata, status="error")
+            else:
+                self._post_miner_response(run_id, task, uid, response, miner_metadata, status="missing")
             scores[uid] = score
         self.bt_logging.info(f"Current scores: {sorted(scores.items())}")
         return scores
@@ -378,11 +515,15 @@ class ClaimsValidator:
         *,
         uid: int,
         task: ClaimsTask,
+        run_id: str | None = None,
         source_payload: dict[str, Any] | None = None,
         miner_metadata: dict[str, Any] | None = None,
     ) -> float:
         pipeline = self._select_validator_pipeline(extraction)
-        output_dir = Path(self.config.claims_output_dir) / task.task_id / f"uid_{uid}"
+        output_dir = Path(self.config.claims_output_dir) / task.task_id
+        if run_id:
+            output_dir = output_dir / run_id
+        output_dir = output_dir / f"uid_{uid}"
         output_dir.mkdir(parents=True, exist_ok=True)
         if miner_metadata:
             _write_json(output_dir / "miner_metadata.json", miner_metadata)
@@ -394,6 +535,165 @@ class ClaimsValidator:
                 task=task,
             )
         return self._score_v0_extraction(extraction, output_dir=output_dir, task=task)
+
+    def _score_batch_response(
+        self,
+        response: Any,
+        *,
+        uid: int,
+        task: ClaimsTask,
+        run_id: str,
+        miner_metadata: dict[str, Any],
+    ) -> float:
+        base_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / f"uid_{uid}"
+        base_dir.mkdir(parents=True, exist_ok=True)
+        _write_json(base_dir / "miner_metadata.json", miner_metadata)
+        articles_by_id = {
+            str(article.get("paper_id") or ""): article
+            for article in (getattr(response, "articles", []) or [])
+            if isinstance(article, dict)
+        }
+        article_results: list[dict[str, Any]] = []
+        paper_scores: list[float] = []
+        batch_summary: dict[str, int] = {}
+        batch_findings: list[dict[str, Any]] = []
+        for index, paper in enumerate(task.paper_tasks(), start=1):
+            paper_id = paper.paper_id or f"paper_{index}"
+            article = articles_by_id.get(paper_id)
+            if article is None and len(articles_by_id) == 1 and len(task.paper_tasks()) == 1:
+                article = next(iter(articles_by_id.values()))
+            if not article or article.get("status") != "completed":
+                score = 0.0
+                finding = {
+                    "finding_id": f"B{index:03d}",
+                    "pass_name": "batch",
+                    "dimension": "completion",
+                    "severity": "blocker",
+                    "target_type": "paper",
+                    "target_id": paper_id,
+                    "message": "Miner did not return a completed extraction for an assigned paper.",
+                    "suggestion": "Return one completed article object for every paper in the batch.",
+                    "metadata": {
+                        "paper_title": paper.title,
+                        "status": str((article or {}).get("status") or "missing"),
+                        "error": (article or {}).get("error") or "missing article response",
+                    },
+                }
+                batch_findings.append(finding)
+                batch_summary["blocker"] = batch_summary.get("blocker", 0) + 1
+                result = {
+                    "paper_id": paper_id,
+                    "title": paper.title,
+                    "status": str((article or {}).get("status") or "missing"),
+                    "score": score,
+                    "error": (article or {}).get("error") or "missing article response",
+                    "report_path": None,
+                }
+            else:
+                extraction = article.get("agent_output") or article.get("extraction")
+                source_payload = article.get("source_payload")
+                if not isinstance(extraction, dict):
+                    score = 0.0
+                    finding = {
+                        "finding_id": f"B{index:03d}",
+                        "pass_name": "batch",
+                        "dimension": "response_shape",
+                        "severity": "blocker",
+                        "target_type": "paper",
+                        "target_id": paper_id,
+                        "message": "Miner article response did not include an extraction object.",
+                        "suggestion": "Include `agent_output` for agent_v1 responses or `extraction` for legacy compatibility.",
+                        "metadata": {"paper_title": paper.title},
+                    }
+                    batch_findings.append(finding)
+                    batch_summary["blocker"] = batch_summary.get("blocker", 0) + 1
+                    result = {
+                        "paper_id": paper_id,
+                        "title": paper.title,
+                        "status": "invalid",
+                        "score": score,
+                        "error": "article response missing extraction object",
+                        "report_path": None,
+                    }
+                else:
+                    article_run_id = f"{run_id}/{safe_task_id(paper_id)}"
+                    score = self._score_extraction(
+                        extraction,
+                        uid=uid,
+                        task=task,
+                        run_id=article_run_id,
+                        source_payload=source_payload if isinstance(source_payload, dict) else None,
+                        miner_metadata=None,
+                    )
+                    article_output_dir = Path(self.config.claims_output_dir) / task.task_id / article_run_id / f"uid_{uid}"
+                    report_path = article_output_dir / "agent_v1" / "agent_v1_validation_report.json"
+                    report = _read_json_object(report_path) if report_path.exists() else {}
+                    for severity, count in (report.get("summary") or {}).items():
+                        try:
+                            batch_summary[str(severity)] = batch_summary.get(str(severity), 0) + int(count)
+                        except (TypeError, ValueError):
+                            continue
+                    for finding in report.get("findings", []) or []:
+                        if not isinstance(finding, dict):
+                            continue
+                        batch_findings.append(
+                            {
+                                **finding,
+                                "paper_id": paper_id,
+                                "paper_title": paper.title,
+                                "paper_report_path": str(report_path),
+                            }
+                        )
+                    result = {
+                        "paper_id": paper_id,
+                        "title": paper.title,
+                        "status": "completed",
+                        "score": score,
+                        "error": None,
+                        "report_path": str(report_path),
+                    }
+            article_results.append(result)
+            paper_scores.append(score)
+        batch_score = _aggregate_scores(paper_scores, str(getattr(self.config, "claims_batch_score_rule", "min")))
+        batch_audit = {
+            "object_type": "AuditRecord",
+            "audit_version": "claims_audit_v0",
+            "scoring_version": task.scoring_version,
+            "task_id": task.task_id,
+            "batch_id": task.batch_id,
+            "selection_seed": task.selection_seed,
+            "run_id": run_id,
+            "miner_uid": uid,
+            "miner_hotkey": miner_metadata.get("hotkey", ""),
+            "validator_hotkey": self.wallet.hotkey.ss58_address,
+            "batch_score_rule": str(getattr(self.config, "claims_batch_score_rule", "min")),
+            "batch_score": batch_score,
+            "min_score": min(paper_scores) if paper_scores else 0.0,
+            "mean_score": sum(paper_scores) / len(paper_scores) if paper_scores else 0.0,
+            "median_score": statistics.median(paper_scores) if paper_scores else 0.0,
+            "summary": batch_summary,
+            "findings": batch_findings,
+            "article_results": article_results,
+        }
+        _write_json(base_dir / "batch_audit_record.json", batch_audit)
+        self._post_miner_response(run_id, task, uid, response, miner_metadata, status="completed")
+        self._post_validation_report(
+            {
+                "report_id": f"audit_{run_id}_uid_{uid}",
+                "response_id": f"{run_id}:uid_{uid}",
+                "run_id": run_id,
+                "uid": uid,
+                "hotkey": miner_metadata.get("hotkey", ""),
+                "score": batch_score,
+                "threshold": float(self.config.claims_agent_v1_threshold),
+                "passed": batch_score >= float(self.config.claims_agent_v1_threshold),
+                "summary": batch_summary,
+                "report_uri": str(base_dir / "batch_audit_record.json"),
+                "findings": batch_findings,
+                "paper_scores": article_results,
+            }
+        )
+        return batch_score
 
     def _score_v0_extraction(self, extraction: dict[str, Any], *, output_dir: Path, task: ClaimsTask) -> float:
         extraction_path = output_dir / "section_context_v1_output.json"
@@ -447,6 +747,144 @@ class ClaimsValidator:
         )
         return float(report.score)
 
+    def _post_validator_run(
+        self,
+        run_id: str,
+        task: ClaimsTask,
+        *,
+        status: str,
+        started_at: datetime,
+        ended_at: datetime | None = None,
+    ) -> None:
+        if self.backend_client is None:
+            return
+        try:
+            self.backend_client.post(
+                "/validator/runs",
+                {
+                    "run_id": run_id,
+                    "network": str(getattr(self.config, "claims_network", "testnet")),
+                    "task_id": task.task_id,
+                    "batch_id": task.batch_id or task.task_id,
+                    "validator_hotkey": self.wallet.hotkey.ss58_address,
+                    "target_uids": [int(neuron.uid) for neuron in self.target_neurons],
+                    "status": status,
+                    "started_at": started_at.isoformat(),
+                    "ended_at": ended_at.isoformat() if ended_at else None,
+                    "error_summary": None,
+                },
+            )
+        except BackendClientError as exc:
+            self.bt_logging.warning(f"Could not post validator run to backend: {exc}")
+
+    def _post_miner_response(
+        self,
+        run_id: str,
+        task: ClaimsTask,
+        uid: int,
+        response: Any,
+        miner_metadata: dict[str, Any],
+        *,
+        status: str,
+    ) -> None:
+        if self.backend_client is None:
+            return
+        payload = _response_payload(response)
+        try:
+            self.backend_client.post(
+                "/validator/miner-responses",
+                {
+                    "response_id": f"{run_id}:uid_{uid}",
+                    "network": str(getattr(self.config, "claims_network", "testnet")),
+                    "run_id": run_id,
+                    "uid": uid,
+                    "hotkey": miner_metadata.get("hotkey", ""),
+                    "batch_id": task.batch_id or task.task_id,
+                    "response_hash": _stable_hash(payload),
+                    "schema_version": miner_metadata.get("schema_version", ""),
+                    "miner_version": miner_metadata.get("miner_version", ""),
+                    "backend": _miner_backend(payload),
+                    "status": status,
+                    "received_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+        except BackendClientError as exc:
+            self.bt_logging.warning(f"Could not post miner response to backend: {exc}")
+
+    def _post_single_report(
+        self,
+        run_id: str,
+        task: ClaimsTask,
+        uid: int,
+        response: Any,
+        miner_metadata: dict[str, Any],
+        score: float,
+    ) -> None:
+        self._post_miner_response(run_id, task, uid, response, miner_metadata, status="completed")
+        output_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / f"uid_{uid}"
+        report_path = output_dir / "agent_v1" / "agent_v1_validation_report.json"
+        report = _read_json_object(report_path) if report_path.exists() else {}
+        self._post_validation_report(
+            {
+                "report_id": f"audit_{run_id}_uid_{uid}",
+                "response_id": f"{run_id}:uid_{uid}",
+                "run_id": run_id,
+                "uid": uid,
+                "hotkey": miner_metadata.get("hotkey", ""),
+                "score": score,
+                "threshold": float(self.config.claims_agent_v1_threshold),
+                "passed": score >= float(self.config.claims_agent_v1_threshold),
+                "summary": report.get("summary", {}),
+                "report_uri": str(report_path),
+                "findings": report.get("findings", []),
+                "paper_scores": [
+                    {
+                        "paper_id": task.paper_id,
+                        "score": score,
+                        "status": "completed",
+                        "report_path": str(report_path),
+                    }
+                ],
+            }
+        )
+
+    def _post_validation_report(self, payload: dict[str, Any]) -> None:
+        if self.backend_client is None:
+            return
+        try:
+            self.backend_client.post(
+                "/validator/validation-reports",
+                {
+                    "network": str(getattr(self.config, "claims_network", "testnet")),
+                    **payload,
+                },
+            )
+        except BackendClientError as exc:
+            self.bt_logging.warning(f"Could not post validation report to backend: {exc}")
+
+    def _post_weight_event(self, run_id: str, scores: dict[int, float], event: dict[str, Any] | None) -> None:
+        if self.backend_client is None:
+            return
+        weights = (event or {}).get("weights", [])
+        status = str((event or {}).get("status") or "unknown")
+        try:
+            self.backend_client.post(
+                "/validator/weight-events",
+                {
+                    "event_id": f"weights_{run_id}",
+                    "network": str(getattr(self.config, "claims_network", "testnet")),
+                    "run_id": run_id,
+                    "scores": [{"uid": uid, "score": score} for uid, score in sorted(scores.items())],
+                    "moving_average_scores": [
+                        {"uid": uid, "score": score} for uid, score in sorted(self.moving_avg_scores.items())
+                    ],
+                    "weights": weights,
+                    "status": status,
+                },
+            )
+        except BackendClientError as exc:
+            self.bt_logging.warning(f"Could not post weight event to backend: {exc}")
+
     def _select_validator_pipeline(self, extraction: dict[str, Any]) -> str:
         requested = str(getattr(self.config, "claims_validator_pipeline", "auto"))
         if requested != "auto":
@@ -485,19 +923,20 @@ class ClaimsValidator:
             self.moving_avg_scores[uid] = ((1.0 - alpha) * self.moving_avg_scores.get(uid, 0.0)) + (alpha * score)
         self.bt_logging.info(f"Moving average scores: {sorted(self.moving_avg_scores.items())}")
 
-    def _set_weights(self) -> None:
+    def _set_weights(self) -> dict[str, Any]:
         if self.config.claims_audit_only:
             self.bt_logging.info("Audit-only mode enabled; skipping set_weights.")
-            return
+            return {"status": "audit_only", "weights": []}
         if not self.moving_avg_scores:
             self.bt_logging.warning("No target miner scores available; skipping set_weights.")
-            return
+            return {"status": "no_scores", "weights": []}
         total = sum(max(score, 0.0) for score in self.moving_avg_scores.values())
         if total <= 0:
             self.bt_logging.warning("All target miner scores are zero; skipping set_weights.")
-            return
+            return {"status": "all_zero", "weights": []}
         uids = sorted(self.moving_avg_scores)
         weights = [max(self.moving_avg_scores[uid], 0.0) / total for uid in uids]
+        weight_rows = [{"uid": uid, "weight": weight} for uid, weight in zip(uids, weights)]
         self.bt_logging.info(f"Setting weights: {list(zip(uids, weights))}")
         try:
             response = self.subtensor.set_weights(
@@ -511,13 +950,16 @@ class ClaimsValidator:
             )
             if getattr(response, "success", False):
                 self.bt_logging.success(f"Weights set successfully. Fee: {getattr(response, 'extrinsic_fee', '')}")
+                return {"status": "success", "weights": weight_rows}
             else:
                 self.bt_logging.error(
                     f"Failed to set weights: {getattr(response, 'error', '')} "
                     f"{getattr(response, 'message', '')} response={response!r}"
                 )
+                return {"status": "failed", "weights": weight_rows}
         except Exception as exc:
             self.bt_logging.error(f"Failed to set weights: {type(exc).__name__}: {exc}")
+            return {"status": "error", "weights": weight_rows, "error": str(exc)}
 
     def _preflight_validator(self) -> None:
         try:
@@ -560,6 +1002,75 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def _read_json_object(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _stable_hash(payload: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+def _response_payload(response: Any) -> dict[str, Any]:
+    if response is None:
+        return {}
+    return {
+        "task_id": str(getattr(response, "task_id", "")),
+        "batch_id": str(getattr(response, "batch_id", "")),
+        "submission_id": str(getattr(response, "submission_id", "")),
+        "articles": getattr(response, "articles", []) or [],
+        "extraction": getattr(response, "extraction", None),
+        "source_payload": getattr(response, "source_payload", None),
+        "error": str(getattr(response, "error", "")),
+        "miner_version": str(getattr(response, "miner_version", "")),
+        "protocol_version": str(getattr(response, "protocol_version", "")),
+        "schema_version": str(getattr(response, "schema_version", "")),
+    }
+
+
+def _miner_backend(payload: dict[str, Any]) -> str | None:
+    extraction = payload.get("extraction")
+    if isinstance(extraction, dict):
+        metadata = extraction.get("metadata")
+        if isinstance(metadata, dict):
+            runtime = metadata.get("backend") or metadata.get("runtime") or metadata.get("agent_runtime")
+            if runtime:
+                return str(runtime)
+    articles = payload.get("articles")
+    if isinstance(articles, list):
+        for article in articles:
+            if not isinstance(article, dict):
+                continue
+            extraction = article.get("agent_output") or article.get("extraction")
+            if isinstance(extraction, dict):
+                metadata = extraction.get("metadata")
+                if isinstance(metadata, dict):
+                    runtime = metadata.get("backend") or metadata.get("runtime") or metadata.get("agent_runtime")
+                    if runtime:
+                        return str(runtime)
+    return None
+
+
+def _aggregate_scores(scores: list[float], rule: str) -> float:
+    if not scores:
+        return 0.0
+    if rule == "mean":
+        return round(sum(scores) / len(scores), 4)
+    if rule == "median":
+        return round(float(statistics.median(scores)), 4)
+    return round(min(scores), 4)
+
+
+def _make_run_id() -> str:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    return f"run_{stamp}_{uuid.uuid4().hex[:6]}"
+
+
 def _apply_bittensor_args(config: Any, parsed_args: argparse.Namespace) -> None:
     config.netuid = parsed_args.netuid
     config.wallet.name = getattr(parsed_args, "wallet.name")
@@ -577,6 +1088,8 @@ def _apply_bittensor_args(config: Any, parsed_args: argparse.Namespace) -> None:
 
 
 def _validate_task_args(config: Any) -> None:
+    if getattr(config, "claims_backend_url", ""):
+        return
     provided = [
         bool(config.claims_task_artifact),
         bool(config.claims_paper_url),

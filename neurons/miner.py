@@ -6,6 +6,7 @@ import shlex
 import sys
 import time
 import traceback
+import uuid
 from pathlib import Path
 from typing import Any, Tuple
 
@@ -243,6 +244,14 @@ class ClaimsMiner:
             task = ClaimsTask.from_dict(
                 {
                     "task_id": synapse.task_id,
+                    "batch_id": getattr(synapse, "batch_id", ""),
+                    "selection_seed": getattr(synapse, "selection_seed", ""),
+                    "task_version": getattr(synapse, "task_version", ""),
+                    "scoring_version": getattr(synapse, "scoring_version", ""),
+                    "task_type": getattr(synapse, "task_type", ""),
+                    "network": getattr(synapse, "network", ""),
+                    "netuid": getattr(synapse, "netuid", None),
+                    "papers": getattr(synapse, "papers", []) or [],
                     "paper_id": synapse.paper_id,
                     "paper_url": synapse.paper_url,
                     "source_sha256": synapse.source_sha256,
@@ -255,6 +264,19 @@ class ClaimsMiner:
             self.bt_logging.info(
                 f"Accepted Claims task={task_label} from validator_hotkey={validator_hotkey[:12]}"
             )
+            if task.papers:
+                articles = self._run_batch_task(task, validator_hotkey=validator_hotkey)
+                synapse.submission_id = f"sub_{task.task_id}_{uuid.uuid4().hex[:10]}"
+                synapse.batch_id = task.batch_id
+                synapse.articles = articles
+                completed = next((item for item in articles if item.get("status") == "completed"), None)
+                if completed:
+                    synapse.extraction = completed.get("agent_output") or completed.get("extraction")
+                    synapse.source_payload = completed.get("source_payload")
+                    synapse.paper_id = str(completed.get("paper_id") or task.paper_id)
+                synapse.miner_version = str(self.config.claims_pipeline)
+                synapse.error = ""
+                return synapse
             cache_key = task_cache_key(
                 task,
                 miner_version=str(self.config.claims_pipeline),
@@ -292,7 +314,8 @@ class ClaimsMiner:
             raise ValueError(f"Unsupported protocol_version: {synapse.protocol_version}")
         if synapse.schema_version != SCHEMA_VERSION:
             raise ValueError(f"Unsupported schema_version: {synapse.schema_version}")
-        if not synapse.artifact and not synapse.paper_url:
+        papers = getattr(synapse, "papers", []) or []
+        if not papers and not synapse.artifact and not synapse.paper_url:
             raise ValueError("Missing task input: provide artifact or paper_url.")
 
     def _enforce_rate_limit(self, validator_hotkey: str) -> None:
@@ -310,6 +333,72 @@ class ClaimsMiner:
         if self.config.claims_pipeline == "agent_v1":
             return self._run_agent_v1_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
         return self._run_v0_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
+
+    def _run_batch_task(self, task: ClaimsTask, *, validator_hotkey: str) -> list[dict[str, Any]]:
+        articles: list[dict[str, Any]] = []
+        for index, paper in enumerate(task.papers, start=1):
+            paper_task = ClaimsTask.from_dict(
+                {
+                    "task_id": task.task_id,
+                    "batch_id": task.batch_id,
+                    "selection_seed": task.selection_seed,
+                    "task_version": task.task_version,
+                    "scoring_version": task.scoring_version,
+                    "task_type": task.task_type,
+                    "network": task.network,
+                    "netuid": task.netuid,
+                    "paper_id": paper.paper_id,
+                    "paper_url": paper.paper_url,
+                    "source_sha256": paper.source_sha256,
+                    "artifact": paper.artifact,
+                    "protocol_version": task.protocol_version,
+                    "schema_version": task.schema_version,
+                },
+                fallback_task_id=f"{task.task_id}_{index}",
+            )
+            cache_key = task_cache_key(
+                paper_task,
+                miner_version=str(self.config.claims_pipeline),
+                model_config=self._model_config_fingerprint(),
+            )
+            paper_id = paper.paper_id or paper_task.paper_id or cache_key[:12]
+            try:
+                cached = self._read_cached_extraction(cache_key)
+                if cached is not None:
+                    extraction = cached
+                    source_payload = self._read_cached_source_payload(cache_key)
+                else:
+                    extraction, source_payload = self._run_task(
+                        paper_task,
+                        cache_key=cache_key,
+                        validator_hotkey=validator_hotkey,
+                    )
+                article: dict[str, Any] = {
+                    "paper_id": paper_id,
+                    "title": paper.title,
+                    "source_url": paper.paper_url,
+                    "source_sha256": paper.source_sha256,
+                    "status": "completed",
+                    "agent_output": extraction if self.config.claims_pipeline == "agent_v1" else None,
+                    "extraction": extraction,
+                    "source_payload": source_payload,
+                    "error": None,
+                }
+            except Exception as exc:
+                self.bt_logging.error(f"Failed Claims batch paper_id={paper_id}: {exc}")
+                article = {
+                    "paper_id": paper_id,
+                    "title": paper.title,
+                    "source_url": paper.paper_url,
+                    "source_sha256": paper.source_sha256,
+                    "status": "failed",
+                    "agent_output": None,
+                    "extraction": None,
+                    "source_payload": None,
+                    "error": str(exc),
+                }
+            articles.append(article)
+        return articles
 
     def _run_v0_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> tuple[dict[str, Any], None]:
         task_label = task.paper_id or task.paper_url or task.task_id

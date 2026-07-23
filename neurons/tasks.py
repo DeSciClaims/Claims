@@ -18,12 +18,55 @@ DEFAULT_MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024
 
 
 @dataclass(frozen=True)
+class ClaimsPaperTask:
+    paper_id: str = ""
+    paper_url: str = ""
+    source_sha256: str = ""
+    title: str = ""
+    topics: tuple[str, ...] = ()
+    release_id: str = ""
+    artifact: dict[str, Any] | None = None
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ClaimsPaperTask":
+        return cls(
+            paper_id=str(payload.get("paper_id") or "").strip(),
+            paper_url=str(payload.get("paper_url") or payload.get("source_url") or "").strip(),
+            source_sha256=str(payload.get("source_sha256") or "").strip().lower(),
+            title=str(payload.get("title") or "").strip(),
+            topics=tuple(str(item).strip() for item in payload.get("topics", []) if str(item).strip()),
+            release_id=str(payload.get("release_id") or "").strip(),
+            artifact=payload.get("artifact") if isinstance(payload.get("artifact"), dict) else None,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "paper_id": self.paper_id,
+            "paper_url": self.paper_url,
+            "source_url": self.paper_url,
+            "source_sha256": self.source_sha256,
+            "title": self.title,
+            "topics": list(self.topics),
+            "release_id": self.release_id,
+            "artifact": self.artifact,
+        }
+
+
+@dataclass(frozen=True)
 class ClaimsTask:
     task_id: str
     paper_url: str = ""
     paper_id: str = ""
     source_sha256: str = ""
     artifact: dict[str, Any] | None = None
+    batch_id: str = ""
+    selection_seed: str = ""
+    task_version: str = "claims_task_v0"
+    scoring_version: str = "agent_v1_pass4_deterministic_v0"
+    task_type: str = "agent_v1_claim_extraction"
+    network: str = "testnet"
+    netuid: int | None = None
+    papers: tuple[ClaimsPaperTask, ...] = ()
     protocol_version: str = PROTOCOL_VERSION
     schema_version: str = SCHEMA_VERSION
 
@@ -31,6 +74,8 @@ class ClaimsTask:
     def from_dict(cls, payload: dict[str, Any], *, fallback_task_id: str = "claims_task") -> "ClaimsTask":
         artifact = payload.get("artifact")
         paper = artifact.get("paper") if isinstance(artifact, dict) else None
+        papers_payload = payload.get("papers") if isinstance(payload.get("papers"), list) else []
+        papers = tuple(ClaimsPaperTask.from_dict(item) for item in papers_payload if isinstance(item, dict))
         paper_id = str(payload.get("paper_id") or (paper or {}).get("paper_id") or "").strip()
         task_id = str(payload.get("task_id") or paper_id or fallback_task_id).strip()
         return cls(
@@ -39,13 +84,41 @@ class ClaimsTask:
             paper_id=paper_id,
             source_sha256=str(payload.get("source_sha256") or "").strip().lower(),
             artifact=artifact if isinstance(artifact, dict) else None,
+            batch_id=safe_task_id(str(payload.get("batch_id") or "").strip()) if payload.get("batch_id") else "",
+            selection_seed=str(payload.get("selection_seed") or "").strip(),
+            task_version=str(payload.get("task_version") or "claims_task_v0").strip(),
+            scoring_version=str(payload.get("scoring_version") or "agent_v1_pass4_deterministic_v0").strip(),
+            task_type=str(payload.get("task_type") or "agent_v1_claim_extraction").strip(),
+            network=str(payload.get("network") or "testnet").strip(),
+            netuid=int(payload["netuid"]) if payload.get("netuid") is not None else None,
+            papers=papers,
             protocol_version=str(payload.get("protocol_version") or PROTOCOL_VERSION).strip(),
             schema_version=str(payload.get("schema_version") or SCHEMA_VERSION).strip(),
+        )
+
+    def paper_tasks(self) -> tuple[ClaimsPaperTask, ...]:
+        if self.papers:
+            return self.papers
+        return (
+            ClaimsPaperTask(
+                paper_id=self.paper_id,
+                paper_url=self.paper_url,
+                source_sha256=self.source_sha256,
+                artifact=self.artifact,
+            ),
         )
 
     def to_synapse_kwargs(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
+            "batch_id": self.batch_id,
+            "selection_seed": self.selection_seed,
+            "task_version": self.task_version,
+            "scoring_version": self.scoring_version,
+            "task_type": self.task_type,
+            "network": self.network,
+            "netuid": self.netuid,
+            "papers": [paper.to_dict() for paper in self.papers],
             "paper_id": self.paper_id,
             "paper_url": self.paper_url,
             "source_sha256": self.source_sha256,
@@ -77,6 +150,16 @@ def task_cache_key(task: ClaimsTask, *, miner_version: str, model_config: str = 
         "paper_url": normalize_url(task.paper_url) if task.paper_url else "",
         "source_sha256": task.source_sha256,
         "artifact": _stable_artifact_fingerprint(task.artifact),
+        "batch_id": task.batch_id,
+        "papers": [
+            {
+                "paper_id": paper.paper_id,
+                "paper_url": normalize_url(paper.paper_url) if paper.paper_url else "",
+                "source_sha256": paper.source_sha256,
+                "artifact": _stable_artifact_fingerprint(paper.artifact),
+            }
+            for paper in task.papers
+        ],
         "miner_version": miner_version,
         "model_config": model_config,
         "protocol_version": task.protocol_version,

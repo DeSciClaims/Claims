@@ -19,15 +19,22 @@ compatibility reproduction only.
 
 ## Protocol
 
-`ClaimExtractionSynapse` carries one extraction task:
+`ClaimExtractionSynapse` carries either a legacy single-paper task or a backend
+batch task:
 
 - `protocol_version`: Claims protocol version, currently `claims.v0`
 - `schema_version`: output schema version expected by the validator
 - `task_id`: stable task identifier chosen by the validator
+- `batch_id`: backend batch identifier when the task came from the Claims API
+- `selection_seed`: backend sampling seed recorded for auditability
+- `task_version`: task contract version, currently `claims_task_v0`
+- `scoring_version`: scoring contract version, currently `agent_v1_pass4_deterministic_v0`
+- `papers`: backend-selected paper list for batch tasks
 - `paper_id`: source paper identifier
 - `paper_url`: downloadable PDF URL for network tasks
 - `source_sha256`: optional expected SHA-256 hash for the PDF
 - `artifact`: optional `ExtractionArtifact` JSON for local smoke tests
+- `articles`: miner response list for batch tasks, one item per assigned paper
 - `extraction`: miner response payload; `agent_v1` miners return the structured ARA projection, while legacy miners return the v0 `section_context_v1_output.json` shape
 - `source_payload`: source spans returned by `agent_v1` miners for grounding checks
 - `miner_version`: miner implementation version
@@ -78,21 +85,29 @@ Use `--subtensor.chain_endpoint <WS_ENDPOINT>` instead of
 ## Validator
 
 ```bash
+CLAIMS_BACKEND_URL=http://127.0.0.1:8000 \
 python -m neurons.validator \
   --netuid <NETUID> \
   --wallet.name <VALIDATOR_WALLET> \
   --wallet.hotkey <HOTKEY> \
   --subtensor.network <NETWORK> \
-  --claims.paper-url https://example.org/paper.pdf \
-  --claims.task-id claims_task_001 \
+  --claims.network testnet \
+  --claims.backend-url http://127.0.0.1:8000 \
+  --claims.batch-size 3 \
+  --claims.batch-score-rule min \
   --claims.audit-method llm \
   --claims.validator-pipeline auto \
   --claims.output-dir validator/agent_v1/outputs/neuron/testnet \
   --claims.timeout 1800
 ```
 
-The validator loads URL tasks, sends them to registered miners, scores each
-response, maintains a moving average, and sets weights on the subnet.
+The validator asks the backend for a random approved paper batch, sends the
+batch to registered miners, scores each paper response, aggregates the batch
+score with `--claims.batch-score-rule`, maintains a moving average, posts audit
+records back to the backend, and sets weights on the subnet.
+The backend records the selected batch immediately and excludes assigned papers
+from future selections unless the validator passes `--claims.allow-paper-reuse`
+for a smoke test.
 By default `--claims.validator-pipeline auto` routes ARA-shaped responses to
 `validator.agent_v1` and legacy responses to `validator.v0`.
 Use `--claims.task-artifact` for local smoke tests with a prebuilt artifact, or
