@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.grounding import run_grounding_checks
 from validator.agent_v1.models import AgentV1ValidationFinding, RigorAgentResult
+from validator.agent_v1.reference_client import LocalCliReferenceMinerClient, LocalReferenceMinerClient, ReferenceMinerInput
 from validator.agent_v1.runner import AgentV1ValidatorRunner
 from validator.agent_v1.runtime.factory import build_rigor_runtime
 from validator.agent_v1.scoring import score_findings
@@ -118,6 +120,70 @@ def test_validator_agent_v1_scoring_caps_failed_rigor_agent() -> None:
 
     assert passed is False
     assert summary["critical"] == 1
+
+
+def test_local_reference_miner_client_reads_bronze_manifest(tmp_path: Path) -> None:
+    bronze_dir = tmp_path / "bronze" / "paper"
+    bronze_dir.mkdir(parents=True)
+    artifact_path = bronze_dir / "agent_output.json"
+    artifact_path.write_text(json.dumps(_valid_artifact()), encoding="utf-8")
+    source_payload_path = bronze_dir / "source_payload.json"
+    source_payload_path.write_text(json.dumps(_source_payload()), encoding="utf-8")
+    (bronze_dir / "bronze_manifest.json").write_text(
+        json.dumps(
+            {
+                "bronze_record_id": "bronze_001",
+                "paper_id": "paper",
+                "reference_release_id": "reference-v0",
+                "reference_profile_id": "reference-agent-v1-strong",
+                "model_runtime_id": "test-model",
+                "pipeline_version": "claims-reference-miner/0.1.0",
+                "artifact_sha256": "abc",
+                "artifact_path": "agent_output.json",
+                "source_payload_path": "source_payload.json",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    record = LocalReferenceMinerClient(tmp_path / "bronze").get_bronze(
+        paper_id="paper",
+        reference_release_id="reference-v0",
+    )
+
+    assert record.bronze_record_id == "bronze_001"
+    assert Path(record.artifact_path).exists()
+    assert Path(record.source_payload_path or "").exists()
+
+
+def test_local_cli_reference_miner_client_generates_missing_bronze(tmp_path: Path) -> None:
+    fake_cli = (
+        "import argparse,json,pathlib;"
+        "p=argparse.ArgumentParser();"
+        "p.add_argument('--artifact-json');p.add_argument('--output-dir');p.add_argument('--reference-release-id');"
+        "a=p.parse_args();"
+        "o=pathlib.Path(a.output_dir);o.mkdir(parents=True,exist_ok=True);"
+        "artifact=json.loads(pathlib.Path(a.artifact_json).read_text());"
+        "(o/'agent_output.json').write_text(json.dumps(artifact));"
+        "(o/'source_payload.json').write_text(json.dumps({'spans': []}));"
+        "manifest={'bronze_record_id':'bronze_cli','paper_id':artifact['paper']['paper_id'],"
+        "'reference_release_id':a.reference_release_id,'reference_profile_id':'fake',"
+        "'artifact_sha256':'hash','artifact_path':'agent_output.json','source_payload_path':'source_payload.json'};"
+        "(o/'bronze_manifest.json').write_text(json.dumps(manifest));"
+        "print(json.dumps(manifest))"
+    )
+    client = LocalCliReferenceMinerClient(
+        bronze_root=tmp_path / "bronze",
+        command=[sys.executable, "-c", fake_cli],
+    )
+
+    record = client.get_or_create_bronze(
+        request=ReferenceMinerInput(paper_id="paper", artifact=_valid_artifact()),
+        reference_release_id="reference-v0",
+    )
+
+    assert record.bronze_record_id == "bronze_cli"
+    assert Path(record.artifact_path).exists()
 
 
 def _config(tmp_path: Path) -> AgentV1ValidatorConfig:
