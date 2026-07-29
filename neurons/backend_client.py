@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 
@@ -24,6 +24,25 @@ class ClaimsBackendClient:
     wallet: Any
     network: str = "testnet"
     timeout_seconds: float = 30.0
+
+    def get(self, path: str, *, query: dict[str, Any] | None = None) -> Any:
+        query_string = urlencode(query or {})
+        url = self._url(path)
+        if query_string:
+            url = f"{url}?{query_string}"
+        headers = self._signature_headers("GET", path, query_string, b"")
+        request = Request(url, headers=headers, method="GET")
+        try:
+            with urlopen(request, timeout=self.timeout_seconds) as response:
+                data = response.read()
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise BackendClientError(f"Backend GET {path} failed: {exc.code} {detail}") from exc
+        except URLError as exc:
+            raise BackendClientError(f"Backend GET {path} failed: {exc}") from exc
+        if not data:
+            return {}
+        return json.loads(data.decode("utf-8"))
 
     def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -47,6 +66,102 @@ class ClaimsBackendClient:
 
     def select_batch(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/batches/select", payload)
+
+    def post_bronze_record(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/validator/bronze-records", payload)
+
+    def get_bronze_record(self, *, paper_id: str, reference_release_id: str) -> dict[str, Any]:
+        row = self.get(
+            f"/validator/bronze-records/{quote(paper_id)}",
+            query={"reference_release_id": reference_release_id, "network": self.network},
+        )
+        if not isinstance(row, dict):
+            raise BackendClientError("Backend Bronze lookup returned non-object response.")
+        return row
+
+    def post_adjudication_case(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/validator/adjudication-cases", payload)
+
+    def post_adjudication_vote(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/validator/adjudication-votes", payload)
+
+    def post_adjudication_consensus(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/validator/adjudication-consensus", payload)
+
+    def post_adjudication_decision(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/validator/adjudication-decisions", payload)
+
+    def list_adjudication_decisions(self, *, case_id: str) -> list[dict[str, Any]]:
+        result = self.get(f"/validator/adjudication-cases/{quote(case_id)}/decisions", query={"network": self.network})
+        return result if isinstance(result, list) else []
+
+    def post_adjudication_job(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/validator/adjudication-jobs", payload)
+
+    def claim_adjudication_jobs(self, *, worker_id: str, limit: int = 1, lease_seconds: int = 900) -> list[dict[str, Any]]:
+        result = self.post(
+            "/validator/adjudication-jobs/claim",
+            {"network": self.network, "worker_id": worker_id, "limit": limit, "lease_seconds": lease_seconds},
+        )
+        data = result.get("data", result)
+        return data if isinstance(data, list) else []
+
+    def list_adjudication_jobs(
+        self,
+        *,
+        run_id: str | None = None,
+        case_id: str | None = None,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        query: dict[str, Any] = {"network": self.network}
+        if run_id:
+            query["run_id"] = run_id
+        if case_id:
+            query["case_id"] = case_id
+        if status:
+            query["status"] = status
+        result = self.get("/validator/adjudication-jobs", query=query)
+        return result if isinstance(result, list) else []
+
+    def complete_adjudication_job(
+        self,
+        *,
+        job_id: str,
+        worker_id: str,
+        status: str,
+        result: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any]:
+        return self.post(
+            f"/validator/adjudication-jobs/{quote(job_id)}/complete",
+            {"worker_id": worker_id, "status": status, "result": result or {}, "error": error},
+        )
+
+    def post_miner_consensus_case(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/validator/miner-consensus-cases", payload)
+
+    def list_miner_consensus_cases(self, *, status: str | None = None) -> list[dict[str, Any]]:
+        query: dict[str, Any] = {"network": self.network}
+        if status:
+            query["status"] = status
+        result = self.get("/validator/miner-consensus-cases", query=query)
+        return result if isinstance(result, list) else []
+
+    def post_miner_consensus_vote(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/validator/miner-consensus-votes", payload)
+
+    def list_miner_consensus_votes(self, *, consensus_case_id: str) -> list[dict[str, Any]]:
+        result = self.get(f"/validator/miner-consensus-cases/{quote(consensus_case_id)}/votes", query={"network": self.network})
+        return result if isinstance(result, list) else []
+
+    def post_miner_consensus_outcome(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/validator/miner-consensus-outcomes", payload)
+
+    def post_silver_record(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/validator/silver-records", payload)
+
+    def post_silver_score_report(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/validator/silver-score-reports", payload)
 
     def _url(self, path: str) -> str:
         return f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"

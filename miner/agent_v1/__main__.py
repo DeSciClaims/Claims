@@ -24,7 +24,9 @@ def main() -> int:
         raise SystemExit("Provide exactly one of --pdf, --artifact-json, or --text.")
 
     base_dir = Path(__file__).resolve().parents[2]
+    load_dotenv(Path.cwd() / ".env")
     load_dotenv(base_dir / ".env")
+    load_dotenv(base_dir.parent / ".env")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
     config = AgentV1Config.from_env(base_dir)
     if args.runtime:

@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import statistics
 import sys
 import time
@@ -13,14 +14,22 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from validator.agent_v1.adjudication_passes import OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
 from validator.agent_v1.config import AgentV1ValidatorConfig
+from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline
+from validator.agent_v1.reference_client import (
+    BackendBackedReferenceMinerClient,
+    LocalCliReferenceMinerClient,
+    LocalReferenceMinerClient,
+    ReferenceMinerInput,
+)
 from validator.agent_v1.runner import AgentV1ValidatorRunner
 from validator.judge_v1.config import JudgeV1Config
 from validator.v0.runner import JudgeV2Runner
 
 from .backend_client import BackendClientError, ClaimsBackendClient
 from .protocol import ClaimExtractionSynapse
-from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsTask, load_task_manifest, safe_task_id
+from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsPaperTask, ClaimsTask, download_pdf, load_task_manifest, safe_task_id
 
 
 def _require_bittensor() -> tuple[Any, Any, Any, Any, Any]:
@@ -185,6 +194,89 @@ class ClaimsValidator:
             help="Passing score threshold for agent_v1 validator reports.",
         )
         parser.add_argument(
+            "--claims.silver-enable",
+            dest="claims_silver_enable",
+            action="store_true",
+            default=os.getenv("CLAIMS_SILVER_ENABLE", "").lower() in {"1", "true", "yes"},
+            help="Run post-pass Silver scoring over completed agent_v1 batch responses.",
+        )
+        parser.add_argument(
+            "--claims.bronze-root",
+            dest="claims_bronze_root",
+            type=Path,
+            default=Path(os.getenv("CLAIMS_BRONZE_ROOT", "validator/agent_v1/bronze")),
+            help="Local Bronze manifest root produced by the private reference miner.",
+        )
+        parser.add_argument(
+            "--claims.reference-release-id",
+            dest="claims_reference_release_id",
+            default=os.getenv("CLAIMS_REFERENCE_RELEASE_ID", "reference-v0"),
+            help="Reference miner release id used to fetch Bronze records.",
+        )
+        parser.add_argument(
+            "--claims.reference-miner-command",
+            dest="claims_reference_miner_command",
+            default=os.getenv("CLAIMS_REFERENCE_MINER_COMMAND", ""),
+            help="Optional private reference miner CLI command used to create missing Bronze records.",
+        )
+        parser.add_argument(
+            "--claims.reference-miner-claims-repo",
+            dest="claims_reference_miner_claims_repo",
+            type=Path,
+            default=Path(os.getenv("CLAIMS_REFERENCE_MINER_CLAIMS_REPO", "")) if os.getenv("CLAIMS_REFERENCE_MINER_CLAIMS_REPO") else None,
+            help="Claims repo path passed to the private reference miner CLI.",
+        )
+        parser.add_argument(
+            "--claims.silver-static-disposition",
+            dest="claims_silver_static_disposition",
+            default=os.getenv("CLAIMS_SILVER_STATIC_DISPOSITION", "benign_difference"),
+            help="Temporary static adjudication disposition for local Silver smoke runs.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-mode",
+            dest="claims_silver_adjudication_mode",
+            choices=("static", "openai-compatible"),
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_MODE", "static"),
+            help="Adjudication pass runtime for Silver cases.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-api-base",
+            dest="claims_silver_adjudication_api_base",
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_API_BASE", "https://api.openai.com/v1"),
+            help="OpenAI-compatible chat completions API base for model-backed Silver adjudication.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-api-key-env",
+            dest="claims_silver_adjudication_api_key_env",
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_API_KEY_ENV", "OPENAI_API_KEY"),
+            help="Environment variable containing the model-backed Silver adjudication API key.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-model-a",
+            dest="claims_silver_adjudication_model_a",
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", "gpt-5"),
+            help="Primary model for adjudication pass A.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-model-b",
+            dest="claims_silver_adjudication_model_b",
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_MODEL_B", "gpt-5-mini"),
+            help="Primary model for adjudication pass B.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-tiebreak-model",
+            dest="claims_silver_adjudication_tiebreak_model",
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL", ""),
+            help="Optional third model for unresolved adjudication cases.",
+        )
+        parser.add_argument(
+            "--claims.silver-direct-confidence",
+            dest="claims_silver_direct_confidence",
+            type=float,
+            default=float(os.getenv("CLAIMS_SILVER_DIRECT_CONFIDENCE", "0.9")),
+            help="Minimum confidence for direct Silver adjudication consensus.",
+        )
+        parser.add_argument(
             "--claims.output-dir",
             dest="claims_output_dir",
             type=Path,
@@ -271,6 +363,19 @@ class ClaimsValidator:
         config.claims_agent_v1_runtime = parsed_args.claims_agent_v1_runtime
         config.claims_agent_v1_skip_rigor = parsed_args.claims_agent_v1_skip_rigor
         config.claims_agent_v1_threshold = parsed_args.claims_agent_v1_threshold
+        config.claims_silver_enable = parsed_args.claims_silver_enable
+        config.claims_bronze_root = parsed_args.claims_bronze_root
+        config.claims_reference_release_id = parsed_args.claims_reference_release_id
+        config.claims_reference_miner_command = parsed_args.claims_reference_miner_command
+        config.claims_reference_miner_claims_repo = parsed_args.claims_reference_miner_claims_repo
+        config.claims_silver_static_disposition = parsed_args.claims_silver_static_disposition
+        config.claims_silver_adjudication_mode = parsed_args.claims_silver_adjudication_mode
+        config.claims_silver_adjudication_api_base = parsed_args.claims_silver_adjudication_api_base
+        config.claims_silver_adjudication_api_key_env = parsed_args.claims_silver_adjudication_api_key_env
+        config.claims_silver_adjudication_model_a = parsed_args.claims_silver_adjudication_model_a
+        config.claims_silver_adjudication_model_b = parsed_args.claims_silver_adjudication_model_b
+        config.claims_silver_adjudication_tiebreak_model = parsed_args.claims_silver_adjudication_tiebreak_model
+        config.claims_silver_direct_confidence = parsed_args.claims_silver_direct_confidence
         config.claims_output_dir = parsed_args.claims_output_dir
         config.claims_query_interval = parsed_args.claims_query_interval
         config.claims_timeout = parsed_args.claims_timeout
@@ -521,8 +626,328 @@ class ClaimsValidator:
             else:
                 self._post_miner_response(run_id, task, uid, response, miner_metadata, status="missing")
             scores[uid] = score
+        self._run_silver_post_pass(responses, task=task, run_id=run_id)
         self.bt_logging.info(f"Current scores: {sorted(scores.items())}")
         return scores
+
+    def _run_silver_post_pass(self, responses: list[Any], *, task: ClaimsTask, run_id: str) -> None:
+        if not bool(getattr(self.config, "claims_silver_enable", False)):
+            return
+        paper_tasks = task.paper_tasks()
+        if not paper_tasks:
+            return
+        try:
+            bronze_client = self._build_reference_miner_client()
+        except Exception as exc:
+            self.bt_logging.warning(f"Silver post-pass could not initialize Bronze client: {exc}")
+            return
+        miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any]]]] = {paper.paper_id or f"paper_{index}": [] for index, paper in enumerate(paper_tasks, start=1)}
+        for index, neuron in enumerate(self.target_neurons):
+            response = responses[index] if index < len(responses) else None
+            if response is None or not self._is_protocol_compatible(response):
+                continue
+            uid = int(neuron.uid)
+            metadata = self._miner_metadata(uid, response)
+            if getattr(response, "articles", None):
+                articles = [article for article in (getattr(response, "articles", []) or []) if isinstance(article, dict)]
+                for article in articles:
+                    if article.get("status") != "completed":
+                        continue
+                    paper_id = str(article.get("paper_id") or "")
+                    extraction = article.get("agent_output") or article.get("extraction")
+                    if paper_id in miners_by_paper and isinstance(extraction, dict) and _is_agent_v1_artifact(extraction):
+                        miners_by_paper[paper_id].append((uid, extraction, metadata))
+            elif getattr(response, "extraction", None) and len(paper_tasks) == 1:
+                paper_id = paper_tasks[0].paper_id or task.paper_id or "paper"
+                extraction = getattr(response, "extraction")
+                if isinstance(extraction, dict) and _is_agent_v1_artifact(extraction):
+                    miners_by_paper.setdefault(paper_id, []).append((uid, extraction, metadata))
+
+        for paper_index, paper in enumerate(paper_tasks, start=1):
+            paper_id = paper.paper_id or f"paper_{paper_index}"
+            miner_rows = miners_by_paper.get(paper_id, [])
+            if not miner_rows:
+                continue
+            try:
+                reference_release_id = str(getattr(self.config, "claims_reference_release_id", "reference-v0"))
+                bronze = bronze_client.get_or_create_bronze(
+                    request=self._reference_miner_input(task=task, paper=paper, paper_id=paper_id, run_id=run_id),
+                    reference_release_id=reference_release_id,
+                )
+                bronze_artifact = _read_json_object(Path(bronze.artifact_path))
+            except Exception as exc:
+                self.bt_logging.warning(f"Silver post-pass skipped paper={paper_id}; Bronze unavailable: {exc}")
+                continue
+            adjudication_passes, tiebreak_pass = self._build_silver_adjudication_passes()
+            if not adjudication_passes:
+                self.bt_logging.warning(f"Silver post-pass skipped paper={paper_id}; no adjudication passes configured.")
+                continue
+            try:
+                result = run_paper_silver_pipeline(
+                    paper_id=paper_id,
+                    bronze_artifact=bronze_artifact,
+                    miner_artifacts=[
+                        MinerArtifactSubmission(miner_id=f"uid_{uid}", artifact=extraction)
+                        for uid, extraction, _metadata in miner_rows
+                    ],
+                    silver_record_id=f"silver_{run_id}_{safe_task_id(paper_id)}",
+                    bronze_record_id=bronze.bronze_record_id,
+                    adjudication_passes=adjudication_passes,
+                    tiebreak_pass=tiebreak_pass,
+                    direct_judge_confidence=float(getattr(self.config, "claims_silver_direct_confidence", 0.9)),
+                    source_context=_source_context_from_bronze(bronze.source_payload_path),
+                )
+            except Exception as exc:
+                self.bt_logging.warning(f"Silver post-pass failed for paper={paper_id}: {exc}")
+                continue
+            self._persist_silver_pipeline_result(run_id=run_id, task=task, paper_id=paper_id, result=result, miner_rows=miner_rows)
+
+    def _build_reference_miner_client(self) -> Any:
+        bronze_root = Path(getattr(self.config, "claims_bronze_root"))
+        command_text = str(getattr(self.config, "claims_reference_miner_command", "") or "").strip()
+        local_client: Any
+        if command_text:
+            local_client = LocalCliReferenceMinerClient(
+                bronze_root=bronze_root,
+                command=shlex.split(command_text),
+                claims_repo=getattr(self.config, "claims_reference_miner_claims_repo", None),
+            )
+        else:
+            local_client = LocalReferenceMinerClient(bronze_root)
+        if self.backend_client is not None:
+            return BackendBackedReferenceMinerClient(backend=self.backend_client, delegate=local_client)
+        return local_client
+
+    def _reference_miner_input(self, *, task: ClaimsTask, paper: ClaimsPaperTask, paper_id: str, run_id: str) -> ReferenceMinerInput:
+        artifact = paper.artifact or (task.artifact if paper_id == (task.paper_id or paper_id) else None)
+        input_path: str | None = None
+        input_kind: str | None = None
+        if artifact is None and paper.paper_url and str(getattr(self.config, "claims_reference_miner_command", "") or "").strip():
+            download_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / "reference_inputs" / safe_task_id(paper_id)
+            downloaded = download_pdf(paper.paper_url, output_dir=download_dir, expected_sha256=paper.source_sha256)
+            input_path = str(downloaded.path)
+            input_kind = "pdf"
+        return ReferenceMinerInput(
+            paper_id=paper_id,
+            run_id=run_id,
+            batch_id=task.batch_id or task.task_id,
+            network=task.network or str(getattr(self.config, "claims_network", "testnet")),
+            paper_url=paper.paper_url,
+            source_sha256=paper.source_sha256,
+            input_path=input_path,
+            input_kind=input_kind,
+            artifact=artifact,
+        )
+
+    def _build_silver_adjudication_passes(self) -> tuple[list[Any], Any | None]:
+        mode = str(getattr(self.config, "claims_silver_adjudication_mode", "static"))
+        if mode == "static":
+            disposition = str(getattr(self.config, "claims_silver_static_disposition", "benign_difference"))
+            return (
+                [
+                    StaticAdjudicationPass("pass_a", "static_a", "static", {}, default_disposition=disposition),  # type: ignore[arg-type]
+                    StaticAdjudicationPass("pass_b", "static_b", "static", {}, default_disposition=disposition),  # type: ignore[arg-type]
+                ],
+                None,
+            )
+
+        if mode != "openai-compatible":
+            self.bt_logging.warning(f"Unknown Silver adjudication mode: {mode}")
+            return [], None
+
+        key_env = str(getattr(self.config, "claims_silver_adjudication_api_key_env", "OPENAI_API_KEY"))
+        api_key = os.getenv(key_env, "")
+        if not api_key:
+            self.bt_logging.warning(f"Silver model adjudication requested, but {key_env} is not set.")
+            return [], None
+        api_base = str(getattr(self.config, "claims_silver_adjudication_api_base", "https://api.openai.com/v1"))
+        model_a = str(getattr(self.config, "claims_silver_adjudication_model_a", "gpt-5"))
+        model_b = str(getattr(self.config, "claims_silver_adjudication_model_b", "gpt-5-mini"))
+        tiebreak_model = str(getattr(self.config, "claims_silver_adjudication_tiebreak_model", ""))
+        passes = [
+            OpenAICompatibleAdjudicationPass(
+                pass_id="pass_a",
+                adjudication_profile_id=f"openai_compatible:{model_a}",
+                model_runtime_id="openai-compatible-chat-completions",
+                model=model_a,
+                api_key=api_key,
+                api_base=api_base,
+            ),
+            OpenAICompatibleAdjudicationPass(
+                pass_id="pass_b",
+                adjudication_profile_id=f"openai_compatible:{model_b}",
+                model_runtime_id="openai-compatible-chat-completions",
+                model=model_b,
+                api_key=api_key,
+                api_base=api_base,
+            ),
+        ]
+        tiebreak = (
+            OpenAICompatibleAdjudicationPass(
+                pass_id="pass_c",
+                adjudication_profile_id=f"openai_compatible:{tiebreak_model}",
+                model_runtime_id="openai-compatible-chat-completions",
+                model=tiebreak_model,
+                api_key=api_key,
+                api_base=api_base,
+            )
+            if tiebreak_model
+            else None
+        )
+        return passes, tiebreak
+
+    def _persist_silver_pipeline_result(
+        self,
+        *,
+        run_id: str,
+        task: ClaimsTask,
+        paper_id: str,
+        result: Any,
+        miner_rows: list[tuple[int, dict[str, Any], dict[str, Any]]],
+    ) -> None:
+        output_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / "silver" / safe_task_id(paper_id)
+        _write_json(output_dir / "silver_record.json", result.silver_record.model_dump(mode="json"))
+        _write_json(
+            output_dir / "adjudication_consensus.json",
+            {"items": [item.model_dump(mode="json") for item in result.adjudication_consensus]},
+        )
+        _write_json(
+            output_dir / "silver_scores.json",
+            {"items": [item.model_dump(mode="json") for item in result.scores]},
+        )
+        if self.backend_client is None:
+            return
+        batch_id = task.batch_id or task.task_id
+        network = str(getattr(self.config, "claims_network", "testnet"))
+        for case in result.diff_cases:
+            try:
+                self.backend_client.post_adjudication_case(
+                    {
+                        "case_id": case.case_id,
+                        "network": network,
+                        "run_id": run_id,
+                        "batch_id": batch_id,
+                        "paper_id": paper_id,
+                        "bronze_record_id": result.silver_record.bronze_record_id,
+                        "miner_hotkey": None,
+                        "uid": None,
+                        "mismatch_type": case.mismatch_type,
+                        "candidate_ids": case.candidate_ids,
+                        "status": "pending",
+                        "context_uri": str(output_dir / "adjudication_consensus.json"),
+                        "findings": [],
+                        "decision": {},
+                    }
+                )
+            except BackendClientError as exc:
+                self.bt_logging.warning(f"Could not post adjudication case to backend: {exc}")
+        for consensus in result.adjudication_consensus:
+            for vote in consensus.votes:
+                try:
+                    self.backend_client.post_adjudication_vote(
+                        {
+                            "vote_id": f"{vote.case_id}_{vote.pass_id}",
+                            "network": network,
+                            "case_id": vote.case_id,
+                            "run_id": run_id,
+                            "batch_id": batch_id,
+                            "paper_id": paper_id,
+                            "pass_id": vote.pass_id,
+                            "adjudication_profile_id": vote.adjudication_profile_id,
+                            "model_runtime_id": vote.model_runtime_id,
+                            "candidate_order_seed": vote.case_id,
+                            "disposition": vote.disposition,
+                            "material_findings": vote.material_findings,
+                            "cited_span_ids": vote.cited_span_ids,
+                            "confidence": vote.confidence,
+                            "rationale": vote.rationale,
+                        }
+                    )
+                except BackendClientError as exc:
+                    self.bt_logging.warning(f"Could not post adjudication vote to backend: {exc}")
+            try:
+                self.backend_client.post_adjudication_consensus(
+                    {
+                        "consensus_id": f"{consensus.case_id}_consensus",
+                        "network": network,
+                        "case_id": consensus.case_id,
+                        "run_id": run_id,
+                        "batch_id": batch_id,
+                        "paper_id": paper_id,
+                        "final_disposition": consensus.final_disposition,
+                        "final_confidence": consensus.final_confidence,
+                        "agreement_rate": consensus.agreement_rate,
+                        "route": consensus.route,
+                        "score_effects": [effect.model_dump(mode="json") for effect in consensus.score_effects],
+                    }
+                )
+            except BackendClientError as exc:
+                self.bt_logging.warning(f"Could not post adjudication consensus to backend: {exc}")
+        for decision in result.adjudication_decisions:
+            try:
+                self.backend_client.post_adjudication_decision(
+                    {
+                        "decision_id": f"{decision.case_id}_decision",
+                        "network": network,
+                        "case_id": decision.case_id,
+                        "run_id": run_id,
+                        "batch_id": batch_id,
+                        "paper_id": paper_id,
+                        "disposition": decision.disposition,
+                        "accepted_candidate_ids": decision.accepted_candidate_ids,
+                        "rejected_candidate_ids": decision.rejected_candidate_ids,
+                        "valid_alternative_candidate_ids": decision.valid_alternative_candidate_ids,
+                        "silver_unit_id": decision.silver_unit_id,
+                        "creates_required_silver_unit": decision.creates_required_silver_unit,
+                        "creates_optional_improvement_unit": decision.creates_optional_improvement_unit,
+                        "importance": decision.importance,
+                        "rationale": decision.rationale,
+                        "decision": decision.model_dump(mode="json"),
+                    }
+                )
+            except BackendClientError as exc:
+                self.bt_logging.warning(f"Could not post adjudication decision to backend: {exc}")
+        try:
+            self.backend_client.post_silver_record(
+                {
+                    "silver_record_id": result.silver_record.silver_record_id,
+                    "network": network,
+                    "run_id": run_id,
+                    "batch_id": batch_id,
+                    "paper_id": paper_id,
+                    "bronze_record_id": result.silver_record.bronze_record_id,
+                    "silver_units": [unit.model_dump(mode="json") for unit in result.silver_record.silver_units],
+                    "invalid_candidates": [item.model_dump(mode="json") for item in result.silver_record.invalid_miner_candidates],
+                    "reference_errors": [item.model_dump(mode="json") for item in result.silver_record.reference_errors],
+                    "audit_uri": str(output_dir / "silver_record.json"),
+                }
+            )
+        except BackendClientError as exc:
+            self.bt_logging.warning(f"Could not post Silver record to backend: {exc}")
+        metadata_by_miner_id = {f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata in miner_rows}
+        for score in result.scores:
+            uid, metadata = metadata_by_miner_id.get(score.miner_id, (0, {}))
+            try:
+                self.backend_client.post_silver_score_report(
+                    {
+                        "score_report_id": f"silver_score_{run_id}_{safe_task_id(paper_id)}_uid_{uid}",
+                        "network": network,
+                        "run_id": run_id,
+                        "batch_id": batch_id,
+                        "paper_id": paper_id,
+                        "response_id": f"{run_id}:uid_{uid}",
+                        "uid": uid,
+                        "hotkey": metadata.get("hotkey", ""),
+                        "silver_record_id": score.silver_record_id,
+                        "coverage": score.coverage,
+                        "quality": score.quality,
+                        "score": score.score,
+                        "findings": [finding.model_dump(mode="json") for finding in score.findings],
+                        "breakdown": score.model_dump(mode="json"),
+                    }
+                )
+            except BackendClientError as exc:
+                self.bt_logging.warning(f"Could not post Silver score report to backend: {exc}")
 
     def _score_extraction(
         self,
@@ -1028,6 +1453,27 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     except Exception:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _source_context_from_bronze(source_payload_path: str | None) -> str:
+    if not source_payload_path:
+        return ""
+    payload = _read_json_object(Path(source_payload_path))
+    if not payload:
+        return ""
+    spans = payload.get("spans")
+    if isinstance(spans, list):
+        lines: list[str] = []
+        for index, span in enumerate(spans, start=1):
+            if not isinstance(span, dict):
+                continue
+            span_id = str(span.get("span_id") or span.get("id") or f"span_{index}")
+            text = str(span.get("text") or span.get("quote") or "")
+            if text.strip():
+                lines.append(f"{span_id}: {text.strip()}")
+        if lines:
+            return "\n".join(lines)
+    return json.dumps(payload, sort_keys=True, ensure_ascii=False)[:12000]
 
 
 def _stable_hash(payload: Any) -> str:

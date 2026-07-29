@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 Severity = Literal["blocker", "critical", "major", "minor", "warning", "suggestion"]
-PassName = Literal["structural", "grounding", "rigor", "scoring"]
+PassName = Literal["structural", "grounding", "rigor", "scoring", "silver_comparison"]
 
 
 class AgentV1ValidationFinding(BaseModel):

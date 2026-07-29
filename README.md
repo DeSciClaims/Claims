@@ -258,6 +258,58 @@ Useful validator flags:
 For local smoke tests without the backend, pass exactly one of
 `--claims.paper-url`, `--claims.task-artifact`, or `--claims.task-manifest`.
 
+### Silver Post-Pass Adjudication
+
+Enable Silver scoring after normal `agent_v1` validation with:
+
+```bash
+--claims.silver-enable \
+--claims.bronze-root /path/to/bronze/root \
+--claims.reference-release-id reference-v0
+```
+
+Bronze lookup runs backend-first when `--claims.backend-url` is configured,
+then falls back to local manifests under `--claims.bronze-root`. To create
+missing Bronze records with the private reference miner CLI, configure:
+
+```bash
+--claims.reference-miner-command "python -m claims_reference_miner" \
+--claims.reference-miner-claims-repo /path/to/Claims
+```
+
+Generation is explicit: if `--claims.reference-miner-command` is omitted, the
+validator fetches/reads Bronze only and skips papers whose Bronze record is
+missing.
+
+The default adjudication mode is static and is intended for local smoke tests:
+
+```bash
+--claims.silver-adjudication-mode static \
+--claims.silver-static-disposition benign_difference
+```
+
+For real V0 adjudication, use OpenAI-compatible chat-completions endpoints:
+
+```bash
+export OPENAI_API_KEY=...
+
+python -m neurons.validator \
+  ... \
+  --claims.silver-enable \
+  --claims.silver-adjudication-mode openai-compatible \
+  --claims.silver-adjudication-api-base https://api.openai.com/v1 \
+  --claims.silver-adjudication-api-key-env OPENAI_API_KEY \
+  --claims.silver-adjudication-model-a gpt-5 \
+  --claims.silver-adjudication-model-b gpt-5-mini \
+  --claims.silver-adjudication-tiebreak-model gpt-5 \
+  --claims.silver-direct-confidence 0.9
+```
+
+Model-backed Silver adjudication writes one vote per pass plus a consensus
+record. Direct decisions require matching disposition/material findings and
+confidence above the configured threshold; unresolved cases route to the
+ClaimsReviews manual-review path.
+
 ## Network Runbooks
 
 The top-level commands above are network-agnostic. Detailed environment-specific

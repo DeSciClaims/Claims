@@ -80,6 +80,20 @@ mode only; production scoring should include the rigor agent.
   --skip-rigor-agent
 ```
 
+## Silver Scoring Smoke
+
+The Silver path includes Bronze lookup, adjudication cases, Silver record
+construction, miner-vs-Silver scoring, backend persistence, and public feedback.
+
+```bash
+/Users/ogbanugot/miniconda3/bin/conda run -n claims_subnet \
+  python Claims/tests/smoke_silver_e2e.py
+```
+
+That smoke starts a local backend, signs validator requests with a temporary
+hotkey, writes Bronze/Silver/score records, then reads the public miner Silver
+feedback endpoint.
+
 ## Runtime Controls
 
 - `--max-agent-iters` or `SUBNET_CLAIMS_VALIDATOR_AGENT_MAX_ITERS`: native rigor
