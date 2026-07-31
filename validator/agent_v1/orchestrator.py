@@ -9,6 +9,7 @@ from .adjudication_runner import AdjudicationPass, run_adjudication_case
 from .batch_scoring import BatchScoreResult, score_batch
 from .bronze_diff import compare_miner_to_bronze
 from .comparison_models import BronzeDiffCase, ComparisonCandidate, SilverRecord, SilverScoreBreakdown
+from .pairing import RelationClassifier
 from .record_projection import project_agent_artifact
 from .silver_builder import build_silver_record
 from .silver_scoring import score_miner_against_silver
@@ -55,6 +56,7 @@ def run_paper_silver_pipeline(
     adjudication_passes: list[AdjudicationPass],
     tiebreak_pass: AdjudicationPass | None = None,
     direct_judge_confidence: float = 0.9,
+    relation_classifier: RelationClassifier | None = None,
     source_context: str = "",
 ) -> PaperSilverPipelineResult:
     bronze_candidates = project_agent_artifact(bronze_artifact, origin="bronze")
@@ -77,6 +79,7 @@ def run_paper_silver_pipeline(
             miner_id=submission.miner_id,
             bronze_candidates=bronze_candidates,
             miner_candidates=submission.candidates,
+            relation_classifier=relation_classifier,
         )
     )
     consensus_records: list[AdjudicationConsensus] = []

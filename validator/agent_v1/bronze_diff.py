@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 
 from .comparison_models import BronzeDiffCase, ComparisonCandidate, MismatchType
-from .pairing import build_candidate_pairs
+from .pairing import RelationClassifier, build_candidate_pairs
 
 
 def compare_miner_to_bronze(
@@ -12,8 +12,9 @@ def compare_miner_to_bronze(
     miner_id: str,
     bronze_candidates: list[ComparisonCandidate],
     miner_candidates: list[ComparisonCandidate],
+    relation_classifier: RelationClassifier | None = None,
 ) -> list[BronzeDiffCase]:
-    edges = build_candidate_pairs(bronze_candidates, miner_candidates)
+    edges = build_candidate_pairs(bronze_candidates, miner_candidates, relation_classifier=relation_classifier)
     best_by_bronze: dict[str, tuple[str, str]] = {}
     matched_miner_ids: set[str] = set()
 
