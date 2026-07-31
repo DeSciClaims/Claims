@@ -14,7 +14,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from validator.agent_v1.adjudication_passes import OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
+from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, build_silver_adjudication_passes
 from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline
 from validator.agent_v1.reference_client import (
@@ -42,6 +42,23 @@ def _require_bittensor() -> tuple[Any, Any, Any, Any, Any]:
             "Install it with `pip install bittensor` in this environment."
         ) from exc
     return Config, Dendrite, Subtensor, Wallet, logging
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int_list(name: str) -> list[int]:
+    values = []
+    for item in os.getenv(name, "").replace(" ", ",").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        values.append(int(item))
+    return values
 
 
 class ClaimsValidator:
@@ -73,6 +90,8 @@ class ClaimsValidator:
         self.backend_client = self._build_backend_client()
 
     def _get_config(self) -> Any:
+        base_dir = Path(__file__).resolve().parents[1]
+        load_dotenv(base_dir / ".env")
         parser = argparse.ArgumentParser(description="Run a Claims validator on a Bittensor subnet.")
         parser.add_argument("--netuid", type=int, required=True, help="Subnet netuid.")
         parser.add_argument(
@@ -149,6 +168,7 @@ class ClaimsValidator:
             "--claims.allow-paper-reuse",
             dest="claims_allow_paper_reuse",
             action="store_true",
+            default=_env_flag("CLAIMS_ALLOW_PAPER_REUSE"),
             help="Allow backend batch selection to reuse papers already assigned to prior batches. Intended for smoke tests.",
         )
         parser.add_argument(
@@ -156,48 +176,49 @@ class ClaimsValidator:
             dest="claims_target_uids",
             action="append",
             type=int,
-            default=[],
+            default=_env_int_list("CLAIMS_TARGET_UIDS"),
             help="Only query the given miner UID. May be passed more than once for focused smoke tests.",
         )
         parser.add_argument(
             "--claims.audit-method",
             dest="claims_audit_method",
             choices=("deterministic", "llm"),
-            default="deterministic",
+            default=os.getenv("CLAIMS_AUDIT_METHOD", "deterministic"),
             help="Audit method used to score miner responses.",
         )
         parser.add_argument(
             "--claims.validator-pipeline",
             dest="claims_validator_pipeline",
             choices=("auto", "v0", "agent_v1"),
-            default="auto",
+            default=os.getenv("CLAIMS_VALIDATOR_PIPELINE", "auto"),
             help="Validator scoring pipeline. auto routes ARA-shaped responses to agent_v1 and legacy responses to v0.",
         )
         parser.add_argument(
             "--claims.agent-v1-runtime",
             dest="claims_agent_v1_runtime",
             choices=("dspy-react", "langchain-agent", "agent-cli"),
-            default=None,
+            default=os.getenv("CLAIMS_AGENT_V1_RUNTIME"),
             help="Rigor runtime for agent_v1 validator responses.",
         )
         parser.add_argument(
             "--claims.agent-v1-skip-rigor",
             dest="claims_agent_v1_skip_rigor",
             action="store_true",
+            default=_env_flag("CLAIMS_AGENT_V1_SKIP_RIGOR"),
             help="Run agent_v1 deterministic checks only. Useful for smoke tests.",
         )
         parser.add_argument(
             "--claims.agent-v1-threshold",
             dest="claims_agent_v1_threshold",
             type=float,
-            default=0.7,
+            default=float(os.getenv("CLAIMS_AGENT_V1_THRESHOLD", "0.7")),
             help="Passing score threshold for agent_v1 validator reports.",
         )
         parser.add_argument(
             "--claims.silver-enable",
             dest="claims_silver_enable",
             action="store_true",
-            default=os.getenv("CLAIMS_SILVER_ENABLE", "").lower() in {"1", "true", "yes"},
+            default=_env_flag("CLAIMS_SILVER_ENABLE"),
             help="Run post-pass Silver scoring over completed agent_v1 batch responses.",
         )
         parser.add_argument(
@@ -235,7 +256,7 @@ class ClaimsValidator:
         parser.add_argument(
             "--claims.silver-adjudication-mode",
             dest="claims_silver_adjudication_mode",
-            choices=("static", "openai-compatible"),
+            choices=("static", "openai-compatible", "model", "cli", "hermes-cli", "codex-cli", "claude-cli"),
             default=os.getenv("CLAIMS_SILVER_ADJUDICATION_MODE", "static"),
             help="Adjudication pass runtime for Silver cases.",
         )
@@ -270,6 +291,44 @@ class ClaimsValidator:
             help="Optional third model for unresolved adjudication cases.",
         )
         parser.add_argument(
+            "--claims.silver-adjudication-cli-command-a",
+            dest="claims_silver_adjudication_cli_command_a",
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_COMMAND_A", ""),
+            help="CLI command for Silver adjudication pass A. The adjudication prompt is appended unless prompt mode is stdin.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-cli-command-b",
+            dest="claims_silver_adjudication_cli_command_b",
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_COMMAND_B", ""),
+            help="CLI command for Silver adjudication pass B. The adjudication prompt is appended unless prompt mode is stdin.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-cli-tiebreak-command",
+            dest="claims_silver_adjudication_cli_tiebreak_command",
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_TIEBREAK_COMMAND", ""),
+            help="CLI command for optional Silver adjudication tiebreak pass.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-cli-command-template",
+            dest="claims_silver_adjudication_cli_command_template",
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_COMMAND_TEMPLATE", ""),
+            help="CLI command template for Silver adjudication; use {model} where the model id should be inserted.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-cli-prompt-mode",
+            dest="claims_silver_adjudication_cli_prompt_mode",
+            choices=("append", "stdin"),
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE", "append"),
+            help="Pass Silver adjudication prompt as final argv item or stdin for CLI modes.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-cli-timeout",
+            dest="claims_silver_adjudication_cli_timeout",
+            type=float,
+            default=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_TIMEOUT", "900")),
+            help="Timeout in seconds for each CLI Silver adjudication pass.",
+        )
+        parser.add_argument(
             "--claims.silver-direct-confidence",
             dest="claims_silver_direct_confidence",
             type=float,
@@ -280,7 +339,7 @@ class ClaimsValidator:
             "--claims.output-dir",
             dest="claims_output_dir",
             type=Path,
-            default=Path("validator/v0/outputs/neuron"),
+            default=Path(os.getenv("CLAIMS_OUTPUT_DIR", "validator/v0/outputs/neuron")),
             help="Directory for validator audit outputs.",
         )
         parser.add_argument(
@@ -294,7 +353,7 @@ class ClaimsValidator:
             "--claims.timeout",
             dest="claims_timeout",
             type=float,
-            default=180.0,
+            default=float(os.getenv("CLAIMS_TIMEOUT", "180")),
             help="Dendrite query timeout in seconds.",
         )
         parser.add_argument(
@@ -308,13 +367,14 @@ class ClaimsValidator:
             "--claims.max-steps",
             dest="claims_max_steps",
             type=int,
-            default=0,
+            default=int(os.getenv("CLAIMS_MAX_STEPS", "0")),
             help="Stop after this many validation rounds. Zero runs indefinitely.",
         )
         parser.add_argument(
             "--claims.audit-only",
             dest="claims_audit_only",
             action="store_true",
+            default=_env_flag("CLAIMS_AUDIT_ONLY"),
             help="Score miners and write audits without submitting weights.",
         )
         parser.add_argument(
@@ -460,7 +520,6 @@ class ClaimsValidator:
 
     def _build_runner(self) -> JudgeV2Runner:
         base_dir = Path(__file__).resolve().parents[1]
-        load_dotenv(base_dir / ".env")
         return JudgeV2Runner(JudgeV1Config.from_env(base_dir))
 
     def run(self) -> None:
@@ -740,61 +799,27 @@ class ClaimsValidator:
         )
 
     def _build_silver_adjudication_passes(self) -> tuple[list[Any], Any | None]:
-        mode = str(getattr(self.config, "claims_silver_adjudication_mode", "static"))
-        if mode == "static":
-            disposition = str(getattr(self.config, "claims_silver_static_disposition", "benign_difference"))
-            return (
-                [
-                    StaticAdjudicationPass("pass_a", "static_a", "static", {}, default_disposition=disposition),  # type: ignore[arg-type]
-                    StaticAdjudicationPass("pass_b", "static_b", "static", {}, default_disposition=disposition),  # type: ignore[arg-type]
-                ],
-                None,
+        try:
+            return build_silver_adjudication_passes(
+                SilverAdjudicationConfig(
+                    mode=str(getattr(self.config, "claims_silver_adjudication_mode", "static")),
+                    static_disposition=str(getattr(self.config, "claims_silver_static_disposition", "benign_difference")),
+                    api_base=str(getattr(self.config, "claims_silver_adjudication_api_base", "https://api.openai.com/v1")),
+                    api_key_env=str(getattr(self.config, "claims_silver_adjudication_api_key_env", "OPENAI_API_KEY")),
+                    model_a=str(getattr(self.config, "claims_silver_adjudication_model_a", "gpt-5")),
+                    model_b=str(getattr(self.config, "claims_silver_adjudication_model_b", "gpt-5-mini")),
+                    tiebreak_model=str(getattr(self.config, "claims_silver_adjudication_tiebreak_model", "")),
+                    cli_command_a=str(getattr(self.config, "claims_silver_adjudication_cli_command_a", "")),
+                    cli_command_b=str(getattr(self.config, "claims_silver_adjudication_cli_command_b", "")),
+                    cli_tiebreak_command=str(getattr(self.config, "claims_silver_adjudication_cli_tiebreak_command", "")),
+                    cli_command_template=str(getattr(self.config, "claims_silver_adjudication_cli_command_template", "")),
+                    cli_prompt_mode=str(getattr(self.config, "claims_silver_adjudication_cli_prompt_mode", "append")),
+                    cli_timeout_seconds=float(getattr(self.config, "claims_silver_adjudication_cli_timeout", 900)),
+                )
             )
-
-        if mode != "openai-compatible":
-            self.bt_logging.warning(f"Unknown Silver adjudication mode: {mode}")
+        except Exception as exc:
+            self.bt_logging.warning(f"Silver adjudication pass configuration failed: {exc}")
             return [], None
-
-        key_env = str(getattr(self.config, "claims_silver_adjudication_api_key_env", "OPENAI_API_KEY"))
-        api_key = os.getenv(key_env, "")
-        if not api_key:
-            self.bt_logging.warning(f"Silver model adjudication requested, but {key_env} is not set.")
-            return [], None
-        api_base = str(getattr(self.config, "claims_silver_adjudication_api_base", "https://api.openai.com/v1"))
-        model_a = str(getattr(self.config, "claims_silver_adjudication_model_a", "gpt-5"))
-        model_b = str(getattr(self.config, "claims_silver_adjudication_model_b", "gpt-5-mini"))
-        tiebreak_model = str(getattr(self.config, "claims_silver_adjudication_tiebreak_model", ""))
-        passes = [
-            OpenAICompatibleAdjudicationPass(
-                pass_id="pass_a",
-                adjudication_profile_id=f"openai_compatible:{model_a}",
-                model_runtime_id="openai-compatible-chat-completions",
-                model=model_a,
-                api_key=api_key,
-                api_base=api_base,
-            ),
-            OpenAICompatibleAdjudicationPass(
-                pass_id="pass_b",
-                adjudication_profile_id=f"openai_compatible:{model_b}",
-                model_runtime_id="openai-compatible-chat-completions",
-                model=model_b,
-                api_key=api_key,
-                api_base=api_base,
-            ),
-        ]
-        tiebreak = (
-            OpenAICompatibleAdjudicationPass(
-                pass_id="pass_c",
-                adjudication_profile_id=f"openai_compatible:{tiebreak_model}",
-                model_runtime_id="openai-compatible-chat-completions",
-                model=tiebreak_model,
-                api_key=api_key,
-                api_base=api_base,
-            )
-            if tiebreak_model
-            else None
-        )
-        return passes, tiebreak
 
     def _persist_silver_pipeline_result(
         self,

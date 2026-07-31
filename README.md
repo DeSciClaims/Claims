@@ -288,7 +288,7 @@ The default adjudication mode is static and is intended for local smoke tests:
 --claims.silver-static-disposition benign_difference
 ```
 
-For real V0 adjudication, use OpenAI-compatible chat-completions endpoints:
+For real V0 adjudication, use either OpenAI-compatible chat-completions endpoints:
 
 ```bash
 export OPENAI_API_KEY=...
@@ -309,6 +309,23 @@ Model-backed Silver adjudication writes one vote per pass plus a consensus
 record. Direct decisions require matching disposition/material findings and
 confidence above the configured threshold; unresolved cases route to the
 ClaimsReviews manual-review path.
+
+CLI-backed adjudicators are also supported for Codex, Hermes, Claude, or any
+command that can accept the adjudication prompt and return the same strict JSON
+vote object:
+
+```bash
+python -m neurons.validator \
+  ... \
+  --claims.silver-enable \
+  --claims.silver-adjudication-mode hermes-cli \
+  --claims.silver-adjudication-model-a openai/gpt-5 \
+  --claims.silver-adjudication-model-b anthropic/claude-sonnet-4 \
+  --claims.silver-adjudication-tiebreak-model google/gemini-2.5-pro \
+  --claims.silver-adjudication-cli-command-template "hermes chat --provider openrouter -m {model} --max-turns 10 -q" \
+  --claims.silver-adjudication-cli-timeout 1800 \
+  --claims.silver-direct-confidence 0.9
+```
 
 ## Network Runbooks
 

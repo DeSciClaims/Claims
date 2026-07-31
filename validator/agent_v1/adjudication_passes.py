@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
+import subprocess
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -121,30 +123,67 @@ class OpenAICompatibleAdjudicationPass:
         return content
 
     def _vote_from_payload(self, context: AdjudicationContextBundle, payload: dict[str, Any]) -> AdjudicationVote:
-        disposition = _coerce_disposition(payload.get("disposition"))
-        cited_span_ids = _string_list(payload.get("cited_span_ids"))
-        known_span_ids = {span_id for candidate in context.candidates for span_id in candidate.source_span_ids}
-        valid_cited_span_ids = [span_id for span_id in cited_span_ids if not known_span_ids or span_id in known_span_ids]
-        material_findings = _string_list(payload.get("material_findings")) or [disposition]
-        confidence = _clamp_float(payload.get("confidence"), default=0.0)
-        insufficient_information = bool(payload.get("insufficient_information")) or disposition == "insufficient_information"
-        if insufficient_information:
-            disposition = "insufficient_information"
-            confidence = min(confidence, 0.5)
-
-        return AdjudicationVote(
-            case_id=context.case.case_id,
+        return vote_from_payload(
+            context,
+            payload,
             pass_id=self.pass_id,
             adjudication_profile_id=self.adjudication_profile_id,
             model_runtime_id=self.model_runtime_id,
-            candidate_order=[candidate.candidate_id for candidate in context.candidates],
-            disposition=disposition,
-            material_findings=material_findings,
-            cited_span_ids=valid_cited_span_ids,
-            confidence=confidence,
-            rationale=str(payload.get("rationale") or ""),
-            insufficient_information=insufficient_information,
         )
+
+
+@dataclass(frozen=True)
+class CLIAdjudicationPass:
+    pass_id: str
+    adjudication_profile_id: str
+    model_runtime_id: str
+    command: list[str] | str
+    prompt_mode: str = "append"
+    timeout_seconds: float = 900.0
+
+    def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
+        try:
+            prompt = _adjudication_cli_prompt(context)
+            command = shlex.split(self.command) if isinstance(self.command, str) else list(self.command)
+            if not command:
+                raise ValueError("CLI adjudication command is empty")
+            stdin = None
+            if self.prompt_mode == "stdin":
+                stdin = prompt
+            else:
+                command.append(prompt)
+            completed = subprocess.run(
+                command,
+                input=stdin,
+                capture_output=True,
+                text=True,
+                timeout=self.timeout_seconds or None,
+                check=False,
+            )
+            if completed.returncode != 0:
+                raise RuntimeError(f"CLI exited {completed.returncode}: {completed.stderr[-1000:]}")
+            payload = _parse_json_object(completed.stdout)
+            return vote_from_payload(
+                context,
+                payload,
+                pass_id=self.pass_id,
+                adjudication_profile_id=self.adjudication_profile_id,
+                model_runtime_id=self.model_runtime_id,
+            )
+        except Exception as exc:
+            return AdjudicationVote(
+                case_id=context.case.case_id,
+                pass_id=self.pass_id,
+                adjudication_profile_id=self.adjudication_profile_id,
+                model_runtime_id=self.model_runtime_id,
+                candidate_order=[candidate.candidate_id for candidate in context.candidates],
+                disposition="insufficient_information",
+                material_findings=["adjudication_pass_failed"],
+                cited_span_ids=[],
+                confidence=0.0,
+                rationale=f"CLI adjudication pass failed: {type(exc).__name__}: {exc}",
+                insufficient_information=True,
+            )
 
 
 def _adjudication_messages(context: AdjudicationContextBundle) -> list[dict[str, str]]:
@@ -189,6 +228,68 @@ def _adjudication_messages(context: AdjudicationContextBundle) -> list[dict[str,
         },
         {"role": "user", "content": json.dumps(user_payload, sort_keys=True)},
     ]
+
+
+def _adjudication_cli_prompt(context: AdjudicationContextBundle) -> str:
+    messages = _adjudication_messages(context)
+    return "\n\n".join(
+        [
+            "# Claims Silver adjudication task",
+            "Resolve the provided Bronze/miner discrepancy for scientific claim extraction.",
+            "Return only one strict JSON object. Do not wrap it in markdown.",
+            "If you cannot decide from the supplied context, set disposition to `insufficient_information`.",
+            "",
+            "## Conversation Payload",
+            json.dumps(messages, sort_keys=True),
+            "",
+            "## Required JSON",
+            json.dumps(
+                {
+                    "disposition": "one allowed disposition",
+                    "material_findings": ["short stable finding codes"],
+                    "cited_span_ids": ["source span ids supporting the decision"],
+                    "confidence": "number from 0 to 1",
+                    "rationale": "brief explanation grounded in cited spans",
+                    "insufficient_information": "boolean",
+                },
+                sort_keys=True,
+            ),
+        ]
+    )
+
+
+def vote_from_payload(
+    context: AdjudicationContextBundle,
+    payload: dict[str, Any],
+    *,
+    pass_id: str,
+    adjudication_profile_id: str,
+    model_runtime_id: str,
+) -> AdjudicationVote:
+    disposition = _coerce_disposition(payload.get("disposition"))
+    cited_span_ids = _string_list(payload.get("cited_span_ids"))
+    known_span_ids = {span_id for candidate in context.candidates for span_id in candidate.source_span_ids}
+    valid_cited_span_ids = [span_id for span_id in cited_span_ids if not known_span_ids or span_id in known_span_ids]
+    material_findings = _string_list(payload.get("material_findings")) or [disposition]
+    confidence = _clamp_float(payload.get("confidence"), default=0.0)
+    insufficient_information = bool(payload.get("insufficient_information")) or disposition == "insufficient_information"
+    if insufficient_information:
+        disposition = "insufficient_information"
+        confidence = min(confidence, 0.5)
+
+    return AdjudicationVote(
+        case_id=context.case.case_id,
+        pass_id=pass_id,
+        adjudication_profile_id=adjudication_profile_id,
+        model_runtime_id=model_runtime_id,
+        candidate_order=[candidate.candidate_id for candidate in context.candidates],
+        disposition=disposition,
+        material_findings=material_findings,
+        cited_span_ids=valid_cited_span_ids,
+        confidence=confidence,
+        rationale=str(payload.get("rationale") or ""),
+        insufficient_information=insufficient_information,
+    )
 
 
 def _parse_json_object(content: str) -> dict[str, Any]:

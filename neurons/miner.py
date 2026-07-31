@@ -57,6 +57,8 @@ class ClaimsMiner:
         self.runner = self._build_runner()
 
     def _get_config(self) -> Any:
+        base_dir = Path(__file__).resolve().parents[1]
+        load_dotenv(base_dir / ".env")
         parser = argparse.ArgumentParser(description="Run a Claims miner on a Bittensor subnet.")
         parser.add_argument("--netuid", type=int, required=True, help="Subnet netuid.")
         parser.add_argument(
@@ -206,7 +208,6 @@ class ClaimsMiner:
 
     def _build_runner(self) -> SectionContextV1Runner | AgentV1Runner:
         base_dir = Path(__file__).resolve().parents[1]
-        load_dotenv(base_dir / ".env")
         if self.config.claims_pipeline == "agent_v1":
             agent_config = AgentV1Config.from_env(base_dir)
             agent_config.output_dir = Path(self.config.claims_output_dir)

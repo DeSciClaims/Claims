@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from neurons.protocol import ClaimExtractionSynapse
 from neurons.tasks import ClaimsTask
 from neurons.validator import ClaimsValidator, _is_agent_v1_artifact
-from validator.agent_v1.adjudication_passes import OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
+from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
 from validator.agent_v1.structural import run_structural_checks
 
 
@@ -135,6 +135,23 @@ def test_neuron_builds_configurable_silver_adjudication_passes() -> None:
     ]
     assert isinstance(tiebreak, OpenAICompatibleAdjudicationPass)
     assert tiebreak.model == "model-c"
+
+    validator.config = SimpleNamespace(
+        claims_silver_adjudication_mode="hermes-cli",
+        claims_silver_adjudication_model_a="openai/gpt-5",
+        claims_silver_adjudication_model_b="anthropic/claude-sonnet-4",
+        claims_silver_adjudication_tiebreak_model="google/gemini-2.5-pro",
+        claims_silver_adjudication_cli_command_template="fake-hermes chat -m {model} -q",
+        claims_silver_adjudication_cli_prompt_mode="append",
+        claims_silver_adjudication_cli_timeout=120,
+    )
+
+    passes, tiebreak = validator._build_silver_adjudication_passes()
+
+    assert [type(adjudication_pass) for adjudication_pass in passes] == [CLIAdjudicationPass, CLIAdjudicationPass]
+    assert isinstance(tiebreak, CLIAdjudicationPass)
+    assert passes[0].command == ["fake-hermes", "chat", "-m", "openai/gpt-5", "-q"]
+    assert passes[1].command == ["fake-hermes", "chat", "-m", "anthropic/claude-sonnet-4", "-q"]
 
 
 def test_trace_refs_may_point_to_claims_evidence_experiments_or_concepts(tmp_path) -> None:

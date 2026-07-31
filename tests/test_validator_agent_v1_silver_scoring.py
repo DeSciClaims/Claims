@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from validator.agent_v1.bronze_diff import compare_miner_to_bronze
+from validator.agent_v1.comparison_models import CandidatePairEdge
 from validator.agent_v1.adjudication_consensus import aggregate_adjudication_votes
+from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, build_silver_adjudication_passes
 from validator.agent_v1.adjudication_models import AdjudicationContextBundle, AdjudicationDecision, AdjudicationVote
-from validator.agent_v1.adjudication_passes import OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
+from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
 from validator.agent_v1.adjudication_queue import (
     QueuedAdjudicationWorker,
     adjudication_job_payload,
@@ -13,6 +18,7 @@ from validator.agent_v1.adjudication_queue import (
 from validator.agent_v1.comparison_models import BronzeDiffCase, ComparisonCandidate
 from validator.agent_v1.miner_consensus import MinerConsensusRule, MinerConsensusVote, aggregate_miner_consensus_votes
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, MinerPaperSubmission, SilverScoringJob, run_batch_silver_scoring, run_paper_silver_pipeline
+from validator.agent_v1.relation_classifier import DSPyRelationClassifier
 from validator.agent_v1.silver_builder import build_silver_record
 from validator.agent_v1.silver_scoring import score_miner_against_silver
 
@@ -199,6 +205,82 @@ def test_openai_compatible_adjudication_pass_parses_strict_vote() -> None:
     assert not vote.insufficient_information
 
 
+def test_cli_adjudication_pass_parses_strict_vote(monkeypatch) -> None:
+    case = BronzeDiffCase(
+        case_id="case_cli",
+        paper_id="paper",
+        miner_id="miner_A",
+        mismatch_type="EXTRA_FROM_MINER",
+        candidate_ids=["a1"],
+        miner_candidate_id="a1",
+        question="Is the miner-only candidate valid?",
+    )
+    context = AdjudicationContextBundle(
+        case=case,
+        candidates=[
+            _candidate(
+                "a1",
+                "miner",
+                "miner_A",
+                "Treatment A reduced 30-day mortality.",
+                source_span_ids=["S1"],
+            )
+        ],
+        source_context="S1: Treatment A reduced 30-day mortality.",
+    )
+
+    def fake_run(command, **_kwargs):
+        assert command[:2] == ["fake-hermes", "chat"]
+        return SimpleNamespace(
+            returncode=0,
+            stdout="""
+            FINAL_JSON: {
+              "disposition": "accepted_improvement",
+              "material_findings": ["valid_cli_adjudication"],
+              "cited_span_ids": ["S1"],
+              "confidence": 0.92,
+              "rationale": "The candidate is supported.",
+              "insufficient_information": false
+            }
+            """,
+            stderr="",
+        )
+
+    monkeypatch.setattr("validator.agent_v1.adjudication_passes.subprocess.run", fake_run)
+    adjudication_pass = CLIAdjudicationPass(
+        pass_id="pass_a",
+        adjudication_profile_id="hermes-cli:test-model",
+        model_runtime_id="hermes-cli",
+        command=["fake-hermes", "chat"],
+    )
+
+    vote = adjudication_pass.run(context)
+
+    assert vote.case_id == "case_cli"
+    assert vote.disposition == "accepted_improvement"
+    assert vote.material_findings == ["valid_cli_adjudication"]
+    assert vote.cited_span_ids == ["S1"]
+    assert vote.confidence == 0.92
+
+
+def test_silver_adjudication_factory_builds_cli_passes() -> None:
+    passes, tiebreak = build_silver_adjudication_passes(
+        SilverAdjudicationConfig(
+            mode="hermes-cli",
+            model_a="openai/gpt-5",
+            model_b="anthropic/claude-sonnet-4",
+            tiebreak_model="google/gemini-2.5-pro",
+            cli_command_template="fake-hermes chat -m {model} -q",
+        )
+    )
+
+    assert [type(adjudication_pass) for adjudication_pass in passes] == [CLIAdjudicationPass, CLIAdjudicationPass]
+    assert isinstance(tiebreak, CLIAdjudicationPass)
+    assert passes[0].command == ["fake-hermes", "chat", "-m", "openai/gpt-5", "-q"]
+    assert passes[1].command == ["fake-hermes", "chat", "-m", "anthropic/claude-sonnet-4", "-q"]
+    assert tiebreak.command == ["fake-hermes", "chat", "-m", "google/gemini-2.5-pro", "-q"]
+
+
 def test_queued_adjudication_worker_posts_consensus_and_completes_job() -> None:
     case = BronzeDiffCase(
         case_id="case_queue",
@@ -272,6 +354,66 @@ def test_build_and_enqueue_adjudication_jobs_for_paper() -> None:
     assert completed_consensus_by_case(
         [{"status": "completed", "result": {"case_id": "case_1", "consensus": {"route": "direct"}}}]
     ) == {"case_1": {"route": "direct"}}
+
+
+def test_bronze_diff_accepts_injected_relation_classifier() -> None:
+    bronze = _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality.")
+    miner = _candidate("miner:miner_A:C01", "miner", "miner_A", "Treatment A reduced mortality for adults 65+.")
+
+    def classifier(left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
+        return CandidatePairEdge(
+            edge_id=f"{left.candidate_id}::{right.candidate_id}",
+            left_candidate_id=left.candidate_id,
+            right_candidate_id=right.candidate_id,
+            relation="compatible_refinement",
+            confidence=0.91,
+            rationale="Miner adds a compatible age qualifier.",
+        )
+
+    cases = compare_miner_to_bronze(
+        paper_id="paper",
+        miner_id="miner_A",
+        bronze_candidates=[bronze],
+        miner_candidates=[miner],
+        relation_classifier=classifier,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].mismatch_type == "COMPATIBLE_REFINEMENT"
+    assert cases[0].candidate_ids == ["bronze:C01", "miner:miner_A:C01"]
+
+
+def test_dspy_relation_classifier_parses_program_json() -> None:
+    classifier = DSPyRelationClassifier(
+        program=lambda **_kwargs: SimpleNamespace(
+            relation_json='{"relation":"compatible_refinement","confidence":0.88,"rationale":"Same claim; miner adds a qualifier."}'
+        ),
+        fallback_to_heuristic=False,
+    )
+
+    edge = classifier(
+        _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality."),
+        _candidate("miner:miner_A:C01", "miner", "miner_A", "Treatment A reduced mortality for adults 65+."),
+    )
+
+    assert edge.relation == "compatible_refinement"
+    assert edge.confidence == 0.88
+    assert "qualifier" in (edge.rationale or "")
+
+
+def test_dspy_relation_classifier_falls_back_to_heuristic() -> None:
+    classifier = DSPyRelationClassifier(
+        program=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("model unavailable")),
+        fallback_to_heuristic=True,
+    )
+
+    edge = classifier(
+        _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality."),
+        _candidate("miner:miner_A:C01", "miner", "miner_A", "Treatment A reduced mortality."),
+    )
+
+    assert edge.relation == "semantic_equivalent"
+    assert "DSPy classifier fallback" in (edge.rationale or "")
 
 
 def test_miner_consensus_aggregates_excluding_evaluated_miner() -> None:
