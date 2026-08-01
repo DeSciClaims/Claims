@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 import shlex
 import statistics
@@ -15,6 +16,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, build_silver_adjudication_passes
+from validator.agent_v1.artifact_summary import summarize_agent_artifact
 from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline
 from validator.agent_v1.reference_client import (
@@ -550,6 +552,7 @@ class ClaimsValidator:
             self.bt_logging.info(f"Dry run completed; loaded {len(self.tasks)} task(s).")
             return
         step = 0
+        self._active_run_timing = None
         while True:
             task = None
             run_id = None
@@ -558,18 +561,30 @@ class ClaimsValidator:
                 task = self._next_task(step)
                 run_id = _make_run_id()
                 run_started_at = datetime.now(timezone.utc)
+                self._active_run_timing = _new_pipeline_timing(run_id=run_id, started_at=run_started_at)
                 self.target_neurons = self._load_target_neurons()
                 self._post_validator_run(run_id, task, status="running", started_at=run_started_at)
+                miner_query_timer = _timing_start("miner_query", "Miner query")
                 responses = self._query_miners(task)
+                self._record_timing_stage(
+                    miner_query_timer,
+                    metadata={"target_uids": [int(neuron.uid) for neuron in self.target_neurons]},
+                )
+                scoring_timer = _timing_start("scoring", "Validation and Silver scoring")
                 scores = self._score_responses(responses, task=task, run_id=run_id)
+                self._record_timing_stage(scoring_timer)
+                weight_timer = _timing_start("weights", "Weight update")
                 weight_event = self._set_weights(scores)
+                self._record_timing_stage(weight_timer)
                 self._post_weight_event(run_id, scores, weight_event)
+                run_ended_at = datetime.now(timezone.utc)
+                _finish_pipeline_timing(self._active_run_timing, ended_at=run_ended_at)
                 self._post_validator_run(
                     run_id,
                     task,
                     status="completed",
                     started_at=run_started_at,
-                    ended_at=datetime.now(timezone.utc),
+                    ended_at=run_ended_at,
                 )
                 step += 1
                 if self.config.claims_max_steps and step >= self.config.claims_max_steps:
@@ -582,6 +597,7 @@ class ClaimsValidator:
             except Exception:
                 self.bt_logging.error(traceback.format_exc())
                 if task is not None and run_id is not None and run_started_at is not None:
+                    _finish_pipeline_timing(self._active_run_timing, ended_at=datetime.now(timezone.utc))
                     self._post_validator_run(
                         run_id,
                         task,
@@ -685,6 +701,7 @@ class ClaimsValidator:
                 self.bt_logging.warning(f"Miner uid={uid} returned incompatible Claims protocol response.")
                 self._post_miner_response(run_id, task, uid, response, miner_metadata, status="incompatible")
             elif response is not None and getattr(response, "articles", None):
+                diagnostic_timer = _timing_start("diagnostic_validation", "Diagnostic validation")
                 score = self._score_batch_response(
                     response,
                     uid=uid,
@@ -692,7 +709,10 @@ class ClaimsValidator:
                     run_id=run_id,
                     miner_metadata=miner_metadata,
                 )
+                stage = self._record_timing_stage(diagnostic_timer, metadata={"uid": uid})
+                self._record_miner_timing_stage(uid, stage)
             elif response is not None and getattr(response, "extraction", None):
+                diagnostic_timer = _timing_start("diagnostic_validation", "Diagnostic validation")
                 score = self._score_extraction(
                     response.extraction,
                     uid=uid,
@@ -701,7 +721,9 @@ class ClaimsValidator:
                     source_payload=getattr(response, "source_payload", None),
                     miner_metadata=miner_metadata,
                 )
-                self._post_single_report(run_id, task, uid, response, miner_metadata, score)
+                stage = self._record_timing_stage(diagnostic_timer, metadata={"uid": uid})
+                self._record_miner_timing_stage(uid, stage)
+                self._post_single_report(run_id, task, uid, response, miner_metadata, score, diagnostic_stage=stage)
             elif response is not None and getattr(response, "error", ""):
                 self.bt_logging.warning(f"Miner response error: {response.error}")
                 self._post_miner_response(run_id, task, uid, response, miner_metadata, status="error")
@@ -758,21 +780,35 @@ class ClaimsValidator:
             miner_rows = miners_by_paper.get(paper_id, [])
             if not miner_rows:
                 continue
+            paper_stage_seconds: dict[str, float] = {}
+            reference_timer: dict[str, Any] | None = None
             try:
                 reference_release_id = str(getattr(self.config, "claims_reference_release_id", "reference-v0"))
+                reference_timer = _timing_start("reference_miner", "Reference miner / Bronze")
                 bronze = bronze_client.get_or_create_bronze(
                     request=self._reference_miner_input(task=task, paper=paper, paper_id=paper_id, run_id=run_id),
                     reference_release_id=reference_release_id,
                 )
                 bronze_artifact = _read_json_object(Path(bronze.artifact_path))
+                reference_models = self._reference_miner_model_rows(bronze)
+                reference_stage = self._record_timing_stage(
+                    reference_timer,
+                    metadata={"paper_id": paper_id, "models": reference_models},
+                )
+                paper_stage_seconds["reference_miner"] = float(reference_stage["duration_seconds"])
             except Exception as exc:
+                if reference_timer is not None:
+                    self._record_timing_stage(reference_timer, metadata={"paper_id": paper_id, "failed": True})
                 self.bt_logging.warning(f"Silver post-pass skipped paper={paper_id}; Bronze unavailable: {exc}")
                 continue
             adjudication_passes, tiebreak_pass = self._build_silver_adjudication_passes()
             if not adjudication_passes:
                 self.bt_logging.warning(f"Silver post-pass skipped paper={paper_id}; no adjudication passes configured.")
                 continue
+            adjudication_models = self._adjudication_pass_model_rows(adjudication_passes, tiebreak_pass)
+            silver_timer: dict[str, Any] | None = None
             try:
+                silver_timer = _timing_start("silver_adjudication_scoring", "Silver adjudication and scoring")
                 result = run_paper_silver_pipeline(
                     paper_id=paper_id,
                     bronze_artifact=bronze_artifact,
@@ -788,10 +824,27 @@ class ClaimsValidator:
                     source_context=_source_context_from_bronze(bronze.source_payload_path),
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
                 )
+                silver_stage = self._record_timing_stage(
+                    silver_timer,
+                    metadata={"paper_id": paper_id, "models": adjudication_models},
+                )
+                paper_stage_seconds["silver_adjudication_scoring"] = float(silver_stage["duration_seconds"])
             except Exception as exc:
+                if silver_timer is not None:
+                    self._record_timing_stage(silver_timer, metadata={"paper_id": paper_id, "failed": True})
                 self.bt_logging.warning(f"Silver post-pass failed for paper={paper_id}: {exc}")
                 continue
-            self._persist_silver_pipeline_result(run_id=run_id, task=task, paper_id=paper_id, result=result, miner_rows=miner_rows)
+            persist_timer = _timing_start("silver_persist", "Persist Silver records")
+            self._persist_silver_pipeline_result(
+                run_id=run_id,
+                task=task,
+                paper_id=paper_id,
+                result=result,
+                miner_rows=miner_rows,
+                paper_stage_seconds=paper_stage_seconds,
+                model_rows=[*reference_models, *adjudication_models],
+            )
+            self._record_timing_stage(persist_timer, metadata={"paper_id": paper_id})
             for score in result.scores:
                 uid = _uid_from_miner_id(score.miner_id)
                 if uid is not None:
@@ -847,26 +900,29 @@ class ClaimsValidator:
 
     def _build_silver_adjudication_passes(self) -> tuple[list[Any], Any | None]:
         try:
-            return build_silver_adjudication_passes(
-                SilverAdjudicationConfig(
-                    mode=str(getattr(self.config, "claims_silver_adjudication_mode", "static")),
-                    static_disposition=str(getattr(self.config, "claims_silver_static_disposition", "benign_difference")),
-                    api_base=str(getattr(self.config, "claims_silver_adjudication_api_base", "https://api.openai.com/v1")),
-                    api_key_env=str(getattr(self.config, "claims_silver_adjudication_api_key_env", "OPENAI_API_KEY")),
-                    model_a=str(getattr(self.config, "claims_silver_adjudication_model_a", "gpt-5")),
-                    model_b=str(getattr(self.config, "claims_silver_adjudication_model_b", "gpt-5-mini")),
-                    tiebreak_model=str(getattr(self.config, "claims_silver_adjudication_tiebreak_model", "")),
-                    cli_command_a=str(getattr(self.config, "claims_silver_adjudication_cli_command_a", "")),
-                    cli_command_b=str(getattr(self.config, "claims_silver_adjudication_cli_command_b", "")),
-                    cli_tiebreak_command=str(getattr(self.config, "claims_silver_adjudication_cli_tiebreak_command", "")),
-                    cli_command_template=str(getattr(self.config, "claims_silver_adjudication_cli_command_template", "")),
-                    cli_prompt_mode=str(getattr(self.config, "claims_silver_adjudication_cli_prompt_mode", "append")),
-                    cli_timeout_seconds=float(getattr(self.config, "claims_silver_adjudication_cli_timeout", 900)),
-                )
-            )
+            return build_silver_adjudication_passes(self._silver_adjudication_config())
         except Exception as exc:
             self.bt_logging.warning(f"Silver adjudication pass configuration failed: {exc}")
             return [], None
+
+    def _silver_adjudication_config(self) -> SilverAdjudicationConfig:
+        return SilverAdjudicationConfig(
+            mode=str(getattr(self.config, "claims_silver_adjudication_mode", "static")),
+            static_disposition=str(getattr(self.config, "claims_silver_static_disposition", "benign_difference")),
+            api_base=str(getattr(self.config, "claims_silver_adjudication_api_base", "https://api.openai.com/v1")),
+            api_key_env=str(getattr(self.config, "claims_silver_adjudication_api_key_env", "OPENAI_API_KEY")),
+            model_a=str(getattr(self.config, "claims_silver_adjudication_model_a", "gpt-5")),
+            model_b=str(getattr(self.config, "claims_silver_adjudication_model_b", "gpt-5-mini")),
+            tiebreak_model=str(getattr(self.config, "claims_silver_adjudication_tiebreak_model", "")),
+            cli_command_a=str(getattr(self.config, "claims_silver_adjudication_cli_command_a", "")),
+            cli_command_b=str(getattr(self.config, "claims_silver_adjudication_cli_command_b", "")),
+            cli_tiebreak_command=str(getattr(self.config, "claims_silver_adjudication_cli_tiebreak_command", "")),
+            cli_command_template=str(getattr(self.config, "claims_silver_adjudication_cli_command_template", "")),
+            cli_prompt_mode=str(getattr(self.config, "claims_silver_adjudication_cli_prompt_mode", "append")),
+            cli_timeout_seconds=float(getattr(self.config, "claims_silver_adjudication_cli_timeout", 900)),
+            cli_provider=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "openrouter"),
+            cli_max_turns=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_MAX_TURNS", "10")),
+        )
 
     def _persist_silver_pipeline_result(
         self,
@@ -876,6 +932,8 @@ class ClaimsValidator:
         paper_id: str,
         result: Any,
         miner_rows: list[tuple[int, dict[str, Any], dict[str, Any]]],
+        paper_stage_seconds: dict[str, float] | None = None,
+        model_rows: list[dict[str, Any]] | None = None,
     ) -> None:
         output_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / "silver" / safe_task_id(paper_id)
         _write_json(output_dir / "silver_record.json", result.silver_record.model_dump(mode="json"))
@@ -1026,6 +1084,16 @@ class ClaimsValidator:
             self.bt_logging.warning(f"Could not post Silver record to backend: {exc}")
         for score in result.scores:
             uid, metadata = metadata_by_miner_id.get(score.miner_id, (0, {}))
+            breakdown = score.model_dump(mode="json")
+            breakdown["timing"] = self._timing_payload(
+                uid=uid,
+                paper_id=paper_id,
+                stage_seconds=paper_stage_seconds or {},
+                models=[
+                    *self._miner_model_rows(uid, metadata),
+                    *(model_rows or []),
+                ],
+            )
             try:
                 self.backend_client.post_silver_score_report(
                     {
@@ -1042,7 +1110,7 @@ class ClaimsValidator:
                         "quality": score.quality,
                         "score": score.score,
                         "findings": [finding.model_dump(mode="json") for finding in score.findings],
-                        "breakdown": score.model_dump(mode="json"),
+                        "breakdown": breakdown,
                     }
                 )
             except BackendClientError as exc:
@@ -1098,6 +1166,7 @@ class ClaimsValidator:
         batch_findings: list[dict[str, Any]] = []
         for index, paper in enumerate(task.paper_tasks(), start=1):
             paper_id = paper.paper_id or f"paper_{index}"
+            paper_timer = _timing_start("diagnostic_validation", "Diagnostic validation")
             article = articles_by_id.get(paper_id)
             if article is None and len(articles_by_id) == 1 and len(task.paper_tasks()) == 1:
                 article = next(iter(articles_by_id.values()))
@@ -1194,7 +1263,22 @@ class ClaimsValidator:
                         "score": score,
                         "error": None,
                         "report_path": str(report_path),
+                        "artifact_summary": summarize_agent_artifact(extraction),
                     }
+            paper_stage = _timing_finish(
+                paper_timer,
+                metadata={"uid": uid, "paper_id": paper_id},
+            )
+            result["timing"] = self._timing_payload(
+                uid=uid,
+                paper_id=paper_id,
+                stage_seconds={"diagnostic_validation": float(paper_stage["duration_seconds"])},
+                stages=[paper_stage],
+                models=[
+                    *self._miner_model_rows(uid, miner_metadata),
+                    *self._diagnostic_model_rows(),
+                ],
+            )
             article_results.append(result)
             paper_scores.append(score)
         batch_score = _aggregate_scores(paper_scores, str(getattr(self.config, "claims_batch_score_rule", "min")))
@@ -1217,6 +1301,13 @@ class ClaimsValidator:
             "summary": batch_summary,
             "findings": batch_findings,
             "article_results": article_results,
+            "timing": self._timing_payload(
+                uid=uid,
+                models=[
+                    *self._miner_model_rows(uid, miner_metadata),
+                    *self._diagnostic_model_rows(),
+                ],
+            ),
         }
         _write_json(base_dir / "batch_audit_record.json", batch_audit)
         response_status = "completed" if any(result.get("status") == "completed" for result in article_results) else "failed"
@@ -1321,6 +1412,167 @@ class ClaimsValidator:
         except BackendClientError as exc:
             self.bt_logging.warning(f"Could not post validator run to backend: {exc}")
 
+    def _record_timing_stage(
+        self,
+        timer: dict[str, Any],
+        *,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        stage = _timing_finish(timer, metadata=metadata)
+        timing = getattr(self, "_active_run_timing", None)
+        if isinstance(timing, dict):
+            timing.setdefault("stages", []).append(stage)
+        return stage
+
+    def _record_miner_timing_stage(self, uid: int, stage: dict[str, Any]) -> None:
+        timing = getattr(self, "_active_run_timing", None)
+        if not isinstance(timing, dict):
+            return
+        miners = timing.setdefault("miners", {})
+        miner = miners.setdefault(str(uid), {"uid": uid, "stages": []})
+        miner.setdefault("stages", []).append(stage)
+
+    def _miner_model_rows(self, uid: int, metadata: dict[str, Any]) -> list[dict[str, Any]]:
+        context = _merge_model_contexts(metadata.get("model_contexts"))
+        row = {
+            "stage_key": "miner_query",
+            "stage_label": "Miner response",
+            "role": "miner",
+            "uid": uid,
+            "hotkey": metadata.get("hotkey", ""),
+            "runtime": context.get("runtime") or metadata.get("backend") or metadata.get("miner_version", ""),
+            "provider": context.get("provider", ""),
+            "model": context.get("model", ""),
+            "models": context.get("models", []),
+            "pipeline": context.get("pipeline") or metadata.get("miner_version", ""),
+            "metrics": context.get("metrics", {}),
+        }
+        return [_drop_empty_model_fields(row)]
+
+    def _diagnostic_model_rows(self) -> list[dict[str, Any]]:
+        if bool(getattr(self.config, "claims_agent_v1_skip_rigor", False)):
+            return [
+                _drop_empty_model_fields(
+                    {
+                        "stage_key": "diagnostic_validation",
+                        "stage_label": "Diagnostic validation",
+                        "role": "validator_rigor",
+                        "runtime": "skipped",
+                        "pipeline": str(getattr(self.config, "claims_validator_pipeline", "auto")),
+                    }
+                )
+            ]
+        config = AgentV1ValidatorConfig.from_env(Path(__file__).resolve().parents[1])
+        if self.config.claims_agent_v1_runtime:
+            config.runtime = str(self.config.claims_agent_v1_runtime)
+        row = {
+            "stage_key": "diagnostic_validation",
+            "stage_label": "Diagnostic validation",
+            "role": "validator_rigor",
+            "runtime": config.runtime,
+            "provider": _provider_from_api_base(config.api_base),
+            "model": config.model,
+            "models": [config.model] if config.model else [],
+            "temperature": config.temperature,
+            "max_tokens": config.max_tokens,
+            "max_turns": config.max_agent_iters,
+            "pipeline": str(getattr(self.config, "claims_validator_pipeline", "auto")),
+        }
+        return [_drop_empty_model_fields(row)]
+
+    def _reference_miner_model_rows(self, bronze: Any | None = None) -> list[dict[str, Any]]:
+        metadata = getattr(bronze, "metadata", {}) if bronze is not None else {}
+        metadata = metadata if isinstance(metadata, dict) else {}
+        model_runtime_id = str(getattr(bronze, "model_runtime_id", "") or os.getenv("CLAIMS_REFERENCE_MINER_MODEL", ""))
+        row = {
+            "stage_key": "reference_miner",
+            "stage_label": "Reference miner / Bronze",
+            "role": "reference_miner",
+            "runtime": metadata.get("runtime") or ("cli" if str(getattr(self.config, "claims_reference_miner_command", "") or "").strip() else "local_manifest"),
+            "model": metadata.get("model") or model_runtime_id,
+            "models": _string_list(metadata.get("models") or ([model_runtime_id] if model_runtime_id else [])),
+            "model_runtime_id": model_runtime_id,
+            "profile_id": str(getattr(bronze, "reference_profile_id", "") or os.getenv("CLAIMS_REFERENCE_PROFILE_ID", "")),
+            "pipeline": str(getattr(bronze, "pipeline_version", "") or metadata.get("pipeline_version") or ""),
+        }
+        return [_drop_empty_model_fields(row)]
+
+    def _adjudication_pass_model_rows(self, passes: list[Any], tiebreak_pass: Any | None) -> list[dict[str, Any]]:
+        rows = []
+        for adjudication_pass in [*passes, *([tiebreak_pass] if tiebreak_pass is not None else [])]:
+            pass_id = str(getattr(adjudication_pass, "pass_id", "") or "")
+            profile_id = str(getattr(adjudication_pass, "adjudication_profile_id", "") or "")
+            runtime_id = str(getattr(adjudication_pass, "model_runtime_id", "") or "")
+            command = getattr(adjudication_pass, "command", "")
+            model = str(getattr(adjudication_pass, "model", "") or _model_from_profile_id(profile_id))
+            row = {
+                "stage_key": "silver_adjudication_scoring",
+                "stage_label": "Silver adjudication + scoring",
+                "role": f"adjudicator_{pass_id}" if pass_id else "adjudicator",
+                "runtime": runtime_id,
+                "provider": _provider_from_command(command) or _provider_from_api_base(
+                    str(getattr(self.config, "claims_silver_adjudication_api_base", ""))
+                ),
+                "model": model,
+                "models": [model] if model else [],
+                "model_runtime_id": runtime_id,
+                "profile_id": profile_id,
+            }
+            rows.append(_drop_empty_model_fields(row))
+        return rows
+
+    def _timing_payload(
+        self,
+        *,
+        uid: int | None = None,
+        paper_id: str | None = None,
+        stage_seconds: dict[str, float] | None = None,
+        stages: list[dict[str, Any]] | None = None,
+        models: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        active_timing = getattr(self, "_active_run_timing", None)
+        timing = active_timing if isinstance(active_timing, dict) else {}
+        run_stage_seconds: dict[str, float] = {}
+        for stage in timing.get("stages", []) if isinstance(timing.get("stages"), list) else []:
+            if not isinstance(stage, dict):
+                continue
+            key = str(stage.get("key") or "")
+            if not key:
+                continue
+            run_stage_seconds[key] = round(run_stage_seconds.get(key, 0.0) + _float_seconds(stage.get("duration_seconds")), 3)
+        for key, value in (stage_seconds or {}).items():
+            stage_key = str(key)
+            if stage_key not in run_stage_seconds:
+                run_stage_seconds[stage_key] = round(_float_seconds(value), 3)
+        miner_stage_seconds: dict[str, float] = {}
+        if uid is not None:
+            miner = (timing.get("miners") or {}).get(str(uid)) if isinstance(timing.get("miners"), dict) else None
+            for stage in miner.get("stages", []) if isinstance(miner, dict) and isinstance(miner.get("stages"), list) else []:
+                if not isinstance(stage, dict):
+                    continue
+                key = str(stage.get("key") or "")
+                if key:
+                    miner_stage_seconds[key] = round(miner_stage_seconds.get(key, 0.0) + _float_seconds(stage.get("duration_seconds")), 3)
+        for key, value in (stage_seconds or {}).items():
+            stage_key = str(key)
+            if stage_key not in miner_stage_seconds:
+                miner_stage_seconds[stage_key] = round(_float_seconds(value), 3)
+        payload = {
+            "schema": "claims_pipeline_timing_v1",
+            "run_id": str(timing.get("run_id") or ""),
+            "paper_id": paper_id or "",
+            "uid": uid,
+            "started_at": str(timing.get("started_at") or ""),
+            "elapsed_seconds": _active_elapsed_seconds(timing),
+            "stage_seconds": run_stage_seconds,
+            "miner_stage_seconds": miner_stage_seconds,
+        }
+        if stages:
+            payload["stages"] = [_public_timing_stage(stage) for stage in stages]
+        if models:
+            payload["models"] = [_public_model_row(row) for row in models if isinstance(row, dict)]
+        return payload
+
     def _post_miner_response(
         self,
         run_id: str,
@@ -1363,11 +1615,34 @@ class ClaimsValidator:
         response: Any,
         miner_metadata: dict[str, Any],
         score: float,
+        diagnostic_stage: dict[str, Any] | None = None,
     ) -> None:
         self._post_miner_response(run_id, task, uid, response, miner_metadata, status="completed")
         output_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / f"uid_{uid}"
         report_path = output_dir / "agent_v1" / "agent_v1_validation_report.json"
         report = _read_json_object(report_path) if report_path.exists() else {}
+        artifact_summary = summarize_agent_artifact(
+            _agent_artifact_from_response_payload(_response_payload(response), task.paper_id)
+        )
+        paper_score = {
+            "paper_id": task.paper_id,
+            "score": score,
+            "status": "completed",
+            "report_path": str(report_path),
+        }
+        if artifact_summary:
+            paper_score["artifact_summary"] = artifact_summary
+        if diagnostic_stage:
+            paper_score["timing"] = self._timing_payload(
+                uid=uid,
+                paper_id=task.paper_id,
+                stage_seconds={"diagnostic_validation": float(diagnostic_stage["duration_seconds"])},
+                stages=[diagnostic_stage],
+                models=[
+                    *self._miner_model_rows(uid, miner_metadata),
+                    *self._diagnostic_model_rows(),
+                ],
+            )
         self._post_validation_report(
             {
                 "report_id": f"audit_{run_id}_uid_{uid}",
@@ -1381,14 +1656,7 @@ class ClaimsValidator:
                 "summary": report.get("summary", {}),
                 "report_uri": str(report_path),
                 "findings": report.get("findings", []),
-                "paper_scores": [
-                    {
-                        "paper_id": task.paper_id,
-                        "score": score,
-                        "status": "completed",
-                        "report_path": str(report_path),
-                    }
-                ],
+                "paper_scores": [paper_score],
             }
         )
 
@@ -1436,6 +1704,8 @@ class ClaimsValidator:
     def _miner_metadata(self, uid: int, response: Any) -> dict[str, Any]:
         neuron = next((item for item in self.target_neurons if int(getattr(item, "uid", -1)) == uid), None)
         axon = getattr(neuron, "axon_info", None) if neuron is not None else None
+        payload = _response_payload(response)
+        extraction = _first_extraction_from_response_payload(payload) or {}
         return {
             "uid": uid,
             "hotkey": str(getattr(neuron, "hotkey", "")) if neuron is not None else "",
@@ -1448,7 +1718,9 @@ class ClaimsValidator:
             "miner_version": str(getattr(response, "miner_version", "")),
             "protocol_version": str(getattr(response, "protocol_version", "")),
             "schema_version": str(getattr(response, "schema_version", "")),
-            "validator_pipeline": self._select_validator_pipeline(getattr(response, "extraction", {}) or {}),
+            "backend": _miner_backend(payload) or "",
+            "validator_pipeline": self._select_validator_pipeline(extraction),
+            "model_contexts": _model_contexts_from_response_payload(payload),
         }
 
     def _set_weights(self, scores: dict[int, float]) -> dict[str, Any]:
@@ -1538,6 +1810,251 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _new_pipeline_timing(*, run_id: str, started_at: datetime) -> dict[str, Any]:
+    return {
+        "schema": "claims_pipeline_timing_v1",
+        "run_id": run_id,
+        "started_at": started_at.isoformat(),
+        "_started_monotonic": time.perf_counter(),
+        "stages": [],
+        "miners": {},
+    }
+
+
+def _finish_pipeline_timing(timing: dict[str, Any] | None, *, ended_at: datetime) -> None:
+    if not isinstance(timing, dict):
+        return
+    timing["ended_at"] = ended_at.isoformat()
+    timing["total_seconds"] = _active_elapsed_seconds(timing)
+
+
+def _timing_start(key: str, label: str) -> dict[str, Any]:
+    return {
+        "key": key,
+        "label": label,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "_started_monotonic": time.perf_counter(),
+    }
+
+
+def _timing_finish(timer: dict[str, Any], *, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    ended_at = datetime.now(timezone.utc).isoformat()
+    duration_seconds = round(max(0.0, time.perf_counter() - _float_seconds(timer.get("_started_monotonic"))), 3)
+    stage = {
+        "key": str(timer.get("key") or ""),
+        "label": str(timer.get("label") or timer.get("key") or ""),
+        "started_at": str(timer.get("started_at") or ""),
+        "ended_at": ended_at,
+        "duration_seconds": duration_seconds,
+    }
+    if metadata:
+        stage["metadata"] = metadata
+    return stage
+
+
+def _public_timing_stage(stage: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in stage.items()
+        if not key.startswith("_")
+    }
+
+
+def _public_model_row(row: dict[str, Any]) -> dict[str, Any]:
+    return _drop_empty_model_fields(
+        {
+            key: value
+            for key, value in row.items()
+            if not str(key).startswith("_") and key not in {"api_key", "api_key_env", "claims_repo", "input_path"}
+        }
+    )
+
+
+def _drop_empty_model_fields(row: dict[str, Any]) -> dict[str, Any]:
+    cleaned: dict[str, Any] = {}
+    for key, value in row.items():
+        if value is None or value == "" or value == [] or value == {}:
+            continue
+        cleaned[str(key)] = value
+    return cleaned
+
+
+def _model_contexts_from_response_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    artifacts: list[dict[str, Any]] = []
+    extraction = payload.get("extraction")
+    if isinstance(extraction, dict):
+        artifacts.append(extraction)
+    articles = payload.get("articles")
+    if isinstance(articles, list):
+        for article in articles:
+            if not isinstance(article, dict):
+                continue
+            extraction = article.get("agent_output") or article.get("extraction")
+            if isinstance(extraction, dict):
+                artifacts.append(extraction)
+    return [_artifact_model_context(artifact) for artifact in artifacts]
+
+
+def _artifact_model_context(artifact: dict[str, Any]) -> dict[str, Any]:
+    metadata = artifact.get("metadata") if isinstance(artifact, dict) else {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    runtime_metrics = metadata.get("runtime_metrics") if isinstance(metadata.get("runtime_metrics"), dict) else {}
+    models = _string_list(runtime_metrics.get("models") or metadata.get("models"))
+    model = str(metadata.get("model") or runtime_metrics.get("model") or (models[0] if len(models) == 1 else ""))
+    metrics = _runtime_metrics_summary(runtime_metrics)
+    return _drop_empty_model_fields(
+        {
+            "runtime": str(metadata.get("runtime") or metadata.get("agent_runtime") or metadata.get("backend") or ""),
+            "provider": _provider_from_model_or_base(model, str(metadata.get("api_base") or "")),
+            "model": model,
+            "models": models,
+            "pipeline": str(metadata.get("pipeline_name") or metadata.get("output_schema") or metadata.get("compiler") or ""),
+            "metrics": metrics,
+        }
+    )
+
+
+def _merge_model_contexts(value: Any) -> dict[str, Any]:
+    contexts = value if isinstance(value, list) else []
+    runtime = ""
+    provider = ""
+    model = ""
+    pipeline = ""
+    models: list[str] = []
+    metrics: dict[str, Any] = {}
+    for context in contexts:
+        if not isinstance(context, dict):
+            continue
+        runtime = runtime or str(context.get("runtime") or "")
+        provider = provider or str(context.get("provider") or "")
+        model = model or str(context.get("model") or "")
+        pipeline = pipeline or str(context.get("pipeline") or "")
+        for item in _string_list(context.get("models")):
+            if item not in models:
+                models.append(item)
+        context_metrics = context.get("metrics")
+        if isinstance(context_metrics, dict):
+            metrics = _merge_metrics(metrics, context_metrics)
+    if not model and len(models) == 1:
+        model = models[0]
+    return _drop_empty_model_fields(
+        {
+            "runtime": runtime,
+            "provider": provider,
+            "model": model,
+            "models": models,
+            "pipeline": pipeline,
+            "metrics": metrics,
+        }
+    )
+
+
+def _runtime_metrics_summary(metrics: dict[str, Any]) -> dict[str, Any]:
+    token_usage = metrics.get("token_usage") if isinstance(metrics.get("token_usage"), dict) else {}
+    return _drop_empty_model_fields(
+        {
+            "elapsed_seconds": _optional_float(metrics.get("elapsed_seconds")),
+            "attempt_count": _optional_float(metrics.get("attempt_count")),
+            "prompt_tokens": _optional_float(token_usage.get("prompt_tokens")),
+            "completion_tokens": _optional_float(token_usage.get("completion_tokens")),
+            "total_tokens": _optional_float(token_usage.get("total_tokens")),
+            "cost_usd": _optional_float(metrics.get("cost_usd")),
+        }
+    )
+
+
+def _merge_metrics(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(left)
+    for key, value in right.items():
+        if isinstance(value, (int, float)) and isinstance(merged.get(key), (int, float)):
+            merged[key] = round(float(merged[key]) + float(value), 6)
+        elif key not in merged and value not in (None, "", [], {}):
+            merged[key] = value
+    return merged
+
+
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return round(parsed, 6) if math.isfinite(parsed) else None
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        items = []
+        for item in value:
+            if item is None:
+                continue
+            text = str(item).strip()
+            if text:
+                items.append(text)
+        return items
+    if isinstance(value, str) and value:
+        return [value.strip()] if value.strip() else []
+    return []
+
+
+def _provider_from_model_or_base(model: str, api_base: str = "") -> str:
+    if model.startswith("openrouter/") or "openrouter.ai/api" in api_base:
+        return "openrouter"
+    if api_base:
+        return api_base.rstrip("/").removeprefix("https://").removeprefix("http://")
+    return ""
+
+
+def _provider_from_api_base(api_base: str) -> str:
+    if "openrouter.ai/api" in api_base:
+        return "openrouter"
+    return api_base.rstrip("/").removeprefix("https://").removeprefix("http://") if api_base else ""
+
+
+def _provider_from_command(command: Any) -> str:
+    parts = _command_parts(command)
+    for index, part in enumerate(parts):
+        if part == "--provider" and index + 1 < len(parts):
+            return parts[index + 1]
+    return ""
+
+
+def _model_from_profile_id(profile_id: str) -> str:
+    if ":" in profile_id:
+        return profile_id.split(":", 1)[1]
+    return ""
+
+
+def _command_parts(command: Any) -> list[str]:
+    if isinstance(command, list):
+        return [str(part) for part in command if str(part)]
+    if isinstance(command, str) and command.strip():
+        try:
+            return shlex.split(command)
+        except ValueError:
+            return command.split()
+    return []
+
+
+def _active_elapsed_seconds(timing: dict[str, Any]) -> float:
+    started = timing.get("_started_monotonic")
+    if not isinstance(started, (int, float)):
+        return 0.0
+    return round(max(0.0, time.perf_counter() - float(started)), 3)
+
+
+def _float_seconds(value: Any) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(parsed):
+        return 0.0
+    return max(0.0, parsed)
+
+
 def _source_context_from_bronze(source_payload_path: str | None) -> str:
     if not source_payload_path:
         return ""
@@ -1580,6 +2097,44 @@ def _response_payload(response: Any) -> dict[str, Any]:
         "protocol_version": str(getattr(response, "protocol_version", "")),
         "schema_version": str(getattr(response, "schema_version", "")),
     }
+
+
+def _agent_artifact_from_response_payload(payload: dict[str, Any], paper_id: str) -> dict[str, Any] | None:
+    extraction = payload.get("extraction")
+    if isinstance(extraction, dict):
+        return extraction
+    articles = payload.get("articles")
+    if not isinstance(articles, list):
+        return None
+    matching = None
+    for article in articles:
+        if not isinstance(article, dict):
+            continue
+        if str(article.get("paper_id") or "") == paper_id:
+            matching = article
+            break
+        if matching is None:
+            matching = article
+    if not isinstance(matching, dict):
+        return None
+    extraction = matching.get("agent_output") or matching.get("extraction")
+    return extraction if isinstance(extraction, dict) else None
+
+
+def _first_extraction_from_response_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
+    extraction = payload.get("extraction")
+    if isinstance(extraction, dict):
+        return extraction
+    articles = payload.get("articles")
+    if not isinstance(articles, list):
+        return None
+    for article in articles:
+        if not isinstance(article, dict):
+            continue
+        extraction = article.get("agent_output") or article.get("extraction")
+        if isinstance(extraction, dict):
+            return extraction
+    return None
 
 
 def _miner_backend(payload: dict[str, Any]) -> str | None:

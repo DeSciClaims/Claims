@@ -92,10 +92,12 @@ class SubprocessAgentRuntime:
             )
             raise RuntimeError(f"agent-cli runtime failed to start: {exc}") from exc
         elapsed = round(time.time() - started, 3)
+        model = _model_from_agent_cli(command)
         manifest = {
             "runtime": self.runtime_name,
             "runtime_alias": self.config.runtime,
             "command": command,
+            "model": model,
             "returncode": completed.returncode,
             "elapsed_seconds": elapsed,
             "usage": usage_from_cli_process(command, completed.stdout, completed.stderr),
@@ -131,6 +133,40 @@ def _resolve_executable(command: list[str]) -> list[str]:
     if executable.exists():
         return [str(executable.absolute()), *command[1:]]
     return command
+
+
+def _model_from_agent_cli(command: list[str]) -> str:
+    candidates = [
+        command,
+        _split_command(os.getenv("CLAIMS_AGENT_INNER_COMMAND", "")),
+        _split_command(os.getenv("SUBNET_CLAIMS_AGENT_CLI_COMMAND", "")),
+    ]
+    for candidate in candidates:
+        model = _model_from_command(candidate)
+        if model:
+            return model
+    configured = os.getenv("SUBNET_CLAIMS_AGENT_MODEL") or os.getenv("OPENROUTER_MODEL")
+    return configured or ""
+
+
+def _model_from_command(command: list[str]) -> str:
+    for index, part in enumerate(command):
+        if part in {"-m", "--model"} and index + 1 < len(command):
+            return command[index + 1]
+        if part.startswith("--model="):
+            return part.split("=", 1)[1]
+    return ""
+
+
+def _split_command(command: str) -> list[str]:
+    if not command.strip():
+        return []
+    try:
+        import shlex
+
+        return shlex.split(command)
+    except ValueError:
+        return command.split()
 
 
 def _subprocess_env(base_dir: str) -> dict[str, str]:

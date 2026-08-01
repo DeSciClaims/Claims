@@ -8,6 +8,8 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
+from .artifact_summary import summarize_agent_artifact_path
+
 
 logger = logging.getLogger(__name__)
 
@@ -174,11 +176,37 @@ class BackendBackedReferenceMinerClient:
 
     def get_or_create_bronze(self, *, request: ReferenceMinerInput, reference_release_id: str) -> BronzeRecord:
         try:
-            return self.get_bronze(paper_id=request.paper_id, reference_release_id=reference_release_id)
+            record = self.get_bronze(paper_id=request.paper_id, reference_release_id=reference_release_id)
         except Exception:
             if self.delegate is None:
                 raise
+        else:
+            if not isinstance(record.metadata.get("artifact_summary"), dict) and self.delegate is not None:
+                try:
+                    local_record = self.delegate.get_or_create_bronze(request=request, reference_release_id=reference_release_id)
+                    local_record.metadata = {**record.metadata, **local_record.metadata}
+                    record = local_record
+                except Exception:
+                    pass
+            self._post_bronze_record(record=record, request=request)
+            return record
         record = self.delegate.get_or_create_bronze(request=request, reference_release_id=reference_release_id)
+        self._post_bronze_record(record=record, request=request)
+        return record
+
+    def _post_bronze_record(self, *, record: BronzeRecord, request: ReferenceMinerInput) -> None:
+        metadata = {
+            **record.metadata,
+            "pipeline_version": record.pipeline_version,
+            "source_sha256": record.source_sha256,
+            "source_payload_sha256": record.source_payload_sha256,
+            "run_id": request.run_id,
+            "batch_id": request.batch_id,
+        }
+        if not isinstance(metadata.get("artifact_summary"), dict):
+            artifact_summary = summarize_agent_artifact_path(record.artifact_path)
+            if artifact_summary:
+                metadata["artifact_summary"] = artifact_summary
         self.backend.post_bronze_record(
             {
                 "bronze_record_id": record.bronze_record_id,
@@ -192,16 +220,10 @@ class BackendBackedReferenceMinerClient:
                 "artifact_hash": record.artifact_sha256,
                 "artifact_uri": record.artifact_path,
                 "source_payload_uri": record.source_payload_path,
-                "metadata": {
-                    **record.metadata,
-                    "pipeline_version": record.pipeline_version,
-                    "source_sha256": record.source_sha256,
-                    "source_payload_sha256": record.source_payload_sha256,
-                },
+                "metadata": metadata,
                 "status": "created",
             }
         )
-        return record
 
 
 def bronze_record_from_backend_row(row: dict[str, Any]) -> BronzeRecord:

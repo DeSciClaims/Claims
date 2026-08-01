@@ -70,7 +70,12 @@ def score_miner_against_silver(
     all_findings = [*normal_findings, *findings]
     coverage = _coverage(silver_record.silver_units, covered)
     quality = _quality(all_findings)
-    score, passed, summary = score_findings(all_findings)
+    _finding_score, _finding_passed, summary = score_findings(all_findings)
+    score = _silver_score(
+        coverage=coverage,
+        quality=quality,
+        empty_silver_record=any(finding.metadata.get("code") == "empty_silver_record" for finding in findings),
+    )
     return SilverScoreBreakdown(
         paper_id=silver_record.paper_id,
         miner_id=miner_id,
@@ -83,7 +88,12 @@ def score_miner_against_silver(
         accepted_improvements=improvements,
         invalid_extra_candidates=[candidate.candidate_id for candidate in invalid_extras],
         findings=findings,
-        metadata={"normal_finding_count": len(normal_findings), "passed": passed, "finding_summary": summary},
+        metadata={
+            "normal_finding_count": len(normal_findings),
+            "passed": score > 0,
+            "finding_summary": summary,
+            "formula": "score = coverage * quality; empty Silver records score 0",
+        },
     )
 
 
@@ -114,3 +124,9 @@ def _coverage(units: list[SilverUnit], covered_unit_ids: list[str]) -> float:
 def _quality(findings: list[AgentV1ValidationFinding]) -> float:
     quality_penalty = sum(PENALTIES.get(finding.severity, 0.0) for finding in findings if finding.dimension != "completeness")
     return max(0.0, round(1.0 - quality_penalty, 4))
+
+
+def _silver_score(*, coverage: float, quality: float, empty_silver_record: bool) -> float:
+    if empty_silver_record:
+        return 0.0
+    return max(0.0, round(coverage * quality, 4))

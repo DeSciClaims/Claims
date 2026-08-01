@@ -87,13 +87,52 @@ def test_silver_scoring_matches_end_to_end_toy_example() -> None:
 
     assert score_b.coverage == 0.7
     assert score_b.quality == 1.0
-    assert score_b.score == 0.9
+    assert score_b.score == 0.7
     assert [finding.metadata["code"] for finding in score_b.findings] == ["missing_silver_record"]
 
     assert score_c.coverage == 0.3
     assert score_c.quality == 0.75
-    assert score_c.score == 0.5
+    assert score_c.score == 0.225
     assert [finding.metadata["code"] for finding in score_c.findings] == ["missing_silver_record", "invalid_extra_candidate"]
+
+
+def test_silver_scoring_zero_coverage_scores_zero() -> None:
+    silver = build_silver_record(
+        paper_id="toy-001",
+        silver_record_id="silver_toy_missing",
+        candidates=[
+            _candidate("b1", "bronze", None, "Treatment A reduced 30-day mortality."),
+            _candidate("b2", "bronze", None, "Treatment A had an adjusted odds ratio of 0.72."),
+        ],
+        decisions=[
+            AdjudicationDecision(
+                case_id="case_1",
+                disposition="accepted_improvement",
+                accepted_candidate_ids=["b1"],
+                silver_unit_id="u1",
+                importance="central",
+                rationale="Required central claim.",
+            ),
+            AdjudicationDecision(
+                case_id="case_2",
+                disposition="accepted_improvement",
+                accepted_candidate_ids=["b2"],
+                silver_unit_id="u2",
+                importance="supporting",
+                rationale="Required supporting claim.",
+            ),
+        ],
+    )
+
+    score = score_miner_against_silver(
+        miner_id="miner_A",
+        miner_candidates=[],
+        silver_record=silver,
+    )
+
+    assert score.coverage == 0.0
+    assert score.quality == 1.0
+    assert score.score == 0.0
 
 
 def test_empty_silver_record_is_not_a_perfect_score() -> None:
