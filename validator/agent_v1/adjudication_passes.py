@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -8,6 +9,8 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .adjudication_models import AdjudicationContextBundle, AdjudicationDisposition, AdjudicationVote
@@ -142,6 +145,9 @@ class CLIAdjudicationPass:
     timeout_seconds: float = 900.0
 
     def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
+        prompt = ""
+        command: list[str] = []
+        completed: subprocess.CompletedProcess[str] | None = None
         try:
             prompt = _adjudication_cli_prompt(context)
             command = shlex.split(self.command) if isinstance(self.command, str) else list(self.command)
@@ -160,6 +166,13 @@ class CLIAdjudicationPass:
                 timeout=self.timeout_seconds or None,
                 check=False,
             )
+            _write_cli_debug_artifact(
+                context=context,
+                pass_id=self.pass_id,
+                command=command,
+                prompt=prompt,
+                completed=completed,
+            )
             if completed.returncode != 0:
                 raise RuntimeError(f"CLI exited {completed.returncode}: {completed.stderr[-1000:]}")
             payload = _parse_json_object(completed.stdout)
@@ -171,6 +184,14 @@ class CLIAdjudicationPass:
                 model_runtime_id=self.model_runtime_id,
             )
         except Exception as exc:
+            _write_cli_debug_artifact(
+                context=context,
+                pass_id=self.pass_id,
+                command=command,
+                prompt=prompt,
+                completed=completed,
+                error=f"{type(exc).__name__}: {exc}",
+            )
             return AdjudicationVote(
                 case_id=context.case.case_id,
                 pass_id=self.pass_id,
@@ -294,18 +315,121 @@ def vote_from_payload(
 
 def _parse_json_object(content: str) -> dict[str, Any]:
     stripped = content.strip()
-    try:
-        parsed = json.loads(stripped)
-    except json.JSONDecodeError:
-        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, flags=re.DOTALL)
-        if match is None:
-            match = re.search(r"(\{.*\})", stripped, flags=re.DOTALL)
-        if match is None:
-            raise
-        parsed = json.loads(match.group(1))
-    if not isinstance(parsed, dict):
-        raise ValueError("adjudication pass returned non-object JSON")
-    return parsed
+    candidates = [stripped]
+    candidates.extend(match.group(1) for match in re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, flags=re.DOTALL))
+    candidates.extend(_json_object_candidates(stripped))
+    last_error: Exception | None = None
+    for candidate in reversed(candidates):
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            try:
+                parsed = json.loads(_escape_control_chars_in_json_strings(candidate))
+            except json.JSONDecodeError as repaired_exc:
+                last_error = repaired_exc
+                continue
+        if not isinstance(parsed, dict):
+            raise ValueError("adjudication pass returned non-object JSON")
+        return parsed
+    if last_error is not None:
+        raise last_error
+    raise ValueError("adjudication pass did not return a JSON object")
+
+
+def _json_object_candidates(text: str) -> list[str]:
+    candidates: list[str] = []
+    for start, char in enumerate(text):
+        if char != "{":
+            continue
+        depth = 0
+        in_string = False
+        escaped = False
+        for index in range(start, len(text)):
+            current = text[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif current == "\\":
+                    escaped = True
+                elif current == '"':
+                    in_string = False
+                continue
+            if current == '"':
+                in_string = True
+            elif current == "{":
+                depth += 1
+            elif current == "}":
+                depth -= 1
+                if depth == 0:
+                    candidates.append(text[start : index + 1])
+                    break
+    return candidates
+
+
+def _escape_control_chars_in_json_strings(text: str) -> str:
+    output: list[str] = []
+    in_string = False
+    escaped = False
+    for char in text:
+        if in_string:
+            if escaped:
+                output.append(char)
+                escaped = False
+                continue
+            if char == "\\":
+                output.append(char)
+                escaped = True
+                continue
+            if char == '"':
+                output.append(char)
+                in_string = False
+                continue
+            if char == "\n":
+                output.append("\\n")
+                continue
+            if char == "\r":
+                output.append("\\r")
+                continue
+            if char == "\t":
+                output.append("\\t")
+                continue
+        else:
+            if char == '"':
+                in_string = True
+        output.append(char)
+    return "".join(output)
+
+
+def _write_cli_debug_artifact(
+    *,
+    context: AdjudicationContextBundle,
+    pass_id: str,
+    command: list[str],
+    prompt: str,
+    completed: subprocess.CompletedProcess[str] | None,
+    error: str | None = None,
+) -> None:
+    debug_root = os.getenv("CLAIMS_SILVER_ADJUDICATION_DEBUG_DIR", "").strip()
+    if not debug_root:
+        return
+    root = Path(debug_root).expanduser()
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    path = root / f"{stamp}_{context.case.case_id}_{pass_id}.json"
+    payload = {
+        "case_id": context.case.case_id,
+        "pass_id": pass_id,
+        "command": command,
+        "prompt_mode": "debug_capture",
+        "prompt_chars": len(prompt),
+        "prompt": prompt if os.getenv("CLAIMS_SILVER_ADJUDICATION_DEBUG_PROMPT", "").strip().lower() in {"1", "true", "yes"} else "",
+        "returncode": completed.returncode if completed is not None else None,
+        "stdout": completed.stdout if completed is not None else "",
+        "stderr": completed.stderr if completed is not None else "",
+        "error": error,
+    }
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def _coerce_disposition(value: Any) -> AdjudicationDisposition:

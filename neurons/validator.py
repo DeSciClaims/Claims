@@ -61,6 +61,15 @@ def _env_int_list(name: str) -> list[int]:
     return values
 
 
+def _env_str_list(name: str) -> list[str]:
+    values = []
+    for item in os.getenv(name, "").replace(" ", ",").split(","):
+        item = item.strip()
+        if item:
+            values.append(item)
+    return values
+
+
 class ClaimsValidator:
     def __init__(self) -> None:
         self.Config, self.Dendrite, self.Subtensor, self.Wallet, self.bt_logging = _require_bittensor()
@@ -73,7 +82,6 @@ class ClaimsValidator:
             self.metagraph = None
             self.uid = -1
             self.target_neurons = []
-            self.moving_avg_scores = {}
             self.tasks = self._load_tasks()
             self.runner = self._build_runner()
             return
@@ -85,9 +93,10 @@ class ClaimsValidator:
         self._preflight_validator()
         self.tasks = self._load_tasks()
         self.target_neurons = self._load_target_neurons()
-        self.moving_avg_scores = {int(neuron.uid): 0.0 for neuron in self.target_neurons}
         self.runner = self._build_runner()
         self.backend_client = self._build_backend_client()
+        if self.backend_client is not None:
+            self.bt_logging.info(f"Claims backend enabled: {self.config.claims_backend_url}")
 
     def _get_config(self) -> Any:
         base_dir = Path(__file__).resolve().parents[1]
@@ -154,8 +163,15 @@ class ClaimsValidator:
             "--claims.topic",
             dest="claims_topics",
             action="append",
-            default=[],
+            default=_env_str_list("CLAIMS_TOPICS"),
             help="Topic filter for backend batch selection. May be passed more than once.",
+        )
+        parser.add_argument(
+            "--claims.paper-id",
+            dest="claims_paper_ids",
+            action="append",
+            default=_env_str_list("CLAIMS_PAPER_IDS"),
+            help="Exact backend paper_id filter for batch selection. May be passed more than once.",
         )
         parser.add_argument(
             "--claims.batch-score-rule",
@@ -329,6 +345,13 @@ class ClaimsValidator:
             help="Timeout in seconds for each CLI Silver adjudication pass.",
         )
         parser.add_argument(
+            "--claims.silver-adjudication-max-workers",
+            dest="claims_silver_adjudication_max_workers",
+            type=int,
+            default=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_WORKERS", "4")),
+            help="Maximum Silver adjudication cases to run concurrently.",
+        )
+        parser.add_argument(
             "--claims.silver-direct-confidence",
             dest="claims_silver_direct_confidence",
             type=float,
@@ -355,13 +378,6 @@ class ClaimsValidator:
             type=float,
             default=float(os.getenv("CLAIMS_TIMEOUT", "180")),
             help="Dendrite query timeout in seconds.",
-        )
-        parser.add_argument(
-            "--claims.alpha",
-            dest="claims_alpha",
-            type=float,
-            default=0.1,
-            help="Moving average update rate for miner scores.",
         )
         parser.add_argument(
             "--claims.max-steps",
@@ -415,6 +431,7 @@ class ClaimsValidator:
         config.claims_batch_size = parsed_args.claims_batch_size
         config.claims_task_type = parsed_args.claims_task_type
         config.claims_topics = parsed_args.claims_topics
+        config.claims_paper_ids = parsed_args.claims_paper_ids
         config.claims_batch_score_rule = parsed_args.claims_batch_score_rule
         config.claims_allow_paper_reuse = parsed_args.claims_allow_paper_reuse
         config.claims_target_uids = parsed_args.claims_target_uids
@@ -435,11 +452,17 @@ class ClaimsValidator:
         config.claims_silver_adjudication_model_a = parsed_args.claims_silver_adjudication_model_a
         config.claims_silver_adjudication_model_b = parsed_args.claims_silver_adjudication_model_b
         config.claims_silver_adjudication_tiebreak_model = parsed_args.claims_silver_adjudication_tiebreak_model
+        config.claims_silver_adjudication_cli_command_a = parsed_args.claims_silver_adjudication_cli_command_a
+        config.claims_silver_adjudication_cli_command_b = parsed_args.claims_silver_adjudication_cli_command_b
+        config.claims_silver_adjudication_cli_tiebreak_command = parsed_args.claims_silver_adjudication_cli_tiebreak_command
+        config.claims_silver_adjudication_cli_command_template = parsed_args.claims_silver_adjudication_cli_command_template
+        config.claims_silver_adjudication_cli_prompt_mode = parsed_args.claims_silver_adjudication_cli_prompt_mode
+        config.claims_silver_adjudication_cli_timeout = parsed_args.claims_silver_adjudication_cli_timeout
+        config.claims_silver_adjudication_max_workers = parsed_args.claims_silver_adjudication_max_workers
         config.claims_silver_direct_confidence = parsed_args.claims_silver_direct_confidence
         config.claims_output_dir = parsed_args.claims_output_dir
         config.claims_query_interval = parsed_args.claims_query_interval
         config.claims_timeout = parsed_args.claims_timeout
-        config.claims_alpha = parsed_args.claims_alpha
         config.claims_max_steps = parsed_args.claims_max_steps
         config.claims_audit_only = parsed_args.claims_audit_only
         config.claims_require_validator_permit = parsed_args.claims_require_validator_permit
@@ -536,12 +559,10 @@ class ClaimsValidator:
                 run_id = _make_run_id()
                 run_started_at = datetime.now(timezone.utc)
                 self.target_neurons = self._load_target_neurons()
-                self._resize_scores()
                 self._post_validator_run(run_id, task, status="running", started_at=run_started_at)
                 responses = self._query_miners(task)
                 scores = self._score_responses(responses, task=task, run_id=run_id)
-                self._update_scores(scores)
-                weight_event = self._set_weights()
+                weight_event = self._set_weights(scores)
                 self._post_weight_event(run_id, scores, weight_event)
                 self._post_validator_run(
                     run_id,
@@ -622,11 +643,13 @@ class ClaimsValidator:
         payload = {
             "network": str(getattr(self.config, "claims_network", "testnet")),
             "netuid": int(self.config.netuid),
+            "paper_ids": list(getattr(self.config, "claims_paper_ids", []) or []),
             "topics": list(getattr(self.config, "claims_topics", []) or []),
             "task_type": str(getattr(self.config, "claims_task_type", "agent_v1_claim_extraction")),
             "batch_size": int(getattr(self.config, "claims_batch_size", 1)),
             "allow_reuse": bool(getattr(self.config, "claims_allow_paper_reuse", False)),
         }
+        self.bt_logging.info(f"Selecting backend batch: {payload}")
         selected = self.backend_client.select_batch(payload)
         task = ClaimsTask.from_dict(
             {
@@ -685,21 +708,29 @@ class ClaimsValidator:
             else:
                 self._post_miner_response(run_id, task, uid, response, miner_metadata, status="missing")
             scores[uid] = score
-        self._run_silver_post_pass(responses, task=task, run_id=run_id)
-        self.bt_logging.info(f"Current scores: {sorted(scores.items())}")
+        if bool(getattr(self.config, "claims_silver_enable", False)):
+            silver_scores = self._run_silver_post_pass(responses, task=task, run_id=run_id)
+            if silver_scores:
+                silver_scores = {uid: float(silver_scores.get(uid, 0.0)) for uid in scores}
+                self.bt_logging.info(f"Current Silver incentive scores: {sorted(silver_scores.items())}")
+                return silver_scores
+            self.bt_logging.warning("Silver scoring enabled but no Silver scores were produced; current incentive scores are zero.")
+            return {uid: 0.0 for uid in scores}
+        self.bt_logging.info(f"Current diagnostic scores: {sorted(scores.items())}")
         return scores
 
-    def _run_silver_post_pass(self, responses: list[Any], *, task: ClaimsTask, run_id: str) -> None:
+    def _run_silver_post_pass(self, responses: list[Any], *, task: ClaimsTask, run_id: str) -> dict[int, float]:
         if not bool(getattr(self.config, "claims_silver_enable", False)):
-            return
+            return {}
         paper_tasks = task.paper_tasks()
         if not paper_tasks:
-            return
+            return {}
         try:
             bronze_client = self._build_reference_miner_client()
         except Exception as exc:
             self.bt_logging.warning(f"Silver post-pass could not initialize Bronze client: {exc}")
-            return
+            return {}
+        silver_scores_by_uid: dict[int, list[float]] = {}
         miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any]]]] = {paper.paper_id or f"paper_{index}": [] for index, paper in enumerate(paper_tasks, start=1)}
         for index, neuron in enumerate(self.target_neurons):
             response = responses[index] if index < len(responses) else None
@@ -755,23 +786,39 @@ class ClaimsValidator:
                     tiebreak_pass=tiebreak_pass,
                     direct_judge_confidence=float(getattr(self.config, "claims_silver_direct_confidence", 0.9)),
                     source_context=_source_context_from_bronze(bronze.source_payload_path),
+                    adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
                 )
             except Exception as exc:
                 self.bt_logging.warning(f"Silver post-pass failed for paper={paper_id}: {exc}")
                 continue
             self._persist_silver_pipeline_result(run_id=run_id, task=task, paper_id=paper_id, result=result, miner_rows=miner_rows)
+            for score in result.scores:
+                uid = _uid_from_miner_id(score.miner_id)
+                if uid is not None:
+                    silver_scores_by_uid.setdefault(uid, []).append(float(score.score))
+        return {
+            uid: _aggregate_scores(values, str(getattr(self.config, "claims_batch_score_rule", "min")))
+            for uid, values in silver_scores_by_uid.items()
+            if values
+        }
 
     def _build_reference_miner_client(self) -> Any:
         bronze_root = Path(getattr(self.config, "claims_bronze_root"))
         command_text = str(getattr(self.config, "claims_reference_miner_command", "") or "").strip()
         local_client: Any
         if command_text:
+            self.bt_logging.info(
+                f"Reference miner CLI enabled: command={command_text!r} bronze_root={bronze_root}"
+            )
             local_client = LocalCliReferenceMinerClient(
                 bronze_root=bronze_root,
                 command=shlex.split(command_text),
                 claims_repo=getattr(self.config, "claims_reference_miner_claims_repo", None),
             )
         else:
+            self.bt_logging.warning(
+                f"Reference miner CLI not configured; Bronze will only be read from local root={bronze_root}"
+            )
             local_client = LocalReferenceMinerClient(bronze_root)
         if self.backend_client is not None:
             return BackendBackedReferenceMinerClient(backend=self.backend_client, delegate=local_client)
@@ -844,36 +891,44 @@ class ClaimsValidator:
             return
         batch_id = task.batch_id or task.task_id
         network = str(getattr(self.config, "claims_network", "testnet"))
+        metadata_by_miner_id = {f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata in miner_rows}
+        backend_case_ids = {case.case_id: f"{run_id}_{case.case_id}" for case in result.diff_cases}
         for case in result.diff_cases:
+            case_uid, case_metadata = metadata_by_miner_id.get(case.miner_id, (None, {}))
+            backend_case_id = backend_case_ids[case.case_id]
+            case_payload = case.model_dump(mode="json")
+            case_payload["original_case_id"] = case.case_id
+            case_payload["case_id"] = backend_case_id
             try:
                 self.backend_client.post_adjudication_case(
                     {
-                        "case_id": case.case_id,
+                        "case_id": backend_case_id,
                         "network": network,
                         "run_id": run_id,
                         "batch_id": batch_id,
                         "paper_id": paper_id,
                         "bronze_record_id": result.silver_record.bronze_record_id,
-                        "miner_hotkey": None,
-                        "uid": None,
+                        "miner_hotkey": case_metadata.get("hotkey") or None,
+                        "uid": case_uid,
                         "mismatch_type": case.mismatch_type,
                         "candidate_ids": case.candidate_ids,
                         "status": "pending",
                         "context_uri": str(output_dir / "adjudication_consensus.json"),
                         "findings": [],
-                        "decision": {},
+                        "decision": {"case": case_payload},
                     }
                 )
             except BackendClientError as exc:
                 self.bt_logging.warning(f"Could not post adjudication case to backend: {exc}")
         for consensus in result.adjudication_consensus:
             for vote in consensus.votes:
+                backend_case_id = backend_case_ids.get(vote.case_id, f"{run_id}_{vote.case_id}")
                 try:
                     self.backend_client.post_adjudication_vote(
                         {
-                            "vote_id": f"{vote.case_id}_{vote.pass_id}",
+                            "vote_id": f"{backend_case_id}_{vote.pass_id}",
                             "network": network,
-                            "case_id": vote.case_id,
+                            "case_id": backend_case_id,
                             "run_id": run_id,
                             "batch_id": batch_id,
                             "paper_id": paper_id,
@@ -891,11 +946,12 @@ class ClaimsValidator:
                 except BackendClientError as exc:
                     self.bt_logging.warning(f"Could not post adjudication vote to backend: {exc}")
             try:
+                backend_case_id = backend_case_ids.get(consensus.case_id, f"{run_id}_{consensus.case_id}")
                 self.backend_client.post_adjudication_consensus(
                     {
-                        "consensus_id": f"{consensus.case_id}_consensus",
+                        "consensus_id": f"{backend_case_id}_consensus",
                         "network": network,
-                        "case_id": consensus.case_id,
+                        "case_id": backend_case_id,
                         "run_id": run_id,
                         "batch_id": batch_id,
                         "paper_id": paper_id,
@@ -909,12 +965,16 @@ class ClaimsValidator:
             except BackendClientError as exc:
                 self.bt_logging.warning(f"Could not post adjudication consensus to backend: {exc}")
         for decision in result.adjudication_decisions:
+            backend_case_id = backend_case_ids.get(decision.case_id, f"{run_id}_{decision.case_id}")
+            decision_payload = decision.model_dump(mode="json")
+            decision_payload["original_case_id"] = decision.case_id
+            decision_payload["case_id"] = backend_case_id
             try:
                 self.backend_client.post_adjudication_decision(
                     {
-                        "decision_id": f"{decision.case_id}_decision",
+                        "decision_id": f"{backend_case_id}_decision",
                         "network": network,
-                        "case_id": decision.case_id,
+                        "case_id": backend_case_id,
                         "run_id": run_id,
                         "batch_id": batch_id,
                         "paper_id": paper_id,
@@ -927,11 +987,26 @@ class ClaimsValidator:
                         "creates_optional_improvement_unit": decision.creates_optional_improvement_unit,
                         "importance": decision.importance,
                         "rationale": decision.rationale,
-                        "decision": decision.model_dump(mode="json"),
+                        "decision": decision_payload,
                     }
                 )
             except BackendClientError as exc:
                 self.bt_logging.warning(f"Could not post adjudication decision to backend: {exc}")
+        silver_units = []
+        for unit in result.silver_record.silver_units:
+            unit_payload = unit.model_dump(mode="json")
+            unit_payload["adjudication_case_ids"] = [
+                backend_case_ids.get(case_id, case_id)
+                for case_id in unit_payload.get("adjudication_case_ids", [])
+            ]
+            silver_units.append(unit_payload)
+        invalid_candidates = []
+        for item in result.silver_record.invalid_miner_candidates:
+            item_payload = item.model_dump(mode="json")
+            original_case_id = item_payload.get("adjudication_case_id")
+            if isinstance(original_case_id, str):
+                item_payload["adjudication_case_id"] = backend_case_ids.get(original_case_id, original_case_id)
+            invalid_candidates.append(item_payload)
         try:
             self.backend_client.post_silver_record(
                 {
@@ -941,15 +1016,14 @@ class ClaimsValidator:
                     "batch_id": batch_id,
                     "paper_id": paper_id,
                     "bronze_record_id": result.silver_record.bronze_record_id,
-                    "silver_units": [unit.model_dump(mode="json") for unit in result.silver_record.silver_units],
-                    "invalid_candidates": [item.model_dump(mode="json") for item in result.silver_record.invalid_miner_candidates],
+                    "silver_units": silver_units,
+                    "invalid_candidates": invalid_candidates,
                     "reference_errors": [item.model_dump(mode="json") for item in result.silver_record.reference_errors],
                     "audit_uri": str(output_dir / "silver_record.json"),
                 }
             )
         except BackendClientError as exc:
             self.bt_logging.warning(f"Could not post Silver record to backend: {exc}")
-        metadata_by_miner_id = {f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata in miner_rows}
         for score in result.scores:
             uid, metadata = metadata_by_miner_id.get(score.miner_id, (0, {}))
             try:
@@ -1345,9 +1419,7 @@ class ClaimsValidator:
                     "network": str(getattr(self.config, "claims_network", "testnet")),
                     "run_id": run_id,
                     "scores": [{"uid": uid, "score": score} for uid, score in sorted(scores.items())],
-                    "moving_average_scores": [
-                        {"uid": uid, "score": score} for uid, score in sorted(self.moving_avg_scores.items())
-                    ],
+                    "moving_average_scores": [],
                     "weights": weights,
                     "status": status,
                 },
@@ -1379,33 +1451,19 @@ class ClaimsValidator:
             "validator_pipeline": self._select_validator_pipeline(getattr(response, "extraction", {}) or {}),
         }
 
-    def _resize_scores(self) -> None:
-        target_uids = {int(neuron.uid) for neuron in self.target_neurons}
-        self.moving_avg_scores = {
-            uid: score for uid, score in self.moving_avg_scores.items() if uid in target_uids
-        }
-        for uid in target_uids:
-            self.moving_avg_scores.setdefault(uid, 0.0)
-
-    def _update_scores(self, scores: dict[int, float]) -> None:
-        alpha = max(0.0, min(1.0, float(self.config.claims_alpha)))
-        for uid, score in scores.items():
-            self.moving_avg_scores[uid] = ((1.0 - alpha) * self.moving_avg_scores.get(uid, 0.0)) + (alpha * score)
-        self.bt_logging.info(f"Moving average scores: {sorted(self.moving_avg_scores.items())}")
-
-    def _set_weights(self) -> dict[str, Any]:
+    def _set_weights(self, scores: dict[int, float]) -> dict[str, Any]:
         if self.config.claims_audit_only:
             self.bt_logging.info("Audit-only mode enabled; skipping set_weights.")
             return {"status": "audit_only", "weights": []}
-        if not self.moving_avg_scores:
+        if not scores:
             self.bt_logging.warning("No target miner scores available; skipping set_weights.")
             return {"status": "no_scores", "weights": []}
-        total = sum(max(score, 0.0) for score in self.moving_avg_scores.values())
+        total = sum(max(score, 0.0) for score in scores.values())
         if total <= 0:
             self.bt_logging.warning("All target miner scores are zero; skipping set_weights.")
             return {"status": "all_zero", "weights": []}
-        uids = sorted(self.moving_avg_scores)
-        weights = [max(self.moving_avg_scores[uid], 0.0) / total for uid in uids]
+        uids = sorted(scores)
+        weights = [max(scores[uid], 0.0) / total for uid in uids]
         weight_rows = [{"uid": uid, "weight": weight} for uid, weight in zip(uids, weights)]
         self.bt_logging.info(f"Setting weights: {list(zip(uids, weights))}")
         try:
@@ -1555,6 +1613,15 @@ def _aggregate_scores(scores: list[float], rule: str) -> float:
     if rule == "median":
         return round(float(statistics.median(scores)), 4)
     return round(min(scores), 4)
+
+
+def _uid_from_miner_id(miner_id: str) -> int | None:
+    if not miner_id.startswith("uid_"):
+        return None
+    try:
+        return int(miner_id.removeprefix("uid_"))
+    except ValueError:
+        return None
 
 
 def _make_run_id() -> str:

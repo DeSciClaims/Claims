@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .comparison_models import ComparisonCandidate, SilverRecord, SilverScoreBreakdown, SilverUnit
 from .models import AgentV1ValidationFinding
-from .scoring import PENALTIES
+from .scoring import PENALTIES, score_findings
 
 
 IMPORTANCE_WEIGHTS = {
@@ -25,6 +25,20 @@ def score_miner_against_silver(
     covered: list[str] = []
     missing: list[str] = []
     improvements: list[str] = []
+    required_units = [unit for unit in silver_record.silver_units if unit.required_for_completeness]
+    if not required_units and not silver_record.invalid_miner_candidates:
+        findings.append(
+            AgentV1ValidationFinding(
+                finding_id="SV001",
+                pass_name="silver_comparison",
+                dimension="completeness",
+                severity="blocker",
+                target_type="silver_record",
+                target_id=silver_record.silver_record_id,
+                message="Silver scoring record has no required units or invalid miner candidates.",
+                metadata={"code": "empty_silver_record"},
+            )
+        )
 
     for unit in silver_record.silver_units:
         is_covered = bool(miner_candidate_ids.intersection(unit.equivalent_candidate_ids))
@@ -53,21 +67,23 @@ def score_miner_against_silver(
             )
         )
 
+    all_findings = [*normal_findings, *findings]
     coverage = _coverage(silver_record.silver_units, covered)
-    quality = _quality([*normal_findings, *findings])
+    quality = _quality(all_findings)
+    score, passed, summary = score_findings(all_findings)
     return SilverScoreBreakdown(
         paper_id=silver_record.paper_id,
         miner_id=miner_id,
         silver_record_id=silver_record.silver_record_id,
         coverage=coverage,
         quality=quality,
-        score=round(coverage * quality, 4),
+        score=score,
         covered_required_silver_units=covered,
         missing_required_silver_units=missing,
         accepted_improvements=improvements,
         invalid_extra_candidates=[candidate.candidate_id for candidate in invalid_extras],
         findings=findings,
-        metadata={"normal_finding_count": len(normal_findings)},
+        metadata={"normal_finding_count": len(normal_findings), "passed": passed, "finding_summary": summary},
     )
 
 

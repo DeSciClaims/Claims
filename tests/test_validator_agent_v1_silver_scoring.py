@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from types import SimpleNamespace
 
 from validator.agent_v1.bronze_diff import compare_miner_to_bronze
@@ -7,7 +8,8 @@ from validator.agent_v1.comparison_models import CandidatePairEdge
 from validator.agent_v1.adjudication_consensus import aggregate_adjudication_votes
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, build_silver_adjudication_passes
 from validator.agent_v1.adjudication_models import AdjudicationContextBundle, AdjudicationDecision, AdjudicationVote
-from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
+from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass, _parse_json_object
+from validator.agent_v1.adjudication_runner import run_adjudication_case
 from validator.agent_v1.adjudication_queue import (
     QueuedAdjudicationWorker,
     adjudication_job_payload,
@@ -15,7 +17,7 @@ from validator.agent_v1.adjudication_queue import (
     completed_consensus_by_case,
     enqueue_adjudication_jobs,
 )
-from validator.agent_v1.comparison_models import BronzeDiffCase, ComparisonCandidate
+from validator.agent_v1.comparison_models import BronzeDiffCase, ComparisonCandidate, SilverRecord
 from validator.agent_v1.miner_consensus import MinerConsensusRule, MinerConsensusVote, aggregate_miner_consensus_votes
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, MinerPaperSubmission, SilverScoringJob, run_batch_silver_scoring, run_paper_silver_pipeline
 from validator.agent_v1.relation_classifier import DSPyRelationClassifier
@@ -85,13 +87,24 @@ def test_silver_scoring_matches_end_to_end_toy_example() -> None:
 
     assert score_b.coverage == 0.7
     assert score_b.quality == 1.0
-    assert score_b.score == 0.7
+    assert score_b.score == 0.9
     assert [finding.metadata["code"] for finding in score_b.findings] == ["missing_silver_record"]
 
     assert score_c.coverage == 0.3
     assert score_c.quality == 0.75
-    assert score_c.score == 0.225
+    assert score_c.score == 0.5
     assert [finding.metadata["code"] for finding in score_c.findings] == ["missing_silver_record", "invalid_extra_candidate"]
+
+
+def test_empty_silver_record_is_not_a_perfect_score() -> None:
+    score = score_miner_against_silver(
+        miner_id="miner_A",
+        miner_candidates=[_candidate("a1", "miner", "miner_A", "Treatment improved outcome.")],
+        silver_record=SilverRecord(silver_record_id="silver_empty", paper_id="toy-001"),
+    )
+
+    assert score.score == 0.0
+    assert [finding.metadata["code"] for finding in score.findings] == ["empty_silver_record"]
 
 
 def test_adjudication_consensus_requires_agreement_and_confidence() -> None:
@@ -263,6 +276,72 @@ def test_cli_adjudication_pass_parses_strict_vote(monkeypatch) -> None:
     assert vote.confidence == 0.92
 
 
+def test_cli_parser_handles_hermes_transcript_with_multiline_json_strings() -> None:
+    payload = _parse_json_object(
+        '''
+        Query: lots of echoed prompt {"not":"the answer"}
+
+        ╭─ ⚕ Hermes ───────────────────────────────────────────────────────────────────╮
+            {
+              "disposition": "accepted_improvement",
+              "material_findings": ["valid_cli_adjudication"],
+              "cited_span_ids": [
+                "S1
+                "
+              ],
+              "confidence": 0.92,
+              "rationale": "The model wrote this rationale
+            across multiple display lines.",
+              "insufficient_information": false
+            }
+        ╰──────────────────────────────────────────────────────────────────────────────╯
+        '''
+    )
+
+    assert payload["disposition"] == "accepted_improvement"
+    assert payload["confidence"] == 0.92
+    assert "multiple display lines" in payload["rationale"]
+
+
+def test_cli_adjudication_pass_writes_debug_artifact(monkeypatch, tmp_path) -> None:
+    case = BronzeDiffCase(
+        case_id="case_cli_debug",
+        paper_id="paper",
+        miner_id="miner_A",
+        mismatch_type="EXTRA_FROM_MINER",
+        candidate_ids=["a1"],
+        miner_candidate_id="a1",
+        question="Is the miner-only candidate valid?",
+    )
+    context = AdjudicationContextBundle(
+        case=case,
+        candidates=[_candidate("a1", "miner", "miner_A", "Treatment A reduced mortality.")],
+        source_context="S1: Treatment A reduced mortality.",
+    )
+
+    def fake_run(command, **_kwargs):
+        return SimpleNamespace(returncode=2, stdout="not json", stderr="auth failed")
+
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_DEBUG_DIR", str(tmp_path))
+    monkeypatch.setattr("validator.agent_v1.adjudication_passes.subprocess.run", fake_run)
+    adjudication_pass = CLIAdjudicationPass(
+        pass_id="pass_a",
+        adjudication_profile_id="hermes-cli:test-model",
+        model_runtime_id="hermes-cli",
+        command=["fake-hermes", "chat"],
+    )
+
+    vote = adjudication_pass.run(context)
+    debug_files = list(tmp_path.glob("*case_cli_debug_pass_a.json"))
+    debug_payload = __import__("json").loads(debug_files[0].read_text(encoding="utf-8"))
+
+    assert vote.disposition == "insufficient_information"
+    assert debug_payload["returncode"] == 2
+    assert debug_payload["stdout"] == "not json"
+    assert debug_payload["stderr"] == "auth failed"
+    assert "CLI exited 2" in debug_payload["error"]
+
+
 def test_silver_adjudication_factory_builds_cli_passes() -> None:
     passes, tiebreak = build_silver_adjudication_passes(
         SilverAdjudicationConfig(
@@ -279,6 +358,30 @@ def test_silver_adjudication_factory_builds_cli_passes() -> None:
     assert passes[0].command == ["fake-hermes", "chat", "-m", "openai/gpt-5", "-q"]
     assert passes[1].command == ["fake-hermes", "chat", "-m", "anthropic/claude-sonnet-4", "-q"]
     assert tiebreak.command == ["fake-hermes", "chat", "-m", "google/gemini-2.5-pro", "-q"]
+
+
+def test_adjudication_passes_run_in_parallel() -> None:
+    case = BronzeDiffCase(
+        case_id="case_parallel",
+        paper_id="paper",
+        miner_id="miner_A",
+        mismatch_type="EXTRA_FROM_MINER",
+        candidate_ids=["a1"],
+        miner_candidate_id="a1",
+        question="Is the miner-only candidate valid?",
+    )
+    context = AdjudicationContextBundle(
+        case=case,
+        candidates=[_candidate("a1", "miner", "miner_A", "Treatment A reduced mortality.")],
+    )
+    passes = [_SlowPass("pass_a"), _SlowPass("pass_b")]
+
+    started = time.monotonic()
+    consensus = run_adjudication_case(context, passes=passes)
+    elapsed = time.monotonic() - started
+
+    assert consensus.route == "direct"
+    assert elapsed < 0.35
 
 
 def test_queued_adjudication_worker_posts_consensus_and_completes_job() -> None:
@@ -633,3 +736,15 @@ class _QueueBackend:
         error: str | None = None,
     ) -> dict:
         return {"job_id": job_id, "worker_id": worker_id, "status": status, "result": result or {}, "error": error}
+
+
+class _SlowPass:
+    adjudication_profile_id = "slow"
+    model_runtime_id = "slow"
+
+    def __init__(self, pass_id: str) -> None:
+        self.pass_id = pass_id
+
+    def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
+        time.sleep(0.2)
+        return _vote(self.pass_id, "accepted_improvement", 0.95, ["valid"])

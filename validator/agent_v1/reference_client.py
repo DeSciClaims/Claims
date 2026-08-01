@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from pathlib import Path
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
+
+
+logger = logging.getLogger(__name__)
 
 
 class BronzeRecord(BaseModel):
@@ -125,12 +129,19 @@ class LocalCliReferenceMinerClient:
             str(input_path),
             "--output-dir",
             str(output_dir),
+            "--paper-id",
+            request.paper_id,
             "--reference-release-id",
             reference_release_id,
         ]
         if self.claims_repo is not None:
             command.extend(["--claims-repo", str(self.claims_repo)])
+        logger.info("Running private reference miner command: %s", " ".join(command))
         completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=3600)
+        if completed.stdout.strip():
+            logger.info("private reference miner stdout: %s", completed.stdout.strip())
+        if completed.stderr.strip():
+            logger.info("private reference miner stderr: %s", completed.stderr.strip())
         if completed.returncode != 0:
             raise RuntimeError(
                 "private reference miner command failed "

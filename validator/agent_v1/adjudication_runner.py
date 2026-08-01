@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Protocol
 
 from .adjudication_consensus import aggregate_adjudication_votes
@@ -22,7 +23,11 @@ def run_adjudication_case(
     tiebreak_pass: AdjudicationPass | None = None,
     direct_judge_confidence: float = 0.9,
 ) -> AdjudicationConsensus:
-    votes = [adjudication_pass.run(context) for adjudication_pass in passes]
+    if len(passes) <= 1:
+        votes = [adjudication_pass.run(context) for adjudication_pass in passes]
+    else:
+        with ThreadPoolExecutor(max_workers=len(passes)) as executor:
+            votes = list(executor.map(lambda adjudication_pass: adjudication_pass.run(context), passes))
     consensus = aggregate_adjudication_votes(
         context.case.case_id,
         votes,

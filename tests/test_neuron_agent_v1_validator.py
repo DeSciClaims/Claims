@@ -89,11 +89,12 @@ def test_neuron_silver_post_pass_persists_backend_records(tmp_path) -> None:
     )
     task = ClaimsTask.from_dict({"task_id": "task1", "batch_id": "batch1", "papers": [{"paper_id": "paper1", "title": "Paper 1"}]})
 
-    validator._run_silver_post_pass([response], task=task, run_id="run1")
+    scores = validator._run_silver_post_pass([response], task=task, run_id="run1")
 
     assert backend.silver_records[0]["silver_record_id"] == "silver_run1_paper1"
     assert backend.silver_scores[0]["uid"] == 7
     assert backend.silver_scores[0]["score"] == 1.0
+    assert scores == {7: 1.0}
     assert backend.consensus[0]["route"] == "direct"
     assert backend.decisions[0]["disposition"] == "reference_error"
 

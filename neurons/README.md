@@ -104,8 +104,8 @@ python -m neurons.validator \
 
 The validator asks the backend for a random approved paper batch, sends the
 batch to registered miners, scores each paper response, aggregates the batch
-score with `--claims.batch-score-rule`, maintains a moving average, posts audit
-records back to the backend, and sets weights on the subnet.
+score with `--claims.batch-score-rule`, posts audit records back to the
+backend, and sets weights on the subnet from the current run scores.
 The backend records the selected batch immediately and excludes assigned papers
 from future selections unless the validator passes `--claims.allow-paper-reuse`
 for a smoke test.

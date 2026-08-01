@@ -58,6 +58,7 @@ def run_paper_silver_pipeline(
     direct_judge_confidence: float = 0.9,
     relation_classifier: RelationClassifier | None = None,
     source_context: str = "",
+    adjudication_max_workers: int = 4,
 ) -> PaperSilverPipelineResult:
     bronze_candidates = project_agent_artifact(bronze_artifact, origin="bronze")
     miner_submissions = [
@@ -82,9 +83,7 @@ def run_paper_silver_pipeline(
             relation_classifier=relation_classifier,
         )
     )
-    consensus_records: list[AdjudicationConsensus] = []
-    decisions: list[AdjudicationDecision] = []
-    for case in diff_cases:
+    def adjudicate(case: BronzeDiffCase) -> tuple[AdjudicationConsensus, AdjudicationDecision | None]:
         context = AdjudicationContextBundle(
             case=case,
             candidates=[candidates_by_id[candidate_id] for candidate_id in case.candidate_ids if candidate_id in candidates_by_id],
@@ -97,10 +96,17 @@ def run_paper_silver_pipeline(
             tiebreak_pass=tiebreak_pass,
             direct_judge_confidence=direct_judge_confidence,
         )
-        consensus_records.append(consensus)
         decision = _decision_from_consensus(case, consensus, context.candidates)
-        if decision:
-            decisions.append(decision)
+        return consensus, decision
+
+    worker_count = max(1, min(int(adjudication_max_workers or 1), len(diff_cases) or 1))
+    if worker_count == 1:
+        adjudicated = [adjudicate(case) for case in diff_cases]
+    else:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            adjudicated = list(executor.map(adjudicate, diff_cases))
+    consensus_records = [consensus for consensus, _decision in adjudicated]
+    decisions = [decision for _consensus, decision in adjudicated if decision is not None]
 
     silver_record = build_silver_record(
         paper_id=paper_id,
