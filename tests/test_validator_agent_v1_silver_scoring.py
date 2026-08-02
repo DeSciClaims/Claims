@@ -146,6 +146,29 @@ def test_empty_silver_record_is_not_a_perfect_score() -> None:
     assert [finding.metadata["code"] for finding in score.findings] == ["empty_silver_record"]
 
 
+def test_silver_record_preserves_candidate_evidence_ids() -> None:
+    candidates = [
+        _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality.", evidence_ids=["EV01"]),
+        _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment A reduced mortality.", evidence_ids=["EV02"]),
+    ]
+
+    silver = build_silver_record(
+        paper_id="toy-001",
+        silver_record_id="silver_toy_evidence",
+        candidates=candidates,
+        decisions=[
+            AdjudicationDecision(
+                case_id="case_1",
+                disposition="benign_difference",
+                accepted_candidate_ids=["bronze:C01", "miner:uid_9:C01"],
+                silver_unit_id="u1",
+            )
+        ],
+    )
+
+    assert silver.silver_units[0].evidence_ids == ["EV01", "EV02"]
+
+
 def test_adjudication_consensus_requires_agreement_and_confidence() -> None:
     direct = aggregate_adjudication_votes(
         "case_1",
@@ -687,12 +710,44 @@ def test_missing_from_miner_valid_bronze_becomes_miner_error() -> None:
     assert result.scores[0].score == 0.0
 
 
+def test_missing_from_miner_cases_are_kept_per_miner() -> None:
+    empty_artifact = {"paper": {"paper_id": "paper"}, "logic": {"claims": []}}
+    result = run_paper_silver_pipeline(
+        paper_id="paper",
+        bronze_artifact=_artifact("paper", "C01", "Treatment A reduced mortality in adults."),
+        miner_artifacts=[
+            MinerArtifactSubmission(miner_id="uid_9", artifact=empty_artifact),
+            MinerArtifactSubmission(miner_id="uid_10", artifact=empty_artifact),
+        ],
+        silver_record_id="silver_missing_per_miner",
+        bronze_record_id="bronze_missing_per_miner",
+        adjudication_passes=[
+            StaticAdjudicationPass(
+                pass_id="pass_a",
+                adjudication_profile_id="static_a",
+                model_runtime_id="static",
+                dispositions_by_case_id={},
+                default_disposition="accepted_improvement",
+            )
+        ],
+    )
+
+    missing_cases = [case for case in result.diff_cases if case.mismatch_type == "MISSING_FROM_MINER"]
+
+    assert [(case.miner_id, case.candidate_ids) for case in missing_cases] == [
+        ("uid_9", ["bronze:C01"]),
+        ("uid_10", ["bronze:C01"]),
+    ]
+    assert len({case.case_id for case in missing_cases}) == 2
+
+
 def _candidate(
     candidate_id: str,
     origin: str,
     miner_id: str | None,
     statement: str,
     *,
+    evidence_ids: list[str] | None = None,
     source_span_ids: list[str] | None = None,
 ) -> ComparisonCandidate:
     return ComparisonCandidate(
@@ -704,6 +759,7 @@ def _candidate(
         statement=statement,
         normalized_statement=statement.lower(),
         importance="supporting",
+        evidence_ids=evidence_ids or [],
         source_span_ids=source_span_ids or [],
     )
 

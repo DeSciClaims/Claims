@@ -790,7 +790,7 @@ class ClaimsValidator:
                     reference_release_id=reference_release_id,
                 )
                 bronze_artifact = _read_json_object(Path(bronze.artifact_path))
-                reference_models = self._reference_miner_model_rows(bronze)
+                reference_models = self._reference_miner_model_rows(bronze, bronze_artifact)
                 reference_stage = self._record_timing_stage(
                     reference_timer,
                     metadata={"paper_id": paper_id, "models": reference_models},
@@ -1480,20 +1480,29 @@ class ClaimsValidator:
         }
         return [_drop_empty_model_fields(row)]
 
-    def _reference_miner_model_rows(self, bronze: Any | None = None) -> list[dict[str, Any]]:
+    def _reference_miner_model_rows(self, bronze: Any | None = None, bronze_artifact: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         metadata = getattr(bronze, "metadata", {}) if bronze is not None else {}
         metadata = metadata if isinstance(metadata, dict) else {}
         model_runtime_id = str(getattr(bronze, "model_runtime_id", "") or os.getenv("CLAIMS_REFERENCE_MINER_MODEL", ""))
+        artifact_context = _artifact_model_context(bronze_artifact or {})
+        model = (
+            artifact_context.get("model")
+            or _model_id_or_empty(metadata.get("model"))
+            or _model_id_or_empty(model_runtime_id)
+        )
+        models = _string_list(artifact_context.get("models")) or ([model] if model else [])
         row = {
             "stage_key": "reference_miner",
             "stage_label": "Reference miner / Bronze",
             "role": "reference_miner",
-            "runtime": metadata.get("runtime") or ("cli" if str(getattr(self.config, "claims_reference_miner_command", "") or "").strip() else "local_manifest"),
-            "model": metadata.get("model") or model_runtime_id,
-            "models": _string_list(metadata.get("models") or ([model_runtime_id] if model_runtime_id else [])),
+            "runtime": artifact_context.get("runtime") or metadata.get("runtime") or ("cli" if str(getattr(self.config, "claims_reference_miner_command", "") or "").strip() else "local_manifest"),
+            "provider": artifact_context.get("provider", ""),
+            "model": model,
+            "models": models,
             "model_runtime_id": model_runtime_id,
             "profile_id": str(getattr(bronze, "reference_profile_id", "") or os.getenv("CLAIMS_REFERENCE_PROFILE_ID", "")),
-            "pipeline": str(getattr(bronze, "pipeline_version", "") or metadata.get("pipeline_version") or ""),
+            "pipeline": str(getattr(bronze, "pipeline_version", "") or metadata.get("pipeline_version") or artifact_context.get("pipeline") or ""),
+            "metrics": artifact_context.get("metrics", {}),
         }
         return [_drop_empty_model_fields(row)]
 
@@ -1900,8 +1909,12 @@ def _artifact_model_context(artifact: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(metadata, dict):
         metadata = {}
     runtime_metrics = metadata.get("runtime_metrics") if isinstance(metadata.get("runtime_metrics"), dict) else {}
-    models = _string_list(runtime_metrics.get("models") or metadata.get("models"))
-    model = str(metadata.get("model") or runtime_metrics.get("model") or (models[0] if len(models) == 1 else ""))
+    models = [_model for _model in (_model_id_or_empty(item) for item in _string_list(runtime_metrics.get("models") or metadata.get("models"))) if _model]
+    model = (
+        _model_id_or_empty(metadata.get("model"))
+        or _model_id_or_empty(runtime_metrics.get("model"))
+        or (models[0] if len(models) == 1 else "")
+    )
     metrics = _runtime_metrics_summary(runtime_metrics)
     return _drop_empty_model_fields(
         {
@@ -1997,6 +2010,31 @@ def _string_list(value: Any) -> list[str]:
     if isinstance(value, str) and value:
         return [value.strip()] if value.strip() else []
     return []
+
+
+def _model_id_or_empty(value: Any) -> str:
+    model = str(value or "").strip()
+    if not model:
+        return ""
+    lower = model.lower()
+    runtime_aliases = {
+        "agent-cli",
+        "claude-cli",
+        "codex-cli",
+        "hermes-cli",
+        "cli",
+        "dspy-react",
+        "langchain-agent",
+        "local_manifest",
+        "static",
+    }
+    if lower in runtime_aliases:
+        return ""
+    if lower.startswith(("miner.", "neurons.", "claims_reference_miner")):
+        return ""
+    if ".wrappers." in lower:
+        return ""
+    return model
 
 
 def _provider_from_model_or_base(model: str, api_base: str = "") -> str:

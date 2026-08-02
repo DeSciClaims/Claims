@@ -162,9 +162,9 @@ def _score_job(job: SilverScoringJob) -> SilverScoreBreakdown:
 
 
 def _dedupe_cases(cases: Iterable[BronzeDiffCase]) -> list[BronzeDiffCase]:
-    by_key: dict[tuple[str, tuple[str, ...]], BronzeDiffCase] = {}
+    by_key: dict[tuple[str, str, tuple[str, ...]], BronzeDiffCase] = {}
     for case in cases:
-        key = (case.mismatch_type, tuple(sorted(case.candidate_ids)))
+        key = (case.miner_id, case.mismatch_type, tuple(sorted(case.candidate_ids)))
         if key not in by_key:
             by_key[key] = case
     return list(by_key.values())

@@ -137,25 +137,36 @@ def _resolve_executable(command: list[str]) -> list[str]:
 
 def _model_from_agent_cli(command: list[str]) -> str:
     candidates = [
-        command,
         _split_command(os.getenv("CLAIMS_AGENT_INNER_COMMAND", "")),
         _split_command(os.getenv("SUBNET_CLAIMS_AGENT_CLI_COMMAND", "")),
+        command,
     ]
     for candidate in candidates:
         model = _model_from_command(candidate)
         if model:
             return model
     configured = os.getenv("SUBNET_CLAIMS_AGENT_MODEL") or os.getenv("OPENROUTER_MODEL")
-    return configured or ""
+    return _model_id_or_empty(configured)
 
 
 def _model_from_command(command: list[str]) -> str:
     for index, part in enumerate(command):
         if part in {"-m", "--model"} and index + 1 < len(command):
-            return command[index + 1]
+            if _is_python_module_flag(command, index):
+                continue
+            return _model_id_or_empty(command[index + 1])
         if part.startswith("--model="):
-            return part.split("=", 1)[1]
+            return _model_id_or_empty(part.split("=", 1)[1])
     return ""
+
+
+def _is_python_module_flag(command: list[str], index: int) -> bool:
+    if command[index] != "-m" or index == 0:
+        return False
+    executable = Path(command[index - 1]).name
+    if executable.startswith("python"):
+        return True
+    return index == 1 and Path(command[0]).name.startswith("python")
 
 
 def _split_command(command: str) -> list[str]:
@@ -167,6 +178,31 @@ def _split_command(command: str) -> list[str]:
         return shlex.split(command)
     except ValueError:
         return command.split()
+
+
+def _model_id_or_empty(value: str | None) -> str:
+    model = str(value or "").strip()
+    if not model:
+        return ""
+    lower = model.lower()
+    runtime_aliases = {
+        "agent-cli",
+        "claude-cli",
+        "codex-cli",
+        "hermes-cli",
+        "cli",
+        "dspy-react",
+        "langchain-agent",
+        "local_manifest",
+        "static",
+    }
+    if lower in runtime_aliases:
+        return ""
+    if lower.startswith(("miner.", "neurons.", "claims_reference_miner")):
+        return ""
+    if ".wrappers." in lower:
+        return ""
+    return model
 
 
 def _subprocess_env(base_dir: str) -> dict[str, str]:

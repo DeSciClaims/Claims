@@ -73,6 +73,7 @@ class SilverUnit(BaseModel):
     importance: Importance = "supporting"
     required_for_completeness: bool = True
     equivalent_candidate_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
     source_span_ids: list[str] = Field(default_factory=list)
     adjudication_case_ids: list[str] = Field(default_factory=list)
     scoring_mode: Literal["required", "accepted_improvement"] = "required"
