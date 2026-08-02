@@ -1440,6 +1440,7 @@ class ClaimsValidator:
             "role": "miner",
             "uid": uid,
             "hotkey": metadata.get("hotkey", ""),
+            "harness": context.get("harness", ""),
             "runtime": context.get("runtime") or metadata.get("backend") or metadata.get("miner_version", ""),
             "provider": context.get("provider", ""),
             "model": context.get("model", ""),
@@ -1465,14 +1466,26 @@ class ClaimsValidator:
         config = AgentV1ValidatorConfig.from_env(Path(__file__).resolve().parents[1])
         if self.config.claims_agent_v1_runtime:
             config.runtime = str(self.config.claims_agent_v1_runtime)
+        inner_command = os.getenv("CLAIMS_VALIDATOR_AGENT_INNER_COMMAND") or os.getenv("CLAIMS_AGENT_INNER_COMMAND") or ""
+        command_for_harness = inner_command or config.cli_command
+        cli_harness = _harness_from_command(command_for_harness)
+        cli_model = _model_from_command(inner_command)
+        provider = (
+            _provider_from_command(inner_command)
+            or _provider_from_model_or_base(cli_model, "")
+            or ("" if cli_harness else _provider_from_api_base(config.api_base))
+        )
+        model = cli_model or config.model
         row = {
             "stage_key": "diagnostic_validation",
             "stage_label": "Diagnostic validation",
             "role": "validator_rigor",
+            "harness": cli_harness or config.runtime,
             "runtime": config.runtime,
-            "provider": _provider_from_api_base(config.api_base),
-            "model": config.model,
-            "models": [config.model] if config.model else [],
+            "provider": provider,
+            "model": model,
+            "models": [model] if model else [],
+            "model_runtime_id": cli_harness,
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
             "max_turns": config.max_agent_iters,
@@ -1483,20 +1496,35 @@ class ClaimsValidator:
     def _reference_miner_model_rows(self, bronze: Any | None = None, bronze_artifact: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         metadata = getattr(bronze, "metadata", {}) if bronze is not None else {}
         metadata = metadata if isinstance(metadata, dict) else {}
-        model_runtime_id = str(getattr(bronze, "model_runtime_id", "") or os.getenv("CLAIMS_REFERENCE_MINER_MODEL", ""))
+        inner_command = os.getenv("CLAIMS_REFERENCE_MINER_INNER_COMMAND") or os.getenv("CLAIMS_AGENT_INNER_COMMAND") or ""
+        configured_harness = os.getenv("CLAIMS_REFERENCE_MINER_HARNESS", "")
+        configured_model = os.getenv("CLAIMS_REFERENCE_MINER_MODEL", "")
+        model_runtime_id = str(getattr(bronze, "model_runtime_id", "") or configured_model)
         artifact_context = _artifact_model_context(bronze_artifact or {})
         model = (
             artifact_context.get("model")
             or _model_id_or_empty(metadata.get("model"))
+            or _model_from_command(inner_command)
             or _model_id_or_empty(model_runtime_id)
         )
-        models = _string_list(artifact_context.get("models")) or ([model] if model else [])
+        models = _string_list(artifact_context.get("models") or metadata.get("models")) or ([model] if model else [])
+        runtime = artifact_context.get("runtime") or metadata.get("runtime") or os.getenv("CLAIMS_REFERENCE_MINER_RUNTIME", "") or ("agent-cli" if str(getattr(self.config, "claims_reference_miner_command", "") or "").strip() else "local_manifest")
+        harness = (
+            artifact_context.get("harness")
+            or metadata.get("harness")
+            or configured_harness
+            or _harness_from_command(inner_command)
+            or _harness_from_command(os.getenv("CLAIMS_REFERENCE_MINER_CLI_COMMAND", ""))
+            or _harness_from_command(getattr(self.config, "claims_reference_miner_command", ""))
+            or _harness_from_runtime(runtime, model_runtime_id)
+        )
         row = {
             "stage_key": "reference_miner",
             "stage_label": "Reference miner / Bronze",
             "role": "reference_miner",
-            "runtime": artifact_context.get("runtime") or metadata.get("runtime") or ("cli" if str(getattr(self.config, "claims_reference_miner_command", "") or "").strip() else "local_manifest"),
-            "provider": artifact_context.get("provider", ""),
+            "harness": harness,
+            "runtime": runtime,
+            "provider": artifact_context.get("provider", "") or _provider_from_command(inner_command) or _provider_from_model_or_base(model, ""),
             "model": model,
             "models": models,
             "model_runtime_id": model_runtime_id,
@@ -1910,6 +1938,8 @@ def _artifact_model_context(artifact: dict[str, Any]) -> dict[str, Any]:
         metadata = {}
     runtime_metrics = metadata.get("runtime_metrics") if isinstance(metadata.get("runtime_metrics"), dict) else {}
     models = [_model for _model in (_model_id_or_empty(item) for item in _string_list(runtime_metrics.get("models") or metadata.get("models"))) if _model]
+    harnesses = [item for item in _string_list(runtime_metrics.get("harnesses") or metadata.get("harnesses")) if item]
+    harness = str(metadata.get("harness") or runtime_metrics.get("harness") or (harnesses[0] if len(harnesses) == 1 else "") or "")
     model = (
         _model_id_or_empty(metadata.get("model"))
         or _model_id_or_empty(runtime_metrics.get("model"))
@@ -1919,6 +1949,7 @@ def _artifact_model_context(artifact: dict[str, Any]) -> dict[str, Any]:
     return _drop_empty_model_fields(
         {
             "runtime": str(metadata.get("runtime") or metadata.get("agent_runtime") or metadata.get("backend") or ""),
+            "harness": harness,
             "provider": _provider_from_model_or_base(model, str(metadata.get("api_base") or "")),
             "model": model,
             "models": models,
@@ -1931,6 +1962,7 @@ def _artifact_model_context(artifact: dict[str, Any]) -> dict[str, Any]:
 def _merge_model_contexts(value: Any) -> dict[str, Any]:
     contexts = value if isinstance(value, list) else []
     runtime = ""
+    harness = ""
     provider = ""
     model = ""
     pipeline = ""
@@ -1940,6 +1972,7 @@ def _merge_model_contexts(value: Any) -> dict[str, Any]:
         if not isinstance(context, dict):
             continue
         runtime = runtime or str(context.get("runtime") or "")
+        harness = harness or str(context.get("harness") or "")
         provider = provider or str(context.get("provider") or "")
         model = model or str(context.get("model") or "")
         pipeline = pipeline or str(context.get("pipeline") or "")
@@ -1954,6 +1987,7 @@ def _merge_model_contexts(value: Any) -> dict[str, Any]:
     return _drop_empty_model_fields(
         {
             "runtime": runtime,
+            "harness": harness,
             "provider": provider,
             "model": model,
             "models": models,
@@ -2022,6 +2056,7 @@ def _model_id_or_empty(value: Any) -> str:
         "claude-cli",
         "codex-cli",
         "hermes-cli",
+        "hermes-agent",
         "cli",
         "dspy-react",
         "langchain-agent",
@@ -2057,6 +2092,66 @@ def _provider_from_command(command: Any) -> str:
         if part == "--provider" and index + 1 < len(parts):
             return parts[index + 1]
     return ""
+
+
+def _model_from_command(command: Any) -> str:
+    parts = _command_parts(command)
+    for index, part in enumerate(parts):
+        if part in {"-m", "--model"} and index + 1 < len(parts):
+            if _is_python_module_flag(parts, index):
+                continue
+            return _model_id_or_empty(parts[index + 1])
+        if part.startswith("--model="):
+            return _model_id_or_empty(part.split("=", 1)[1])
+    return ""
+
+
+def _harness_from_command(command: Any) -> str:
+    parts = _command_parts(command)
+    if not parts:
+        return ""
+    lowered = [Path(part).name.lower() for part in parts]
+    joined = " ".join(str(part).lower() for part in parts)
+    if any(part in {"hermes", "hermes-agent"} for part in lowered) or "hermes_prompt" in joined:
+        return "hermes-cli"
+    if any(part in {"codex", "codex-cli"} for part in lowered) or "codex_prompt" in joined:
+        return "codex-cli"
+    if any(part in {"claude", "claude-code", "claude-cli"} for part in lowered):
+        return "claude-cli"
+    if "langchain" in joined:
+        return "langchain-agent"
+    if "dspy" in joined:
+        return "dspy-react"
+    return ""
+
+
+def _harness_from_runtime(runtime: str, model_runtime_id: str = "") -> str:
+    if runtime == "agent-cli" and _is_harness_id(model_runtime_id):
+        return model_runtime_id
+    if _is_harness_id(runtime):
+        return runtime
+    return runtime
+
+
+def _is_harness_id(value: str) -> bool:
+    return value.strip().lower() in {
+        "agent-cli",
+        "claude-cli",
+        "codex-cli",
+        "hermes-cli",
+        "hermes-agent",
+        "dspy-react",
+        "langchain-agent",
+    }
+
+
+def _is_python_module_flag(command: list[str], index: int) -> bool:
+    if command[index] != "-m" or index == 0:
+        return False
+    executable = Path(command[index - 1]).name
+    if executable.startswith("python"):
+        return True
+    return index == 1 and Path(command[0]).name.startswith("python")
 
 
 def _model_from_profile_id(profile_id: str) -> str:

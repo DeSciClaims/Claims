@@ -93,9 +93,11 @@ class SubprocessAgentRuntime:
             raise RuntimeError(f"agent-cli runtime failed to start: {exc}") from exc
         elapsed = round(time.time() - started, 3)
         model = _model_from_agent_cli(command)
+        harness = _harness_from_agent_cli(command)
         manifest = {
             "runtime": self.runtime_name,
             "runtime_alias": self.config.runtime,
+            "harness": harness,
             "command": command,
             "model": model,
             "returncode": completed.returncode,
@@ -149,6 +151,19 @@ def _model_from_agent_cli(command: list[str]) -> str:
     return _model_id_or_empty(configured)
 
 
+def _harness_from_agent_cli(command: list[str]) -> str:
+    candidates = [
+        _split_command(os.getenv("CLAIMS_AGENT_INNER_COMMAND", "")),
+        _split_command(os.getenv("SUBNET_CLAIMS_AGENT_CLI_COMMAND", "")),
+        command,
+    ]
+    for candidate in candidates:
+        harness = _harness_from_command(candidate)
+        if harness:
+            return harness
+    return "agent-cli"
+
+
 def _model_from_command(command: list[str]) -> str:
     for index, part in enumerate(command):
         if part in {"-m", "--model"} and index + 1 < len(command):
@@ -157,6 +172,20 @@ def _model_from_command(command: list[str]) -> str:
             return _model_id_or_empty(command[index + 1])
         if part.startswith("--model="):
             return _model_id_or_empty(part.split("=", 1)[1])
+    return ""
+
+
+def _harness_from_command(command: list[str]) -> str:
+    if not command:
+        return ""
+    lowered = [Path(part).name.lower() for part in command]
+    joined = " ".join(str(part).lower() for part in command)
+    if any(part in {"hermes", "hermes-agent"} for part in lowered) or "hermes_prompt" in joined:
+        return "hermes-cli"
+    if any(part in {"codex", "codex-cli"} for part in lowered) or "codex_prompt" in joined:
+        return "codex-cli"
+    if any(part in {"claude", "claude-code", "claude-cli"} for part in lowered):
+        return "claude-cli"
     return ""
 
 
@@ -190,6 +219,7 @@ def _model_id_or_empty(value: str | None) -> str:
         "claude-cli",
         "codex-cli",
         "hermes-cli",
+        "hermes-agent",
         "cli",
         "dspy-react",
         "langchain-agent",

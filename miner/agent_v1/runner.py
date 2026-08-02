@@ -177,6 +177,7 @@ def _read_json_object(path: Path) -> dict[str, Any]:
 def _runtime_metrics(manifests: list[dict[str, Any]]) -> dict[str, Any]:
     elapsed_seconds = 0.0
     usages = []
+    harnesses = []
     models = []
     for manifest in manifests:
         elapsed = manifest.get("elapsed_seconds")
@@ -188,10 +189,15 @@ def _runtime_metrics(manifests: list[dict[str, Any]]) -> dict[str, Any]:
         model = manifest.get("model")
         if isinstance(model, str) and model not in models:
             models.append(model)
+        harness = manifest.get("harness")
+        if isinstance(harness, str) and harness and harness not in harnesses:
+            harnesses.append(harness)
     usage = merge_usage(usages)
     return {
         "elapsed_seconds": round(elapsed_seconds, 3),
         "attempt_count": len(manifests),
+        "harness": harnesses[0] if len(harnesses) == 1 else "",
+        "harnesses": harnesses,
         "models": models,
         "token_usage": {
             "prompt_tokens": usage.get("prompt_tokens"),
