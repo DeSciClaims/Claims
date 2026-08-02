@@ -18,6 +18,7 @@ from miner.v0.config import SectionContextV1Config
 from miner.v0.runner import SectionContextV1Runner
 from miner.v0.schema_models import ExtractionArtifact
 
+from .harness_profiles import SUPPORTED_HARNESSES, quote_command, resolve_agent_harness
 from .protocol import ClaimExtractionSynapse
 from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsTask, download_pdf, safe_task_id, task_cache_key
 
@@ -96,6 +97,19 @@ class ClaimsMiner:
             help="Miner v0 extraction mode used for validator tasks.",
         )
         parser.add_argument(
+            "--claims.agent-harness",
+            dest="claims_agent_harness",
+            choices=tuple(sorted(SUPPORTED_HARNESSES)),
+            default=os.getenv("SUBNET_CLAIMS_AGENT_HARNESS", os.getenv("CLAIMS_AGENT_HARNESS", "")) or None,
+            help="High-level agent_v1 harness. Maps to runtime, wrapper command, and inner CLI command.",
+        )
+        parser.add_argument(
+            "--claims.agent-model",
+            dest="claims_agent_model",
+            default=os.getenv("SUBNET_CLAIMS_AGENT_MODEL", os.getenv("CLAIMS_AGENT_MODEL", "")) or None,
+            help="Model id used by the selected agent harness.",
+        )
+        parser.add_argument(
             "--claims.agent-runtime",
             dest="claims_agent_runtime",
             choices=("dspy-react", "langchain-agent", "agent-cli"),
@@ -164,6 +178,8 @@ class ClaimsMiner:
         config.claims_allow_unregistered = parsed_args.claims_allow_unregistered
         config.claims_pdf_extraction_method = parsed_args.claims_pdf_extraction_method
         config.claims_extraction_mode = parsed_args.claims_extraction_mode
+        config.claims_agent_harness = parsed_args.claims_agent_harness
+        config.claims_agent_model = parsed_args.claims_agent_model
         config.claims_agent_runtime = parsed_args.claims_agent_runtime
         config.claims_agent_skill_dir = parsed_args.claims_agent_skill_dir
         config.claims_agent_cli_command = parsed_args.claims_agent_cli_command
@@ -211,8 +227,27 @@ class ClaimsMiner:
         if self.config.claims_pipeline == "agent_v1":
             agent_config = AgentV1Config.from_env(base_dir)
             agent_config.output_dir = Path(self.config.claims_output_dir)
-            if self.config.claims_agent_runtime:
+            if self.config.claims_agent_harness:
+                profile = resolve_agent_harness(
+                    harness=str(self.config.claims_agent_harness),
+                    model=str(self.config.claims_agent_model or agent_config.model),
+                    wrapper_namespace="miner.agent_v1.wrappers",
+                )
+                agent_config.runtime = profile.runtime
+                if profile.model:
+                    agent_config.model = profile.model
+                if profile.cli_command:
+                    agent_config.cli_command = quote_command(profile.cli_command)
+                else:
+                    agent_config.cli_command = []
+                if profile.inner_command:
+                    os.environ["CLAIMS_AGENT_INNER_COMMAND"] = profile.inner_command
+                else:
+                    os.environ.pop("CLAIMS_AGENT_INNER_COMMAND", None)
+            elif self.config.claims_agent_runtime:
                 agent_config.runtime = str(self.config.claims_agent_runtime)
+            if self.config.claims_agent_model:
+                agent_config.model = str(self.config.claims_agent_model)
             if self.config.claims_agent_skill_dir:
                 agent_config.skill_dir = Path(self.config.claims_agent_skill_dir)
             if self.config.claims_agent_timeout:

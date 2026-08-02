@@ -11,6 +11,7 @@ from miner.agent_v1.runtime.usage import usage_from_codex_jsonl, usage_from_herm
 from miner.agent_v1.schema import agent_json_schema
 from miner.agent_v1.skillpack import load_skill_pack
 from miner.agent_v1.tools import AgentToolbox
+from neurons.harness_profiles import resolve_agent_harness
 
 
 def test_agent_v1_skillpack_preserves_all_resources() -> None:
@@ -24,6 +25,25 @@ def test_agent_v1_skillpack_preserves_all_resources() -> None:
     assert "references/claims-agent-v1-json-output-contract.md" in skill_pack.resources
     assert skill_pack.sha256
     assert "Universal ARA Compiler" in skill_pack.render_for_agent()
+
+
+def test_agent_harness_profile_maps_cli_and_native_runtimes() -> None:
+    hermes = resolve_agent_harness(harness="hermes-cli", model="openai/gpt-5-mini")
+    dspy = resolve_agent_harness(harness="dspy-react", model="openrouter/openai/gpt-5-mini")
+    codex = resolve_agent_harness(harness="codex-cli", model="gpt-5.5")
+
+    assert hermes.runtime == "agent-cli"
+    assert hermes.cli_command == "python -m miner.agent_v1.wrappers.hermes_prompt"
+    assert hermes.inner_command == "hermes chat --provider openrouter -m openai/gpt-5-mini --max-turns 30 -q"
+
+    assert dspy.runtime == "dspy-react"
+    assert dspy.model == "openrouter/openai/gpt-5-mini"
+    assert dspy.cli_command == ""
+    assert dspy.inner_command == ""
+
+    assert codex.runtime == "agent-cli"
+    assert codex.cli_command == "python -m miner.agent_v1.wrappers.codex_prompt"
+    assert codex.inner_command == "codex exec --model gpt-5.5 --json --sandbox workspace-write --skip-git-repo-check"
 
 
 def test_agent_v1_toolbox_validates_and_submits_artifact(tmp_path: Path) -> None:

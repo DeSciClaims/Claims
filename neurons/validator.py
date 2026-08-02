@@ -30,6 +30,7 @@ from validator.judge_v1.config import JudgeV1Config
 from validator.v0.runner import JudgeV2Runner
 
 from .backend_client import BackendClientError, ClaimsBackendClient
+from .harness_profiles import SUPPORTED_HARNESSES, quote_command, resolve_agent_harness
 from .protocol import ClaimExtractionSynapse
 from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsPaperTask, ClaimsTask, download_pdf, load_task_manifest, safe_task_id
 
@@ -212,6 +213,19 @@ class ClaimsValidator:
             help="Validator scoring pipeline. auto routes ARA-shaped responses to agent_v1 and legacy responses to v0.",
         )
         parser.add_argument(
+            "--claims.rigor-harness",
+            dest="claims_rigor_harness",
+            choices=tuple(sorted(SUPPORTED_HARNESSES)),
+            default=os.getenv("CLAIMS_RIGOR_HARNESS", os.getenv("CLAIMS_AGENT_V1_HARNESS", "")) or None,
+            help="High-level harness for agent_v1 diagnostic rigor validation.",
+        )
+        parser.add_argument(
+            "--claims.rigor-model",
+            dest="claims_rigor_model",
+            default=os.getenv("CLAIMS_RIGOR_MODEL", os.getenv("SUBNET_CLAIMS_VALIDATOR_AGENT_MODEL", "")) or None,
+            help="Model id used by the diagnostic rigor harness.",
+        )
+        parser.add_argument(
             "--claims.agent-v1-runtime",
             dest="claims_agent_v1_runtime",
             choices=("dspy-react", "langchain-agent", "agent-cli"),
@@ -253,6 +267,19 @@ class ClaimsValidator:
             help="Reference miner release id used to fetch Bronze records.",
         )
         parser.add_argument(
+            "--claims.reference-harness",
+            dest="claims_reference_harness",
+            choices=tuple(sorted(SUPPORTED_HARNESSES)),
+            default=os.getenv("CLAIMS_REFERENCE_MINER_HARNESS", os.getenv("CLAIMS_REFERENCE_HARNESS", "")) or None,
+            help="High-level harness for the private reference miner.",
+        )
+        parser.add_argument(
+            "--claims.reference-model",
+            dest="claims_reference_model",
+            default=os.getenv("CLAIMS_REFERENCE_MINER_MODEL", os.getenv("CLAIMS_REFERENCE_MODEL", "")) or None,
+            help="Model id used by the private reference miner harness.",
+        )
+        parser.add_argument(
             "--claims.reference-miner-command",
             dest="claims_reference_miner_command",
             default=os.getenv("CLAIMS_REFERENCE_MINER_COMMAND", ""),
@@ -273,9 +300,10 @@ class ClaimsValidator:
         )
         parser.add_argument(
             "--claims.silver-adjudication-mode",
+            "--claims.adjudication-harness",
             dest="claims_silver_adjudication_mode",
             choices=("static", "openai-compatible", "model", "cli", "hermes-cli", "codex-cli", "claude-cli"),
-            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_MODE", "static"),
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_HARNESS", os.getenv("CLAIMS_SILVER_ADJUDICATION_MODE", "static")),
             help="Adjudication pass runtime for Silver cases.",
         )
         parser.add_argument(
@@ -292,18 +320,21 @@ class ClaimsValidator:
         )
         parser.add_argument(
             "--claims.silver-adjudication-model-a",
+            "--claims.adjudication-model-a",
             dest="claims_silver_adjudication_model_a",
             default=os.getenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", "gpt-5"),
             help="Primary model for adjudication pass A.",
         )
         parser.add_argument(
             "--claims.silver-adjudication-model-b",
+            "--claims.adjudication-model-b",
             dest="claims_silver_adjudication_model_b",
             default=os.getenv("CLAIMS_SILVER_ADJUDICATION_MODEL_B", "gpt-5-mini"),
             help="Primary model for adjudication pass B.",
         )
         parser.add_argument(
             "--claims.silver-adjudication-tiebreak-model",
+            "--claims.adjudication-tiebreak-model",
             dest="claims_silver_adjudication_tiebreak_model",
             default=os.getenv("CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL", ""),
             help="Optional third model for unresolved adjudication cases.",
@@ -439,12 +470,16 @@ class ClaimsValidator:
         config.claims_target_uids = parsed_args.claims_target_uids
         config.claims_audit_method = parsed_args.claims_audit_method
         config.claims_validator_pipeline = parsed_args.claims_validator_pipeline
+        config.claims_rigor_harness = parsed_args.claims_rigor_harness
+        config.claims_rigor_model = parsed_args.claims_rigor_model
         config.claims_agent_v1_runtime = parsed_args.claims_agent_v1_runtime
         config.claims_agent_v1_skip_rigor = parsed_args.claims_agent_v1_skip_rigor
         config.claims_agent_v1_threshold = parsed_args.claims_agent_v1_threshold
         config.claims_silver_enable = parsed_args.claims_silver_enable
         config.claims_bronze_root = parsed_args.claims_bronze_root
         config.claims_reference_release_id = parsed_args.claims_reference_release_id
+        config.claims_reference_harness = parsed_args.claims_reference_harness
+        config.claims_reference_model = parsed_args.claims_reference_model
         config.claims_reference_miner_command = parsed_args.claims_reference_miner_command
         config.claims_reference_miner_claims_repo = parsed_args.claims_reference_miner_claims_repo
         config.claims_silver_static_disposition = parsed_args.claims_silver_static_disposition
@@ -856,6 +891,7 @@ class ClaimsValidator:
         }
 
     def _build_reference_miner_client(self) -> Any:
+        self._apply_reference_harness_env()
         bronze_root = Path(getattr(self.config, "claims_bronze_root"))
         command_text = str(getattr(self.config, "claims_reference_miner_command", "") or "").strip()
         local_client: Any
@@ -876,6 +912,30 @@ class ClaimsValidator:
         if self.backend_client is not None:
             return BackendBackedReferenceMinerClient(backend=self.backend_client, delegate=local_client)
         return local_client
+
+    def _apply_reference_harness_env(self) -> None:
+        if getattr(self.config, "claims_reference_harness", None):
+            profile = resolve_agent_harness(
+                harness=str(self.config.claims_reference_harness),
+                model=str(getattr(self.config, "claims_reference_model", "") or ""),
+                wrapper_namespace="miner.agent_v1.wrappers",
+                max_turns=int(os.getenv("CLAIMS_REFERENCE_MINER_MAX_TURNS", "30")),
+            )
+            os.environ["CLAIMS_REFERENCE_MINER_RUNTIME"] = profile.runtime
+            os.environ["CLAIMS_REFERENCE_MINER_HARNESS"] = profile.harness
+            if profile.model:
+                os.environ["CLAIMS_REFERENCE_MINER_MODEL"] = profile.model
+            if profile.cli_command:
+                os.environ["CLAIMS_REFERENCE_MINER_CLI_COMMAND"] = profile.cli_command
+            else:
+                os.environ.pop("CLAIMS_REFERENCE_MINER_CLI_COMMAND", None)
+            if profile.inner_command:
+                os.environ["CLAIMS_REFERENCE_MINER_INNER_COMMAND"] = profile.inner_command
+            else:
+                os.environ.pop("CLAIMS_REFERENCE_MINER_INNER_COMMAND", None)
+            return
+        if getattr(self.config, "claims_reference_model", None):
+            os.environ["CLAIMS_REFERENCE_MINER_MODEL"] = str(self.config.claims_reference_model)
 
     def _reference_miner_input(self, *, task: ClaimsTask, paper: ClaimsPaperTask, paper_id: str, run_id: str) -> ReferenceMinerInput:
         artifact = paper.artifact or (task.artifact if paper_id == (task.paper_id or paper_id) else None)
@@ -1359,8 +1419,7 @@ class ClaimsValidator:
             source_payload_path = agent_dir / "received_source_payload.json"
             _write_json(source_payload_path, source_payload)
         config = AgentV1ValidatorConfig.from_env(Path(__file__).resolve().parents[1])
-        if self.config.claims_agent_v1_runtime:
-            config.runtime = str(self.config.claims_agent_v1_runtime)
+        self._apply_rigor_harness_config(config)
         if self.config.claims_agent_v1_skip_rigor:
             config.skip_rigor_agent = True
         report = AgentV1ValidatorRunner(config).run(
@@ -1464,9 +1523,11 @@ class ClaimsValidator:
                 )
             ]
         config = AgentV1ValidatorConfig.from_env(Path(__file__).resolve().parents[1])
-        if self.config.claims_agent_v1_runtime:
-            config.runtime = str(self.config.claims_agent_v1_runtime)
-        inner_command = os.getenv("CLAIMS_VALIDATOR_AGENT_INNER_COMMAND") or os.getenv("CLAIMS_AGENT_INNER_COMMAND") or ""
+        self._apply_rigor_harness_config(config)
+        if getattr(self.config, "claims_rigor_harness", None):
+            inner_command = os.getenv("CLAIMS_VALIDATOR_AGENT_INNER_COMMAND", "")
+        else:
+            inner_command = os.getenv("CLAIMS_VALIDATOR_AGENT_INNER_COMMAND") or os.getenv("CLAIMS_AGENT_INNER_COMMAND") or ""
         command_for_harness = inner_command or config.cli_command
         cli_harness = _harness_from_command(command_for_harness)
         cli_model = _model_from_command(inner_command)
@@ -1493,10 +1554,38 @@ class ClaimsValidator:
         }
         return [_drop_empty_model_fields(row)]
 
+    def _apply_rigor_harness_config(self, config: AgentV1ValidatorConfig) -> None:
+        if getattr(self.config, "claims_rigor_harness", None):
+            profile = resolve_agent_harness(
+                harness=str(self.config.claims_rigor_harness),
+                model=str(getattr(self.config, "claims_rigor_model", "") or config.model),
+                wrapper_namespace="validator.agent_v1.wrappers",
+                max_turns=int(os.getenv("CLAIMS_RIGOR_MAX_TURNS", "30")),
+            )
+            config.runtime = profile.runtime
+            if profile.model:
+                config.model = profile.model
+            if profile.cli_command:
+                config.cli_command = quote_command(profile.cli_command)
+            else:
+                config.cli_command = []
+            if profile.inner_command:
+                os.environ["CLAIMS_VALIDATOR_AGENT_INNER_COMMAND"] = profile.inner_command
+            else:
+                os.environ.pop("CLAIMS_VALIDATOR_AGENT_INNER_COMMAND", None)
+            return
+        if getattr(self.config, "claims_agent_v1_runtime", None):
+            config.runtime = str(self.config.claims_agent_v1_runtime)
+        if getattr(self.config, "claims_rigor_model", None):
+            config.model = str(self.config.claims_rigor_model)
+
     def _reference_miner_model_rows(self, bronze: Any | None = None, bronze_artifact: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         metadata = getattr(bronze, "metadata", {}) if bronze is not None else {}
         metadata = metadata if isinstance(metadata, dict) else {}
-        inner_command = os.getenv("CLAIMS_REFERENCE_MINER_INNER_COMMAND") or os.getenv("CLAIMS_AGENT_INNER_COMMAND") or ""
+        if getattr(self.config, "claims_reference_harness", None):
+            inner_command = os.getenv("CLAIMS_REFERENCE_MINER_INNER_COMMAND", "")
+        else:
+            inner_command = os.getenv("CLAIMS_REFERENCE_MINER_INNER_COMMAND") or os.getenv("CLAIMS_AGENT_INNER_COMMAND") or ""
         configured_harness = os.getenv("CLAIMS_REFERENCE_MINER_HARNESS", "")
         configured_model = os.getenv("CLAIMS_REFERENCE_MINER_MODEL", "")
         model_runtime_id = str(getattr(bronze, "model_runtime_id", "") or configured_model)

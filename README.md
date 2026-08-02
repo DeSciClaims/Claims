@@ -106,37 +106,19 @@ miner/agent_v1/outputs/<run>/agent_validation_report.json
 
 ### Agent Runtime Options
 
-Native runtimes:
+The direct `miner.agent_v1` CLI still uses low-level runtime names:
 
 ```bash
 python -m miner.agent_v1 --pdf /path/to/paper.pdf --runtime dspy-react --output-dir miner/agent_v1/outputs/my_run
 python -m miner.agent_v1 --pdf /path/to/paper.pdf --runtime langchain-agent --output-dir miner/agent_v1/outputs/my_run
 ```
 
-External CLI agent runtimes use `agent-cli` plus a wrapper:
-
-```bash
-SUBNET_CLAIMS_AGENT_CLI_COMMAND=".venv/bin/python -m miner.agent_v1.wrappers.codex_prompt" \
-python -m miner.agent_v1 \
-  --pdf /path/to/paper.pdf \
-  --runtime agent-cli \
-  --output-dir miner/agent_v1/outputs/my_run
-```
-
-For Hermes:
-
-```bash
-CLAIMS_AGENT_INNER_COMMAND="hermes chat --provider openrouter -m openai/gpt-4o-mini --max-turns 30 -q" \
-SUBNET_CLAIMS_AGENT_CLI_COMMAND=".venv/bin/python -m miner.agent_v1.wrappers.hermes_prompt" \
-python -m miner.agent_v1 \
-  --pdf /path/to/paper.pdf \
-  --runtime agent-cli \
-  --output-dir miner/agent_v1/outputs/my_run
-```
+For live Bittensor neurons, prefer the higher-level harness/model flags shown
+below. They derive the runtime, wrapper, and inner CLI command automatically.
 
 See [miner/agent_v1/README.md](./miner/agent_v1/README.md) and
 [miner/agent_v1/wrappers/README.md](./miner/agent_v1/wrappers/README.md) for
-the SkillPack contract and runtime options.
+the SkillPack contract and lower-level wrapper options.
 
 ## Run The Validator Locally
 
@@ -148,17 +130,6 @@ python -m validator.agent_v1 \
   --agent-json outputs/my_run/agent_output.json \
   --source-payload outputs/my_run/source_payload.json \
   --runtime dspy-react \
-  --output-dir outputs/my_run_validation
-```
-
-For Codex as the rigor backend:
-
-```bash
-SUBNET_CLAIMS_VALIDATOR_AGENT_CLI_COMMAND=".venv/bin/python -m validator.agent_v1.wrappers.codex_prompt" \
-python -m validator.agent_v1 \
-  --agent-json outputs/my_run/agent_output.json \
-  --source-payload outputs/my_run/source_payload.json \
-  --runtime agent-cli \
   --output-dir outputs/my_run_validation
 ```
 
@@ -184,11 +155,12 @@ python -m neurons.miner \
   --axon.port 8091 \
   --axon.external_port 8091 \
   --claims.pipeline agent_v1 \
-  --claims.agent-runtime dspy-react \
+  --claims.agent-harness dspy-react \
+  --claims.agent-model openrouter/openai/gpt-5-mini \
   --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 
-`agent_v1` is the default `--claims.pipeline`. To run an external CLI backend:
+`agent_v1` is the default `--claims.pipeline`. To run Hermes Agent CLI:
 
 ```bash
 python -m neurons.miner \
@@ -201,13 +173,14 @@ python -m neurons.miner \
   --axon.port 8091 \
   --axon.external_port 8091 \
   --claims.pipeline agent_v1 \
-  --claims.agent-runtime agent-cli \
-  --claims.agent-cli-command ".venv/bin/python -m miner.agent_v1.wrappers.hermes_prompt" \
+  --claims.agent-harness hermes-cli \
+  --claims.agent-model openai/gpt-5-mini \
   --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 
-Use `--claims.agent-runtime dspy-react` or `--claims.agent-runtime langchain-agent`
-for native Python agent runtimes.
+Supported miner harnesses are `dspy-react`, `langchain-agent`, `hermes-cli`,
+`codex-cli`, and `claude-cli`. For normal neuron runs, do not set
+`CLAIMS_AGENT_INNER_COMMAND`; the harness/model flags derive it when needed.
 
 Legacy v0 neuron commands are documented separately in
 [docs/0009-v0-miner-validator.md](./docs/0009-v0-miner-validator.md) and should
@@ -219,9 +192,10 @@ Use `--subtensor.chain_endpoint <WS_ENDPOINT>` instead of
 ## Run A Bittensor Validator
 
 Start a validator neuron after the validator hotkey is registered and ready to
-submit weights. In the v0 architecture, the validator gets paper batches from
-the Claims backend, queries miners over Bittensor, scores the returned batch,
-posts audit records back to the backend, and then sets weights.
+submit weights. The validator gets paper batches from the Claims backend,
+queries miners over Bittensor, runs diagnostic validation, optionally creates
+Bronze through the reference miner, runs Silver adjudication, posts records
+back to the backend, and then sets weights.
 
 ```bash
 CLAIMS_BACKEND_URL=http://127.0.0.1:8000 \
@@ -237,6 +211,14 @@ python -m neurons.validator \
   --claims.batch-score-rule min \
   --claims.audit-method llm \
   --claims.validator-pipeline auto \
+  --claims.rigor-harness hermes-cli \
+  --claims.rigor-model openai/gpt-4o-mini \
+  --claims.reference-harness codex-cli \
+  --claims.reference-model gpt-5.5 \
+  --claims.adjudication-harness hermes-cli \
+  --claims.adjudication-model-a openai/gpt-5 \
+  --claims.adjudication-model-b anthropic/claude-sonnet-4 \
+  --claims.adjudication-tiebreak-model google/gemini-2.5-pro \
   --claims.output-dir validator/agent_v1/outputs/neuron/testnet \
   --claims.timeout 1800
 ```
@@ -248,6 +230,10 @@ Useful validator flags:
 - `--claims.target-uid 1`: only query a specific miner UID. May be passed more than once for focused smoke tests.
 - `--claims.topic economics`: filter backend-selected papers by topic. May be passed more than once.
 - `--claims.batch-score-rule min`: score the batch by the lowest per-paper score, the current highest-minimum rule.
+- `--claims.rigor-harness hermes-cli --claims.rigor-model <MODEL>`: choose the diagnostic validation harness/model.
+- `--claims.reference-harness codex-cli --claims.reference-model <MODEL>`: choose the private reference miner harness/model.
+- `--claims.adjudication-harness hermes-cli`: choose the Silver adjudication harness.
+- `--claims.adjudication-model-a/b/tiebreak-model <MODEL>`: choose the Silver adjudicator models.
 - `--claims.allow-paper-reuse`: allow already assigned backend papers to be selected again for local smoke tests.
 - `--claims.task-manifest /path/to/tasks.jsonl`: run a list of tasks.
 - `--claims.audit-only`: score miners and write audit files without setting weights.

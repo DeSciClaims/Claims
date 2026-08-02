@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from neurons.protocol import ClaimExtractionSynapse
 from neurons.tasks import ClaimsTask
 from neurons.validator import ClaimsValidator, _is_agent_v1_artifact
+from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
 from validator.agent_v1.structural import run_structural_checks
 
@@ -153,6 +154,77 @@ def test_neuron_builds_configurable_silver_adjudication_passes() -> None:
     assert isinstance(tiebreak, CLIAdjudicationPass)
     assert passes[0].command == ["fake-hermes", "chat", "-m", "openai/gpt-5", "-q"]
     assert passes[1].command == ["fake-hermes", "chat", "-m", "anthropic/claude-sonnet-4", "-q"]
+
+    validator.config = SimpleNamespace(
+        claims_silver_adjudication_mode="codex-cli",
+        claims_silver_adjudication_model_a="gpt-5.5",
+        claims_silver_adjudication_model_b="gpt-5-mini",
+        claims_silver_adjudication_tiebreak_model="",
+        claims_silver_adjudication_cli_prompt_mode="append",
+        claims_silver_adjudication_cli_timeout=120,
+    )
+
+    passes, tiebreak = validator._build_silver_adjudication_passes()
+
+    assert tiebreak is None
+    assert [type(adjudication_pass) for adjudication_pass in passes] == [CLIAdjudicationPass, CLIAdjudicationPass]
+    assert passes[0].command[:3] == ["codex", "exec", "--model"]
+    assert passes[0].command[3] == "gpt-5.5"
+    assert passes[1].command[3] == "gpt-5-mini"
+
+
+def test_validator_rigor_harness_sets_wrapper_and_inner_command(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("CLAIMS_AGENT_INNER_COMMAND", "hermes chat --provider openrouter -m stale/model -q")
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_rigor_harness="hermes-cli",
+        claims_rigor_model="openai/gpt-5-mini",
+        claims_agent_v1_runtime=None,
+    )
+    config = AgentV1ValidatorConfig.from_env(tmp_path)
+
+    validator._apply_rigor_harness_config(config)
+
+    assert config.runtime == "agent-cli"
+    assert config.model == "openai/gpt-5-mini"
+    assert config.cli_command == ["python", "-m", "validator.agent_v1.wrappers.hermes_prompt"]
+    assert os.environ["CLAIMS_VALIDATOR_AGENT_INNER_COMMAND"] == (
+        "hermes chat --provider openrouter -m openai/gpt-5-mini --max-turns 30 -q"
+    )
+
+
+def test_validator_native_harness_clears_stage_inner_command(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("CLAIMS_VALIDATOR_AGENT_INNER_COMMAND", "hermes chat --provider openrouter -m stale/model -q")
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_rigor_harness="dspy-react",
+        claims_rigor_model="openrouter/openai/gpt-5-mini",
+        claims_agent_v1_runtime=None,
+    )
+    config = AgentV1ValidatorConfig.from_env(tmp_path)
+
+    validator._apply_rigor_harness_config(config)
+
+    assert config.runtime == "dspy-react"
+    assert config.model == "openrouter/openai/gpt-5-mini"
+    assert config.cli_command == []
+    assert "CLAIMS_VALIDATOR_AGENT_INNER_COMMAND" not in os.environ
+
+
+def test_validator_reference_harness_sets_reference_env(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_REFERENCE_MINER_INNER_COMMAND", "hermes chat --provider openrouter -m stale/model -q")
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(claims_reference_harness="codex-cli", claims_reference_model="gpt-5.5")
+
+    validator._apply_reference_harness_env()
+
+    assert os.environ["CLAIMS_REFERENCE_MINER_RUNTIME"] == "agent-cli"
+    assert os.environ["CLAIMS_REFERENCE_MINER_HARNESS"] == "codex-cli"
+    assert os.environ["CLAIMS_REFERENCE_MINER_MODEL"] == "gpt-5.5"
+    assert os.environ["CLAIMS_REFERENCE_MINER_CLI_COMMAND"] == "python -m miner.agent_v1.wrappers.codex_prompt"
+    assert os.environ["CLAIMS_REFERENCE_MINER_INNER_COMMAND"] == (
+        "codex exec --model gpt-5.5 --json --sandbox workspace-write --skip-git-repo-check"
+    )
 
 
 def test_trace_refs_may_point_to_claims_evidence_experiments_or_concepts(tmp_path) -> None:

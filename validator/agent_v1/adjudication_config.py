@@ -202,10 +202,12 @@ def _cli_command(config: SilverAdjudicationConfig, *, explicit: str, model: str,
         return shlex.split(f"{hermes} chat --provider {config.cli_provider} -m {model} --max-turns {config.cli_max_turns} -q")
     if mode == "codex-cli":
         codex = os.getenv("CODEX_CMD", "codex")
-        return shlex.split(f"{codex} exec --json --sandbox workspace-write --skip-git-repo-check")
+        model_args = f" --model {shlex.quote(model)}" if model.strip() else ""
+        return shlex.split(f"{codex} exec{model_args} --json --sandbox workspace-write --skip-git-repo-check")
     if mode == "claude-cli":
         claude = os.getenv("CLAUDE_CMD", "claude")
-        return shlex.split(f"{claude} -p --permission-mode bypassPermissions --output-format text")
+        model_args = f" --model {shlex.quote(model)}" if model.strip() else ""
+        return shlex.split(f"{claude} -p --permission-mode bypassPermissions --output-format text{model_args}")
     raise ValueError("CLI adjudication requires CLAIMS_SILVER_ADJUDICATION_CLI_COMMAND_TEMPLATE or per-pass commands.")
 
 
