@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 from miner.agent_v1.config import AgentV1Config
+from miner.agent_v1.ingest import document_source_payload, ingest_pdf
 from miner.agent_v1.runner import AgentV1Runner
 from miner.agent_v1.runtime.base import AgentResult
 from miner.agent_v1.runtime.langchain_agent import _structured_payload, _validation_status
@@ -44,6 +47,44 @@ def test_agent_harness_profile_maps_cli_and_native_runtimes() -> None:
     assert codex.runtime == "agent-cli"
     assert codex.cli_command == "python -m miner.agent_v1.wrappers.codex_prompt"
     assert codex.inner_command == "codex exec --model gpt-5.5 --json --sandbox workspace-write --skip-git-repo-check"
+
+
+def test_agent_v1_config_defaults_to_pdf_inspector(monkeypatch) -> None:
+    monkeypatch.delenv("SUBNET_CLAIMS_PDF_READER", raising=False)
+    monkeypatch.delenv("SUBNET_CLAIMS_PDF_EXTRACTION_METHOD", raising=False)
+    monkeypatch.delenv("CLAIMS_PDF_READER", raising=False)
+
+    config = AgentV1Config.from_env(Path.cwd())
+
+    assert config.pdf_reader == "pdf-inspector"
+
+
+def test_agent_v1_pdf_inspector_reader_outputs_markdown_page_spans(monkeypatch, tmp_path: Path) -> None:
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n")
+    page = SimpleNamespace(page=0, markdown="# Title\n\nTreatment improved outcome.", needs_ocr=False)
+    result = SimpleNamespace(
+        pages=[page],
+        pages_with_tables=[1],
+        pages_with_columns=[],
+        pages_needing_ocr=[],
+        is_complex=True,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "pdf_inspector",
+        SimpleNamespace(extract_pages_markdown=lambda path: result),
+    )
+
+    document = ingest_pdf(pdf_path, max_chars=10_000, reader="pdf-inspector")
+    payload = document_source_payload(document, max_chars=10_000)
+
+    assert document.raw_metadata["pdf_reader"] == "pdf-inspector"
+    assert document.raw_metadata["pages_with_tables"] == [1]
+    assert document.spans[0].span_id == "paper-p001-markdown"
+    assert document.spans[0].page == 1
+    assert document.spans[0].text == "# Title\n\nTreatment improved outcome."
+    assert payload["source_metadata"]["is_complex"] is True
 
 
 def test_agent_v1_toolbox_validates_and_submits_artifact(tmp_path: Path) -> None:

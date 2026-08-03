@@ -59,10 +59,10 @@ Set at least:
 
 ```bash
 OPENROUTER_API_KEY=...
-GROBID_URL=https://your-grobid-host
 ```
 
-`GROBID_URL` is required for PDF-to-TEI extraction with `--pdf-extraction-method grobid`.
+PDF inputs use `pdf-inspector` by default. `GROBID_URL` is only required when
+you explicitly choose `--pdf-extraction-method grobid`.
 
 ## Run The Miner Locally
 
@@ -115,6 +115,8 @@ python -m miner.agent_v1 --pdf /path/to/paper.pdf --runtime langchain-agent --ou
 
 For live Bittensor neurons, prefer the higher-level harness/model flags shown
 below. They derive the runtime, wrapper, and inner CLI command automatically.
+PDF inputs use `pdf-inspector` by default; set `--claims.pdf-extraction-method`
+to `pypdf` or `grobid` when comparing readers.
 
 See [miner/agent_v1/README.md](./miner/agent_v1/README.md) and
 [miner/agent_v1/wrappers/README.md](./miner/agent_v1/wrappers/README.md) for
@@ -157,6 +159,7 @@ python -m neurons.miner \
   --claims.pipeline agent_v1 \
   --claims.agent-harness dspy-react \
   --claims.agent-model openrouter/openai/gpt-5-mini \
+  --claims.pdf-extraction-method pdf-inspector \
   --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 
@@ -175,6 +178,7 @@ python -m neurons.miner \
   --claims.pipeline agent_v1 \
   --claims.agent-harness hermes-cli \
   --claims.agent-model openai/gpt-5-mini \
+  --claims.pdf-extraction-method pdf-inspector \
   --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 

@@ -13,6 +13,7 @@ from typing import Any, Tuple
 from dotenv import load_dotenv
 
 from miner.agent_v1.config import AgentV1Config
+from miner.agent_v1.ingest import PDF_READERS
 from miner.agent_v1.runner import AgentV1Runner
 from miner.v0.config import SectionContextV1Config
 from miner.v0.runner import SectionContextV1Runner
@@ -85,9 +86,9 @@ class ClaimsMiner:
         parser.add_argument(
             "--claims.pdf-extraction-method",
             dest="claims_pdf_extraction_method",
-            choices=("grobid", "pypdf"),
-            default="grobid",
-            help="Miner-side PDF parsing method used for URL tasks.",
+            choices=PDF_READERS,
+            default=os.getenv("SUBNET_CLAIMS_PDF_READER", os.getenv("SUBNET_CLAIMS_PDF_EXTRACTION_METHOD", "pdf-inspector")),
+            help="Miner-side PDF reader used for URL tasks.",
         )
         parser.add_argument(
             "--claims.extraction-mode",
@@ -227,6 +228,7 @@ class ClaimsMiner:
         if self.config.claims_pipeline == "agent_v1":
             agent_config = AgentV1Config.from_env(base_dir)
             agent_config.output_dir = Path(self.config.claims_output_dir)
+            agent_config.pdf_reader = str(self.config.claims_pdf_extraction_method)
             if self.config.claims_agent_harness:
                 profile = resolve_agent_harness(
                     harness=str(self.config.claims_agent_harness),
@@ -533,6 +535,7 @@ class ClaimsMiner:
             return (
                 f"{runner_config.runtime}:"
                 f"{runner_config.model}:"
+                f"{runner_config.pdf_reader}:"
                 f"{runner_config.skill_dir}:"
                 f"{runner_config.timeout_seconds}:"
                 f"{runner_config.max_source_chars}:"

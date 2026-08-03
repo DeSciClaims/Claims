@@ -48,9 +48,12 @@ python -m miner.agent_v1 \
 Alternative inputs:
 
 ```bash
-python -m miner.agent_v1 --pdf /path/to/paper.pdf --output-dir /tmp/paper_agent_v1
+python -m miner.agent_v1 --pdf /path/to/paper.pdf --pdf-reader pdf-inspector --output-dir /tmp/paper_agent_v1
 python -m miner.agent_v1 --artifact-json /path/to/artifact.json --output-dir /tmp/paper_agent_v1
 ```
+
+PDF inputs use `pdf-inspector` by default. Use `--pdf-reader pypdf` for the
+simple PyPDF path or `--pdf-reader grobid` when you want GROBID/TEI extraction.
 
 ## CLI Runtime
 
@@ -78,8 +81,9 @@ python -m neurons.miner \
   --wallet.name <MINER_WALLET> \
   --wallet.hotkey <HOTKEY> \
   --subtensor.network <NETWORK> \
-  --claims.agent-runtime agent-cli \
-  --claims.agent-cli-command ".venv/bin/python -m miner.agent_v1.wrappers.hermes_prompt" \
+  --claims.agent-harness hermes-cli \
+  --claims.agent-model openai/gpt-5-mini \
+  --claims.pdf-extraction-method pdf-inspector \
   --claims.output-dir miner/agent_v1/outputs/neuron
 ```
 
@@ -89,6 +93,7 @@ Useful flags:
 - `--claims.agent-timeout`: runtime timeout in seconds.
 - `--claims.agent-max-source-chars`: source text budget.
 - `--claims.agent-max-iters`: native agent loop iteration budget.
+- `--claims.pdf-extraction-method`: choose `pdf-inspector`, `pypdf`, or `grobid`.
 
 ## Runtime Metrics
 

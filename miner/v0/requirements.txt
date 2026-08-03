@@ -3,6 +3,7 @@ python-dotenv==1.2.1
 requests==2.32.5
 streamlit>=1
 lxml
+pdf-inspector
 pypdf>=5
 camelot-py[cv]>=0.11
 dspy==3.1.2

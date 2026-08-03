@@ -7,6 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .config import AgentV1Config
+from .ingest import PDF_READERS
 from .runner import AgentV1Runner
 
 
@@ -17,6 +18,14 @@ def main() -> int:
     parser.add_argument("--text", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--runtime", choices=("dspy-react", "langchain-agent", "agent-cli"), default=None)
+    parser.add_argument(
+        "--pdf-reader",
+        "--pdf-extraction-method",
+        dest="pdf_reader",
+        choices=PDF_READERS,
+        default=None,
+        help="PDF reader for --pdf inputs. Defaults to SUBNET_CLAIMS_PDF_READER or pdf-inspector.",
+    )
     parser.add_argument("--skill-dir", type=Path)
     parser.add_argument("--max-agent-iters", type=int)
     args = parser.parse_args()
@@ -31,6 +40,8 @@ def main() -> int:
     config = AgentV1Config.from_env(base_dir)
     if args.runtime:
         config.runtime = args.runtime
+    if args.pdf_reader:
+        config.pdf_reader = args.pdf_reader
     if args.skill_dir:
         config.skill_dir = args.skill_dir
     if args.max_agent_iters:

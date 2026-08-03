@@ -15,7 +15,7 @@ from .dspy_runtime import SectionContextV1DSPyRuntime
 from .export import write_extraction_rows, write_json, write_manifest
 from .grobid_client import GrobidClient
 from .paper_summary import summarize_paper
-from .schema_models import Claim, ClaimEvidenceLink, EvidenceItem, ExtractionArtifact, Paper
+from .schema_models import Claim, ClaimEvidenceLink, EvidenceItem, ExtractionArtifact, Paper, Span
 from .section_claim_extractor import extract_section_claims
 from .section_gating import gate_section_local_claims, plan_section_extraction
 from .section_inventory import build_section_inventory
@@ -45,7 +45,7 @@ class SectionContextV1Runner:
         pdf_path: Path,
         *,
         output_dir: Path | None = None,
-        extraction_method: str = "grobid",
+        extraction_method: str = "pdf-inspector",
         mode: str = "section-local",
     ) -> dict[str, Any]:
         logger.info("section_context_v1: ingesting %s via %s", pdf_path, extraction_method)
@@ -68,7 +68,7 @@ class SectionContextV1Runner:
         *,
         output_dir: Path | None = None,
         expected_sha256: str = "",
-        extraction_method: str = "grobid",
+        extraction_method: str = "pdf-inspector",
         mode: str = "section-local",
     ) -> dict[str, Any]:
         logger.info("section_context_v1: downloading %s", pdf_url)
@@ -426,6 +426,14 @@ class SectionContextV1Runner:
             )
             text_spans = extract_text_spans_from_pdf(pdf_path, paper.paper_id)
             return ExtractionArtifact(paper=paper, spans=text_spans), {}
+        if extraction_method == "pdf-inspector":
+            paper = Paper(
+                paper_id=pdf_path.stem,
+                title=pdf_path.stem,
+                source_type="journal_article",
+            )
+            text_spans = _extract_text_spans_from_pdf_inspector(pdf_path, paper.paper_id)
+            return ExtractionArtifact(paper=paper, spans=text_spans), {}
         raise ValueError(f"Unsupported PDF extraction method: {extraction_method}")
 
     def _artifact_from_tei_xml(self, tei_xml_path: Path) -> ExtractionArtifact:
@@ -451,6 +459,39 @@ def _paper_id_from_tei_path(tei_xml_path: Path) -> str:
     if name.endswith(".xml"):
         return name[: -len(".xml")]
     return tei_xml_path.stem
+
+
+def _extract_text_spans_from_pdf_inspector(pdf_path: Path, paper_id: str) -> list[Span]:
+    try:
+        import pdf_inspector  # type: ignore
+    except Exception as exc:  # pragma: no cover - depends on local install
+        raise RuntimeError("pdf-inspector is required for PDF extraction. Install with `pip install pdf-inspector`.") from exc
+
+    result = pdf_inspector.extract_pages_markdown(str(pdf_path))
+    spans: list[Span] = []
+    char_cursor = 0
+    for page in getattr(result, "pages", []) or []:
+        page_index = int(getattr(page, "page", 0)) + 1
+        text = str(getattr(page, "markdown", "") or "").strip()
+        if not text:
+            continue
+        start = char_cursor
+        end = start + len(text)
+        spans.append(
+            Span(
+                span_id=f"{paper_id}-span-{len(spans) + 1:04d}",
+                paper_id=paper_id,
+                section_type="PAGE",
+                section_name=f"Page {page_index}",
+                page=page_index,
+                char_start=start,
+                char_end=end,
+                text=text,
+                span_type="text",
+            )
+        )
+        char_cursor = end + 1
+    return spans
 
 
 def _normalize_extraction_mode(mode: str) -> str:

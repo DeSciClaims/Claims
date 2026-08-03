@@ -26,7 +26,16 @@ class AgentV1Runner:
         self.config = config or AgentV1Config.from_env()
 
     def run_from_pdf(self, pdf_path: Path, *, output_dir: Path | None = None) -> Artifact:
-        document = ingest_pdf(pdf_path, max_chars=self.config.max_source_chars)
+        document = ingest_pdf(
+            pdf_path,
+            max_chars=self.config.max_source_chars,
+            reader=self.config.pdf_reader,
+            grobid_url=self.config.grobid_url,
+            grobid_cache_dir=self.config.cache_dir / "grobid",
+            grobid_timeout_s=self.config.grobid_timeout_s,
+            grobid_retries=self.config.grobid_retries,
+            grobid_retry_wait_s=self.config.grobid_retry_wait_s,
+        )
         return self.run_from_document(document, output_dir=output_dir, source_artifact_path=pdf_path)
 
     def run_from_artifact_json(self, artifact_json_path: Path, *, output_dir: Path | None = None) -> Artifact:
@@ -62,6 +71,7 @@ class AgentV1Runner:
                 "skill_sha256": skill_pack.sha256,
                 "source_type": document.source_type,
                 "source_path": document.source_path,
+                "source_metadata": document.raw_metadata,
             }
         )
         issues = validate_agent_artifact(artifact)

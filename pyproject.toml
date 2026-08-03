@@ -15,6 +15,7 @@ dependencies = [
     "langchain-openai",
     "lxml",
     "openpyxl",
+    "pdf-inspector",
     "pydantic>=2",
     "pypdf",
     "python-dotenv",

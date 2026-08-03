@@ -19,8 +19,8 @@ def main() -> int:
     parser.add_argument("--artifact-json", type=Path)
     parser.add_argument(
         "--pdf-extraction-method",
-        choices=("grobid", "pypdf"),
-        default="grobid",
+        choices=("pdf-inspector", "grobid", "pypdf"),
+        default="pdf-inspector",
         help="How to parse a PDF input before mining.",
     )
     parser.add_argument("--output-dir", type=Path)

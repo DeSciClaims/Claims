@@ -28,14 +28,41 @@ class InputDocument(BaseModel):
     raw_metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-def ingest_pdf(pdf_path: Path, *, max_chars: int) -> InputDocument:
+PDF_READERS = ("pdf-inspector", "pypdf", "grobid")
+
+
+def ingest_pdf(
+    pdf_path: Path,
+    *,
+    max_chars: int,
+    reader: str = "pdf-inspector",
+    grobid_url: str = "http://localhost:8070/",
+    grobid_cache_dir: Path | None = None,
+    grobid_timeout_s: int = 120,
+    grobid_retries: int = 3,
+    grobid_retry_wait_s: int = 2,
+) -> InputDocument:
     paper_id = pdf_path.stem
-    spans = _spans_from_pdf(pdf_path, paper_id=paper_id, max_chars=max_chars)
+    normalized_reader = _normalize_pdf_reader(reader)
+    if normalized_reader == "pdf-inspector":
+        return _document_from_pdf_inspector(pdf_path, paper_id=paper_id, max_chars=max_chars)
+    if normalized_reader == "grobid":
+        return _document_from_grobid(
+            pdf_path,
+            max_chars=max_chars,
+            grobid_url=grobid_url,
+            grobid_cache_dir=grobid_cache_dir,
+            grobid_timeout_s=grobid_timeout_s,
+            grobid_retries=grobid_retries,
+            grobid_retry_wait_s=grobid_retry_wait_s,
+        )
+    spans = _spans_from_pypdf(pdf_path, paper_id=paper_id, max_chars=max_chars)
     return InputDocument(
         paper=Paper(paper_id=paper_id, title=paper_id),
         spans=spans,
         source_path=str(pdf_path),
         source_type="pdf",
+        raw_metadata={"pdf_reader": normalized_reader},
     )
 
 
@@ -104,11 +131,120 @@ def document_source_payload(document: InputDocument, *, max_chars: int) -> dict[
         "paper": document.paper.model_dump(mode="json"),
         "source_type": document.source_type,
         "source_path": document.source_path,
+        "source_metadata": document.raw_metadata,
         "spans": [span.model_dump(mode="json") for span in spans],
     }
 
 
-def _spans_from_pdf(pdf_path: Path, *, paper_id: str, max_chars: int) -> list[InputSpan]:
+def _normalize_pdf_reader(reader: str) -> str:
+    normalized = str(reader or "").strip().lower().replace("_", "-")
+    aliases = {
+        "pdfinspector": "pdf-inspector",
+        "pdf-inspector": "pdf-inspector",
+        "pypdf": "pypdf",
+        "py-pdf": "pypdf",
+        "grobid": "grobid",
+    }
+    if normalized in aliases:
+        return aliases[normalized]
+    raise ValueError(f"Unsupported agent_v1 PDF reader: {reader}. Expected one of: {', '.join(PDF_READERS)}")
+
+
+def _document_from_pdf_inspector(pdf_path: Path, *, paper_id: str, max_chars: int) -> InputDocument:
+    try:
+        import pdf_inspector  # type: ignore
+    except Exception as exc:  # pragma: no cover - depends on local install
+        raise RuntimeError("pdf-inspector is required for agent_v1 PDF ingestion. Install with `pip install pdf-inspector`.") from exc
+
+    result = pdf_inspector.extract_pages_markdown(str(pdf_path))
+    spans: list[InputSpan] = []
+    for page in getattr(result, "pages", []) or []:
+        page_index = int(getattr(page, "page", 0))
+        markdown = str(getattr(page, "markdown", "") or "").strip()
+        if not markdown:
+            continue
+        spans.append(
+            InputSpan(
+                span_id=f"{paper_id}-p{page_index + 1:03d}-markdown",
+                paper_id=paper_id,
+                section_name=f"Page {page_index + 1}",
+                section_type="PAGE",
+                page=page_index + 1,
+                text=markdown,
+                span_type="text",
+            )
+        )
+    return InputDocument(
+        paper=Paper(paper_id=paper_id, title=paper_id),
+        spans=_truncate_spans(spans, max_chars=max_chars),
+        source_path=str(pdf_path),
+        source_type="pdf",
+        raw_metadata={
+            "pdf_reader": "pdf-inspector",
+            "pages_with_tables": list(getattr(result, "pages_with_tables", []) or []),
+            "pages_with_columns": list(getattr(result, "pages_with_columns", []) or []),
+            "pages_needing_ocr": list(getattr(result, "pages_needing_ocr", []) or []),
+            "is_complex": bool(getattr(result, "is_complex", False)),
+        },
+    )
+
+
+def _document_from_grobid(
+    pdf_path: Path,
+    *,
+    max_chars: int,
+    grobid_url: str,
+    grobid_cache_dir: Path | None,
+    grobid_timeout_s: int,
+    grobid_retries: int,
+    grobid_retry_wait_s: int,
+) -> InputDocument:
+    from miner.v0.grobid_client import GrobidClient
+    from miner.v0.tei_parser import TEIParser
+
+    cache_dir = grobid_cache_dir or Path(__file__).resolve().parent / ".cache" / "grobid"
+    client = GrobidClient(
+        grobid_url,
+        cache_dir,
+        timeout_s=grobid_timeout_s,
+        retries=grobid_retries,
+        retry_wait_s=grobid_retry_wait_s,
+    )
+    tei_string = client.process_pdf(pdf_path, use_cache=True)
+    parser = TEIParser()
+    v0_paper = parser.parse_paper(tei_string, pdf_path)
+    v0_spans = parser.extract_spans(tei_string, v0_paper.paper_id)
+    paper = Paper(
+        paper_id=v0_paper.paper_id,
+        title=v0_paper.title or v0_paper.paper_id,
+        authors=list(v0_paper.authors or []),
+        year=v0_paper.year,
+        venue=v0_paper.journal,
+        doi=v0_paper.doi,
+    )
+    spans = [
+        InputSpan(
+            span_id=span.span_id,
+            paper_id=span.paper_id,
+            section_name=span.section_name or "",
+            section_type=span.section_type or "OTHER",
+            page=span.page,
+            text=span.text,
+            span_type=span.span_type,
+        )
+        for span in v0_spans
+        if span.text
+    ]
+    return InputDocument(
+        paper=paper,
+        spans=_truncate_spans(spans, max_chars=max_chars),
+        source_path=str(pdf_path),
+        source_type="pdf",
+        raw_metadata={"pdf_reader": "grobid"},
+    )
+
+
+def _spans_from_pypdf(pdf_path: Path, *, paper_id: str, max_chars: int) -> list[InputSpan]:
     try:
         from pypdf import PdfReader  # type: ignore
     except Exception as exc:  # pragma: no cover

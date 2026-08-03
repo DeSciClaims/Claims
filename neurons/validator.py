@@ -15,6 +15,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from miner.agent_v1.ingest import PDF_READERS
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, build_silver_adjudication_passes
 from validator.agent_v1.artifact_summary import summarize_agent_artifact
 from validator.agent_v1.config import AgentV1ValidatorConfig
@@ -280,6 +281,13 @@ class ClaimsValidator:
             help="Model id used by the private reference miner harness.",
         )
         parser.add_argument(
+            "--claims.reference-pdf-reader",
+            dest="claims_reference_pdf_reader",
+            choices=PDF_READERS,
+            default=os.getenv("CLAIMS_REFERENCE_MINER_PDF_READER", os.getenv("SUBNET_CLAIMS_PDF_READER", "pdf-inspector")),
+            help="PDF reader used when the private reference miner creates missing Bronze records.",
+        )
+        parser.add_argument(
             "--claims.reference-miner-command",
             dest="claims_reference_miner_command",
             default=os.getenv("CLAIMS_REFERENCE_MINER_COMMAND", ""),
@@ -480,6 +488,7 @@ class ClaimsValidator:
         config.claims_reference_release_id = parsed_args.claims_reference_release_id
         config.claims_reference_harness = parsed_args.claims_reference_harness
         config.claims_reference_model = parsed_args.claims_reference_model
+        config.claims_reference_pdf_reader = parsed_args.claims_reference_pdf_reader
         config.claims_reference_miner_command = parsed_args.claims_reference_miner_command
         config.claims_reference_miner_claims_repo = parsed_args.claims_reference_miner_claims_repo
         config.claims_silver_static_disposition = parsed_args.claims_silver_static_disposition
@@ -914,6 +923,8 @@ class ClaimsValidator:
         return local_client
 
     def _apply_reference_harness_env(self) -> None:
+        if getattr(self.config, "claims_reference_pdf_reader", None):
+            os.environ["CLAIMS_REFERENCE_MINER_PDF_READER"] = str(self.config.claims_reference_pdf_reader)
         if getattr(self.config, "claims_reference_harness", None):
             profile = resolve_agent_harness(
                 harness=str(self.config.claims_reference_harness),
