@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 from neurons.protocol import ClaimExtractionSynapse
 from neurons.tasks import ClaimsTask
-from neurons.validator import ClaimsValidator, _is_agent_v1_artifact
+from neurons.validator import ClaimsValidator, _is_agent_v1_artifact, _source_context_map_from_payloads
 from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
 from validator.agent_v1.structural import run_structural_checks
@@ -16,6 +16,21 @@ def test_protocol_can_carry_source_payload() -> None:
     synapse = ClaimExtractionSynapse(source_payload={"spans": [{"span_id": "s1", "text": "Grounded text."}]})
 
     assert synapse.source_payload == {"spans": [{"span_id": "s1", "text": "Grounded text."}]}
+
+
+def test_source_context_map_merges_reader_span_ids() -> None:
+    span_map = _source_context_map_from_payloads(
+        [
+            {"spans": [{"span_id": "paper-p003-001", "text": "Bronze page text."}]},
+            {"spans": [{"span_id": "paper-p003-markdown", "text": "Miner markdown page text."}]},
+        ]
+    )
+
+    assert span_map["paper-p003-001"] == "Bronze page text."
+    assert span_map["paper-p003-markdown"] == "Miner markdown page text."
+    assert _source_context_map_from_payloads(
+        [{"spans": [{"span_id": "paper-p004-001", "text": "Only old reader text."}]}]
+    )["paper-p004-markdown"] == "Only old reader text."
 
 
 def test_auto_router_detects_agent_v1_artifacts() -> None:

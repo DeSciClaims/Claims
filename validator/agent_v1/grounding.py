@@ -165,7 +165,9 @@ def _normalize_number(number: str) -> str:
 def _contains_normalized(haystack: str, needle: str) -> bool:
     normalized_haystack = _normalize(haystack)
     normalized_needle = _normalize(needle)
-    return normalized_needle in normalized_haystack
+    if normalized_needle in normalized_haystack:
+        return True
+    return _has_ordered_token_support(normalized_haystack, normalized_needle)
 
 
 def _normalize(text: str) -> str:
@@ -173,6 +175,50 @@ def _normalize(text: str) -> str:
     text = text.casefold()
     text = re.sub(r"\s+", " ", text)
     return text.strip()
+
+
+def _has_ordered_token_support(haystack: str, needle: str) -> bool:
+    needle_tokens = _quote_tokens(needle)
+    if len(needle_tokens) < 6:
+        return False
+    haystack_tokens = _quote_tokens(haystack)
+    if not haystack_tokens:
+        return False
+    matched = _best_compact_ordered_match_count(haystack_tokens, needle_tokens)
+    coverage = matched / len(needle_tokens)
+    return coverage >= 0.75
+
+
+def _quote_tokens(text: str) -> list[str]:
+    tokens = re.findall(r"[a-z0-9]+", _normalize(text))
+    return [token for token in tokens if len(token) > 1 or token.isdigit()]
+
+
+def _ordered_token_match_count(haystack_tokens: list[str], needle_tokens: list[str]) -> int:
+    cursor = 0
+    matched = 0
+    for token in needle_tokens:
+        try:
+            index = haystack_tokens.index(token, cursor)
+        except ValueError:
+            continue
+        matched += 1
+        cursor = index + 1
+    return matched
+
+
+def _best_compact_ordered_match_count(haystack_tokens: list[str], needle_tokens: list[str]) -> int:
+    window_size = max(len(needle_tokens) * 3, len(needle_tokens) + 20)
+    if len(haystack_tokens) <= window_size:
+        return _ordered_token_match_count(haystack_tokens, needle_tokens)
+    best = 0
+    for start in range(0, len(haystack_tokens) - window_size + 1):
+        matched = _ordered_token_match_count(haystack_tokens[start : start + window_size], needle_tokens)
+        if matched > best:
+            best = matched
+            if best == len(needle_tokens):
+                break
+    return best
 
 
 def _finding(

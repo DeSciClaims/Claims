@@ -19,7 +19,14 @@ from validator.agent_v1.adjudication_queue import (
 )
 from validator.agent_v1.comparison_models import BronzeDiffCase, ComparisonCandidate, SilverRecord
 from validator.agent_v1.miner_consensus import MinerConsensusRule, MinerConsensusVote, aggregate_miner_consensus_votes
-from validator.agent_v1.orchestrator import MinerArtifactSubmission, MinerPaperSubmission, SilverScoringJob, run_batch_silver_scoring, run_paper_silver_pipeline
+from validator.agent_v1.orchestrator import (
+    MinerArtifactSubmission,
+    MinerPaperSubmission,
+    SilverScoringJob,
+    _source_context_for_candidates,
+    run_batch_silver_scoring,
+    run_paper_silver_pipeline,
+)
 from validator.agent_v1.relation_classifier import DSPyRelationClassifier
 from validator.agent_v1.silver_builder import build_silver_record
 from validator.agent_v1.silver_scoring import score_miner_against_silver
@@ -144,6 +151,53 @@ def test_empty_silver_record_is_not_a_perfect_score() -> None:
 
     assert score.score == 0.0
     assert [finding.metadata["code"] for finding in score.findings] == ["empty_silver_record"]
+
+
+def test_silver_adjudication_context_targets_candidate_spans() -> None:
+    candidate = ComparisonCandidate(
+        candidate_id="miner:uid_10:C04",
+        paper_id="paper",
+        origin="miner",
+        miner_id="uid_10",
+        record_id="C04",
+        statement="Polygenic signal overlaps with cognitive function.",
+        normalized_statement="polygenic signal overlaps with cognitive function",
+        source_span_ids=["paper-p003-markdown"],
+        source_quotes=["The polygenic score remains associated with educational attainment and cognitive function."],
+    )
+
+    context = _source_context_for_candidates(
+        [candidate],
+        {
+            "paper-p001-markdown": "Front matter should not be sent for this case.",
+            "paper-p003-markdown": "The polygenic score remains associated with educational attainment and cognitive function.",
+        },
+        fallback="fallback context",
+    )
+
+    assert "paper-p003-markdown" in context
+    assert "cognitive function" in context
+    assert "Front matter" not in context
+
+
+def test_silver_adjudication_context_uses_page_span_alias() -> None:
+    candidate = ComparisonCandidate(
+        candidate_id="bronze:C03",
+        paper_id="paper",
+        origin="bronze",
+        record_id="C03",
+        statement="Polygenic scoring captures a diffuse signal.",
+        normalized_statement="polygenic scoring captures a diffuse signal",
+        source_span_ids=["paper-p003-markdown"],
+    )
+
+    context = _source_context_for_candidates(
+        [candidate],
+        {"paper-p003-001": "Older cached Bronze page-three text."},
+        fallback="fallback context",
+    )
+
+    assert context == "paper-p003-markdown: Older cached Bronze page-three text."
 
 
 def test_silver_record_preserves_candidate_evidence_ids() -> None:

@@ -58,6 +58,7 @@ def run_paper_silver_pipeline(
     direct_judge_confidence: float = 0.9,
     relation_classifier: RelationClassifier | None = None,
     source_context: str = "",
+    source_context_by_span_id: dict[str, str] | None = None,
     adjudication_max_workers: int = 4,
 ) -> PaperSilverPipelineResult:
     bronze_candidates = project_agent_artifact(bronze_artifact, origin="bronze")
@@ -84,10 +85,15 @@ def run_paper_silver_pipeline(
         )
     )
     def adjudicate(case: BronzeDiffCase) -> tuple[AdjudicationConsensus, AdjudicationDecision | None]:
+        candidates = [candidates_by_id[candidate_id] for candidate_id in case.candidate_ids if candidate_id in candidates_by_id]
         context = AdjudicationContextBundle(
             case=case,
-            candidates=[candidates_by_id[candidate_id] for candidate_id in case.candidate_ids if candidate_id in candidates_by_id],
-            source_context=source_context,
+            candidates=candidates,
+            source_context=_source_context_for_candidates(
+                candidates,
+                source_context_by_span_id or {},
+                fallback=source_context,
+            ),
             candidate_order_seed=case.case_id,
         )
         consensus = run_adjudication_case(
@@ -168,6 +174,41 @@ def _dedupe_cases(cases: Iterable[BronzeDiffCase]) -> list[BronzeDiffCase]:
         if key not in by_key:
             by_key[key] = case
     return list(by_key.values())
+
+
+def _source_context_for_candidates(
+    candidates: list[ComparisonCandidate],
+    source_context_by_span_id: dict[str, str],
+    *,
+    fallback: str = "",
+) -> str:
+    if not source_context_by_span_id:
+        return fallback
+    ordered_span_ids: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        for span_id in candidate.source_span_ids:
+            if span_id and span_id not in seen:
+                ordered_span_ids.append(span_id)
+                seen.add(span_id)
+    lines: list[str] = []
+    for span_id in ordered_span_ids:
+        text = source_context_by_span_id.get(span_id)
+        if text is None:
+            text = source_context_by_span_id.get(_alternate_page_span_id(span_id))
+        if text:
+            lines.append(f"{span_id}: {text.strip()}")
+    if lines:
+        return "\n".join(lines)
+    return fallback
+
+
+def _alternate_page_span_id(span_id: str) -> str:
+    if span_id.endswith("-markdown"):
+        return f"{span_id[: -len('-markdown')]}-001"
+    if span_id.endswith("-001"):
+        return f"{span_id[: -len('-001')]}-markdown"
+    return ""
 
 
 def _decision_from_consensus(

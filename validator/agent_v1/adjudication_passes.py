@@ -166,6 +166,9 @@ class CLIAdjudicationPass:
                 timeout=self.timeout_seconds or None,
                 check=False,
             )
+            if completed.returncode != 0:
+                raise RuntimeError(f"CLI exited {completed.returncode}: {completed.stderr[-1000:]}")
+            payload = _parse_json_object(completed.stdout)
             _write_cli_debug_artifact(
                 context=context,
                 pass_id=self.pass_id,
@@ -173,9 +176,6 @@ class CLIAdjudicationPass:
                 prompt=prompt,
                 completed=completed,
             )
-            if completed.returncode != 0:
-                raise RuntimeError(f"CLI exited {completed.returncode}: {completed.stderr[-1000:]}")
-            payload = _parse_json_object(completed.stdout)
             return vote_from_payload(
                 context,
                 payload,

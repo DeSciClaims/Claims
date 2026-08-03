@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from validator.agent_v1.config import AgentV1ValidatorConfig
-from validator.agent_v1.grounding import run_grounding_checks
+from validator.agent_v1.grounding import _contains_normalized, run_grounding_checks
 from validator.agent_v1.models import AgentV1ValidationFinding, RigorAgentResult
 from validator.agent_v1.reference_client import LocalCliReferenceMinerClient, LocalReferenceMinerClient, ReferenceMinerInput
 from validator.agent_v1.runner import AgentV1ValidatorRunner
@@ -33,6 +33,25 @@ def test_validator_agent_v1_grounding_flags_bad_quote(tmp_path: Path) -> None:
 
     assert structural_findings == []
     assert [finding.metadata["code"] for finding in grounding_findings] == ["quote_not_in_source"]
+
+
+def test_validator_agent_v1_grounding_tolerates_pdf_extraction_artifacts() -> None:
+    source_text = (
+        "The linear polygenic score from all mea- −29 sured SNPs accounts for ≈2% "
+        "(P =1.0×10) stratification. of the variance in EduYears in the STR sam- −24 "
+        "ple and ≈3% (P =7.1×10)intheQIMR."
+    )
+
+    assert _contains_normalized(
+        source_text,
+        "The linear polygenic score from all measured SNPs accounts for ≈2% "
+        "(P = 1.0 × 10−29) of the variance in EduYears in the STR sample and "
+        "≈3% (P = 7.1 × 10−24) in the QIMR.",
+    )
+    assert not _contains_normalized(
+        "The polygenic score remains associated with educational attainment and cognitive function in within-family analyses.",
+        "The polygenic score remains associated with educational attainment and cognitive function even after controlling for the other.",
+    )
 
 
 def test_validator_agent_v1_runner_converts_rigor_runtime_failure_to_finding(monkeypatch, tmp_path: Path) -> None:
@@ -160,7 +179,7 @@ def test_local_cli_reference_miner_client_generates_missing_bronze(tmp_path: Pat
     fake_cli = (
         "import argparse,json,pathlib;"
         "p=argparse.ArgumentParser();"
-        "p.add_argument('--artifact-json');p.add_argument('--output-dir');p.add_argument('--reference-release-id');"
+        "p.add_argument('--artifact-json');p.add_argument('--output-dir');p.add_argument('--paper-id');p.add_argument('--reference-release-id');"
         "a=p.parse_args();"
         "o=pathlib.Path(a.output_dir);o.mkdir(parents=True,exist_ok=True);"
         "artifact=json.loads(pathlib.Path(a.artifact_json).read_text());"

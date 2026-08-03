@@ -3,6 +3,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shlex
 import statistics
 import sys
@@ -797,7 +798,9 @@ class ClaimsValidator:
             self.bt_logging.warning(f"Silver post-pass could not initialize Bronze client: {exc}")
             return {}
         silver_scores_by_uid: dict[int, list[float]] = {}
-        miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any]]]] = {paper.paper_id or f"paper_{index}": [] for index, paper in enumerate(paper_tasks, start=1)}
+        miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None]]] = {
+            paper.paper_id or f"paper_{index}": [] for index, paper in enumerate(paper_tasks, start=1)
+        }
         for index, neuron in enumerate(self.target_neurons):
             response = responses[index] if index < len(responses) else None
             if response is None or not self._is_protocol_compatible(response):
@@ -811,13 +814,19 @@ class ClaimsValidator:
                         continue
                     paper_id = str(article.get("paper_id") or "")
                     extraction = article.get("agent_output") or article.get("extraction")
+                    source_payload = article.get("source_payload")
                     if paper_id in miners_by_paper and isinstance(extraction, dict) and _is_agent_v1_artifact(extraction):
-                        miners_by_paper[paper_id].append((uid, extraction, metadata))
+                        miners_by_paper[paper_id].append(
+                            (uid, extraction, metadata, source_payload if isinstance(source_payload, dict) else None)
+                        )
             elif getattr(response, "extraction", None) and len(paper_tasks) == 1:
                 paper_id = paper_tasks[0].paper_id or task.paper_id or "paper"
                 extraction = getattr(response, "extraction")
+                source_payload = getattr(response, "source_payload", None)
                 if isinstance(extraction, dict) and _is_agent_v1_artifact(extraction):
-                    miners_by_paper.setdefault(paper_id, []).append((uid, extraction, metadata))
+                    miners_by_paper.setdefault(paper_id, []).append(
+                        (uid, extraction, metadata, source_payload if isinstance(source_payload, dict) else None)
+                    )
 
         for paper_index, paper in enumerate(paper_tasks, start=1):
             paper_id = paper.paper_id or f"paper_{paper_index}"
@@ -858,7 +867,7 @@ class ClaimsValidator:
                     bronze_artifact=bronze_artifact,
                     miner_artifacts=[
                         MinerArtifactSubmission(miner_id=f"uid_{uid}", artifact=extraction)
-                        for uid, extraction, _metadata in miner_rows
+                        for uid, extraction, _metadata, _source_payload in miner_rows
                     ],
                     silver_record_id=f"silver_{run_id}_{safe_task_id(paper_id)}",
                     bronze_record_id=bronze.bronze_record_id,
@@ -866,6 +875,12 @@ class ClaimsValidator:
                     tiebreak_pass=tiebreak_pass,
                     direct_judge_confidence=float(getattr(self.config, "claims_silver_direct_confidence", 0.9)),
                     source_context=_source_context_from_bronze(bronze.source_payload_path),
+                    source_context_by_span_id=_source_context_map_from_payloads(
+                        [
+                            _source_payload_from_path(bronze.source_payload_path),
+                            *[source_payload for _uid, _extraction, _metadata, source_payload in miner_rows],
+                        ]
+                    ),
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
                 )
                 silver_stage = self._record_timing_stage(
@@ -1002,7 +1017,7 @@ class ClaimsValidator:
         task: ClaimsTask,
         paper_id: str,
         result: Any,
-        miner_rows: list[tuple[int, dict[str, Any], dict[str, Any]]],
+        miner_rows: list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None]],
         paper_stage_seconds: dict[str, float] | None = None,
         model_rows: list[dict[str, Any]] | None = None,
     ) -> None:
@@ -1020,7 +1035,7 @@ class ClaimsValidator:
             return
         batch_id = task.batch_id or task.task_id
         network = str(getattr(self.config, "claims_network", "testnet"))
-        metadata_by_miner_id = {f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata in miner_rows}
+        metadata_by_miner_id = {f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata, _source_payload in miner_rows}
         backend_case_ids = {case.case_id: f"{run_id}_{case.case_id}" for case in result.diff_cases}
         for case in result.diff_cases:
             case_uid, case_metadata = metadata_by_miner_id.get(case.miner_id, (None, {}))
@@ -2307,6 +2322,45 @@ def _source_context_from_bronze(source_payload_path: str | None) -> str:
         if lines:
             return "\n".join(lines)
     return json.dumps(payload, sort_keys=True, ensure_ascii=False)[:12000]
+
+
+def _source_payload_from_path(source_payload_path: str | None) -> dict[str, Any] | None:
+    if not source_payload_path:
+        return None
+    payload = _read_json_object(Path(source_payload_path))
+    return payload if isinstance(payload, dict) else None
+
+
+def _source_context_map_from_payloads(payloads: list[dict[str, Any] | None]) -> dict[str, str]:
+    span_text_by_id: dict[str, str] = {}
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        spans = payload.get("spans")
+        if not isinstance(spans, list):
+            continue
+        for index, span in enumerate(spans, start=1):
+            if not isinstance(span, dict):
+                continue
+            span_id = str(span.get("span_id") or span.get("id") or f"span_{index}").strip()
+            text = str(span.get("text") or span.get("quote") or "").strip()
+            if not span_id or not text:
+                continue
+            span_text_by_id[span_id] = text
+            for alias in _page_span_id_aliases(span_id):
+                span_text_by_id.setdefault(alias, text)
+    return span_text_by_id
+
+
+def _page_span_id_aliases(span_id: str) -> list[str]:
+    match = re.match(r"^(?P<prefix>.+-p\d{3})-(?P<suffix>markdown|001)$", span_id)
+    if not match:
+        return []
+    prefix = match.group("prefix")
+    suffix = match.group("suffix")
+    if suffix == "markdown":
+        return [f"{prefix}-001"]
+    return [f"{prefix}-markdown"]
 
 
 def _stable_hash(payload: Any) -> str:
