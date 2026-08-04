@@ -40,7 +40,8 @@ where present, they are non-trivial — there is no fixed list. Model-training f
 - Contains `**Sources**`; every load-bearing number in a claim has a `Sources` entry carrying
   a verbatim «quote» plus an `[input]`/`[result]` tag — no bare-path entries, no memory-filled numbers
 - A claim/evidence/experiment that combines facts from multiple source locations has multiple
-  source refs on that same object; do not rely on provenance attached to a different object
+  source refs on that object or on explicitly linked evidence/proof objects; do not rely on vague
+  provenance elsewhere in the artifact
 - Contains `**Status**`
 - Contains `**Falsification criteria**` (a substantive observation — about the system, or about the benchmark's behavior for a methodological claim — not a tautology or a re-run of a metric gate)
 - `Statement` is the mechanism/takeaway a result reveals, not a record: a single instance may state the mechanism it reveals, but must not be extrapolated into a universal law beyond its regime, nor assert a distinction the design cannot disentangle — those limits live in `Conditions`
@@ -187,9 +188,10 @@ For each file in `evidence/figures/*.md` specifically:
 - No fact ABOUT a repo artifact (line count, path, internal structure) is transcribed from the paper without checking the real file — when paper and repo disagree, the discrepancy is flagged, not silently resolved to the paper's number
 - Spot-check trace `source_refs` and evidence `**Source**` labels: the cited section/table/appendix actually contains the claimed content
 - A statistic carries its scope/denominator (N, population) in its `Source` — subset figures (e.g. "5 papers / 3,050 reqs") are not juxtaposed with full-corpus figures as if same-denominator
-- Every load-bearing number is grounded by a source ref attached to the same object that states
-  it. If a number appears elsewhere in the paper, the object must cite that additional source
-  span. A number grounded only by another claim/evidence item FAILS.
+- Every load-bearing number is grounded by a source ref attached to the object that states it, or
+  by an explicitly linked evidence/proof object. If a number appears elsewhere in the paper, the
+  object or its linked evidence/proof object must cite that additional source span. A number
+  grounded only by an unrelated claim/evidence item FAILS.
 - Derived conversions, percentages, and threshold lists are omitted unless the exact value/list
   appears in a connected quote or span.
 - **Claim Statements are takeaways** (exhaustive, not spot-checked — symmetric to the number-sources

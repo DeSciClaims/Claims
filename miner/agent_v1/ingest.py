@@ -16,6 +16,8 @@ class InputSpan(BaseModel):
     section_name: str = ""
     section_type: str = "OTHER"
     page: int | None = None
+    char_start: int | None = None
+    char_end: int | None = None
     text: str
     span_type: str = "text"
 
@@ -29,6 +31,7 @@ class InputDocument(BaseModel):
 
 
 PDF_READERS = ("pdf-inspector", "pypdf", "grobid")
+SOURCE_PAYLOAD_SCHEMA_VERSION = "agent_v1_source_payload_v1"
 
 
 def ingest_pdf(
@@ -128,12 +131,48 @@ def ingest_text(text_path: Path, *, max_chars: int) -> InputDocument:
 def document_source_payload(document: InputDocument, *, max_chars: int) -> dict[str, Any]:
     spans = _truncate_spans(document.spans, max_chars=max_chars)
     return {
+        "schema_version": SOURCE_PAYLOAD_SCHEMA_VERSION,
         "paper": document.paper.model_dump(mode="json"),
         "source_type": document.source_type,
         "source_path": document.source_path,
         "source_metadata": document.raw_metadata,
         "spans": [span.model_dump(mode="json") for span in spans],
     }
+
+
+def apply_paper_metadata_override(
+    document: InputDocument,
+    *,
+    paper_id: str = "",
+    title: str = "",
+    source_url: str = "",
+    source_sha256: str = "",
+) -> InputDocument:
+    clean_paper_id = str(paper_id or "").strip()
+    clean_title = str(title or "").strip()
+    previous_paper_id = document.paper.paper_id
+    if clean_paper_id:
+        document.paper.paper_id = clean_paper_id
+    if clean_title:
+        document.paper.title = clean_title
+    if clean_paper_id and clean_paper_id != previous_paper_id:
+        for span in document.spans:
+            span.paper_id = clean_paper_id
+            if span.span_id.startswith(f"{previous_paper_id}-"):
+                span.span_id = f"{clean_paper_id}{span.span_id[len(previous_paper_id):]}"
+    override = {
+        key: value
+        for key, value in {
+            "paper_id": clean_paper_id,
+            "title": clean_title,
+            "source_url": str(source_url or "").strip(),
+            "source_sha256": str(source_sha256 or "").strip(),
+        }.items()
+        if value
+    }
+    if override:
+        document.raw_metadata["paper_metadata_override"] = override
+    return document
 
 
 def _normalize_pdf_reader(reader: str) -> str:
@@ -229,6 +268,8 @@ def _document_from_grobid(
             section_name=span.section_name or "",
             section_type=span.section_type or "OTHER",
             page=span.page,
+            char_start=span.char_start,
+            char_end=span.char_end,
             text=span.text,
             span_type=span.span_type,
         )

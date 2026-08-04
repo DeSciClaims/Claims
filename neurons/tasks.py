@@ -57,6 +57,7 @@ class ClaimsTask:
     task_id: str
     paper_url: str = ""
     paper_id: str = ""
+    title: str = ""
     source_sha256: str = ""
     artifact: dict[str, Any] | None = None
     batch_id: str = ""
@@ -77,11 +78,13 @@ class ClaimsTask:
         papers_payload = payload.get("papers") if isinstance(payload.get("papers"), list) else []
         papers = tuple(ClaimsPaperTask.from_dict(item) for item in papers_payload if isinstance(item, dict))
         paper_id = str(payload.get("paper_id") or (paper or {}).get("paper_id") or "").strip()
+        title = str(payload.get("title") or (paper or {}).get("title") or "").strip()
         task_id = str(payload.get("task_id") or paper_id or fallback_task_id).strip()
         return cls(
             task_id=safe_task_id(task_id),
             paper_url=str(payload.get("paper_url") or "").strip(),
             paper_id=paper_id,
+            title=title,
             source_sha256=str(payload.get("source_sha256") or "").strip().lower(),
             artifact=artifact if isinstance(artifact, dict) else None,
             batch_id=safe_task_id(str(payload.get("batch_id") or "").strip()) if payload.get("batch_id") else "",
@@ -103,6 +106,7 @@ class ClaimsTask:
             ClaimsPaperTask(
                 paper_id=self.paper_id,
                 paper_url=self.paper_url,
+                title=self.title,
                 source_sha256=self.source_sha256,
                 artifact=self.artifact,
             ),
@@ -120,6 +124,7 @@ class ClaimsTask:
             "netuid": self.netuid,
             "papers": [paper.to_dict() for paper in self.papers],
             "paper_id": self.paper_id,
+            "title": self.title,
             "paper_url": self.paper_url,
             "source_sha256": self.source_sha256,
             "artifact": self.artifact,

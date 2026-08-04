@@ -6,7 +6,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from miner.agent_v1.config import AgentV1Config
-from miner.agent_v1.ingest import document_source_payload, ingest_pdf
+from miner.agent_v1.ingest import (
+    SOURCE_PAYLOAD_SCHEMA_VERSION,
+    apply_paper_metadata_override,
+    document_source_payload,
+    ingest_pdf,
+)
 from miner.agent_v1.runner import AgentV1Runner
 from miner.agent_v1.runtime.base import AgentResult
 from miner.agent_v1.runtime.langchain_agent import _structured_payload, _validation_status
@@ -84,7 +89,42 @@ def test_agent_v1_pdf_inspector_reader_outputs_markdown_page_spans(monkeypatch, 
     assert document.spans[0].span_id == "paper-p001-markdown"
     assert document.spans[0].page == 1
     assert document.spans[0].text == "# Title\n\nTreatment improved outcome."
+    assert payload["schema_version"] == SOURCE_PAYLOAD_SCHEMA_VERSION
     assert payload["source_metadata"]["is_complex"] is True
+
+
+def test_agent_v1_source_payload_applies_task_paper_metadata_override(monkeypatch, tmp_path: Path) -> None:
+    pdf_path = tmp_path / "sha256.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n")
+    result = SimpleNamespace(
+        pages=[SimpleNamespace(page=0, markdown="Rietveld text.")],
+        pages_with_tables=[],
+        pages_with_columns=[],
+        pages_needing_ocr=[],
+        is_complex=False,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "pdf_inspector",
+        SimpleNamespace(extract_pages_markdown=lambda path: result),
+    )
+
+    document = ingest_pdf(pdf_path, max_chars=10_000, reader="pdf-inspector")
+    document.paper.title = "Wrong Parser Title"
+    apply_paper_metadata_override(
+        document,
+        paper_id="rietveld_et_al_2013_science",
+        title="GWAS of Educational Attainment",
+        source_url="https://example.test/paper.pdf",
+        source_sha256="abc",
+    )
+    payload = document_source_payload(document, max_chars=10_000)
+
+    assert payload["paper"]["paper_id"] == "rietveld_et_al_2013_science"
+    assert payload["paper"]["title"] == "GWAS of Educational Attainment"
+    assert payload["spans"][0]["paper_id"] == "rietveld_et_al_2013_science"
+    assert payload["spans"][0]["span_id"] == "rietveld_et_al_2013_science-p001-markdown"
+    assert payload["source_metadata"]["paper_metadata_override"]["source_sha256"] == "abc"
 
 
 def test_agent_v1_toolbox_validates_and_submits_artifact(tmp_path: Path) -> None:

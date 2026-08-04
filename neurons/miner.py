@@ -13,7 +13,7 @@ from typing import Any, Tuple
 from dotenv import load_dotenv
 
 from miner.agent_v1.config import AgentV1Config
-from miner.agent_v1.ingest import PDF_READERS
+from miner.agent_v1.ingest import PDF_READERS, SOURCE_PAYLOAD_SCHEMA_VERSION
 from miner.agent_v1.runner import AgentV1Runner
 from miner.v0.config import SectionContextV1Config
 from miner.v0.runner import SectionContextV1Runner
@@ -386,8 +386,11 @@ class ClaimsMiner:
                     "network": task.network,
                     "netuid": task.netuid,
                     "paper_id": paper.paper_id,
+                    "title": paper.title,
                     "paper_url": paper.paper_url,
                     "source_sha256": paper.source_sha256,
+                    "topics": list(paper.topics),
+                    "release_id": paper.release_id,
                     "artifact": paper.artifact,
                     "protocol_version": task.protocol_version,
                     "schema_version": task.schema_version,
@@ -495,7 +498,16 @@ class ClaimsMiner:
                 output_dir=output_dir / "downloads",
                 expected_sha256=task.source_sha256,
             )
-            artifact = self.runner.run_from_pdf(download.path, output_dir=output_dir)
+            artifact = self.runner.run_from_pdf(
+                download.path,
+                output_dir=output_dir,
+                paper_override={
+                    "paper_id": task.paper_id,
+                    "title": task.title,
+                    "source_url": task.paper_url,
+                    "source_sha256": download.sha256,
+                },
+            )
             artifact.metadata.update(
                 {
                     "input_source": "paper_url",
@@ -536,6 +548,7 @@ class ClaimsMiner:
                 f"{runner_config.runtime}:"
                 f"{runner_config.model}:"
                 f"{runner_config.pdf_reader}:"
+                f"{SOURCE_PAYLOAD_SCHEMA_VERSION}:"
                 f"{runner_config.skill_dir}:"
                 f"{runner_config.timeout_seconds}:"
                 f"{runner_config.max_source_chars}:"

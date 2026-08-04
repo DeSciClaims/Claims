@@ -5,7 +5,11 @@ Return STRICT JSON ONLY. Do not include markdown fences or commentary.
 You receive:
 - `request.json`: task metadata and file paths.
 - `paper.json`: known paper metadata.
-- `source_payload.json`: ordered source spans with span IDs, pages, section names, and text.
+- `source_payload.json`: ordered source spans using `agent_v1_source_payload_v1`.
+  Every reader (`pdf-inspector`, `grobid`, `pypdf`, or JSON input) is normalized
+  into the same span contract: each span has `span_id`, `paper_id`,
+  `section_name`, `section_type`, optional `page`, optional `char_start` /
+  `char_end`, `text`, and `span_type`.
 - `agent_schema.json`: the generated JSON Schema for the required structured output.
 - `validation_feedback.json`: deterministic validation feedback from a previous attempt, possibly empty.
 
@@ -14,15 +18,20 @@ Read `agent_schema.json` as the authoritative structured response contract.
 Compile a structured Claims agent artifact derived from the ARA markdown artifact model. Stay source-bounded:
 - Do not invent results, sample sizes, methods, figures, tables, or citations.
 - Every important numerical value in a claim must appear in a source reference quote.
+- Use only span IDs that appear in `source_payload.spans[].span_id`.
 - Use source span IDs in `sources` and `source_refs`.
 - `sources` and `source_refs` are lists. Use multiple source refs when one claim,
   evidence record, experiment, concept, or trace node combines facts from multiple
   sentences, pages, tables, figures, or source spans.
-- Every load-bearing fact must be grounded on the same object that states it. Do
-  not rely on a source ref attached to a different claim/evidence/experiment.
-- Each load-bearing number must appear in one of that object's connected
+- Every load-bearing fact must be connected to the object that states it. Prefer
+  direct source refs on that object. Claim-level facts may also be grounded by
+  explicitly linked `evidence_ids` or `proof` experiment source refs, but only
+  when the claim link is present and the linked object contains the exact
+  supporting span.
+- Each load-bearing number must appear in one of the object's connected
   `quote` fields or cited span texts. If the number appears elsewhere in the
-  paper, add that additional source ref.
+  paper, add that additional source ref to the object or to its explicitly linked
+  evidence/proof object.
 - Do not introduce derived numbers, conversions, percentages, or threshold lists
   unless the exact derived value/list appears in a connected source quote. Prefer
   the source's original expression over a derived value.

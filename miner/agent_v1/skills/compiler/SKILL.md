@@ -149,10 +149,11 @@ Map the atoms into `/logic/`:
   worse than `[pending]`).
   **Use multiple source refs when the object needs them**: if a claim, evidence record,
   experiment, concept, or trace node combines facts from multiple sentences, tables, figures,
-  pages, or spans, attach every supporting source ref to that same object. Do not rely on a
-  source attached elsewhere in the artifact. Every load-bearing number must appear in one of the
-  object's own connected quotes or cited spans. If the exact number appears elsewhere in the
-  paper, cite that additional span. Do not add derived conversions, percentages, or threshold
+  pages, or spans, attach every supporting source ref to that object or to an explicitly linked
+  evidence/proof object. Every source ref must use a `span_id` from `source_payload.spans`.
+  Do not rely on vague provenance elsewhere in the artifact. Every load-bearing number must appear
+  in one of the object's connected quotes or cited spans. If the exact number appears elsewhere in
+  the paper, cite that additional span. Do not add derived conversions, percentages, or threshold
   lists unless the exact derived value/list appears in the connected quote; prefer the source's
   original wording and units.
 - **concepts.md**: the paper's genuine technical terms, formally defined

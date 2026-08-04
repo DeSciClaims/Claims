@@ -10,7 +10,7 @@ from .artifact import materialize_agent_artifact, write_agent_validation_report
 from .artifact_models import Artifact
 from .config import AgentV1Config
 from .export import write_agent_directory
-from .ingest import InputDocument, document_source_payload, ingest_artifact_json, ingest_pdf, ingest_text
+from .ingest import InputDocument, apply_paper_metadata_override, document_source_payload, ingest_artifact_json, ingest_pdf, ingest_text
 from .runtime import AgentRequest, build_agent_runtime
 from .runtime.usage import merge_usage
 from .schema import AGENT_JSON_SCHEMA_FILENAME, agent_json_schema, write_agent_json_schema
@@ -25,7 +25,13 @@ class AgentV1Runner:
     def __init__(self, config: AgentV1Config | None = None) -> None:
         self.config = config or AgentV1Config.from_env()
 
-    def run_from_pdf(self, pdf_path: Path, *, output_dir: Path | None = None) -> Artifact:
+    def run_from_pdf(
+        self,
+        pdf_path: Path,
+        *,
+        output_dir: Path | None = None,
+        paper_override: dict[str, Any] | None = None,
+    ) -> Artifact:
         document = ingest_pdf(
             pdf_path,
             max_chars=self.config.max_source_chars,
@@ -36,6 +42,8 @@ class AgentV1Runner:
             grobid_retries=self.config.grobid_retries,
             grobid_retry_wait_s=self.config.grobid_retry_wait_s,
         )
+        if paper_override:
+            document = apply_paper_metadata_override(document, **paper_override)
         return self.run_from_document(document, output_dir=output_dir, source_artifact_path=pdf_path)
 
     def run_from_artifact_json(self, artifact_json_path: Path, *, output_dir: Path | None = None) -> Artifact:
