@@ -242,6 +242,31 @@ def test_validator_reference_harness_sets_reference_env(monkeypatch) -> None:
     )
 
 
+def test_validator_builds_model_backed_silver_relation_classifier(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_TEST_RELATION_KEY", "test-key")
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.bt_logging = SimpleNamespace(warning=lambda *_args, **_kwargs: None)
+    validator.config = SimpleNamespace(
+        claims_silver_relation_mode="openrouter",
+        claims_silver_relation_model="deepseek/deepseek-v4-flash",
+        claims_silver_relation_api_base="https://openrouter.ai/api/v1",
+        claims_silver_relation_api_key_env="CLAIMS_TEST_RELATION_KEY",
+    )
+
+    classifier = validator._build_silver_relation_classifier()
+
+    assert classifier is not None
+    assert classifier.model == "openrouter/deepseek/deepseek-v4-flash"
+    assert classifier.api_key == "test-key"
+
+
+def test_validator_can_disable_silver_relation_classifier() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(claims_silver_relation_mode="heuristic")
+
+    assert validator._build_silver_relation_classifier() is None
+
+
 def test_validator_backend_client_uses_configured_timeout_and_retries() -> None:
     validator = ClaimsValidator.__new__(ClaimsValidator)
     validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="5FakeValidatorHotkey"))

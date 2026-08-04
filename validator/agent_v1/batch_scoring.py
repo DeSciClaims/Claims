@@ -39,7 +39,7 @@ def score_batch(
             miner_id=miner_id,
             paper_count=len(scores),
             mean_score=round(mean(score.score for score in scores), 4),
-            passed_gate=mean(score.score for score in scores) >= gate_threshold,
+            passed_gate=all(score.score >= gate_threshold for score in scores),
             paper_scores=scores,
         )
         for miner_id, scores in grouped.items()

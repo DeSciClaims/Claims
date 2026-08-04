@@ -27,6 +27,7 @@ from validator.agent_v1.reference_client import (
     LocalReferenceMinerClient,
     ReferenceMinerInput,
 )
+from validator.agent_v1.relation_classifier import DSPyRelationClassifier
 from validator.agent_v1.runner import AgentV1ValidatorRunner
 from validator.judge_v1.config import JudgeV1Config
 from validator.v0.runner import JudgeV2Runner
@@ -429,6 +430,34 @@ class ClaimsValidator:
             help="Minimum confidence for direct Silver adjudication consensus.",
         )
         parser.add_argument(
+            "--claims.silver-relation-mode",
+            dest="claims_silver_relation_mode",
+            choices=("heuristic", "dspy", "model", "openrouter", "disabled"),
+            default=os.getenv("CLAIMS_SILVER_RELATION_MODE", "dspy"),
+            help="Relation classifier used to align Bronze and miner claims before Silver adjudication.",
+        )
+        parser.add_argument(
+            "--claims.silver-relation-model",
+            dest="claims_silver_relation_model",
+            default=os.getenv(
+                "CLAIMS_SILVER_RELATION_MODEL",
+                os.getenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", "openrouter/openai/gpt-5-mini"),
+            ),
+            help="Model id for model-backed Bronze/miner relation classification.",
+        )
+        parser.add_argument(
+            "--claims.silver-relation-api-base",
+            dest="claims_silver_relation_api_base",
+            default=os.getenv("CLAIMS_SILVER_RELATION_API_BASE", os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")),
+            help="OpenAI-compatible API base used by model-backed relation classification.",
+        )
+        parser.add_argument(
+            "--claims.silver-relation-api-key-env",
+            dest="claims_silver_relation_api_key_env",
+            default=os.getenv("CLAIMS_SILVER_RELATION_API_KEY_ENV", "OPENROUTER_API_KEY"),
+            help="Environment variable containing the relation-classifier API key.",
+        )
+        parser.add_argument(
             "--claims.output-dir",
             dest="claims_output_dir",
             type=Path,
@@ -539,6 +568,10 @@ class ClaimsValidator:
         config.claims_silver_adjudication_cli_timeout = parsed_args.claims_silver_adjudication_cli_timeout
         config.claims_silver_adjudication_max_workers = parsed_args.claims_silver_adjudication_max_workers
         config.claims_silver_direct_confidence = parsed_args.claims_silver_direct_confidence
+        config.claims_silver_relation_mode = parsed_args.claims_silver_relation_mode
+        config.claims_silver_relation_model = parsed_args.claims_silver_relation_model
+        config.claims_silver_relation_api_base = parsed_args.claims_silver_relation_api_base
+        config.claims_silver_relation_api_key_env = parsed_args.claims_silver_relation_api_key_env
         config.claims_output_dir = parsed_args.claims_output_dir
         config.claims_query_interval = parsed_args.claims_query_interval
         config.claims_timeout = parsed_args.claims_timeout
@@ -831,6 +864,7 @@ class ClaimsValidator:
         except Exception as exc:
             self.bt_logging.warning(f"Silver post-pass could not initialize Bronze client: {exc}")
             return {}
+        relation_classifier = self._build_silver_relation_classifier()
         silver_scores_by_uid: dict[int, list[float]] = {}
         miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None]]] = {
             paper.paper_id or f"paper_{index}": [] for index, paper in enumerate(paper_tasks, start=1)
@@ -916,6 +950,7 @@ class ClaimsValidator:
                         ]
                     ),
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
+                    relation_classifier=relation_classifier,
                 )
                 silver_stage = self._record_timing_stage(
                     silver_timer,
@@ -1024,6 +1059,28 @@ class ClaimsValidator:
         except Exception as exc:
             self.bt_logging.warning(f"Silver adjudication pass configuration failed: {exc}")
             return [], None
+
+    def _build_silver_relation_classifier(self) -> Any | None:
+        mode = str(getattr(self.config, "claims_silver_relation_mode", "heuristic") or "heuristic").strip().lower()
+        if mode in {"", "heuristic", "disabled"}:
+            return None
+        if mode not in {"dspy", "model", "openrouter"}:
+            self.bt_logging.warning(f"Unknown Silver relation mode {mode!r}; using heuristic relation matching.")
+            return None
+        api_base = str(getattr(self.config, "claims_silver_relation_api_base", "") or os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"))
+        api_key_env = str(getattr(self.config, "claims_silver_relation_api_key_env", "") or "OPENROUTER_API_KEY")
+        model = str(getattr(self.config, "claims_silver_relation_model", "") or os.getenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", "openrouter/openai/gpt-5-mini"))
+        classifier = DSPyRelationClassifier(
+            model=_dspy_relation_model(model, api_base=api_base),
+            api_key=os.getenv(api_key_env, ""),
+            api_base=api_base,
+            fallback_to_heuristic=True,
+        )
+        if not os.getenv(api_key_env, ""):
+            self.bt_logging.warning(
+                f"{api_key_env} is not set; Silver relation classifier will fall back to deterministic heuristic matching."
+            )
+        return classifier
 
     def _silver_adjudication_config(self) -> SilverAdjudicationConfig:
         return SilverAdjudicationConfig(
@@ -2545,6 +2602,15 @@ def _subtensor_network_arg(parsed_args: argparse.Namespace) -> str | None:
     if any(arg == "--subtensor.network" or arg.startswith("--subtensor.network=") for arg in sys.argv[1:]):
         return getattr(parsed_args, "subtensor.network")
     return None
+
+
+def _dspy_relation_model(model: str, *, api_base: str) -> str:
+    normalized = model.strip()
+    if not normalized:
+        return "openrouter/openai/gpt-5-mini"
+    if "openrouter.ai" in api_base and "/" in normalized and not normalized.startswith("openrouter/"):
+        return f"openrouter/{normalized}"
+    return normalized
 
 
 def main() -> int:

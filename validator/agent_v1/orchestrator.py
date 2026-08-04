@@ -7,10 +7,11 @@ from typing import Iterable
 from .adjudication_models import AdjudicationConsensus, AdjudicationContextBundle, AdjudicationDecision
 from .adjudication_runner import AdjudicationPass, run_adjudication_case
 from .batch_scoring import BatchScoreResult, score_batch
-from .bronze_diff import compare_miner_to_bronze
+from .bronze_diff import compare_miner_to_bronze_result
 from .comparison_models import BronzeDiffCase, ComparisonCandidate, SilverRecord, SilverScoreBreakdown
 from .pairing import RelationClassifier
 from .record_projection import project_agent_artifact
+from .relation_classifier import classify_candidate_pair
 from .silver_builder import build_silver_record
 from .silver_scoring import score_miner_against_silver
 
@@ -73,17 +74,27 @@ def run_paper_silver_pipeline(
     candidate_pool = [*bronze_candidates, *[candidate for submission in miner_submissions for candidate in submission.candidates]]
     candidates_by_id = {candidate.candidate_id: candidate for candidate in candidate_pool}
 
-    diff_cases = _dedupe_cases(
-        case
-        for submission in miner_submissions
-        for case in compare_miner_to_bronze(
+    comparison_results = [
+        compare_miner_to_bronze_result(
             paper_id=paper_id,
             miner_id=submission.miner_id,
             bronze_candidates=bronze_candidates,
             miner_candidates=submission.candidates,
             relation_classifier=relation_classifier,
         )
+        for submission in miner_submissions
+    ]
+    diff_cases = _dedupe_cases(
+        case
+        for result in comparison_results
+        for case in result.cases
     )
+    comparison_equivalent_candidate_groups = _dedupe_equivalent_candidate_groups(
+        group
+        for result in comparison_results
+        for group in result.equivalent_candidate_groups
+    )
+
     def adjudicate(case: BronzeDiffCase) -> tuple[AdjudicationConsensus, AdjudicationDecision | None]:
         candidates = [candidates_by_id[candidate_id] for candidate_id in case.candidate_ids if candidate_id in candidates_by_id]
         context = AdjudicationContextBundle(
@@ -113,6 +124,19 @@ def run_paper_silver_pipeline(
             adjudicated = list(executor.map(adjudicate, diff_cases))
     consensus_records = [consensus for consensus, _decision in adjudicated]
     decisions = [decision for _consensus, decision in adjudicated if decision is not None]
+    candidate_ids_for_equivalence = _candidate_ids_retained_for_silver(
+        candidate_pool,
+        decisions,
+        comparison_equivalent_candidate_groups,
+    )
+    semantic_equivalent_candidate_groups = _semantic_equivalence_groups(
+        [candidate for candidate in candidate_pool if candidate.candidate_id in candidate_ids_for_equivalence],
+        relation_classifier=relation_classifier,
+        existing_groups=comparison_equivalent_candidate_groups,
+    )
+    equivalent_candidate_groups = _dedupe_equivalent_candidate_groups(
+        [*comparison_equivalent_candidate_groups, *semantic_equivalent_candidate_groups]
+    )
 
     silver_record = build_silver_record(
         paper_id=paper_id,
@@ -120,6 +144,7 @@ def run_paper_silver_pipeline(
         bronze_record_id=bronze_record_id,
         candidates=candidate_pool,
         decisions=decisions,
+        equivalent_candidate_groups=equivalent_candidate_groups,
     )
     scores = score_silver_jobs_parallel(
         [SilverScoringJob(submission=submission, silver_record=silver_record) for submission in miner_submissions]
@@ -174,6 +199,105 @@ def _dedupe_cases(cases: Iterable[BronzeDiffCase]) -> list[BronzeDiffCase]:
         if key not in by_key:
             by_key[key] = case
     return list(by_key.values())
+
+
+def _dedupe_equivalent_candidate_groups(groups: Iterable[list[str]]) -> list[list[str]]:
+    seen: set[tuple[str, ...]] = set()
+    deduped: list[list[str]] = []
+    for group in groups:
+        key = tuple(sorted(candidate_id for candidate_id in group if candidate_id))
+        if len(key) < 2 or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(list(key))
+    return deduped
+
+
+def _candidate_ids_retained_for_silver(
+    candidates: list[ComparisonCandidate],
+    decisions: list[AdjudicationDecision],
+    comparison_equivalent_candidate_groups: list[list[str]],
+) -> set[str]:
+    candidates_by_id = {candidate.candidate_id: candidate for candidate in candidates}
+    accepted_bronze_ids = {
+        candidate_id
+        for decision in decisions
+        for candidate_id in decision.accepted_candidate_ids
+        if (candidate := candidates_by_id.get(candidate_id)) and candidate.origin == "bronze"
+    }
+    rejected_bronze_ids = {
+        candidate_id
+        for decision in decisions
+        for candidate_id in decision.rejected_candidate_ids
+        if (candidate := candidates_by_id.get(candidate_id)) and candidate.origin == "bronze"
+    }
+    retained = {
+        candidate.candidate_id
+        for candidate in candidates
+        if candidate.origin == "bronze"
+        and (candidate.candidate_id not in rejected_bronze_ids or candidate.candidate_id in accepted_bronze_ids)
+    }
+    for decision in decisions:
+        retained.update(candidate_id for candidate_id in decision.accepted_candidate_ids if candidate_id in candidates_by_id)
+        retained.update(candidate_id for candidate_id in decision.valid_alternative_candidate_ids if candidate_id in candidates_by_id)
+    for group in comparison_equivalent_candidate_groups:
+        retained.update(candidate_id for candidate_id in group if candidate_id in candidates_by_id)
+    return retained
+
+
+def _semantic_equivalence_groups(
+    candidates: list[ComparisonCandidate],
+    *,
+    relation_classifier: RelationClassifier | None,
+    existing_groups: list[list[str]],
+    min_confidence: float = 0.72,
+) -> list[list[str]]:
+    if len(candidates) < 2:
+        return []
+    classifier = relation_classifier or classify_candidate_pair
+    existing_pairs = _candidate_pairs_from_groups(existing_groups)
+    groups: list[list[str]] = []
+    for index, left in enumerate(candidates):
+        for right in candidates[index + 1 :]:
+            pair_key = tuple(sorted((left.candidate_id, right.candidate_id)))
+            if pair_key in existing_pairs or not _likely_same_silver_unit(left, right):
+                continue
+            try:
+                edge = classifier(left, right)
+            except Exception:
+                continue
+            if edge.relation == "semantic_equivalent" and edge.confidence >= min_confidence:
+                groups.append([left.candidate_id, right.candidate_id])
+    return groups
+
+
+def _candidate_pairs_from_groups(groups: list[list[str]]) -> set[tuple[str, str]]:
+    pairs: set[tuple[str, str]] = set()
+    for group in groups:
+        ids = sorted(candidate_id for candidate_id in group if candidate_id)
+        for index, left in enumerate(ids):
+            for right in ids[index + 1 :]:
+                pairs.add((left, right))
+    return pairs
+
+
+def _likely_same_silver_unit(left: ComparisonCandidate, right: ComparisonCandidate) -> bool:
+    if left.candidate_id == right.candidate_id:
+        return False
+    if left.normalized_statement == right.normalized_statement:
+        return True
+    if set(left.source_span_ids).intersection(right.source_span_ids):
+        return True
+    left_tokens = _meaningful_tokens(left.normalized_statement)
+    right_tokens = _meaningful_tokens(right.normalized_statement)
+    if not left_tokens or not right_tokens:
+        return False
+    overlap = len(left_tokens.intersection(right_tokens))
+    return overlap / max(1, min(len(left_tokens), len(right_tokens))) >= 0.35
+
+
+def _meaningful_tokens(value: str) -> set[str]:
+    return {token for token in value.split() if len(token) > 3}
 
 
 def _source_context_for_candidates(

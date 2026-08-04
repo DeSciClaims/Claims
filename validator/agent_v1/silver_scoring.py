@@ -25,8 +25,8 @@ def score_miner_against_silver(
     covered: list[str] = []
     missing: list[str] = []
     improvements: list[str] = []
-    required_units = [unit for unit in silver_record.silver_units if unit.required_for_completeness]
-    if not required_units and not silver_record.invalid_miner_candidates:
+    scored_units = _scored_units(silver_record.silver_units)
+    if not scored_units and not silver_record.invalid_miner_candidates:
         findings.append(
             AgentV1ValidationFinding(
                 finding_id="SV001",
@@ -35,20 +35,22 @@ def score_miner_against_silver(
                 severity="blocker",
                 target_type="silver_record",
                 target_id=silver_record.silver_record_id,
-                message="Silver scoring record has no required units or invalid miner candidates.",
+                message="Silver scoring record has no scored units or invalid miner candidates.",
                 metadata={"code": "empty_silver_record"},
             )
         )
 
     for unit in silver_record.silver_units:
         is_covered = bool(miner_candidate_ids.intersection(unit.equivalent_candidate_ids))
-        if unit.required_for_completeness:
+        if unit in scored_units:
             if is_covered:
                 covered.append(unit.silver_unit_id)
+                if unit.scoring_mode == "accepted_improvement":
+                    improvements.append(unit.silver_unit_id)
             else:
                 missing.append(unit.silver_unit_id)
                 findings.append(_missing_finding(unit, len(findings) + 1))
-        elif is_covered:
+        elif is_covered and unit.scoring_mode == "accepted_improvement":
             improvements.append(unit.silver_unit_id)
 
     invalid_extras = [candidate for candidate in silver_record.invalid_miner_candidates if candidate.miner_id == miner_id]
@@ -68,7 +70,7 @@ def score_miner_against_silver(
         )
 
     all_findings = [*normal_findings, *findings]
-    coverage = _coverage(silver_record.silver_units, covered)
+    coverage = _coverage(scored_units, covered)
     quality = _quality(all_findings)
     _finding_score, _finding_passed, summary = score_findings(all_findings)
     score = _silver_score(
@@ -92,13 +94,16 @@ def score_miner_against_silver(
             "normal_finding_count": len(normal_findings),
             "passed": score > 0,
             "finding_summary": summary,
-            "formula": "score = coverage * quality; empty Silver records score 0",
+            "covered_silver_units": covered,
+            "missing_silver_units": missing,
+            "formula": "score = Silver coverage * quality; every scored Silver unit, including accepted improvements, contributes to coverage",
         },
     )
 
 
 def _missing_finding(unit: SilverUnit, index: int) -> AgentV1ValidationFinding:
     severity = "critical" if unit.importance == "central" else "major" if unit.importance == "supporting" else "minor"
+    unit_kind = "accepted improvement" if unit.scoring_mode == "accepted_improvement" else unit.importance
     return AgentV1ValidationFinding(
         finding_id=f"SV{index:03d}",
         pass_name="silver_comparison",
@@ -106,18 +111,21 @@ def _missing_finding(unit: SilverUnit, index: int) -> AgentV1ValidationFinding:
         severity=severity,
         target_type="silver_unit",
         target_id=unit.silver_unit_id,
-        message=f"Miner submission has no aligned equivalent for a {unit.importance} Silver record.",
-        metadata={"code": "missing_silver_record", "importance": unit.importance},
+        message=f"Miner submission has no aligned equivalent for a {unit_kind} Silver record.",
+        metadata={"code": "missing_silver_record", "importance": unit.importance, "scoring_mode": unit.scoring_mode},
     )
 
 
-def _coverage(units: list[SilverUnit], covered_unit_ids: list[str]) -> float:
-    required_units = [unit for unit in units if unit.required_for_completeness]
-    denominator = sum(IMPORTANCE_WEIGHTS[unit.importance] for unit in required_units)
+def _scored_units(units: list[SilverUnit]) -> list[SilverUnit]:
+    return [unit for unit in units if unit.required_for_completeness or unit.scoring_mode == "accepted_improvement"]
+
+
+def _coverage(scored_units: list[SilverUnit], covered_unit_ids: list[str]) -> float:
+    denominator = sum(IMPORTANCE_WEIGHTS[unit.importance] for unit in scored_units)
     if denominator <= 0:
         return 1.0
     covered = set(covered_unit_ids)
-    numerator = sum(IMPORTANCE_WEIGHTS[unit.importance] for unit in required_units if unit.silver_unit_id in covered)
+    numerator = sum(IMPORTANCE_WEIGHTS[unit.importance] for unit in scored_units if unit.silver_unit_id in covered)
     return round(numerator / denominator, 4)
 
 

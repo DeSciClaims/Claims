@@ -6,6 +6,13 @@ from .comparison_models import CandidatePairEdge, ComparisonCandidate
 from .relation_classifier import classify_candidate_pair
 
 RelationClassifier = Callable[[ComparisonCandidate, ComparisonCandidate], CandidatePairEdge]
+ACTIONABLE_RELATIONS = {
+    "semantic_equivalent",
+    "compatible_refinement",
+    "compatible_split_merge",
+    "partial_overlap",
+    "contradiction",
+}
 
 
 def build_candidate_pairs(
@@ -20,6 +27,6 @@ def build_candidate_pairs(
     for left_candidate in left:
         for right_candidate in right:
             edge = classifier(left_candidate, right_candidate)
-            if edge.confidence >= min_confidence:
+            if edge.confidence >= min_confidence and edge.relation in ACTIONABLE_RELATIONS:
                 edges.append(edge)
     return sorted(edges, key=lambda edge: (-edge.confidence, edge.edge_id))

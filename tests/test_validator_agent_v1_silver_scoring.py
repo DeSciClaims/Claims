@@ -17,7 +17,8 @@ from validator.agent_v1.adjudication_queue import (
     completed_consensus_by_case,
     enqueue_adjudication_jobs,
 )
-from validator.agent_v1.comparison_models import BronzeDiffCase, ComparisonCandidate, SilverRecord
+from validator.agent_v1.batch_scoring import score_batch
+from validator.agent_v1.comparison_models import BronzeDiffCase, ComparisonCandidate, SilverRecord, SilverScoreBreakdown
 from validator.agent_v1.miner_consensus import MinerConsensusRule, MinerConsensusVote, aggregate_miner_consensus_votes
 from validator.agent_v1.orchestrator import (
     MinerArtifactSubmission,
@@ -92,15 +93,19 @@ def test_silver_scoring_matches_end_to_end_toy_example() -> None:
     assert score_a.score == 1.0
     assert score_a.accepted_improvements == ["u2_ci"]
 
-    assert score_b.coverage == 0.7
+    assert score_b.coverage == 0.5385
     assert score_b.quality == 1.0
-    assert score_b.score == 0.7
-    assert [finding.metadata["code"] for finding in score_b.findings] == ["missing_silver_record"]
+    assert score_b.score == 0.5385
+    assert [finding.metadata["code"] for finding in score_b.findings] == ["missing_silver_record", "missing_silver_record"]
 
-    assert score_c.coverage == 0.3
+    assert score_c.coverage == 0.2308
     assert score_c.quality == 0.75
-    assert score_c.score == 0.225
-    assert [finding.metadata["code"] for finding in score_c.findings] == ["missing_silver_record", "invalid_extra_candidate"]
+    assert score_c.score == 0.1731
+    assert [finding.metadata["code"] for finding in score_c.findings] == [
+        "missing_silver_record",
+        "missing_silver_record",
+        "invalid_extra_candidate",
+    ]
 
 
 def test_silver_scoring_zero_coverage_scores_zero() -> None:
@@ -602,6 +607,194 @@ def test_bronze_diff_accepts_injected_relation_classifier() -> None:
     assert cases[0].candidate_ids == ["bronze:C01", "miner:miner_A:C01"]
 
 
+def test_silver_pipeline_scores_semantic_equivalent_miner_claim() -> None:
+    result = run_paper_silver_pipeline(
+        paper_id="paper",
+        bronze_artifact=_artifact("paper", "C01", "Treatment A reduced mortality."),
+        miner_artifacts=[
+            MinerArtifactSubmission(
+                miner_id="miner_A",
+                artifact=_artifact("paper", "C01", "Treatment A reduced mortality."),
+            )
+        ],
+        silver_record_id="silver",
+        adjudication_passes=[
+            StaticAdjudicationPass(
+                pass_id="pass_a",
+                adjudication_profile_id="static_a",
+                model_runtime_id="static",
+                dispositions_by_case_id={},
+                default_disposition="miner_error",
+            )
+        ],
+    )
+
+    assert result.diff_cases == []
+    assert len(result.silver_record.silver_units) == 1
+    assert result.silver_record.silver_units[0].equivalent_candidate_ids == ["bronze:C01", "miner:miner_A:C01"]
+    assert result.scores[0].coverage == 1.0
+    assert result.scores[0].score == 1.0
+
+
+def test_silver_pipeline_dedupes_semantic_equivalent_miner_only_improvements() -> None:
+    def classifier(left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
+        return CandidatePairEdge(
+            edge_id=f"{left.candidate_id}::{right.candidate_id}",
+            left_candidate_id=left.candidate_id,
+            right_candidate_id=right.candidate_id,
+            relation="semantic_equivalent",
+            confidence=0.93,
+            rationale="Both candidates describe the same small-effect finding.",
+        )
+
+    result = run_paper_silver_pipeline(
+        paper_id="paper",
+        bronze_artifact={"paper": {"paper_id": "paper"}, "logic": {"claims": []}},
+        miner_artifacts=[
+            MinerArtifactSubmission(
+                miner_id="uid_9",
+                artifact=_artifact("paper", "C01", "Individual variants have small effects."),
+            ),
+            MinerArtifactSubmission(
+                miner_id="uid_10",
+                artifact=_artifact("paper", "C01", "Single variants have very small individual effects."),
+            ),
+        ],
+        silver_record_id="silver",
+        adjudication_passes=[
+            StaticAdjudicationPass(
+                pass_id="pass_a",
+                adjudication_profile_id="static_a",
+                model_runtime_id="static",
+                dispositions_by_case_id={},
+                default_disposition="accepted_improvement",
+            )
+        ],
+        relation_classifier=classifier,
+    )
+
+    assert len(result.diff_cases) == 2
+    assert len(result.silver_record.silver_units) == 1
+    assert result.silver_record.silver_units[0].scoring_mode == "accepted_improvement"
+    assert result.silver_record.silver_units[0].equivalent_candidate_ids == ["miner:uid_10:C01", "miner:uid_9:C01"]
+    assert [(score.miner_id, score.score) for score in result.scores] == [("uid_9", 1.0), ("uid_10", 1.0)]
+
+
+def test_silver_record_dedupes_required_bronze_units_across_miners() -> None:
+    bronze = _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality.")
+
+    silver = build_silver_record(
+        paper_id="paper",
+        silver_record_id="silver",
+        candidates=[bronze],
+        decisions=[
+            AdjudicationDecision(
+                case_id="case_uid_9",
+                disposition="miner_error",
+                accepted_candidate_ids=["bronze:C01"],
+                importance="central",
+            ),
+            AdjudicationDecision(
+                case_id="case_uid_10",
+                disposition="miner_error",
+                accepted_candidate_ids=["bronze:C01"],
+                importance="central",
+            ),
+        ],
+    )
+
+    assert len(silver.silver_units) == 1
+    assert silver.silver_units[0].equivalent_candidate_ids == ["bronze:C01"]
+    assert silver.silver_units[0].adjudication_case_ids == ["case_uid_10", "case_uid_9"]
+
+
+def test_silver_record_dedupes_equivalent_accepted_improvements() -> None:
+    candidates = [
+        _candidate("miner:uid_9:C01", "miner", "uid_9", "Individual variants have small effects."),
+        _candidate("miner:uid_10:C01", "miner", "uid_10", "Single variants have very small individual effects."),
+    ]
+    silver = build_silver_record(
+        paper_id="paper",
+        silver_record_id="silver_improvements",
+        candidates=candidates,
+        decisions=[
+            AdjudicationDecision(
+                case_id="case_uid_9",
+                disposition="accepted_improvement",
+                accepted_candidate_ids=["miner:uid_9:C01"],
+                creates_required_silver_unit=False,
+                creates_optional_improvement_unit=True,
+            ),
+            AdjudicationDecision(
+                case_id="case_uid_10",
+                disposition="accepted_improvement",
+                accepted_candidate_ids=["miner:uid_10:C01"],
+                creates_required_silver_unit=False,
+                creates_optional_improvement_unit=True,
+            ),
+        ],
+        equivalent_candidate_groups=[["miner:uid_9:C01", "miner:uid_10:C01"]],
+    )
+
+    assert len(silver.silver_units) == 1
+    assert silver.silver_units[0].scoring_mode == "accepted_improvement"
+    assert silver.silver_units[0].equivalent_candidate_ids == ["miner:uid_10:C01", "miner:uid_9:C01"]
+    assert silver.silver_units[0].adjudication_case_ids == ["case_uid_10", "case_uid_9"]
+    assert score_miner_against_silver(miner_id="uid_9", miner_candidates=[candidates[0]], silver_record=silver).score == 1.0
+    assert score_miner_against_silver(miner_id="uid_10", miner_candidates=[candidates[1]], silver_record=silver).score == 1.0
+
+
+def test_silver_record_does_not_resurrect_rejected_bronze_from_equivalence_group() -> None:
+    candidates = [
+        _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality."),
+        _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment A reduced mortality in older adults."),
+    ]
+    silver = build_silver_record(
+        paper_id="paper",
+        silver_record_id="silver_reference_error",
+        candidates=candidates,
+        decisions=[
+            AdjudicationDecision(
+                case_id="case_uid_9",
+                disposition="reference_error",
+                accepted_candidate_ids=["miner:uid_9:C01"],
+                rejected_candidate_ids=["bronze:C01"],
+                importance="central",
+            )
+        ],
+        equivalent_candidate_groups=[["bronze:C01", "miner:uid_9:C01"]],
+    )
+
+    assert len(silver.silver_units) == 1
+    assert silver.silver_units[0].equivalent_candidate_ids == ["miner:uid_9:C01"]
+    assert silver.reference_errors[0].candidate_id == "bronze:C01"
+
+
+def test_pairing_ignores_high_confidence_unrelated_edges() -> None:
+    bronze = _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality.")
+    miner = _candidate("miner:miner_A:C01", "miner", "miner_A", "Completely unrelated biomarker claim.")
+
+    def classifier(left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
+        return CandidatePairEdge(
+            edge_id=f"{left.candidate_id}::{right.candidate_id}",
+            left_candidate_id=left.candidate_id,
+            right_candidate_id=right.candidate_id,
+            relation="unrelated",
+            confidence=0.99,
+            rationale="Different scientific claims.",
+        )
+
+    cases = compare_miner_to_bronze(
+        paper_id="paper",
+        miner_id="miner_A",
+        bronze_candidates=[bronze],
+        miner_candidates=[miner],
+        relation_classifier=classifier,
+    )
+
+    assert [case.mismatch_type for case in cases] == ["MISSING_FROM_MINER", "EXTRA_FROM_MINER"]
+
+
 def test_dspy_relation_classifier_parses_program_json() -> None:
     classifier = DSPyRelationClassifier(
         program=lambda **_kwargs: SimpleNamespace(
@@ -687,6 +880,25 @@ def test_batch_silver_scoring_ranks_gate_passing_miners() -> None:
     assert [(miner.miner_id, miner.rank, miner.mean_score, miner.passed_gate) for miner in result.miners] == [
         ("miner_A", 1, 1.0, True),
         ("miner_B", 2, 0.0, False),
+    ]
+
+
+def test_batch_gate_requires_every_sampled_paper_to_clear_floor() -> None:
+    result = score_batch(
+        batch_id="batch",
+        paper_scores=[
+            _score_breakdown("miner_A", "paper_1", 1.0),
+            _score_breakdown("miner_A", "paper_2", 0.0),
+            _score_breakdown("miner_B", "paper_1", 0.6),
+            _score_breakdown("miner_B", "paper_2", 0.6),
+        ],
+        gate_threshold=0.5,
+    )
+
+    assert result.winner_miner_id == "miner_B"
+    assert [(miner.miner_id, miner.rank, miner.mean_score, miner.passed_gate) for miner in result.miners] == [
+        ("miner_B", 1, 0.6, True),
+        ("miner_A", 2, 0.5, False),
     ]
 
 
@@ -845,6 +1057,17 @@ def _artifact(paper_id: str, claim_id: str, statement: str) -> dict:
             ]
         },
     }
+
+
+def _score_breakdown(miner_id: str, paper_id: str, score: float) -> SilverScoreBreakdown:
+    return SilverScoreBreakdown(
+        paper_id=paper_id,
+        miner_id=miner_id,
+        silver_record_id=f"silver_{paper_id}",
+        coverage=score,
+        quality=1.0,
+        score=score,
+    )
 
 
 class _QueueBackend:

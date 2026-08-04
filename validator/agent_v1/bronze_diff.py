@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 
 from .comparison_models import BronzeDiffCase, ComparisonCandidate, MismatchType
 from .pairing import RelationClassifier, build_candidate_pairs
+
+
+@dataclass(frozen=True)
+class BronzeComparisonResult:
+    cases: list[BronzeDiffCase]
+    equivalent_candidate_groups: list[list[str]]
 
 
 def compare_miner_to_bronze(
@@ -14,9 +21,27 @@ def compare_miner_to_bronze(
     miner_candidates: list[ComparisonCandidate],
     relation_classifier: RelationClassifier | None = None,
 ) -> list[BronzeDiffCase]:
+    return compare_miner_to_bronze_result(
+        paper_id=paper_id,
+        miner_id=miner_id,
+        bronze_candidates=bronze_candidates,
+        miner_candidates=miner_candidates,
+        relation_classifier=relation_classifier,
+    ).cases
+
+
+def compare_miner_to_bronze_result(
+    *,
+    paper_id: str,
+    miner_id: str,
+    bronze_candidates: list[ComparisonCandidate],
+    miner_candidates: list[ComparisonCandidate],
+    relation_classifier: RelationClassifier | None = None,
+) -> BronzeComparisonResult:
     edges = build_candidate_pairs(bronze_candidates, miner_candidates, relation_classifier=relation_classifier)
     best_by_bronze: dict[str, tuple[str, str]] = {}
     matched_miner_ids: set[str] = set()
+    equivalent_candidate_groups: list[list[str]] = []
 
     for edge in edges:
         if edge.left_candidate_id in best_by_bronze:
@@ -42,6 +67,7 @@ def compare_miner_to_bronze(
             continue
         miner_candidate_id, relation = match
         if relation == "semantic_equivalent":
+            equivalent_candidate_groups.append([bronze.candidate_id, miner_candidate_id])
             continue
         cases.append(
             _case(
@@ -69,12 +95,14 @@ def compare_miner_to_bronze(
                 question="Is this miner-only candidate a valid improvement or an invalid extra?",
             )
         )
-    return cases
+    return BronzeComparisonResult(cases=cases, equivalent_candidate_groups=equivalent_candidate_groups)
 
 
 def _mismatch_type(relation: str) -> MismatchType:
     if relation == "compatible_refinement":
         return "COMPATIBLE_REFINEMENT"
+    if relation in {"compatible_split_merge", "partial_overlap"}:
+        return "SEMANTIC_EQUIVALENCE_UNCERTAIN"
     if relation == "contradiction":
         return "CONTRADICTION"
     return "SEMANTIC_EQUIVALENCE_UNCERTAIN"

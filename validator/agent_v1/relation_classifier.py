@@ -99,7 +99,7 @@ class DSPyRelationClassifier:
     def _classify_with_dspy(self, left: ComparisonCandidate, right: ComparisonCandidate) -> dict[str, Any]:
         program = self._program or self._build_program()
         prediction = program(
-            instructions=_relation_classifier_instructions(),
+            task_instructions=_relation_classifier_instructions(),
             left_candidate_json=json.dumps(_candidate_payload(left), ensure_ascii=False, indent=2),
             right_candidate_json=json.dumps(_candidate_payload(right), ensure_ascii=False, indent=2),
             allowed_relations_json=json.dumps(sorted(ALLOWED_RELATIONS), ensure_ascii=False),
@@ -130,7 +130,7 @@ class DSPyRelationClassifier:
         class RelationSignature(dspy_module.Signature):
             """Classify the relation between two extracted scientific claim candidates. Return strict JSON only."""
 
-            instructions: str = dspy_module.InputField()
+            task_instructions: str = dspy_module.InputField()
             left_candidate_json: str = dspy_module.InputField()
             right_candidate_json: str = dspy_module.InputField()
             allowed_relations_json: str = dspy_module.InputField()
