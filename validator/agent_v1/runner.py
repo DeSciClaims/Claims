@@ -72,7 +72,14 @@ class AgentV1ValidatorRunner:
             run_dir=run_dir,
             artifact_reviewable=artifact is not None and not any(f.severity == "blocker" for f in structural_findings),
         )
-        all_findings = structural_findings + grounding_findings + rigor_findings
+        reviewed_grounding_findings, grounding_review = self._review_grounding_findings(grounding_findings, rigor_findings)
+        report_rigor_findings = _reportable_rigor_findings(rigor_findings, reviewed_grounding_findings)
+        (run_dir / "grounding_reviewed_findings.json").write_text(
+            json.dumps([f.model_dump(mode="json") for f in reviewed_grounding_findings], indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        all_findings = structural_findings + reviewed_grounding_findings + report_rigor_findings
         score, passed, summary = score_findings(all_findings, threshold=threshold)
         metrics = _metrics(started, rigor_manifest)
         report = AgentV1ValidationReport(
@@ -90,13 +97,13 @@ class AgentV1ValidatorRunner:
                     runtime="deterministic",
                 ),
                 "grounding": AgentV1PassSummary(
-                    passed=not any(f.severity in {"blocker", "critical"} for f in grounding_findings),
-                    finding_count=len(grounding_findings),
-                    runtime="deterministic",
+                    passed=not any(f.severity in {"blocker", "critical"} for f in reviewed_grounding_findings),
+                    finding_count=len(reviewed_grounding_findings),
+                    runtime="deterministic+llm" if self._llm_validation_enabled() else "deterministic",
                 ),
                 "rigor": AgentV1PassSummary(
-                    passed=not any(f.severity in {"blocker", "critical"} for f in rigor_findings),
-                    finding_count=len(rigor_findings),
+                    passed=not any(f.severity in {"blocker", "critical"} for f in report_rigor_findings),
+                    finding_count=len(report_rigor_findings),
                     runtime=self.config.runtime if not self.config.skip_rigor_agent else "skipped",
                 ),
             },
@@ -104,12 +111,15 @@ class AgentV1ValidatorRunner:
             metrics=metrics,
             metadata={
                 "validator_runtime": self.config.runtime,
+                "validation_mode": self.config.validation_mode,
                 "rigor_skill_dir": str(self.config.skill_dir),
                 "rigor_agent_required": not self.config.skip_rigor_agent,
+                "grounding_review": grounding_review,
                 "output_files": {
                     "report": "agent_v1_validation_report.json",
                     "structural_findings": "structural_findings.json",
                     "grounding_findings": "grounding_findings.json",
+                    "grounding_reviewed_findings": "grounding_reviewed_findings.json",
                     "rigor_findings": "rigor_findings.json",
                 },
             },
@@ -121,6 +131,25 @@ class AgentV1ValidatorRunner:
         if not passed:
             logger.warning("validator.agent_v1 completed with score=%s and %s finding(s)", score, len(all_findings))
         return report
+
+    def _llm_validation_enabled(self) -> bool:
+        return self.config.validation_mode in {"llm", "hybrid", "semantic"}
+
+    def _review_grounding_findings(
+        self,
+        grounding_findings: list[AgentV1ValidationFinding],
+        rigor_findings: list[AgentV1ValidationFinding],
+    ) -> tuple[list[AgentV1ValidationFinding], dict[str, Any]]:
+        if not self._llm_validation_enabled():
+            return grounding_findings, {"mode": "deterministic", "suppressed_finding_ids": []}
+        suppressible = {
+            finding.finding_id
+            for finding in grounding_findings
+            if str(finding.metadata.get("code") or "") in {"quote_not_in_source", "number_not_grounded"}
+        }
+        suppressed_ids = _suppressed_grounding_finding_ids(rigor_findings) & suppressible
+        reviewed = [finding for finding in grounding_findings if finding.finding_id not in suppressed_ids]
+        return reviewed, {"mode": self.config.validation_mode, "suppressed_finding_ids": sorted(suppressed_ids)}
 
     def _run_rigor_agent(self, *, run_dir: Path, artifact_reviewable: bool) -> tuple[list[AgentV1ValidationFinding], dict[str, Any]]:
         if self.config.skip_rigor_agent:
@@ -255,6 +284,51 @@ def _parse_rigor_findings(path: Path) -> list[AgentV1ValidationFinding]:
                 )
             )
     return findings
+
+
+def _suppressed_grounding_finding_ids(findings: list[AgentV1ValidationFinding]) -> set[str]:
+    suppressed: set[str] = set()
+    for finding in findings:
+        metadata = finding.metadata if isinstance(finding.metadata, dict) else {}
+        code = str(metadata.get("code") or "")
+        if code not in {"grounding_finding_supported", "suppress_grounding_finding"}:
+            continue
+        values = metadata.get("suppresses_finding_ids")
+        if isinstance(values, list):
+            suppressed.update(str(value) for value in values if str(value).strip())
+        value = metadata.get("suppresses_finding_id") or metadata.get("grounding_finding_id")
+        if value:
+            suppressed.add(str(value))
+    return suppressed
+
+
+def _reportable_rigor_findings(
+    findings: list[AgentV1ValidationFinding],
+    reviewed_grounding_findings: list[AgentV1ValidationFinding] | None = None,
+) -> list[AgentV1ValidationFinding]:
+    grounding_keys = {
+        key
+        for finding in reviewed_grounding_findings or []
+        if (key := _grounding_confirmation_key(finding)) is not None
+    }
+    return [
+        finding
+        for finding in findings
+        if str((finding.metadata or {}).get("code") or "") not in {"grounding_finding_supported", "suppress_grounding_finding"}
+        and _grounding_confirmation_key(finding) not in grounding_keys
+    ]
+
+
+def _grounding_confirmation_key(finding: AgentV1ValidationFinding) -> tuple[str, str | None, str] | None:
+    metadata = finding.metadata if isinstance(finding.metadata, dict) else {}
+    code = str(metadata.get("code") or "")
+    if code not in {"quote_not_in_source", "number_not_grounded"}:
+        return None
+    return (
+        code,
+        finding.target_id,
+        str(finding.evidence_span or "").strip(),
+    )
 
 
 def _write_rigor_findings(run_dir: Path, findings: list[AgentV1ValidationFinding]) -> None:

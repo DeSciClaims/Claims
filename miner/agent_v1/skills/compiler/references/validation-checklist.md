@@ -39,6 +39,8 @@ where present, they are non-trivial — there is no fixed list. Model-training f
 - Contains `**Conditions**` (non-trivial: the regime + the untested boundary)
 - Contains `**Sources**`; every load-bearing number in a claim has a `Sources` entry carrying
   a verbatim «quote» plus an `[input]`/`[result]` tag — no bare-path entries, no memory-filled numbers
+- A claim/evidence/experiment that combines facts from multiple source locations has multiple
+  source refs on that same object; do not rely on provenance attached to a different object
 - Contains `**Status**`
 - Contains `**Falsification criteria**` (a substantive observation — about the system, or about the benchmark's behavior for a methodological claim — not a tautology or a re-run of a metric gate)
 - `Statement` is the mechanism/takeaway a result reveals, not a record: a single instance may state the mechanism it reveals, but must not be extrapolated into a universal law beyond its regime, nor assert a distinction the design cannot disentangle — those limits live in `Conditions`
@@ -185,6 +187,11 @@ For each file in `evidence/figures/*.md` specifically:
 - No fact ABOUT a repo artifact (line count, path, internal structure) is transcribed from the paper without checking the real file — when paper and repo disagree, the discrepancy is flagged, not silently resolved to the paper's number
 - Spot-check trace `source_refs` and evidence `**Source**` labels: the cited section/table/appendix actually contains the claimed content
 - A statistic carries its scope/denominator (N, population) in its `Source` — subset figures (e.g. "5 papers / 3,050 reqs") are not juxtaposed with full-corpus figures as if same-denominator
+- Every load-bearing number is grounded by a source ref attached to the same object that states
+  it. If a number appears elsewhere in the paper, the object must cite that additional source
+  span. A number grounded only by another claim/evidence item FAILS.
+- Derived conversions, percentages, and threshold lists are omitted unless the exact value/list
+  appears in a connected quote or span.
 - **Claim Statements are takeaways** (exhaustive, not spot-checked — symmetric to the number-sources
   pass): each `## C\d+` Statement FAILS if its subject is a named recipe/config/run, or if it
   contains a run number, n-count, score, step/bin count, or p-value. The mechanism a result reveals
@@ -204,6 +211,9 @@ For each file in `evidence/figures/*.md` specifically:
   recipe scripts and `[result]` entries cite run logs/trace (not swapped). A bare path with no «quote»,
   a «quote» absent from the cited line, or a value that disagrees with its quote FAILS. `[pending: …]`
   entries pass but are listed for follow-up — an unverified plausible path does not pass
+- **Experiment numbers**: exact result numbers should live in evidence and claim sources, not
+  `expected_outcome`. Method constants in `setup` or `procedure` must be grounded by the
+  experiment's own source refs; otherwise keep the experiment directional.
 
 ## 11. Evidence Ledger Completeness
 

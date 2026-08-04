@@ -15,6 +15,17 @@ Compile a structured Claims agent artifact derived from the ARA markdown artifac
 - Do not invent results, sample sizes, methods, figures, tables, or citations.
 - Every important numerical value in a claim must appear in a source reference quote.
 - Use source span IDs in `sources` and `source_refs`.
+- `sources` and `source_refs` are lists. Use multiple source refs when one claim,
+  evidence record, experiment, concept, or trace node combines facts from multiple
+  sentences, pages, tables, figures, or source spans.
+- Every load-bearing fact must be grounded on the same object that states it. Do
+  not rely on a source ref attached to a different claim/evidence/experiment.
+- Each load-bearing number must appear in one of that object's connected
+  `quote` fields or cited span texts. If the number appears elsewhere in the
+  paper, add that additional source ref.
+- Do not introduce derived numbers, conversions, percentages, or threshold lists
+  unless the exact derived value/list appears in a connected source quote. Prefer
+  the source's original expression over a derived value.
 - If the source does not contain enough information, write "Not available from provided input" in the relevant field.
 - For normal research papers, produce a coverage-oriented set of `3-7` central claims when source-supported. Do not collapse a paper into one broad claim when the abstract, results, or `paper.claims_summary` contain multiple distinct contributions or findings.
 - If `paper.claims_summary` contains three or more distinct entries, the artifact is invalid unless `logic.claims` contains at least three distinct source-grounded claims.
@@ -22,7 +33,7 @@ Compile a structured Claims agent artifact derived from the ARA markdown artifac
 - Claims should be distilled takeaways: mechanisms, relationships, methodological lessons, or bounded empirical conclusions. Avoid claims whose statement is just a run/table name.
 - Every claim needs non-trivial `conditions`, `falsification_criteria`, `proof`, and `evidence_ids`.
 - Evidence records should be split by distinct support basis. Do not point every claim to the same generic evidence record unless the source truly contains only one support basis.
-- Experiments are verification records. They should not restate exact result numbers in `expected_outcome`; exact results belong in evidence records and claim sources.
+- Experiments are verification records. They should not restate exact result numbers in `expected_outcome`; exact results belong in evidence records and claim sources. Method constants in `setup` or `procedure` must also be directly grounded by connected source refs, or omitted.
 - The trace tree should reflect the paper's research path using explicit or inferred support levels.
 
 Return JSON with exactly this top-level shape. The generated `agent_schema.json`

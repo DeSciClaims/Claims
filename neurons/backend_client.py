@@ -24,41 +24,36 @@ class ClaimsBackendClient:
     wallet: Any
     network: str = "testnet"
     timeout_seconds: float = 30.0
+    max_retries: int = 0
+    retry_backoff_seconds: float = 1.0
 
     def get(self, path: str, *, query: dict[str, Any] | None = None) -> Any:
         query_string = urlencode(query or {})
         url = self._url(path)
         if query_string:
             url = f"{url}?{query_string}"
-        headers = self._signature_headers("GET", path, query_string, b"")
-        request = Request(url, headers=headers, method="GET")
-        try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
-                data = response.read()
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise BackendClientError(f"Backend GET {path} failed: {exc.code} {detail}") from exc
-        except URLError as exc:
-            raise BackendClientError(f"Backend GET {path} failed: {exc}") from exc
+        data = self._open_with_retries(
+            method="GET",
+            path=path,
+            url=url,
+            query_string=query_string,
+            body=b"",
+            extra_headers={},
+        )
         if not data:
             return {}
         return json.loads(data.decode("utf-8"))
 
     def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        headers = {
-            "content-type": "application/json",
-            **self._signature_headers("POST", path, "", body),
-        }
-        request = Request(self._url(path), data=body, headers=headers, method="POST")
-        try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
-                data = response.read()
-        except HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise BackendClientError(f"Backend POST {path} failed: {exc.code} {detail}") from exc
-        except URLError as exc:
-            raise BackendClientError(f"Backend POST {path} failed: {exc}") from exc
+        data = self._open_with_retries(
+            method="POST",
+            path=path,
+            url=self._url(path),
+            query_string="",
+            body=body,
+            extra_headers={"content-type": "application/json"},
+        )
         if not data:
             return {}
         parsed = json.loads(data.decode("utf-8"))
@@ -165,6 +160,48 @@ class ClaimsBackendClient:
 
     def _url(self, path: str) -> str:
         return f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
+
+    def _open_with_retries(
+        self,
+        *,
+        method: str,
+        path: str,
+        url: str,
+        query_string: str,
+        body: bytes,
+        extra_headers: dict[str, str],
+    ) -> bytes:
+        attempts = max(1, int(self.max_retries) + 1)
+        last_error: BaseException | None = None
+        for attempt in range(attempts):
+            headers = {
+                **extra_headers,
+                **self._signature_headers(method, path, query_string, body),
+            }
+            request = Request(
+                url,
+                data=body if method.upper() != "GET" else None,
+                headers=headers,
+                method=method.upper(),
+            )
+            try:
+                with urlopen(request, timeout=self.timeout_seconds) as response:
+                    return response.read()
+            except HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="replace")
+                raise BackendClientError(f"Backend {method.upper()} {path} failed: {exc.code} {detail}") from exc
+            except (URLError, TimeoutError, OSError) as exc:
+                last_error = exc
+                if attempt + 1 >= attempts:
+                    break
+                time.sleep(self._retry_delay(attempt))
+        raise BackendClientError(
+            f"Backend {method.upper()} {path} failed after {attempts} attempt(s): {last_error}"
+        ) from last_error
+
+    def _retry_delay(self, attempt: int) -> float:
+        base = max(0.0, float(self.retry_backoff_seconds))
+        return min(base * (2**attempt), 10.0)
 
     def _signature_headers(self, method: str, path: str, query: str, body: bytes) -> dict[str, str]:
         hotkey = self.wallet.hotkey.ss58_address

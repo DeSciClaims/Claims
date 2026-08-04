@@ -22,6 +22,7 @@ class AgentV1ValidatorConfig(BaseModel):
     max_agent_iters: int = 4
     cli_command: list[str] = []
     skip_rigor_agent: bool = False
+    validation_mode: str = "deterministic"
 
     @classmethod
     def from_env(cls, base_dir: Path | None = None) -> "AgentV1ValidatorConfig":
@@ -50,6 +51,12 @@ class AgentV1ValidatorConfig(BaseModel):
             max_agent_iters=int(os.getenv("SUBNET_CLAIMS_VALIDATOR_AGENT_MAX_ITERS", "4")),
             cli_command=shlex.split(os.getenv("SUBNET_CLAIMS_VALIDATOR_AGENT_CLI_COMMAND", "")),
             skip_rigor_agent=os.getenv("SUBNET_CLAIMS_VALIDATOR_SKIP_RIGOR_AGENT", "").lower() in {"1", "true", "yes"},
+            validation_mode=os.getenv(
+                "SUBNET_CLAIMS_VALIDATOR_VALIDATION_MODE",
+                os.getenv("CLAIMS_AGENT_V1_VALIDATION_MODE", "deterministic"),
+            )
+            .strip()
+            .lower(),
         )
 
     def require_api_key(self) -> str:

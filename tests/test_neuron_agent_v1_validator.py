@@ -242,6 +242,25 @@ def test_validator_reference_harness_sets_reference_env(monkeypatch) -> None:
     )
 
 
+def test_validator_backend_client_uses_configured_timeout_and_retries() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="5FakeValidatorHotkey"))
+    validator.config = SimpleNamespace(
+        claims_backend_url="https://api.example.test",
+        claims_network="testnet",
+        claims_backend_timeout=120,
+        claims_backend_retries=4,
+        claims_backend_retry_backoff=0.5,
+    )
+
+    client = validator._build_backend_client()
+
+    assert client is not None
+    assert client.timeout_seconds == 120
+    assert client.max_retries == 4
+    assert client.retry_backoff_seconds == 0.5
+
+
 def test_trace_refs_may_point_to_claims_evidence_experiments_or_concepts(tmp_path) -> None:
     path = tmp_path / "agent_output.json"
     path.write_text(__import__("json").dumps(_agent_v1_artifact()), encoding="utf-8")

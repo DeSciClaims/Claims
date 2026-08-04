@@ -32,6 +32,7 @@ def rigor_findings_schema() -> dict[str, Any]:
                                 "argument_coherence",
                                 "exploration_integrity",
                                 "methodological_rigor",
+                                "grounding_adjudication",
                             ],
                         },
                         "severity": {

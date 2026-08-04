@@ -116,6 +116,144 @@ def test_validator_agent_v1_runner_accepts_successful_rigor_runtime(monkeypatch,
     assert report.metrics.token_usage["total_tokens"] == 2
 
 
+def test_validator_agent_v1_llm_validation_can_suppress_grounding_false_positive(monkeypatch, tmp_path: Path) -> None:
+    payload = _valid_artifact()
+    payload["logic"]["claims"][0]["sources"][0]["quote"] = "Treatment A shortened recovery duration in the randomized trial."
+    artifact_path = _write_json(tmp_path / "agent_output.json", payload)
+    source_path = _write_json(tmp_path / "source_payload.json", _source_payload())
+    output_dir = tmp_path / "validator"
+    config = _config(tmp_path)
+    config.validation_mode = "llm"
+
+    class SuppressingRuntime:
+        runtime_name = "fake"
+
+        def run_rigor(self, *, skill_pack, run_dir, request):
+            output_path = run_dir / request.expected_output_path
+            output_path.write_text(
+                json.dumps(
+                    {
+                        "findings": [
+                            {
+                                "dimension": "grounding_adjudication",
+                                "severity": "suggestion",
+                                "target_type": "claim",
+                                "target_id": "C01",
+                                "message": "Deterministic grounding finding G001 is semantically supported by the cited span.",
+                                "evidence_span": "Treatment A reduced median recovery time from 10 days to 7 days.",
+                                "suggestion": None,
+                                "metadata": {
+                                    "code": "grounding_finding_supported",
+                                    "suppresses_finding_id": "G001",
+                                    "cited_span_ids": ["paper-span-1"],
+                                },
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return RigorAgentResult(output_path=str(output_path), manifest={"runtime": "fake", "elapsed_seconds": 0.1})
+
+    monkeypatch.setattr("validator.agent_v1.runner.build_rigor_runtime", lambda _config: SuppressingRuntime())
+
+    report = AgentV1ValidatorRunner(config).run(
+        artifact_path=artifact_path,
+        source_payload_path=source_path,
+        output_dir=output_dir,
+    )
+
+    raw_grounding = json.loads((output_dir / "grounding_findings.json").read_text(encoding="utf-8"))[0]
+    reviewed_grounding = json.loads((output_dir / "grounding_reviewed_findings.json").read_text(encoding="utf-8"))
+    assert raw_grounding["metadata"]["code"] == "quote_not_in_source"
+    assert reviewed_grounding == []
+    assert report.passed is True
+    assert report.score == 1.0
+    assert report.metadata["grounding_review"]["suppressed_finding_ids"] == ["G001"]
+    assert not [finding for finding in report.findings if finding.metadata.get("code") == "grounding_finding_supported"]
+
+
+def test_validator_agent_v1_llm_validation_keeps_unsuppressed_grounding_findings(monkeypatch, tmp_path: Path) -> None:
+    payload = _valid_artifact()
+    payload["logic"]["claims"][0]["sources"][0]["quote"] = "Treatment A shortened recovery duration in the randomized trial."
+    artifact_path = _write_json(tmp_path / "agent_output.json", payload)
+    source_path = _write_json(tmp_path / "source_payload.json", _source_payload())
+    output_dir = tmp_path / "validator"
+    config = _config(tmp_path)
+    config.validation_mode = "llm"
+
+    class EmptyRuntime:
+        runtime_name = "fake"
+
+        def run_rigor(self, *, skill_pack, run_dir, request):
+            output_path = run_dir / request.expected_output_path
+            output_path.write_text(json.dumps({"findings": []}), encoding="utf-8")
+            return RigorAgentResult(output_path=str(output_path), manifest={"runtime": "fake", "elapsed_seconds": 0.1})
+
+    monkeypatch.setattr("validator.agent_v1.runner.build_rigor_runtime", lambda _config: EmptyRuntime())
+
+    report = AgentV1ValidatorRunner(config).run(
+        artifact_path=artifact_path,
+        source_payload_path=source_path,
+        output_dir=output_dir,
+    )
+
+    assert report.passed is False
+    assert report.metadata["grounding_review"]["suppressed_finding_ids"] == []
+    assert [finding.metadata.get("code") for finding in report.findings] == ["quote_not_in_source"]
+
+
+def test_validator_agent_v1_llm_validation_does_not_double_count_grounding_confirmations(
+    monkeypatch, tmp_path: Path
+) -> None:
+    payload = _valid_artifact()
+    payload["logic"]["claims"][0]["sources"][0]["quote"] = "Treatment A shortened recovery duration in the randomized trial."
+    artifact_path = _write_json(tmp_path / "agent_output.json", payload)
+    source_path = _write_json(tmp_path / "source_payload.json", _source_payload())
+    output_dir = tmp_path / "validator"
+    config = _config(tmp_path)
+    config.validation_mode = "llm"
+
+    class ConfirmingRuntime:
+        runtime_name = "fake"
+
+        def run_rigor(self, *, skill_pack, run_dir, request):
+            output_path = run_dir / request.expected_output_path
+            output_path.write_text(
+                json.dumps(
+                    {
+                        "findings": [
+                            {
+                                "dimension": "grounding_adjudication",
+                                "severity": "critical",
+                                "target_type": "claim",
+                                "target_id": "C01",
+                                "message": "Source quote does not appear in the referenced source span text.",
+                                "evidence_span": "Treatment A shortened recovery duration in the randomized trial.",
+                                "suggestion": None,
+                                "metadata": {"code": "quote_not_in_source"},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return RigorAgentResult(output_path=str(output_path), manifest={"runtime": "fake", "elapsed_seconds": 0.1})
+
+    monkeypatch.setattr("validator.agent_v1.runner.build_rigor_runtime", lambda _config: ConfirmingRuntime())
+
+    report = AgentV1ValidatorRunner(config).run(
+        artifact_path=artifact_path,
+        source_payload_path=source_path,
+        output_dir=output_dir,
+    )
+
+    assert report.passes["grounding"].finding_count == 1
+    assert report.passes["rigor"].finding_count == 0
+    assert [finding.pass_name for finding in report.findings] == ["grounding"]
+    assert [finding.metadata.get("code") for finding in report.findings] == ["quote_not_in_source"]
+
+
 def test_validator_agent_v1_factory_supports_langchain_runtime(tmp_path: Path) -> None:
     config = _config(tmp_path)
     config.runtime = "langchain-agent"

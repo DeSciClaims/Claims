@@ -147,11 +147,20 @@ Map the atoms into `/logic/`:
   from a dependency claim — re-open this claim's own source. A bare path with no «quote» is invalid;
   if a source can't be opened this turn, write `[pending: …]` (an unverified path is fabrication,
   worse than `[pending]`).
+  **Use multiple source refs when the object needs them**: if a claim, evidence record,
+  experiment, concept, or trace node combines facts from multiple sentences, tables, figures,
+  pages, or spans, attach every supporting source ref to that same object. Do not rely on a
+  source attached elsewhere in the artifact. Every load-bearing number must appear in one of the
+  object's own connected quotes or cited spans. If the exact number appears elsewhere in the
+  paper, cite that additional span. Do not add derived conversions, percentages, or threshold
+  lists unless the exact derived value/list appears in the connected quote; prefer the source's
+  original wording and units.
 - **concepts.md**: the paper's genuine technical terms, formally defined
 - **experiments.md**: declarative verification/analysis plans (NO exact numbers — directional
-  only). "Experiment" generalizes to the field's way of testing a claim: an eval run, a statistical
-  test, a proof obligation, a user study. Link each experiment to where its results are filed
-  (`Evidence`) and to what produced it (`Run`, including failed/ablated runs). Claims and experiments
+  only). Method constants in setup/procedure must also be grounded in the experiment's own source
+  refs or omitted. "Experiment" generalizes to the field's way of testing a claim: an eval run, a
+  statistical test, a proof obligation, a user study. Link each experiment to where its results are
+  filed (`Evidence`) and to what produced it (`Run`, including failed/ablated runs). Claims and experiments
   are many-to-many — a claim that generalises across runs lists every experiment in its `Proof`;
   don't mirror one experiment per claim.
 - **solution/**: the method layer — `constraints.md` (limitations/assumptions) is always present;

@@ -145,6 +145,27 @@ class ClaimsValidator:
             help="Backend API base URL. When set, validator fetches signed batch tasks and posts audit records.",
         )
         parser.add_argument(
+            "--claims.backend-timeout",
+            dest="claims_backend_timeout",
+            type=float,
+            default=float(os.getenv("CLAIMS_BACKEND_TIMEOUT", "60")),
+            help="Timeout in seconds for each signed Claims backend request.",
+        )
+        parser.add_argument(
+            "--claims.backend-retries",
+            dest="claims_backend_retries",
+            type=int,
+            default=int(os.getenv("CLAIMS_BACKEND_RETRIES", "2")),
+            help="Number of retries for transient Claims backend network/TLS failures.",
+        )
+        parser.add_argument(
+            "--claims.backend-retry-backoff",
+            dest="claims_backend_retry_backoff",
+            type=float,
+            default=float(os.getenv("CLAIMS_BACKEND_RETRY_BACKOFF", "2")),
+            help="Initial backoff in seconds between transient Claims backend retry attempts.",
+        )
+        parser.add_argument(
             "--claims.network",
             dest="claims_network",
             choices=("testnet", "mainnet"),
@@ -206,6 +227,13 @@ class ClaimsValidator:
             choices=("deterministic", "llm"),
             default=os.getenv("CLAIMS_AUDIT_METHOD", "deterministic"),
             help="Audit method used to score miner responses.",
+        )
+        parser.add_argument(
+            "--claims.agent-v1-validation-mode",
+            dest="claims_agent_v1_validation_mode",
+            choices=("deterministic", "llm", "hybrid"),
+            default=os.getenv("CLAIMS_AGENT_V1_VALIDATION_MODE", ""),
+            help="agent_v1 diagnostic validation mode. Empty follows --claims.audit-method.",
         )
         parser.add_argument(
             "--claims.validator-pipeline",
@@ -469,6 +497,9 @@ class ClaimsValidator:
         config.claims_task_manifest = parsed_args.claims_task_manifest
         config.claims_task_id = parsed_args.claims_task_id
         config.claims_backend_url = parsed_args.claims_backend_url
+        config.claims_backend_timeout = parsed_args.claims_backend_timeout
+        config.claims_backend_retries = parsed_args.claims_backend_retries
+        config.claims_backend_retry_backoff = parsed_args.claims_backend_retry_backoff
         config.claims_network = parsed_args.claims_network
         config.claims_batch_size = parsed_args.claims_batch_size
         config.claims_task_type = parsed_args.claims_task_type
@@ -478,6 +509,7 @@ class ClaimsValidator:
         config.claims_allow_paper_reuse = parsed_args.claims_allow_paper_reuse
         config.claims_target_uids = parsed_args.claims_target_uids
         config.claims_audit_method = parsed_args.claims_audit_method
+        config.claims_agent_v1_validation_mode = parsed_args.claims_agent_v1_validation_mode
         config.claims_validator_pipeline = parsed_args.claims_validator_pipeline
         config.claims_rigor_harness = parsed_args.claims_rigor_harness
         config.claims_rigor_model = parsed_args.claims_rigor_model
@@ -695,7 +727,9 @@ class ClaimsValidator:
             base_url=backend_url,
             wallet=self.wallet,
             network=str(getattr(self.config, "claims_network", "testnet")),
-            timeout_seconds=30.0,
+            timeout_seconds=float(getattr(self.config, "claims_backend_timeout", 60.0)),
+            max_retries=int(getattr(self.config, "claims_backend_retries", 2)),
+            retry_backoff_seconds=float(getattr(self.config, "claims_backend_retry_backoff", 2.0)),
         )
 
     def _fetch_backend_task(self) -> ClaimsTask:
@@ -1446,6 +1480,10 @@ class ClaimsValidator:
             _write_json(source_payload_path, source_payload)
         config = AgentV1ValidatorConfig.from_env(Path(__file__).resolve().parents[1])
         self._apply_rigor_harness_config(config)
+        validation_mode = str(getattr(self.config, "claims_agent_v1_validation_mode", "") or "").strip().lower()
+        if not validation_mode:
+            validation_mode = "llm" if str(getattr(self.config, "claims_audit_method", "deterministic")) == "llm" else "deterministic"
+        config.validation_mode = validation_mode
         if self.config.claims_agent_v1_skip_rigor:
             config.skip_rigor_agent = True
         report = AgentV1ValidatorRunner(config).run(

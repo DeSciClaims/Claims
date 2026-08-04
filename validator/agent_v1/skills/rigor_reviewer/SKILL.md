@@ -39,6 +39,10 @@ Review these dimensions:
 4. `argument_coherence`: problem, insight, claims, experiments, evidence, and trace align.
 5. `exploration_integrity`: trace honestly represents decisions, failures, or the limits of available process evidence.
 6. `methodological_rigor`: methods, baselines, ablations, statistics, and metrics are adequate for the claims.
+7. `grounding_adjudication`: when deterministic grounding flags a quote or
+   number mismatch, decide whether the cited span semantically supports the
+   artifact despite PDF extraction formatting, notation, line breaks, or
+   paraphrase.
 
 ## Finding Rules
 
@@ -53,6 +57,19 @@ Review these dimensions:
 - Include an exact `evidence_span` from the artifact when the finding is based
   on present text. For absences, `evidence_span` may be null.
 - Return strict JSON only.
+- You may suppress only deterministic `quote_not_in_source` or
+  `number_not_grounded` findings, and only when the cited span exists and
+  clearly supports the artifact text. Never suppress missing source payload or
+  missing span findings.
+- To suppress a false-positive deterministic grounding finding, emit a
+  `suggestion` finding with `dimension: grounding_adjudication` and metadata
+  `{"code":"grounding_finding_supported","suppresses_finding_id":"G001"}`.
+  Use `evidence_span` for a short exact supporting excerpt from the cited span.
+- If a deterministic grounding finding is valid, do not re-emit the same
+  `quote_not_in_source` or `number_not_grounded` finding as a rigor issue. Leave
+  it in `grounding_findings.json`; the validator will count it once. Emit a
+  rigor finding only when there is an additional semantic-rigor problem beyond
+  the deterministic grounding defect.
 
 ## Output
 
