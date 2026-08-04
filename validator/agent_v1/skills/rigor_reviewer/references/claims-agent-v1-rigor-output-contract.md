@@ -17,19 +17,21 @@ Return strict JSON with this shape:
 }
 ```
 
-If the deterministic grounding finding is valid, do not re-emit the same
-`quote_not_in_source` or `number_not_grounded` finding as a rigor finding. Leave
-that issue in `grounding_findings.json` so the validator counts it once. Emit a
-rigor finding only for additional semantic-rigor problems beyond the grounding
-defect.
+Emit direct `grounding_adjudication` findings when the cited source spans do not
+semantically support the artifact text. This includes unsupported quotes,
+unsupported load-bearing numbers, missing multi-span support, scope drift, and
+citations that point to the wrong source span. Deterministic grounding findings
+are contract findings and normally cover only missing payloads, missing source
+refs, missing span IDs, or invalid source roles.
 
 Do not include a final score. Deterministic validator code computes the score
 from all findings.
 
-For LLM-adjudicated validation, you may suppress a deterministic grounding
-finding only when the cited source span is present and semantically supports
-the quoted claim/evidence despite PDF formatting, paraphrase, notation, or
-line-break differences. Do not suppress missing source payload or missing span
+For older validation runs only, you may suppress a deterministic
+`quote_not_in_source` or `number_not_grounded` finding when the cited source
+span is present and semantically supports the artifact text despite PDF
+formatting, paraphrase, notation, or line-break differences. Do not suppress
+missing source payload, missing source ref, missing span ID, or invalid role
 findings. Emit a zero-penalty suggestion with:
 
 ```json

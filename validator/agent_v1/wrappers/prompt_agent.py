@@ -101,7 +101,7 @@ def _build_prompt(run_dir: Path, skill_dir: Path, request_path: Path, output_pat
             "",
             "## Mandatory steps",
             "1. Read the skill instructions and rigor JSON contract.",
-            "2. Read the artifact, source payload, deterministic findings, and output schema.",
+            "2. Read the artifact, source payload, structural findings, source-ref contract findings, and output schema.",
             "3. Review all required rigor dimensions.",
             f"4. Write only the findings object to `{output_path}`.",
             "",

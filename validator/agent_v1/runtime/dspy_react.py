@@ -99,7 +99,7 @@ def _runtime_instructions(skill_pack: SkillPack) -> str:
             skill_pack.render_for_agent(),
             "Return strict JSON only. The output must be an object with a findings array.",
             "Do not compute the final validator score. Deterministic validator code scores findings.",
-            "Use the deterministic structural and grounding findings as context; do not duplicate them unless they create a semantic rigor issue.",
+            "Use deterministic structural findings and source-ref contract findings as context; review semantic grounding directly from the cited spans.",
             "Use the provided tools when you need artifact text, source spans, deterministic findings, skill resources, or file output.",
             "Call submit_rigor_findings with the final JSON when ready, and also return the same strict JSON in final_json.",
         ]

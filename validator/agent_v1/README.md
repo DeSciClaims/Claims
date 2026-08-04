@@ -1,8 +1,9 @@
 # validator.agent_v1
 
 `validator.agent_v1` validates canonical `miner.agent_v1` agent JSON outputs. It
-uses deterministic checks for schema, cross references, and source grounding,
-then runs a required agent rigor pass over ARA Seal-style rigor dimensions.
+uses deterministic checks for schema, cross references, and source-ref contract
+validity, then runs a required agent rigor pass over semantic grounding and ARA
+Seal-style rigor dimensions.
 
 The first supported rigor backends are:
 
@@ -18,7 +19,7 @@ Each run writes:
 - `agent_v1_validation_report.json`: final score, pass summaries, findings,
   token/cost metadata when available.
 - `structural_findings.json`: deterministic schema and reference findings.
-- `grounding_findings.json`: deterministic source-ref and quote findings.
+- `grounding_findings.json`: deterministic source-ref contract findings.
 - `rigor_findings.json`: agent semantic rigor findings.
 - `rigor_backend_manifest.json`: runtime metadata for the rigor agent backend.
 

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from validator.agent_v1.config import AgentV1ValidatorConfig
-from validator.agent_v1.grounding import _contains_normalized, run_grounding_checks
+from validator.agent_v1.grounding import run_grounding_checks
 from validator.agent_v1.models import AgentV1ValidationFinding, RigorAgentResult
 from validator.agent_v1.reference_client import LocalCliReferenceMinerClient, LocalReferenceMinerClient, ReferenceMinerInput
 from validator.agent_v1.runner import AgentV1ValidatorRunner
@@ -24,7 +24,7 @@ def test_validator_agent_v1_structural_and_grounding_clean(tmp_path: Path) -> No
     assert grounding_findings == []
 
 
-def test_validator_agent_v1_grounding_flags_bad_quote(tmp_path: Path) -> None:
+def test_validator_agent_v1_grounding_does_not_semantically_grade_quotes(tmp_path: Path) -> None:
     payload = _valid_artifact()
     payload["logic"]["claims"][0]["sources"][0]["quote"] = "Treatment doubled recovery speed."
     artifact_path = _write_json(tmp_path / "agent_output.json", payload)
@@ -32,26 +32,29 @@ def test_validator_agent_v1_grounding_flags_bad_quote(tmp_path: Path) -> None:
     grounding_findings = run_grounding_checks(artifact, _source_payload())
 
     assert structural_findings == []
-    assert [finding.metadata["code"] for finding in grounding_findings] == ["quote_not_in_source"]
+    assert grounding_findings == []
 
 
-def test_validator_agent_v1_grounding_tolerates_pdf_extraction_artifacts() -> None:
-    source_text = (
-        "The linear polygenic score from all mea- −29 sured SNPs accounts for ≈2% "
-        "(P =1.0×10) stratification. of the variance in EduYears in the STR sam- −24 "
-        "ple and ≈3% (P =7.1×10)intheQIMR."
-    )
+def test_validator_agent_v1_grounding_flags_missing_span_ids(tmp_path: Path) -> None:
+    payload = _valid_artifact()
+    payload["logic"]["claims"][0]["sources"][0]["span_ids"] = ["paper-span-missing"]
+    artifact_path = _write_json(tmp_path / "agent_output.json", payload)
+    _, artifact, structural_findings = run_structural_checks(artifact_path)
+    grounding_findings = run_grounding_checks(artifact, _source_payload())
 
-    assert _contains_normalized(
-        source_text,
-        "The linear polygenic score from all measured SNPs accounts for ≈2% "
-        "(P = 1.0 × 10−29) of the variance in EduYears in the STR sample and "
-        "≈3% (P = 7.1 × 10−24) in the QIMR.",
-    )
-    assert not _contains_normalized(
-        "The polygenic score remains associated with educational attainment and cognitive function in within-family analyses.",
-        "The polygenic score remains associated with educational attainment and cognitive function even after controlling for the other.",
-    )
+    assert structural_findings == []
+    assert [finding.metadata["code"] for finding in grounding_findings] == ["missing_source_span"]
+
+
+def test_validator_agent_v1_claim_can_be_grounded_by_linked_evidence(tmp_path: Path) -> None:
+    payload = _valid_artifact()
+    payload["logic"]["claims"][0]["sources"] = []
+    artifact_path = _write_json(tmp_path / "agent_output.json", payload)
+    _, artifact, structural_findings = run_structural_checks(artifact_path)
+    grounding_findings = run_grounding_checks(artifact, _source_payload())
+
+    assert structural_findings == []
+    assert grounding_findings == []
 
 
 def test_validator_agent_v1_runner_converts_rigor_runtime_failure_to_finding(monkeypatch, tmp_path: Path) -> None:
@@ -116,9 +119,62 @@ def test_validator_agent_v1_runner_accepts_successful_rigor_runtime(monkeypatch,
     assert report.metrics.token_usage["total_tokens"] == 2
 
 
-def test_validator_agent_v1_llm_validation_can_suppress_grounding_false_positive(monkeypatch, tmp_path: Path) -> None:
+def test_validator_agent_v1_llm_validation_reports_semantic_grounding_findings(monkeypatch, tmp_path: Path) -> None:
     payload = _valid_artifact()
     payload["logic"]["claims"][0]["sources"][0]["quote"] = "Treatment A shortened recovery duration in the randomized trial."
+    artifact_path = _write_json(tmp_path / "agent_output.json", payload)
+    source_path = _write_json(tmp_path / "source_payload.json", _source_payload())
+    output_dir = tmp_path / "validator"
+    config = _config(tmp_path)
+    config.validation_mode = "llm"
+
+    class ReviewingRuntime:
+        runtime_name = "fake"
+
+        def run_rigor(self, *, skill_pack, run_dir, request):
+            output_path = run_dir / request.expected_output_path
+            output_path.write_text(
+                json.dumps(
+                    {
+                        "findings": [
+                            {
+                                "dimension": "grounding_adjudication",
+                                "severity": "critical",
+                                "target_type": "claim",
+                                "target_id": "C01",
+                                "message": "The cited source span does not support the claim quote.",
+                                "evidence_span": "Treatment A shortened recovery duration in the randomized trial.",
+                                "suggestion": "Revise the quote or cite a span that directly supports it.",
+                                "metadata": {"code": "unsupported_source_quote", "cited_span_ids": ["paper-span-1"]},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return RigorAgentResult(output_path=str(output_path), manifest={"runtime": "fake", "elapsed_seconds": 0.1})
+
+    monkeypatch.setattr("validator.agent_v1.runner.build_rigor_runtime", lambda _config: ReviewingRuntime())
+
+    report = AgentV1ValidatorRunner(config).run(
+        artifact_path=artifact_path,
+        source_payload_path=source_path,
+        output_dir=output_dir,
+    )
+
+    raw_grounding = json.loads((output_dir / "grounding_findings.json").read_text(encoding="utf-8"))
+    reviewed_grounding = json.loads((output_dir / "grounding_reviewed_findings.json").read_text(encoding="utf-8"))
+    assert raw_grounding == []
+    assert reviewed_grounding == []
+    assert report.passed is False
+    assert report.passes["grounding"].finding_count == 0
+    assert report.passes["rigor"].finding_count == 1
+    assert [finding.metadata.get("code") for finding in report.findings] == ["unsupported_source_quote"]
+
+
+def test_validator_agent_v1_llm_validation_cannot_suppress_contract_findings(monkeypatch, tmp_path: Path) -> None:
+    payload = _valid_artifact()
+    payload["logic"]["claims"][0]["sources"][0]["span_ids"] = ["paper-span-missing"]
     artifact_path = _write_json(tmp_path / "agent_output.json", payload)
     source_path = _write_json(tmp_path / "source_payload.json", _source_payload())
     output_dir = tmp_path / "validator"
@@ -139,14 +195,10 @@ def test_validator_agent_v1_llm_validation_can_suppress_grounding_false_positive
                                 "severity": "suggestion",
                                 "target_type": "claim",
                                 "target_id": "C01",
-                                "message": "Deterministic grounding finding G001 is semantically supported by the cited span.",
-                                "evidence_span": "Treatment A reduced median recovery time from 10 days to 7 days.",
+                                "message": "Attempted suppression of a contract finding.",
+                                "evidence_span": None,
                                 "suggestion": None,
-                                "metadata": {
-                                    "code": "grounding_finding_supported",
-                                    "suppresses_finding_id": "G001",
-                                    "cited_span_ids": ["paper-span-1"],
-                                },
+                                "metadata": {"code": "grounding_finding_supported", "suppresses_finding_id": "G001"},
                             }
                         ]
                     }
@@ -163,47 +215,16 @@ def test_validator_agent_v1_llm_validation_can_suppress_grounding_false_positive
         output_dir=output_dir,
     )
 
-    raw_grounding = json.loads((output_dir / "grounding_findings.json").read_text(encoding="utf-8"))[0]
+    raw_grounding = json.loads((output_dir / "grounding_findings.json").read_text(encoding="utf-8"))
     reviewed_grounding = json.loads((output_dir / "grounding_reviewed_findings.json").read_text(encoding="utf-8"))
-    assert raw_grounding["metadata"]["code"] == "quote_not_in_source"
-    assert reviewed_grounding == []
-    assert report.passed is True
-    assert report.score == 1.0
-    assert report.metadata["grounding_review"]["suppressed_finding_ids"] == ["G001"]
-    assert not [finding for finding in report.findings if finding.metadata.get("code") == "grounding_finding_supported"]
-
-
-def test_validator_agent_v1_llm_validation_keeps_unsuppressed_grounding_findings(monkeypatch, tmp_path: Path) -> None:
-    payload = _valid_artifact()
-    payload["logic"]["claims"][0]["sources"][0]["quote"] = "Treatment A shortened recovery duration in the randomized trial."
-    artifact_path = _write_json(tmp_path / "agent_output.json", payload)
-    source_path = _write_json(tmp_path / "source_payload.json", _source_payload())
-    output_dir = tmp_path / "validator"
-    config = _config(tmp_path)
-    config.validation_mode = "llm"
-
-    class EmptyRuntime:
-        runtime_name = "fake"
-
-        def run_rigor(self, *, skill_pack, run_dir, request):
-            output_path = run_dir / request.expected_output_path
-            output_path.write_text(json.dumps({"findings": []}), encoding="utf-8")
-            return RigorAgentResult(output_path=str(output_path), manifest={"runtime": "fake", "elapsed_seconds": 0.1})
-
-    monkeypatch.setattr("validator.agent_v1.runner.build_rigor_runtime", lambda _config: EmptyRuntime())
-
-    report = AgentV1ValidatorRunner(config).run(
-        artifact_path=artifact_path,
-        source_payload_path=source_path,
-        output_dir=output_dir,
-    )
-
+    assert [finding["metadata"]["code"] for finding in raw_grounding] == ["missing_source_span"]
+    assert [finding["metadata"]["code"] for finding in reviewed_grounding] == ["missing_source_span"]
     assert report.passed is False
     assert report.metadata["grounding_review"]["suppressed_finding_ids"] == []
-    assert [finding.metadata.get("code") for finding in report.findings] == ["quote_not_in_source"]
+    assert [finding.metadata.get("code") for finding in report.findings] == ["missing_source_span"]
 
 
-def test_validator_agent_v1_llm_validation_does_not_double_count_grounding_confirmations(
+def test_validator_agent_v1_llm_validation_keeps_direct_llm_grounding_findings(
     monkeypatch, tmp_path: Path
 ) -> None:
     payload = _valid_artifact()
@@ -248,9 +269,9 @@ def test_validator_agent_v1_llm_validation_does_not_double_count_grounding_confi
         output_dir=output_dir,
     )
 
-    assert report.passes["grounding"].finding_count == 1
-    assert report.passes["rigor"].finding_count == 0
-    assert [finding.pass_name for finding in report.findings] == ["grounding"]
+    assert report.passes["grounding"].finding_count == 0
+    assert report.passes["rigor"].finding_count == 1
+    assert [finding.pass_name for finding in report.findings] == ["rigor"]
     assert [finding.metadata.get("code") for finding in report.findings] == ["quote_not_in_source"]
 
 

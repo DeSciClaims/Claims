@@ -3,8 +3,8 @@ name: rigor_reviewer
 description: |
   Claims agent_v1 Rigor Reviewer. Runs the required semantic rigor pass for
   validator.agent_v1. Reads a Claims agent artifact, source payload, and
-  deterministic findings, then emits structured rigor findings. Produces
-  findings only; deterministic validator code computes the final score.
+  deterministic contract findings, then emits structured rigor findings.
+  Produces findings only; deterministic validator code computes the final score.
 argument-hint: "<validator-run-dir>"
 allowed-tools: Read, Write, Glob, Grep
 metadata:
@@ -22,7 +22,9 @@ You receive a validator run directory containing:
 - `agent_output.json`: the miner artifact under review.
 - `source_payload.json`: source spans available to the miner task, when present.
 - `structural_findings.json`: deterministic structural findings.
-- `grounding_findings.json`: deterministic source-grounding findings.
+- `grounding_findings.json`: deterministic source contract findings, such as
+  missing source payloads, missing span IDs, invalid source roles, or missing
+  source refs.
 - `rigor_findings_schema.json`: the required output schema.
 
 Your job is to read the artifact and produce structured findings about semantic
@@ -39,10 +41,11 @@ Review these dimensions:
 4. `argument_coherence`: problem, insight, claims, experiments, evidence, and trace align.
 5. `exploration_integrity`: trace honestly represents decisions, failures, or the limits of available process evidence.
 6. `methodological_rigor`: methods, baselines, ablations, statistics, and metrics are adequate for the claims.
-7. `grounding_adjudication`: when deterministic grounding flags a quote or
-   number mismatch, decide whether the cited span semantically supports the
-   artifact despite PDF extraction formatting, notation, line breaks, or
-   paraphrase.
+7. `grounding_adjudication`: decide whether each claim, evidence record, and
+   experiment is semantically supported by its cited source spans. This includes
+   quote support, load-bearing numbers, sample sizes, p-values, thresholds,
+   identifiers, units, scope, and multi-span support. Treat `source_payload`
+   spans as the source of truth; do not fetch external sources.
 
 ## Finding Rules
 
@@ -57,19 +60,21 @@ Review these dimensions:
 - Include an exact `evidence_span` from the artifact when the finding is based
   on present text. For absences, `evidence_span` may be null.
 - Return strict JSON only.
-- You may suppress only deterministic `quote_not_in_source` or
-  `number_not_grounded` findings, and only when the cited span exists and
-  clearly supports the artifact text. Never suppress missing source payload or
-  missing span findings.
-- To suppress a false-positive deterministic grounding finding, emit a
-  `suggestion` finding with `dimension: grounding_adjudication` and metadata
+- Emit direct `grounding_adjudication` findings when cited spans do not support
+  the artifact text, when a load-bearing number or identifier is missing from
+  the connected spans, when a citation needs an additional span, or when a quote
+  is materially unsupported by the cited span.
+- Do not emit findings for harmless PDF extraction artifacts when the cited span
+  still clearly supports the artifact text after reading the context.
+- Deterministic grounding findings are contract findings. Never suppress
+  missing source payload, missing source refs, missing span IDs, or invalid role
+  findings.
+- For older validation runs only, if `grounding_findings.json` contains
+  deterministic `quote_not_in_source` or `number_not_grounded` findings that are
+  clearly false positives, you may suppress them by emitting a `suggestion`
+  finding with `dimension: grounding_adjudication` and metadata
   `{"code":"grounding_finding_supported","suppresses_finding_id":"G001"}`.
   Use `evidence_span` for a short exact supporting excerpt from the cited span.
-- If a deterministic grounding finding is valid, do not re-emit the same
-  `quote_not_in_source` or `number_not_grounded` finding as a rigor issue. Leave
-  it in `grounding_findings.json`; the validator will count it once. Emit a
-  rigor finding only when there is an additional semantic-rigor problem beyond
-  the deterministic grounding defect.
 
 ## Output
 

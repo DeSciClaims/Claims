@@ -25,7 +25,7 @@ class RigorToolbox:
             RigorToolSpec("read_artifact", "Read the Claims agent artifact under review.", self.read_artifact),
             RigorToolSpec("read_source_payload", "Read source spans available to the miner.", self.read_source_payload),
             RigorToolSpec("read_structural_findings", "Read deterministic structural findings.", self.read_structural_findings),
-            RigorToolSpec("read_grounding_findings", "Read deterministic grounding findings.", self.read_grounding_findings),
+            RigorToolSpec("read_grounding_findings", "Read deterministic source-ref contract findings.", self.read_grounding_findings),
             RigorToolSpec("read_run_file", "Read a UTF-8 file inside the validator run directory.", self.read_run_file),
             RigorToolSpec("write_run_file", "Write a UTF-8 file inside the validator run directory.", self.write_run_file),
             RigorToolSpec("list_run_files", "List files inside the validator run directory.", self.list_run_files),
