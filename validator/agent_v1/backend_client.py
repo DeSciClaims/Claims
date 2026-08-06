@@ -178,6 +178,7 @@ class ClaimsBackendClient:
                 "silver_units": [unit.model_dump(mode="json") for unit in silver_record.silver_units],
                 "invalid_candidates": [item.model_dump(mode="json") for item in silver_record.invalid_miner_candidates],
                 "reference_errors": [item.model_dump(mode="json") for item in silver_record.reference_errors],
+                "metadata": silver_record.metadata,
                 "audit_uri": silver_record.metadata.get("audit_uri"),
             },
         )

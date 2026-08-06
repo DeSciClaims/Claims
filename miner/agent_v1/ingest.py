@@ -20,6 +20,7 @@ class InputSpan(BaseModel):
     char_end: int | None = None
     text: str
     span_type: str = "text"
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class InputDocument(BaseModel):
@@ -160,6 +161,9 @@ def apply_paper_metadata_override(
             span.paper_id = clean_paper_id
             if span.span_id.startswith(f"{previous_paper_id}-"):
                 span.span_id = f"{clean_paper_id}{span.span_id[len(previous_paper_id):]}"
+            reader_span_id = str(span.metadata.get("reader_span_id") or "")
+            if reader_span_id.startswith(f"{previous_paper_id}-"):
+                span.metadata["reader_span_id"] = f"{clean_paper_id}{reader_span_id[len(previous_paper_id):]}"
     override = {
         key: value
         for key, value in {
@@ -202,15 +206,17 @@ def _document_from_pdf_inspector(pdf_path: Path, *, paper_id: str, max_chars: in
         markdown = str(getattr(page, "markdown", "") or "").strip()
         if not markdown:
             continue
+        reader_span_id = f"{paper_id}-p{page_index + 1:03d}-markdown"
         spans.append(
             InputSpan(
-                span_id=f"{paper_id}-p{page_index + 1:03d}-markdown",
+                span_id=f"{paper_id}-span-{len(spans) + 1:04d}",
                 paper_id=paper_id,
                 section_name=f"Page {page_index + 1}",
                 section_type="PAGE",
                 page=page_index + 1,
                 text=markdown,
                 span_type="text",
+                metadata={"reader_span_id": reader_span_id, "pdf_reader": "pdf-inspector"},
             )
         )
     return InputDocument(
@@ -298,14 +304,16 @@ def _spans_from_pypdf(pdf_path: Path, *, paper_id: str, max_chars: int) -> list[
             continue
         paragraphs = [block.strip() for block in re.split(r"\n\s*\n", page_text) if block.strip()]
         for para_index, paragraph in enumerate(paragraphs, start=1):
+            reader_span_id = f"{paper_id}-p{page_index:03d}-{para_index:03d}"
             spans.append(
                 InputSpan(
-                    span_id=f"{paper_id}-p{page_index:03d}-{para_index:03d}",
+                    span_id=f"{paper_id}-span-{len(spans) + 1:04d}",
                     paper_id=paper_id,
                     section_name=f"Page {page_index}",
                     section_type="PAGE",
                     page=page_index,
                     text=paragraph,
+                    metadata={"reader_span_id": reader_span_id, "pdf_reader": "pypdf"},
                 )
             )
     return _truncate_spans(spans, max_chars=max_chars)

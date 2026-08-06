@@ -18,6 +18,7 @@ RelationType = Literal[
     "insufficient_context",
 ]
 MismatchType = Literal[
+    "SEMANTIC_EQUIVALENCE_CANDIDATE",
     "SEMANTIC_EQUIVALENCE_UNCERTAIN",
     "MISSING_FROM_MINER",
     "EXTRA_FROM_MINER",
@@ -52,6 +53,8 @@ class CandidatePairEdge(BaseModel):
     relation: RelationType
     confidence: float = 0.0
     rationale: str | None = None
+    filter_sources: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class BronzeDiffCase(BaseModel):

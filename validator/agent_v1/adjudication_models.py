@@ -65,6 +65,7 @@ class AdjudicationDecision(BaseModel):
     rejected_candidate_ids: list[str] = Field(default_factory=list)
     valid_alternative_candidate_ids: list[str] = Field(default_factory=list)
     silver_unit_id: str | None = None
+    same_silver_unit: bool = True
     creates_required_silver_unit: bool = True
     creates_optional_improvement_unit: bool = False
     importance: Literal["central", "supporting", "minor"] = "supporting"

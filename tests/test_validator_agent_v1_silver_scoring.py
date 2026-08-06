@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from types import SimpleNamespace
 
-from validator.agent_v1.bronze_diff import compare_miner_to_bronze
+from validator.agent_v1.bronze_diff import compare_miner_to_bronze, compare_miner_to_bronze_result
 from validator.agent_v1.comparison_models import CandidatePairEdge
 from validator.agent_v1.adjudication_consensus import aggregate_adjudication_votes
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, build_silver_adjudication_passes
@@ -28,6 +28,7 @@ from validator.agent_v1.orchestrator import (
     run_batch_silver_scoring,
     run_paper_silver_pipeline,
 )
+from validator.agent_v1.pairing import filter_candidate_pairs
 from validator.agent_v1.relation_classifier import DSPyRelationClassifier
 from validator.agent_v1.silver_builder import build_silver_record
 from validator.agent_v1.silver_scoring import score_miner_against_silver
@@ -581,8 +582,8 @@ def test_build_and_enqueue_adjudication_jobs_for_paper() -> None:
 
 
 def test_bronze_diff_accepts_injected_relation_classifier() -> None:
-    bronze = _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality.")
-    miner = _candidate("miner:miner_A:C01", "miner", "miner_A", "Treatment A reduced mortality for adults 65+.")
+    bronze = _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality.", source_span_ids=["S1"])
+    miner = _candidate("miner:miner_A:C01", "miner", "miner_A", "Treatment A reduced mortality for adults 65+.", source_span_ids=["S1"])
 
     def classifier(left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
         return CandidatePairEdge(
@@ -624,16 +625,161 @@ def test_silver_pipeline_scores_semantic_equivalent_miner_claim() -> None:
                 adjudication_profile_id="static_a",
                 model_runtime_id="static",
                 dispositions_by_case_id={},
-                default_disposition="miner_error",
+                default_disposition="both_valid",
             )
         ],
     )
 
-    assert result.diff_cases == []
+    assert len(result.diff_cases) == 1
+    assert result.diff_cases[0].mismatch_type == "SEMANTIC_EQUIVALENCE_CANDIDATE"
+    assert result.diff_cases[0].metadata["candidate_graph_edge"]["relation"] == "semantic_equivalent"
     assert len(result.silver_record.silver_units) == 1
     assert result.silver_record.silver_units[0].equivalent_candidate_ids == ["bronze:C01", "miner:miner_A:C01"]
     assert result.scores[0].coverage == 1.0
     assert result.scores[0].score == 1.0
+
+
+def test_pairing_does_not_create_dense_all_pairs_by_default() -> None:
+    bronze = _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality.")
+    miner = _candidate("miner:miner_A:C01", "miner", "miner_A", "Treatment A reduced mortality.")
+
+    def classifier(_left: ComparisonCandidate, _right: ComparisonCandidate) -> CandidatePairEdge:
+        raise AssertionError("dense fallback should not call the relation classifier by default")
+
+    result = compare_miner_to_bronze_result(
+        paper_id="paper",
+        miner_id="miner_A",
+        bronze_candidates=[bronze],
+        miner_candidates=[miner],
+        relation_classifier=classifier,
+    )
+
+    assert result.candidate_graph_edges == []
+    assert [case.mismatch_type for case in result.cases] == ["MISSING_FROM_MINER", "EXTRA_FROM_MINER"]
+
+
+def test_pairing_treats_page_span_overlap_as_hint_not_pair() -> None:
+    bronze = _candidate("bronze:C01", "bronze", None, "GWAS identifies replicated education loci.", source_span_ids=["paper-p003-markdown"])
+    miner = _candidate("miner:miner_A:C01", "miner", "miner_A", "Polygenic scores explain education variance.", source_span_ids=["paper-p003-markdown"])
+
+    def classifier(_left: ComparisonCandidate, _right: ComparisonCandidate) -> CandidatePairEdge:
+        raise AssertionError("page-level source overlap should not open a pair by itself")
+
+    result = compare_miner_to_bronze_result(
+        paper_id="paper",
+        miner_id="miner_A",
+        bronze_candidates=[bronze],
+        miner_candidates=[miner],
+        relation_classifier=classifier,
+    )
+
+    assert result.candidate_graph_edges == []
+    assert [case.mismatch_type for case in result.cases] == ["MISSING_FROM_MINER", "EXTRA_FROM_MINER"]
+
+
+def test_pairing_keeps_page_span_overlap_as_embedding_hint() -> None:
+    bronze = _candidate("bronze:C01", "bronze", None, "GWAS identifies replicated education loci.", source_span_ids=["paper-p003-markdown"])
+    miner = _candidate("miner:miner_A:C01", "miner", "miner_A", "GWAS finds replicated education loci.", source_span_ids=["paper-p003-markdown"])
+
+    hits = filter_candidate_pairs(
+        [bronze],
+        [miner],
+        embedding_provider=lambda candidates: {candidate.candidate_id: [1.0, 0.0] for candidate in candidates},
+    )
+
+    assert len(hits) == 1
+    assert "embedding_high_similarity" in hits[0].sources
+    assert "source_page_overlap" in hits[0].sources
+
+
+def test_pairing_requires_mutual_embedding_retrieval_for_mid_similarity() -> None:
+    bronze_a = _candidate("bronze:C01", "bronze", None, "GWAS identifies replicated education loci.")
+    bronze_b = _candidate("bronze:C02", "bronze", None, "Polygenic scores explain education variance.")
+    miner = _candidate("miner:miner_A:C01", "miner", "miner_A", "Polygenic score associations explain variance.")
+    embeddings = {
+        bronze_a.candidate_id: [1.0, 0.0],
+        bronze_b.candidate_id: [0.9, 0.4358898944],
+        miner.candidate_id: [0.8, 0.6],
+    }
+
+    hits = filter_candidate_pairs(
+        [bronze_a, bronze_b],
+        [miner],
+        top_k=1,
+        embedding_provider=lambda _candidates: embeddings,
+    )
+
+    assert len(hits) == 1
+    assert hits[0].left.candidate_id == bronze_b.candidate_id
+    assert hits[0].right.candidate_id == miner.candidate_id
+
+
+def test_pairing_precise_span_overlap_still_opens_pair() -> None:
+    bronze = _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality.", source_span_ids=["paper-span-0007"])
+    miner = _candidate("miner:miner_A:C01", "miner", "miner_A", "Treatment A reduced mortality for adults.", source_span_ids=["paper-span-0007"])
+
+    def classifier(left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
+        return CandidatePairEdge(
+            edge_id=f"{left.candidate_id}::{right.candidate_id}",
+            left_candidate_id=left.candidate_id,
+            right_candidate_id=right.candidate_id,
+            relation="compatible_refinement",
+            confidence=0.91,
+        )
+
+    result = compare_miner_to_bronze_result(
+        paper_id="paper",
+        miner_id="miner_A",
+        bronze_candidates=[bronze],
+        miner_candidates=[miner],
+        relation_classifier=classifier,
+    )
+
+    assert [edge.filter_sources for edge in result.candidate_graph_edges] == [["source_span_overlap"]]
+    assert [case.mismatch_type for case in result.cases] == ["COMPATIBLE_REFINEMENT"]
+
+
+def test_partial_overlap_both_valid_stays_two_silver_units() -> None:
+    def classifier(left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
+        return CandidatePairEdge(
+            edge_id=f"{left.candidate_id}::{right.candidate_id}",
+            left_candidate_id=left.candidate_id,
+            right_candidate_id=right.candidate_id,
+            relation="partial_overlap",
+            confidence=0.9,
+            rationale="Related findings but separate scientific units.",
+        )
+
+    result = run_paper_silver_pipeline(
+        paper_id="paper",
+        bronze_artifact=_artifact("paper", "C01", "Treatment A reduced mortality."),
+        miner_artifacts=[
+            MinerArtifactSubmission(
+                miner_id="miner_A",
+                artifact=_artifact("paper", "C02", "Treatment A reduced ICU length of stay."),
+            )
+        ],
+        silver_record_id="silver",
+        adjudication_passes=[
+            StaticAdjudicationPass(
+                pass_id="pass_a",
+                adjudication_profile_id="static_a",
+                model_runtime_id="static",
+                dispositions_by_case_id={},
+                default_disposition="both_valid",
+            )
+        ],
+        relation_classifier=classifier,
+    )
+
+    assert len(result.diff_cases) == 1
+    assert result.diff_cases[0].mismatch_type == "SEMANTIC_EQUIVALENCE_UNCERTAIN"
+    assert len(result.silver_record.silver_units) == 2
+    assert sorted(unit.scoring_mode for unit in result.silver_record.silver_units) == ["accepted_improvement", "required"]
+    comparison_graph = result.silver_record.metadata["comparison_graph"]
+    assert comparison_graph["equivalence_group_count"] == 0
+    assert comparison_graph["cases"][0]["same_silver_unit"] is False
+    assert result.scores[0].coverage == 0.5
 
 
 def test_silver_pipeline_dedupes_semantic_equivalent_miner_only_improvements() -> None:
@@ -673,11 +819,69 @@ def test_silver_pipeline_dedupes_semantic_equivalent_miner_only_improvements() -
         relation_classifier=classifier,
     )
 
-    assert len(result.diff_cases) == 2
+    assert len(result.diff_cases) == 3
+    assert [case.mismatch_type for case in result.diff_cases].count("SEMANTIC_EQUIVALENCE_CANDIDATE") == 1
     assert len(result.silver_record.silver_units) == 1
     assert result.silver_record.silver_units[0].scoring_mode == "accepted_improvement"
     assert result.silver_record.silver_units[0].equivalent_candidate_ids == ["miner:uid_10:C01", "miner:uid_9:C01"]
+    comparison_graph = result.silver_record.metadata["comparison_graph"]
+    assert comparison_graph["equivalence_group_count"] == 1
+    assert comparison_graph["case_count"] == 3
+    assert len(comparison_graph["cases"]) == 3
+    assert any(
+        case["mismatch_type"] == "EXTRA_FROM_MINER"
+        and len(case["candidate_ids"]) == 1
+        and case["final_disposition"] == "accepted_improvement"
+        for case in comparison_graph["cases"]
+    )
+    assert comparison_graph["edges"][0]["final_disposition"] == "accepted_improvement"
+    assert comparison_graph["edges"][0]["decision_disposition"] == "accepted_improvement"
+    assert comparison_graph["edges"][0]["route"] == "direct"
+    assert comparison_graph["edges"][0]["vote_count"] == 1
+    assert comparison_graph["edges"][0]["creates_optional_improvement_unit"] is True
     assert [(score.miner_id, score.score) for score in result.scores] == [("uid_9", 1.0), ("uid_10", 1.0)]
+
+
+def test_silver_consolidation_ignores_compatible_refinement_edges() -> None:
+    def classifier(left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
+        return CandidatePairEdge(
+            edge_id=f"{left.candidate_id}::{right.candidate_id}",
+            left_candidate_id=left.candidate_id,
+            right_candidate_id=right.candidate_id,
+            relation="compatible_refinement",
+            confidence=0.95,
+            rationale="Related, but not strict semantic equivalence.",
+        )
+
+    result = run_paper_silver_pipeline(
+        paper_id="paper",
+        bronze_artifact={"paper": {"paper_id": "paper"}, "logic": {"claims": []}},
+        miner_artifacts=[
+            MinerArtifactSubmission(
+                miner_id="uid_9",
+                artifact=_artifact("paper", "C01", "Variant discovery finding."),
+            ),
+            MinerArtifactSubmission(
+                miner_id="uid_10",
+                artifact=_artifact("paper", "C01", "Polygenic score finding."),
+            ),
+        ],
+        silver_record_id="silver",
+        adjudication_passes=[
+            StaticAdjudicationPass(
+                pass_id="pass_a",
+                adjudication_profile_id="static_a",
+                model_runtime_id="static",
+                dispositions_by_case_id={},
+                default_disposition="accepted_improvement",
+            )
+        ],
+        relation_classifier=classifier,
+    )
+
+    assert [case.mismatch_type for case in result.diff_cases] == ["EXTRA_FROM_MINER", "EXTRA_FROM_MINER"]
+    assert len(result.silver_record.silver_units) == 2
+    assert result.silver_record.metadata["comparison_graph"]["equivalence_group_count"] == 0
 
 
 def test_silver_record_dedupes_required_bronze_units_across_miners() -> None:

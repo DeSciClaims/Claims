@@ -63,11 +63,12 @@ class DSPyRelationClassifier:
         program: Any | None = None,
         fallback_to_heuristic: bool = True,
     ) -> None:
-        self.model = model or os.getenv("CLAIMS_SILVER_RELATION_MODEL") or os.getenv("OPENROUTER_MODEL", "openrouter/openai/gpt-5-mini")
+        self.model = model or os.getenv("CLAIMS_SILVER_RELATION_MODEL") or os.getenv("OPENROUTER_MODEL", "openrouter/openai/gpt-4o-mini")
         self.api_key = api_key if api_key is not None else os.getenv("OPENROUTER_API_KEY", "")
         self.api_base = api_base or os.getenv("CLAIMS_SILVER_RELATION_API_BASE") or os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
         self.temperature = temperature if temperature is not None else float(os.getenv("CLAIMS_SILVER_RELATION_TEMPERATURE", "1.0"))
-        self.max_tokens = max_tokens if max_tokens is not None else int(os.getenv("CLAIMS_SILVER_RELATION_MAX_TOKENS", "16000"))
+        self.max_tokens = max_tokens if max_tokens is not None else int(os.getenv("CLAIMS_SILVER_RELATION_MAX_TOKENS", "2048"))
+        self.timeout_seconds = float(os.getenv("CLAIMS_SILVER_RELATION_TIMEOUT", "120"))
         self._dspy_module = dspy_module
         self._program = program
         self.fallback_to_heuristic = fallback_to_heuristic
@@ -125,6 +126,8 @@ class DSPyRelationClassifier:
             api_base=self.api_base,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
+            timeout=self.timeout_seconds,
+            num_retries=_env_int("CLAIMS_SILVER_RELATION_RETRIES", 1),
         )
 
         class RelationSignature(dspy_module.Signature):
@@ -222,6 +225,13 @@ def _clamp_float(value: Any, *, default: float) -> float:
     except (TypeError, ValueError):
         return default
     return round(min(1.0, max(0.0, parsed)), 4)
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except ValueError:
+        return default
 
 
 def _parse_json_object(value: str) -> dict[str, Any]:

@@ -107,18 +107,36 @@ def build_silver_record(
             continue
 
         equivalent_candidate_ids = [candidate.candidate_id for candidate in accepted] + decision.valid_alternative_candidate_ids
-        _add_or_merge_unit(
-            units_by_key,
-            paper_id=paper_id,
-            accepted=[candidate for candidate_id in equivalent_candidate_ids if (candidate := candidates_by_id.get(candidate_id))],
-            candidates_by_id=candidates_by_id,
-            case_id=decision.case_id,
-            explicit_unit_id=decision.silver_unit_id,
-            required_for_completeness=decision.creates_required_silver_unit,
-            scoring_mode="accepted_improvement" if decision.creates_optional_improvement_unit else "required",
-            importance=decision.importance or _primary_candidate(accepted).importance,
-            equivalence_group_by_candidate_id=equivalence_group_by_candidate_id,
-        )
+        unit_candidates = [candidate for candidate_id in equivalent_candidate_ids if (candidate := candidates_by_id.get(candidate_id))]
+        if decision.same_silver_unit or len(unit_candidates) <= 1:
+            _add_or_merge_unit(
+                units_by_key,
+                paper_id=paper_id,
+                accepted=unit_candidates,
+                candidates_by_id=candidates_by_id,
+                case_id=decision.case_id,
+                explicit_unit_id=decision.silver_unit_id,
+                required_for_completeness=decision.creates_required_silver_unit,
+                scoring_mode="accepted_improvement" if decision.creates_optional_improvement_unit else "required",
+                importance=decision.importance or _primary_candidate(accepted).importance,
+                equivalence_group_by_candidate_id=equivalence_group_by_candidate_id,
+            )
+            continue
+
+        for candidate in unit_candidates:
+            required_for_completeness, scoring_mode = _separate_unit_scoring(candidate, decision)
+            _add_or_merge_unit(
+                units_by_key,
+                paper_id=paper_id,
+                accepted=[candidate],
+                candidates_by_id=candidates_by_id,
+                case_id=decision.case_id,
+                explicit_unit_id=None,
+                required_for_completeness=required_for_completeness,
+                scoring_mode=scoring_mode,
+                importance=decision.importance or candidate.importance,
+                equivalence_group_by_candidate_id=equivalence_group_by_candidate_id,
+            )
 
     return SilverRecord(
         silver_record_id=silver_record_id,
@@ -233,6 +251,14 @@ def _candidate_source_span_ids(candidate_ids: list[str], candidates_by_id: dict[
         if candidate:
             source_span_ids.extend(candidate.source_span_ids)
     return sorted(set(source_span_ids))
+
+
+def _separate_unit_scoring(candidate: ComparisonCandidate, decision: AdjudicationDecision) -> tuple[bool, str]:
+    if candidate.origin == "miner":
+        if decision.disposition == "reference_error" and decision.creates_required_silver_unit:
+            return True, "required"
+        return False, "accepted_improvement"
+    return decision.creates_required_silver_unit, "required"
 
 
 def _expanded_candidate_ids(

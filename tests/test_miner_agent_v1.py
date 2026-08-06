@@ -86,9 +86,10 @@ def test_agent_v1_pdf_inspector_reader_outputs_markdown_page_spans(monkeypatch, 
 
     assert document.raw_metadata["pdf_reader"] == "pdf-inspector"
     assert document.raw_metadata["pages_with_tables"] == [1]
-    assert document.spans[0].span_id == "paper-p001-markdown"
+    assert document.spans[0].span_id == "paper-span-0001"
     assert document.spans[0].page == 1
     assert document.spans[0].text == "# Title\n\nTreatment improved outcome."
+    assert document.spans[0].metadata["reader_span_id"] == "paper-p001-markdown"
     assert payload["schema_version"] == SOURCE_PAYLOAD_SCHEMA_VERSION
     assert payload["source_metadata"]["is_complex"] is True
 
@@ -123,7 +124,8 @@ def test_agent_v1_source_payload_applies_task_paper_metadata_override(monkeypatc
     assert payload["paper"]["paper_id"] == "rietveld_et_al_2013_science"
     assert payload["paper"]["title"] == "GWAS of Educational Attainment"
     assert payload["spans"][0]["paper_id"] == "rietveld_et_al_2013_science"
-    assert payload["spans"][0]["span_id"] == "rietveld_et_al_2013_science-p001-markdown"
+    assert payload["spans"][0]["span_id"] == "rietveld_et_al_2013_science-span-0001"
+    assert payload["spans"][0]["metadata"]["reader_span_id"] == "rietveld_et_al_2013_science-p001-markdown"
     assert payload["source_metadata"]["paper_metadata_override"]["source_sha256"] == "abc"
 
 

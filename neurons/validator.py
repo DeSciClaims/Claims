@@ -1119,6 +1119,16 @@ class ClaimsValidator:
             {"items": [item.model_dump(mode="json") for item in result.adjudication_consensus]},
         )
         _write_json(
+            output_dir / "comparison_graph.json",
+            {
+                "paper_id": paper_id,
+                "candidate_graph_edges": [item.model_dump(mode="json") for item in result.candidate_graph_edges],
+                "diff_cases": [item.model_dump(mode="json") for item in result.diff_cases],
+                "silver_record_id": result.silver_record.silver_record_id,
+                "silver_metadata": result.silver_record.metadata,
+            },
+        )
+        _write_json(
             output_dir / "silver_scores.json",
             {"items": [item.model_dump(mode="json") for item in result.scores]},
         )
@@ -1254,6 +1264,7 @@ class ClaimsValidator:
                     "silver_units": silver_units,
                     "invalid_candidates": invalid_candidates,
                     "reference_errors": [item.model_dump(mode="json") for item in result.silver_record.reference_errors],
+                    "metadata": result.silver_record.metadata,
                     "audit_uri": str(output_dir / "silver_record.json"),
                 }
             )

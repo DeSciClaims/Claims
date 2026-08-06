@@ -238,12 +238,20 @@ Useful validator flags:
 - `--claims.reference-harness codex-cli --claims.reference-model <MODEL>`: choose the private reference miner harness/model.
 - `--claims.adjudication-harness hermes-cli`: choose the Silver adjudication harness.
 - `--claims.adjudication-model-a/b/tiebreak-model <MODEL>`: choose the Silver adjudicator models.
+- `--claims.silver-relation-mode dspy --claims.silver-relation-model <MODEL>`: classify filtered Bronze/miner graph edges before adjudication.
 - `--claims.allow-paper-reuse`: allow already assigned backend papers to be selected again for local smoke tests.
 - `--claims.task-manifest /path/to/tasks.jsonl`: run a list of tasks.
 - `--claims.audit-only`: score miners and write audit files without setting weights.
 - `--claims.max-steps 1`: run one validation round and exit.
 - `--claims.query-interval 60`: wait time between validation rounds.
 - `--claims.require-validator-permit`: fail fast unless the hotkey has validator permit.
+
+Optional Silver graph-pairing envs:
+
+- `CLAIMS_SILVER_PAIRING_EMBEDDING_MODE=openrouter`: enable embedding retrieval before relation classification.
+- `CLAIMS_SILVER_PAIRING_EMBEDDING_MODEL=nvidia/nemotron-3-embed-1b:free`: embedding model used for Bronze-to-miner and miner-to-Bronze top-k retrieval.
+- `CLAIMS_SILVER_PAIRING_TOP_K=4`: candidate edges retained per retrieval direction.
+- `CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS=64`: small candidate sets at or below this size also run dense pairing.
 
 For local smoke tests without the backend, pass exactly one of
 `--claims.paper-url`, `--claims.task-artifact`, or `--claims.task-manifest`.
