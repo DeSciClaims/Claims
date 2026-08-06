@@ -10,8 +10,11 @@ import sys
 import time
 import traceback
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from dotenv import load_dotenv
@@ -19,7 +22,10 @@ from dotenv import load_dotenv
 from miner.agent_v1.ingest import PDF_READERS
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, build_silver_adjudication_passes
 from validator.agent_v1.artifact_summary import summarize_agent_artifact
+from validator.agent_v1.batch_scoring import score_batch
+from validator.agent_v1.comparison_models import SilverScoreBreakdown
 from validator.agent_v1.config import AgentV1ValidatorConfig
+from validator.agent_v1.models import AgentV1ValidationFinding
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline
 from validator.agent_v1.reference_client import (
     BackendBackedReferenceMinerClient,
@@ -36,6 +42,12 @@ from .backend_client import BackendClientError, ClaimsBackendClient
 from .harness_profiles import SUPPORTED_HARNESSES, quote_command, resolve_agent_harness
 from .protocol import ClaimExtractionSynapse
 from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsPaperTask, ClaimsTask, download_pdf, load_task_manifest, safe_task_id
+
+
+@dataclass(frozen=True)
+class _PaperSilverPostPassResult:
+    paper_id: str
+    scores: list[SilverScoreBreakdown]
 
 
 def _require_bittensor() -> tuple[Any, Any, Any, Any, Any]:
@@ -204,8 +216,8 @@ class ClaimsValidator:
             "--claims.batch-score-rule",
             dest="claims_batch_score_rule",
             choices=("min", "mean", "median"),
-            default=os.getenv("CLAIMS_BATCH_SCORE_RULE", "min"),
-            help="Aggregate per-paper scores into a batch score. min implements highest-minimum scoring.",
+            default=os.getenv("CLAIMS_BATCH_SCORE_RULE", "mean"),
+            help="Aggregate per-paper scores into a batch score.",
         )
         parser.add_argument(
             "--claims.allow-paper-reuse",
@@ -423,6 +435,13 @@ class ClaimsValidator:
             help="Maximum Silver adjudication cases to run concurrently.",
         )
         parser.add_argument(
+            "--claims.silver-paper-max-workers",
+            dest="claims_silver_paper_max_workers",
+            type=int,
+            default=int(os.getenv("CLAIMS_SILVER_PAPER_MAX_WORKERS", "3")),
+            help="Maximum batch papers to run through the Silver post-pass concurrently.",
+        )
+        parser.add_argument(
             "--claims.silver-direct-confidence",
             dest="claims_silver_direct_confidence",
             type=float,
@@ -567,6 +586,7 @@ class ClaimsValidator:
         config.claims_silver_adjudication_cli_prompt_mode = parsed_args.claims_silver_adjudication_cli_prompt_mode
         config.claims_silver_adjudication_cli_timeout = parsed_args.claims_silver_adjudication_cli_timeout
         config.claims_silver_adjudication_max_workers = parsed_args.claims_silver_adjudication_max_workers
+        config.claims_silver_paper_max_workers = parsed_args.claims_silver_paper_max_workers
         config.claims_silver_direct_confidence = parsed_args.claims_silver_direct_confidence
         config.claims_silver_relation_mode = parsed_args.claims_silver_relation_mode
         config.claims_silver_relation_model = parsed_args.claims_silver_relation_model
@@ -675,7 +695,7 @@ class ClaimsValidator:
                 self.target_neurons = self._load_target_neurons()
                 self._post_validator_run(run_id, task, status="running", started_at=run_started_at)
                 miner_query_timer = _timing_start("miner_query", "Miner query")
-                responses = self._query_miners(task)
+                responses = self._query_miners(task, run_id=run_id)
                 self._record_timing_stage(
                     miner_query_timer,
                     metadata={"target_uids": [int(neuron.uid) for neuron in self.target_neurons]},
@@ -791,8 +811,9 @@ class ClaimsValidator:
             raise RuntimeError("Backend batch selection returned no papers.")
         return task
 
-    def _query_miners(self, task: ClaimsTask) -> list[Any]:
+    def _query_miners(self, task: ClaimsTask, *, run_id: str) -> list[Any]:
         synapse = ClaimExtractionSynapse(**task.to_synapse_kwargs())
+        synapse.run_id = run_id
         axons = [neuron.axon_info for neuron in self.target_neurons]
         label = task.paper_id or task.paper_url or task.task_id
         self.bt_logging.info(f"Querying {len(axons)} miner axons for task={label}")
@@ -807,12 +828,23 @@ class ClaimsValidator:
         for index, neuron in enumerate(self.target_neurons):
             response = responses[index] if index < len(responses) else None
             uid = int(neuron.uid)
+            if response is None or not getattr(response, "articles", None):
+                recovered = self._recover_backend_artifact_response(run_id=run_id, task=task, uid=uid)
+                if recovered is not None:
+                    response = recovered
+                    if index < len(responses):
+                        responses[index] = recovered
+                    else:
+                        while len(responses) < index:
+                            responses.append(None)
+                        responses.append(recovered)
             score = 0.0
             miner_metadata = self._miner_metadata(uid, response) if response is not None else self._miner_metadata(uid, None)
             if response is not None and not self._is_protocol_compatible(response):
                 self.bt_logging.warning(f"Miner uid={uid} returned incompatible Claims protocol response.")
                 self._post_miner_response(run_id, task, uid, response, miner_metadata, status="incompatible")
             elif response is not None and getattr(response, "articles", None):
+                self._hydrate_response_articles(response, uid=uid, run_id=run_id)
                 diagnostic_timer = _timing_start("diagnostic_validation", "Diagnostic validation")
                 score = self._score_batch_response(
                     response,
@@ -853,6 +885,95 @@ class ClaimsValidator:
         self.bt_logging.info(f"Current diagnostic scores: {sorted(scores.items())}")
         return scores
 
+    def _recover_backend_artifact_response(self, *, run_id: str, task: ClaimsTask, uid: int) -> Any | None:
+        if self.backend_client is None:
+            return None
+        try:
+            rows = self.backend_client.list_miner_artifacts(run_id=run_id, uid=uid)
+        except Exception as exc:
+            self.bt_logging.warning(f"Could not recover backend miner artifacts uid={uid} run_id={run_id}: {exc}")
+            return None
+        if not rows:
+            return None
+        articles = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            article = {
+                "paper_id": str(row.get("paper_id") or ""),
+                "status": str(row.get("status") or "completed"),
+                "artifact_id": str(row.get("artifact_id") or ""),
+                "artifact_uri": f"claims-api:/miner-artifacts/{row.get('artifact_id')}",
+                "artifact_hash": str(row.get("artifact_hash") or ""),
+                "source_payload_hash": row.get("source_payload_hash"),
+                "transport": "backend_artifact_v1",
+            }
+            if isinstance(row.get("agent_output"), dict):
+                article["agent_output"] = row["agent_output"]
+            if isinstance(row.get("source_payload"), dict):
+                article["source_payload"] = row["source_payload"]
+            articles.append(article)
+        if not articles:
+            return None
+        self.bt_logging.info(
+            f"Recovered {len(articles)} backend miner artifact(s) uid={uid} run_id={run_id}"
+        )
+        return SimpleNamespace(
+            task_id=task.task_id,
+            run_id=run_id,
+            batch_id=task.batch_id,
+            submission_id=f"backend_recovered_{run_id}_uid_{uid}",
+            articles=articles,
+            extraction=None,
+            source_payload=None,
+            miner_version="agent_v1",
+            protocol_version=PROTOCOL_VERSION,
+            schema_version=SCHEMA_VERSION,
+            error="",
+        )
+
+    def _hydrate_response_articles(self, response: Any, *, uid: int, run_id: str) -> None:
+        articles = getattr(response, "articles", None)
+        if not isinstance(articles, list):
+            return
+        for article in articles:
+            if not isinstance(article, dict) or article.get("status") != "completed":
+                continue
+            if isinstance(article.get("agent_output"), dict) or isinstance(article.get("extraction"), dict):
+                continue
+            artifact_id = str(article.get("artifact_id") or "").strip()
+            if not artifact_id:
+                continue
+            if self.backend_client is None:
+                article["status"] = "failed"
+                article["error"] = "artifact manifest requires Claims backend, but validator backend client is disabled"
+                continue
+            try:
+                row = self.backend_client.get_miner_artifact(artifact_id=artifact_id)
+                if str(row.get("run_id") or "") != run_id:
+                    raise ValueError(f"artifact run_id mismatch: {row.get('run_id')} != {run_id}")
+                if row.get("uid") is not None and int(row.get("uid")) != int(uid):
+                    raise ValueError(f"artifact uid mismatch: {row.get('uid')} != {uid}")
+                agent_output = row.get("agent_output")
+                if not isinstance(agent_output, dict):
+                    raise ValueError("artifact row did not include agent_output object")
+                expected_hash = str(article.get("artifact_hash") or row.get("artifact_hash") or "")
+                actual_hash = _stable_hash(agent_output)
+                if expected_hash and actual_hash != expected_hash:
+                    raise ValueError("artifact hash mismatch")
+                source_payload = row.get("source_payload")
+                expected_source_hash = str(article.get("source_payload_hash") or row.get("source_payload_hash") or "")
+                if expected_source_hash and source_payload is not None and _stable_hash(source_payload) != expected_source_hash:
+                    raise ValueError("source payload hash mismatch")
+                article["agent_output"] = agent_output
+                if isinstance(source_payload, dict):
+                    article["source_payload"] = source_payload
+                article["transport"] = article.get("transport") or "backend_artifact_v1"
+            except Exception as exc:
+                self.bt_logging.warning(f"Could not hydrate miner artifact uid={uid} artifact_id={artifact_id}: {exc}")
+                article["status"] = "failed"
+                article["error"] = f"artifact hydration failed: {exc}"
+
     def _run_silver_post_pass(self, responses: list[Any], *, task: ClaimsTask, run_id: str) -> dict[int, float]:
         if not bool(getattr(self.config, "claims_silver_enable", False)):
             return {}
@@ -864,17 +985,22 @@ class ClaimsValidator:
         except Exception as exc:
             self.bt_logging.warning(f"Silver post-pass could not initialize Bronze client: {exc}")
             return {}
-        relation_classifier = self._build_silver_relation_classifier()
         silver_scores_by_uid: dict[int, list[float]] = {}
+        silver_score_breakdowns: list[SilverScoreBreakdown] = []
+        expected_uids = [int(neuron.uid) for neuron in self.target_neurons]
+        expected_paper_ids = [paper.paper_id or f"paper_{index}" for index, paper in enumerate(paper_tasks, start=1)]
+        scored_paper_ids: set[str] = set()
+        metadata_by_uid: dict[int, dict[str, Any]] = {}
         miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None]]] = {
             paper.paper_id or f"paper_{index}": [] for index, paper in enumerate(paper_tasks, start=1)
         }
         for index, neuron in enumerate(self.target_neurons):
             response = responses[index] if index < len(responses) else None
+            uid = int(neuron.uid)
+            metadata_by_uid[uid] = self._miner_metadata(uid, response)
             if response is None or not self._is_protocol_compatible(response):
                 continue
-            uid = int(neuron.uid)
-            metadata = self._miner_metadata(uid, response)
+            metadata = metadata_by_uid[uid]
             if getattr(response, "articles", None):
                 articles = [article for article in (getattr(response, "articles", []) or []) if isinstance(article, dict)]
                 for article in articles:
@@ -885,7 +1011,12 @@ class ClaimsValidator:
                     source_payload = article.get("source_payload")
                     if paper_id in miners_by_paper and isinstance(extraction, dict) and _is_agent_v1_artifact(extraction):
                         miners_by_paper[paper_id].append(
-                            (uid, extraction, metadata, source_payload if isinstance(source_payload, dict) else None)
+                            (
+                                uid,
+                                extraction,
+                                _metadata_for_article(metadata, article),
+                                source_payload if isinstance(source_payload, dict) else None,
+                            )
                         )
             elif getattr(response, "extraction", None) and len(paper_tasks) == 1:
                 paper_id = paper_tasks[0].paper_id or task.paper_id or "paper"
@@ -896,12 +1027,19 @@ class ClaimsValidator:
                         (uid, extraction, metadata, source_payload if isinstance(source_payload, dict) else None)
                     )
 
-        for paper_index, paper in enumerate(paper_tasks, start=1):
+        adjudication_passes, tiebreak_pass = self._build_silver_adjudication_passes()
+        if not adjudication_passes:
+            self.bt_logging.warning("Silver post-pass skipped; no adjudication passes configured.")
+            return {}
+        adjudication_models = self._adjudication_pass_model_rows(adjudication_passes, tiebreak_pass)
+
+        def process_paper(paper_index: int, paper: ClaimsPaperTask) -> _PaperSilverPostPassResult | None:
             paper_id = paper.paper_id or f"paper_{paper_index}"
             miner_rows = miners_by_paper.get(paper_id, [])
             if not miner_rows:
-                continue
+                return None
             paper_stage_seconds: dict[str, float] = {}
+            timing_stages: list[dict[str, Any]] = []
             reference_timer: dict[str, Any] | None = None
             try:
                 reference_release_id = str(getattr(self.config, "claims_reference_release_id", "reference-v0"))
@@ -912,21 +1050,17 @@ class ClaimsValidator:
                 )
                 bronze_artifact = _read_json_object(Path(bronze.artifact_path))
                 reference_models = self._reference_miner_model_rows(bronze, bronze_artifact)
-                reference_stage = self._record_timing_stage(
+                reference_stage = _timing_finish(
                     reference_timer,
                     metadata={"paper_id": paper_id, "models": reference_models},
                 )
+                timing_stages.append(reference_stage)
                 paper_stage_seconds["reference_miner"] = float(reference_stage["duration_seconds"])
             except Exception as exc:
                 if reference_timer is not None:
-                    self._record_timing_stage(reference_timer, metadata={"paper_id": paper_id, "failed": True})
+                    timing_stages.append(_timing_finish(reference_timer, metadata={"paper_id": paper_id, "failed": True}))
                 self.bt_logging.warning(f"Silver post-pass skipped paper={paper_id}; Bronze unavailable: {exc}")
-                continue
-            adjudication_passes, tiebreak_pass = self._build_silver_adjudication_passes()
-            if not adjudication_passes:
-                self.bt_logging.warning(f"Silver post-pass skipped paper={paper_id}; no adjudication passes configured.")
-                continue
-            adjudication_models = self._adjudication_pass_model_rows(adjudication_passes, tiebreak_pass)
+                return None
             silver_timer: dict[str, Any] | None = None
             try:
                 silver_timer = _timing_start("silver_adjudication_scoring", "Silver adjudication and scoring")
@@ -950,18 +1084,26 @@ class ClaimsValidator:
                         ]
                     ),
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
-                    relation_classifier=relation_classifier,
+                    relation_classifier=self._build_silver_relation_classifier(),
                 )
-                silver_stage = self._record_timing_stage(
+                score_rows = _scores_with_missing_miners(
+                    paper_id=paper_id,
+                    silver_record=result.silver_record,
+                    scores=result.scores,
+                    expected_uids=expected_uids,
+                )
+                result = replace(result, scores=score_rows)
+                silver_stage = _timing_finish(
                     silver_timer,
                     metadata={"paper_id": paper_id, "models": adjudication_models},
                 )
+                timing_stages.append(silver_stage)
                 paper_stage_seconds["silver_adjudication_scoring"] = float(silver_stage["duration_seconds"])
             except Exception as exc:
                 if silver_timer is not None:
-                    self._record_timing_stage(silver_timer, metadata={"paper_id": paper_id, "failed": True})
+                    timing_stages.append(_timing_finish(silver_timer, metadata={"paper_id": paper_id, "failed": True}))
                 self.bt_logging.warning(f"Silver post-pass failed for paper={paper_id}: {exc}")
-                continue
+                return None
             persist_timer = _timing_start("silver_persist", "Persist Silver records")
             self._persist_silver_pipeline_result(
                 run_id=run_id,
@@ -970,15 +1112,105 @@ class ClaimsValidator:
                 result=result,
                 miner_rows=miner_rows,
                 paper_stage_seconds=paper_stage_seconds,
+                timing_stages=timing_stages,
                 model_rows=[*reference_models, *adjudication_models],
+                score_metadata_by_miner_id={f"uid_{uid}": (uid, metadata) for uid, metadata in metadata_by_uid.items()},
             )
-            self._record_timing_stage(persist_timer, metadata={"paper_id": paper_id})
+            persist_stage = _timing_finish(persist_timer, metadata={"paper_id": paper_id})
+            self.bt_logging.info(
+                "Silver post-pass completed "
+                f"paper={paper_id} "
+                f"reference={paper_stage_seconds.get('reference_miner', 0.0):.3f}s "
+                f"silver={paper_stage_seconds.get('silver_adjudication_scoring', 0.0):.3f}s "
+                f"persist={float(persist_stage['duration_seconds']):.3f}s"
+            )
+            return _PaperSilverPostPassResult(paper_id=paper_id, scores=result.scores)
+
+        paper_jobs = [
+            (paper_index, paper)
+            for paper_index, paper in enumerate(paper_tasks, start=1)
+            if miners_by_paper.get(paper.paper_id or f"paper_{paper_index}")
+        ]
+        worker_count = max(
+            1,
+            min(
+                int(getattr(self.config, "claims_silver_paper_max_workers", 3) or 1),
+                len(paper_jobs) or 1,
+            ),
+        )
+        if paper_jobs:
+            self.bt_logging.info(
+                f"Running Silver post-pass for {len(paper_jobs)} paper(s) with max_workers={worker_count}."
+            )
+        paper_results: dict[str, _PaperSilverPostPassResult] = {}
+        if worker_count == 1:
+            for paper_index, paper in paper_jobs:
+                result = process_paper(paper_index, paper)
+                if result is not None:
+                    paper_results[result.paper_id] = result
+        else:
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = {
+                    executor.submit(process_paper, paper_index, paper): paper.paper_id or f"paper_{paper_index}"
+                    for paper_index, paper in paper_jobs
+                }
+                for future in as_completed(futures):
+                    paper_id = futures[future]
+                    try:
+                        result = future.result()
+                    except Exception as exc:
+                        self.bt_logging.warning(
+                            f"Silver post-pass failed for paper={paper_id}: {type(exc).__name__}: {exc}"
+                        )
+                        continue
+                    if result is not None:
+                        paper_results[result.paper_id] = result
+
+        for paper_id in expected_paper_ids:
+            result = paper_results.get(paper_id)
+            if result is None:
+                continue
             for score in result.scores:
                 uid = _uid_from_miner_id(score.miner_id)
                 if uid is not None:
                     silver_scores_by_uid.setdefault(uid, []).append(float(score.score))
+                    silver_score_breakdowns.append(score)
+            scored_paper_ids.add(paper_id)
+        if silver_score_breakdowns:
+            unscored_paper_ids = [paper_id for paper_id in expected_paper_ids if paper_id not in scored_paper_ids]
+            if unscored_paper_ids:
+                self.bt_logging.warning(
+                    "Silver batch scoring is counting unscored assigned papers as zero: "
+                    f"{unscored_paper_ids}"
+                )
+                skipped_scores = _scores_for_unscored_papers(
+                    paper_ids=unscored_paper_ids,
+                    expected_uids=expected_uids,
+                    run_id=run_id,
+                )
+                for score in skipped_scores:
+                    uid = _uid_from_miner_id(score.miner_id)
+                    if uid is not None:
+                        silver_scores_by_uid.setdefault(uid, []).append(float(score.score))
+                        silver_score_breakdowns.append(score)
+            batch_id = task.batch_id or task.task_id
+            batch_result = score_batch(
+                batch_id=batch_id,
+                paper_scores=silver_score_breakdowns,
+            )
+            batch_output_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / "silver"
+            _write_json(batch_output_dir / "batch_score_result.json", batch_result.model_dump(mode="json"))
+            self.bt_logging.info(
+                "Silver batch scoring: "
+                f"batch_id={batch_id} "
+                f"winner={batch_result.winner_miner_id or 'none'} "
+                f"miners={[(item.miner_id, item.mean_score) for item in batch_result.miners]}"
+            )
         return {
-            uid: _aggregate_scores(values, str(getattr(self.config, "claims_batch_score_rule", "min")))
+            uid: _aggregate_scores(
+                values,
+                str(getattr(self.config, "claims_batch_score_rule", "mean")),
+            )
             for uid, values in silver_scores_by_uid.items()
             if values
         }
@@ -1110,7 +1342,9 @@ class ClaimsValidator:
         result: Any,
         miner_rows: list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None]],
         paper_stage_seconds: dict[str, float] | None = None,
+        timing_stages: list[dict[str, Any]] | None = None,
         model_rows: list[dict[str, Any]] | None = None,
+        score_metadata_by_miner_id: dict[str, tuple[int, dict[str, Any]]] | None = None,
     ) -> None:
         output_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / "silver" / safe_task_id(paper_id)
         _write_json(output_dir / "silver_record.json", result.silver_record.model_dump(mode="json"))
@@ -1136,7 +1370,10 @@ class ClaimsValidator:
             return
         batch_id = task.batch_id or task.task_id
         network = str(getattr(self.config, "claims_network", "testnet"))
-        metadata_by_miner_id = {f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata, _source_payload in miner_rows}
+        metadata_by_miner_id = {
+            **(score_metadata_by_miner_id or {}),
+            **{f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata, _source_payload in miner_rows},
+        }
         backend_case_ids = {case.case_id: f"{run_id}_{case.case_id}" for case in result.diff_cases}
         for case in result.diff_cases:
             case_uid, case_metadata = metadata_by_miner_id.get(case.miner_id, (None, {}))
@@ -1277,10 +1514,12 @@ class ClaimsValidator:
                 uid=uid,
                 paper_id=paper_id,
                 stage_seconds=paper_stage_seconds or {},
+                stages=timing_stages or [],
                 models=[
                     *self._miner_model_rows(uid, metadata),
                     *(model_rows or []),
                 ],
+                include_active_run_stages=False,
             )
             try:
                 self.backend_client.post_silver_score_report(
@@ -1356,6 +1595,8 @@ class ClaimsValidator:
             paper_id = paper.paper_id or f"paper_{index}"
             paper_timer = _timing_start("diagnostic_validation", "Diagnostic validation")
             article = articles_by_id.get(paper_id)
+            report: dict[str, Any] = {}
+            paper_miner_metadata = miner_metadata
             if article is None and len(articles_by_id) == 1 and len(task.paper_tasks()) == 1:
                 article = next(iter(articles_by_id.values()))
             if not article or article.get("status") != "completed":
@@ -1416,6 +1657,7 @@ class ClaimsValidator:
                         "report_path": None,
                     }
                 else:
+                    paper_miner_metadata = _metadata_for_article(miner_metadata, article)
                     article_run_id = f"{run_id}/{safe_task_id(paper_id)}"
                     score = self._score_extraction(
                         extraction,
@@ -1463,13 +1705,13 @@ class ClaimsValidator:
                 stage_seconds={"diagnostic_validation": float(paper_stage["duration_seconds"])},
                 stages=[paper_stage],
                 models=[
-                    *self._miner_model_rows(uid, miner_metadata),
-                    *self._diagnostic_model_rows(),
+                    *self._miner_model_rows(uid, paper_miner_metadata),
+                    *self._diagnostic_model_rows(report.get("metrics") if isinstance(report, dict) else {}),
                 ],
             )
             article_results.append(result)
             paper_scores.append(score)
-        batch_score = _aggregate_scores(paper_scores, str(getattr(self.config, "claims_batch_score_rule", "min")))
+        batch_score = _aggregate_scores(paper_scores, str(getattr(self.config, "claims_batch_score_rule", "mean")))
         batch_audit = {
             "object_type": "AuditRecord",
             "audit_version": "claims_audit_v0",
@@ -1481,7 +1723,7 @@ class ClaimsValidator:
             "miner_uid": uid,
             "miner_hotkey": miner_metadata.get("hotkey", ""),
             "validator_hotkey": self.wallet.hotkey.ss58_address,
-            "batch_score_rule": str(getattr(self.config, "claims_batch_score_rule", "min")),
+            "batch_score_rule": str(getattr(self.config, "claims_batch_score_rule", "mean")),
             "batch_score": batch_score,
             "min_score": min(paper_scores) if paper_scores else 0.0,
             "mean_score": sum(paper_scores) / len(paper_scores) if paper_scores else 0.0,
@@ -1641,7 +1883,7 @@ class ClaimsValidator:
         }
         return [_drop_empty_model_fields(row)]
 
-    def _diagnostic_model_rows(self) -> list[dict[str, Any]]:
+    def _diagnostic_model_rows(self, metrics: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         if bool(getattr(self.config, "claims_agent_v1_skip_rigor", False)):
             return [
                 _drop_empty_model_fields(
@@ -1683,6 +1925,7 @@ class ClaimsValidator:
             "max_tokens": config.max_tokens,
             "max_turns": config.max_agent_iters,
             "pipeline": str(getattr(self.config, "claims_validator_pipeline", "auto")),
+            "metrics": _runtime_metrics_summary(metrics or {}),
         }
         return [_drop_empty_model_fields(row)]
 
@@ -1787,23 +2030,25 @@ class ClaimsValidator:
         stage_seconds: dict[str, float] | None = None,
         stages: list[dict[str, Any]] | None = None,
         models: list[dict[str, Any]] | None = None,
+        include_active_run_stages: bool = True,
     ) -> dict[str, Any]:
         active_timing = getattr(self, "_active_run_timing", None)
         timing = active_timing if isinstance(active_timing, dict) else {}
         run_stage_seconds: dict[str, float] = {}
-        for stage in timing.get("stages", []) if isinstance(timing.get("stages"), list) else []:
-            if not isinstance(stage, dict):
-                continue
-            key = str(stage.get("key") or "")
-            if not key:
-                continue
-            run_stage_seconds[key] = round(run_stage_seconds.get(key, 0.0) + _float_seconds(stage.get("duration_seconds")), 3)
+        if include_active_run_stages:
+            for stage in timing.get("stages", []) if isinstance(timing.get("stages"), list) else []:
+                if not isinstance(stage, dict):
+                    continue
+                key = str(stage.get("key") or "")
+                if not key:
+                    continue
+                run_stage_seconds[key] = round(run_stage_seconds.get(key, 0.0) + _float_seconds(stage.get("duration_seconds")), 3)
         for key, value in (stage_seconds or {}).items():
             stage_key = str(key)
             if stage_key not in run_stage_seconds:
                 run_stage_seconds[stage_key] = round(_float_seconds(value), 3)
         miner_stage_seconds: dict[str, float] = {}
-        if uid is not None:
+        if include_active_run_stages and uid is not None:
             miner = (timing.get("miners") or {}).get(str(uid)) if isinstance(timing.get("miners"), dict) else None
             for stage in miner.get("stages", []) if isinstance(miner, dict) and isinstance(miner.get("stages"), list) else []:
                 if not isinstance(stage, dict):
@@ -2151,6 +2396,14 @@ def _model_contexts_from_response_payload(payload: dict[str, Any]) -> list[dict[
             if isinstance(extraction, dict):
                 artifacts.append(extraction)
     return [_artifact_model_context(artifact) for artifact in artifacts]
+
+
+def _metadata_for_article(base_metadata: dict[str, Any], article: dict[str, Any]) -> dict[str, Any]:
+    metadata = dict(base_metadata)
+    contexts = _model_contexts_from_response_payload({"articles": [article]})
+    if contexts:
+        metadata["model_contexts"] = contexts
+    return metadata
 
 
 def _artifact_model_context(artifact: dict[str, Any]) -> dict[str, Any]:
@@ -2551,6 +2804,99 @@ def _miner_backend(payload: dict[str, Any]) -> str | None:
                     if runtime:
                         return str(runtime)
     return None
+
+
+def _scores_with_missing_miners(
+    *,
+    paper_id: str,
+    silver_record: Any,
+    scores: list[SilverScoreBreakdown],
+    expected_uids: list[int],
+) -> list[SilverScoreBreakdown]:
+    rows = list(scores)
+    scored_miner_ids = {score.miner_id for score in rows}
+    missing_unit_ids = [
+        str(getattr(unit, "silver_unit_id", ""))
+        for unit in getattr(silver_record, "silver_units", [])
+        if bool(getattr(unit, "required_for_completeness", False)) or str(getattr(unit, "scoring_mode", "")) == "accepted_improvement"
+    ]
+    for uid in expected_uids:
+        miner_id = f"uid_{uid}"
+        if miner_id in scored_miner_ids:
+            continue
+        finding = AgentV1ValidationFinding(
+            finding_id="SV000",
+            pass_name="silver_comparison",
+            dimension="completion",
+            severity="blocker",
+            target_type="paper",
+            target_id=paper_id,
+            message="Miner did not return a completed agent_v1 artifact for this assigned paper.",
+            metadata={"code": "missing_paper_submission", "paper_id": paper_id},
+        )
+        rows.append(
+            SilverScoreBreakdown(
+                paper_id=paper_id,
+                miner_id=miner_id,
+                silver_record_id=str(getattr(silver_record, "silver_record_id", "")),
+                coverage=0.0,
+                quality=0.0,
+                score=0.0,
+                covered_required_silver_units=[],
+                missing_required_silver_units=[unit_id for unit_id in missing_unit_ids if unit_id],
+                accepted_improvements=[],
+                invalid_extra_candidates=[],
+                findings=[finding],
+                metadata={
+                    "passed": False,
+                    "code": "missing_paper_submission",
+                    "formula": "score = 0 because the miner did not submit a completed artifact for this assigned paper",
+                },
+            )
+        )
+    return rows
+
+
+def _scores_for_unscored_papers(
+    *,
+    paper_ids: list[str],
+    expected_uids: list[int],
+    run_id: str,
+) -> list[SilverScoreBreakdown]:
+    rows: list[SilverScoreBreakdown] = []
+    for paper_id in paper_ids:
+        for uid in expected_uids:
+            finding = AgentV1ValidationFinding(
+                finding_id="SV000",
+                pass_name="silver_comparison",
+                dimension="completion",
+                severity="blocker",
+                target_type="paper",
+                target_id=paper_id,
+                message="Validator did not produce a Silver score for this assigned paper.",
+                metadata={"code": "unscored_assigned_paper", "paper_id": paper_id},
+            )
+            rows.append(
+                SilverScoreBreakdown(
+                    paper_id=paper_id,
+                    miner_id=f"uid_{uid}",
+                    silver_record_id=f"silver_{run_id}_{safe_task_id(paper_id)}",
+                    coverage=0.0,
+                    quality=0.0,
+                    score=0.0,
+                    covered_required_silver_units=[],
+                    missing_required_silver_units=[],
+                    accepted_improvements=[],
+                    invalid_extra_candidates=[],
+                    findings=[finding],
+                    metadata={
+                        "passed": False,
+                        "code": "unscored_assigned_paper",
+                        "formula": "score = 0 because the validator did not produce a Silver score for this assigned paper",
+                    },
+                )
+            )
+    return rows
 
 
 def _aggregate_scores(scores: list[float], rule: str) -> float:

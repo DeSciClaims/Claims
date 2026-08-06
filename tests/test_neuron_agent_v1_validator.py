@@ -2,13 +2,28 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
+import sys
+import threading
+import time
+from pathlib import Path
 from types import SimpleNamespace
 
 from neurons.protocol import ClaimExtractionSynapse
 from neurons.tasks import ClaimsTask
-from neurons.validator import ClaimsValidator, _is_agent_v1_artifact, _source_context_map_from_payloads
+from neurons.validator import (
+    ClaimsValidator,
+    _is_agent_v1_artifact,
+    _metadata_for_article,
+    _scores_for_unscored_papers,
+    _scores_with_missing_miners,
+    _stable_hash,
+    _source_context_map_from_payloads,
+)
 from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
+from validator.agent_v1.comparison_models import SilverRecord, SilverScoreBreakdown, SilverUnit
+from validator.agent_v1.orchestrator import PaperSilverPipelineResult
 from validator.agent_v1.structural import run_structural_checks
 
 
@@ -31,6 +46,199 @@ def test_source_context_map_merges_reader_span_ids() -> None:
     assert _source_context_map_from_payloads(
         [{"spans": [{"span_id": "paper-p004-001", "text": "Only old reader text."}]}]
     )["paper-p004-markdown"] == "Only old reader text."
+
+
+def test_validator_hydrates_manifest_only_article_from_backend() -> None:
+    artifact = _agent_v1_artifact()
+    source_payload = _source_payload()
+
+    class FakeBackend:
+        def get_miner_artifact(self, *, artifact_id: str):
+            assert artifact_id == "artifact_001"
+            return {
+                "artifact_id": artifact_id,
+                "run_id": "run1",
+                "uid": 9,
+                "paper_id": "paper1",
+                "artifact_hash": _stable_hash(artifact),
+                "source_payload_hash": _stable_hash(source_payload),
+                "agent_output": artifact,
+                "source_payload": source_payload,
+            }
+
+    validator = object.__new__(ClaimsValidator)
+    validator.backend_client = FakeBackend()
+    validator.bt_logging = _logger()
+    response = SimpleNamespace(
+        articles=[
+            {
+                "paper_id": "paper1",
+                "status": "completed",
+                "artifact_id": "artifact_001",
+                "artifact_hash": _stable_hash(artifact),
+                "source_payload_hash": _stable_hash(source_payload),
+            }
+        ]
+    )
+
+    validator._hydrate_response_articles(response, uid=9, run_id="run1")
+
+    assert response.articles[0]["agent_output"]["paper"]["paper_id"] == "paper1"
+    assert response.articles[0]["source_payload"]["spans"][0]["span_id"] == "s1"
+
+
+def test_validator_recovers_backend_artifact_response_when_dendrite_missing() -> None:
+    artifact = _agent_v1_artifact()
+    source_payload = _source_payload()
+
+    class FakeBackend:
+        def list_miner_artifacts(self, *, run_id: str, uid: int):
+            assert run_id == "run1"
+            assert uid == 9
+            return [
+                {
+                    "artifact_id": "artifact_001",
+                    "run_id": "run1",
+                    "uid": 9,
+                    "paper_id": "paper1",
+                    "status": "completed",
+                    "artifact_hash": _stable_hash(artifact),
+                    "source_payload_hash": _stable_hash(source_payload),
+                    "agent_output": artifact,
+                    "source_payload": source_payload,
+                }
+            ]
+
+    validator = object.__new__(ClaimsValidator)
+    validator.backend_client = FakeBackend()
+    validator.bt_logging = _logger()
+    task = ClaimsTask.from_dict(
+        {"task_id": "task1", "run_id": "run1", "batch_id": "batch1", "papers": [{"paper_id": "paper1"}]}
+    )
+
+    recovered = validator._recover_backend_artifact_response(run_id="run1", task=task, uid=9)
+
+    assert recovered is not None
+    assert recovered.articles[0]["paper_id"] == "paper1"
+    assert recovered.articles[0]["agent_output"]["paper"]["paper_id"] == "paper1"
+
+
+def test_article_metadata_keeps_per_paper_runtime_metrics() -> None:
+    artifact = _agent_v1_artifact()
+    artifact["metadata"] = {
+        "runtime": "agent-cli",
+        "runtime_metrics": {
+            "elapsed_seconds": 42.5,
+            "attempt_count": 2,
+            "harness": "hermes-cli",
+            "models": ["openai/gpt-5-mini"],
+            "token_usage": {
+                "prompt_tokens": 1000,
+                "completion_tokens": 200,
+                "total_tokens": 1200,
+            },
+            "cost_usd": 0.1234,
+        },
+    }
+    base_metadata = {
+        "hotkey": "hotkey7",
+        "model_contexts": [
+            {
+                "harness": "hermes-cli",
+                "model": "batch-model",
+                "metrics": {"elapsed_seconds": 999.0, "cost_usd": 9.99},
+            }
+        ],
+    }
+
+    metadata = _metadata_for_article(base_metadata, {"agent_output": artifact})
+    validator = object.__new__(ClaimsValidator)
+    row = validator._miner_model_rows(7, metadata)[0]
+
+    assert row["model"] == "openai/gpt-5-mini"
+    assert row["metrics"]["elapsed_seconds"] == 42.5
+    assert row["metrics"]["prompt_tokens"] == 1000.0
+    assert row["metrics"]["completion_tokens"] == 200.0
+    assert row["metrics"]["total_tokens"] == 1200.0
+    assert row["metrics"]["cost_usd"] == 0.1234
+
+
+def test_diagnostic_model_rows_include_validation_usage_metrics(monkeypatch) -> None:
+    validator = object.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_agent_v1_skip_rigor=False,
+        claims_validator_pipeline="auto",
+        claims_rigor_harness=None,
+        claims_agent_v1_runtime=None,
+        claims_rigor_model=None,
+    )
+    monkeypatch.delenv("CLAIMS_VALIDATOR_AGENT_INNER_COMMAND", raising=False)
+    row = validator._diagnostic_model_rows(
+        {
+            "elapsed_seconds": 12.3,
+            "token_usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 25,
+                "total_tokens": 125,
+            },
+            "cost_usd": 0.0456,
+        }
+    )[0]
+
+    assert row["metrics"]["elapsed_seconds"] == 12.3
+    assert row["metrics"]["prompt_tokens"] == 100.0
+    assert row["metrics"]["completion_tokens"] == 25.0
+    assert row["metrics"]["total_tokens"] == 125.0
+    assert row["metrics"]["cost_usd"] == 0.0456
+
+
+def test_silver_missing_assigned_paper_scores_zero() -> None:
+    silver = SilverRecord(
+        silver_record_id="silver_paper1",
+        paper_id="paper1",
+        silver_units=[
+            SilverUnit(
+                silver_unit_id="silver_required",
+                paper_id="paper1",
+                statement="Required claim.",
+                equivalent_candidate_ids=["miner:uid_9:C01"],
+            )
+        ],
+    )
+    existing = SilverScoreBreakdown(
+        paper_id="paper1",
+        miner_id="uid_9",
+        silver_record_id="silver_paper1",
+        coverage=1.0,
+        quality=1.0,
+        score=1.0,
+        covered_required_silver_units=["silver_required"],
+    )
+
+    rows = _scores_with_missing_miners(
+        paper_id="paper1",
+        silver_record=silver,
+        scores=[existing],
+        expected_uids=[9, 10],
+    )
+
+    assert [(row.miner_id, row.score) for row in rows] == [("uid_9", 1.0), ("uid_10", 0.0)]
+    missing = rows[1]
+    assert missing.coverage == 0.0
+    assert missing.quality == 0.0
+    assert missing.missing_required_silver_units == ["silver_required"]
+    assert missing.findings[0].metadata["code"] == "missing_paper_submission"
+
+
+def test_silver_unscored_assigned_papers_score_zero() -> None:
+    rows = _scores_for_unscored_papers(paper_ids=["paper2"], expected_uids=[9, 10], run_id="run1")
+
+    assert [(row.paper_id, row.miner_id, row.score) for row in rows] == [
+        ("paper2", "uid_9", 0.0),
+        ("paper2", "uid_10", 0.0),
+    ]
+    assert rows[0].silver_record_id == "silver_run1_paper2"
+    assert rows[0].findings[0].metadata["code"] == "unscored_assigned_paper"
 
 
 def test_auto_router_detects_agent_v1_artifacts() -> None:
@@ -92,7 +300,7 @@ def test_neuron_silver_post_pass_persists_backend_records(tmp_path) -> None:
         claims_network="testnet",
     )
     validator.backend_client = backend
-    validator.bt_logging = SimpleNamespace(warning=lambda *_args, **_kwargs: None)
+    validator.bt_logging = _logger()
     validator.target_neurons = [SimpleNamespace(uid=7, hotkey="hotkey7", coldkey="coldkey7", axon_info=SimpleNamespace(ip="", port=0, hotkey=""))]
 
     response = SimpleNamespace(
@@ -113,6 +321,184 @@ def test_neuron_silver_post_pass_persists_backend_records(tmp_path) -> None:
     assert scores == {7: 1.0}
     assert backend.consensus[0]["route"] == "direct"
     assert backend.decisions[0]["disposition"] == "reference_error"
+
+
+def test_neuron_silver_post_pass_counts_unscored_batch_paper_as_zero(tmp_path) -> None:
+    bronze_root = tmp_path / "bronze"
+    bronze_dir = bronze_root / "paper1"
+    bronze_dir.mkdir(parents=True)
+    bronze_artifact = _agent_v1_artifact()
+    bronze_artifact["logic"]["claims"][0]["statement"] = "Treatment improved outcome."
+    (bronze_dir / "agent_output.json").write_text(json.dumps(bronze_artifact), encoding="utf-8")
+    (bronze_dir / "source_payload.json").write_text(json.dumps(_source_payload()), encoding="utf-8")
+    (bronze_dir / "bronze_manifest.json").write_text(
+        json.dumps(
+            {
+                "bronze_record_id": "bronze_paper1",
+                "paper_id": "paper1",
+                "reference_release_id": "reference-v0",
+                "reference_profile_id": "reference-agent-v1-strong",
+                "artifact_sha256": "hash",
+                "artifact_path": "agent_output.json",
+                "source_payload_path": "source_payload.json",
+            }
+        ),
+        encoding="utf-8",
+    )
+    miner_artifact = _agent_v1_artifact()
+    miner_artifact["logic"]["claims"][0]["statement"] = "Treatment improved outcome in the reported study population."
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_silver_enable=True,
+        claims_bronze_root=bronze_root,
+        claims_reference_release_id="reference-v0",
+        claims_silver_static_disposition="reference_error",
+        claims_output_dir=tmp_path / "outputs",
+        claims_network="testnet",
+        claims_batch_score_rule="mean",
+    )
+    validator.backend_client = _CapturingBackend()
+    validator.bt_logging = _logger()
+    validator.target_neurons = [SimpleNamespace(uid=7, hotkey="hotkey7", coldkey="coldkey7", axon_info=SimpleNamespace(ip="", port=0, hotkey=""))]
+    response = SimpleNamespace(
+        protocol_version="claims.v0",
+        schema_version="miner.v0.section_context_compat",
+        miner_version="agent_v1",
+        articles=[{"paper_id": "paper1", "status": "completed", "agent_output": miner_artifact, "source_payload": _source_payload()}],
+        extraction=None,
+        source_payload=None,
+    )
+    task = ClaimsTask.from_dict(
+        {
+            "task_id": "task1",
+            "batch_id": "batch1",
+            "papers": [{"paper_id": "paper1", "title": "Paper 1"}, {"paper_id": "paper2", "title": "Paper 2"}],
+        }
+    )
+
+    scores = validator._run_silver_post_pass([response], task=task, run_id="run1")
+
+    assert scores == {7: 0.5}
+    batch_result = json.loads((tmp_path / "outputs" / "task1" / "run1" / "silver" / "batch_score_result.json").read_text())
+    assert batch_result["miners"][0]["miner_id"] == "uid_7"
+    assert batch_result["miners"][0]["mean_score"] == 0.5
+    assert [(row["paper_id"], row["score"]) for row in batch_result["miners"][0]["paper_scores"]] == [
+        ("paper1", 1.0),
+        ("paper2", 0.0),
+    ]
+
+
+def test_neuron_silver_post_pass_parallelizes_batch_papers(monkeypatch, tmp_path) -> None:
+    bronze_root = tmp_path / "bronze"
+    started_count = 0
+    started_lock = threading.Lock()
+    both_started = threading.Event()
+
+    class FakeBronzeClient:
+        def get_or_create_bronze(self, *, request, reference_release_id):
+            paper_dir = bronze_root / request.paper_id
+            paper_dir.mkdir(parents=True, exist_ok=True)
+            artifact = _agent_v1_artifact()
+            artifact["paper"]["paper_id"] = request.paper_id
+            artifact_path = paper_dir / "agent_output.json"
+            source_payload_path = paper_dir / "source_payload.json"
+            artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+            source_payload_path.write_text(json.dumps(_source_payload()), encoding="utf-8")
+            return SimpleNamespace(
+                bronze_record_id=f"bronze_{request.paper_id}",
+                paper_id=request.paper_id,
+                reference_release_id=reference_release_id,
+                reference_profile_id="reference-test",
+                model_runtime_id="static",
+                pipeline_version="test",
+                metadata={},
+                artifact_path=str(artifact_path),
+                source_payload_path=str(source_payload_path),
+            )
+
+    def fake_pipeline(*, paper_id, silver_record_id, bronze_record_id, **_kwargs):
+        nonlocal started_count
+        with started_lock:
+            started_count += 1
+            if started_count == 2:
+                both_started.set()
+        if not both_started.wait(timeout=1.0):
+            raise AssertionError("Silver paper workers did not overlap")
+        time.sleep(0.02)
+        silver = SilverRecord(
+            silver_record_id=silver_record_id,
+            paper_id=paper_id,
+            bronze_record_id=bronze_record_id,
+            silver_units=[
+                SilverUnit(
+                    silver_unit_id=f"silver_{paper_id}",
+                    paper_id=paper_id,
+                    statement="Treatment improved outcome.",
+                    equivalent_candidate_ids=["miner:uid_7:C01"],
+                )
+            ],
+        )
+        score = SilverScoreBreakdown(
+            paper_id=paper_id,
+            miner_id="uid_7",
+            silver_record_id=silver_record_id,
+            coverage=1.0,
+            quality=1.0,
+            score=1.0,
+            covered_required_silver_units=[f"silver_{paper_id}"],
+        )
+        return PaperSilverPipelineResult(
+            paper_id=paper_id,
+            bronze_candidates=[],
+            miner_submissions=[],
+            candidate_graph_edges=[],
+            diff_cases=[],
+            adjudication_consensus=[],
+            adjudication_decisions=[],
+            silver_record=silver,
+            scores=[score],
+        )
+
+    monkeypatch.setattr("neurons.validator.run_paper_silver_pipeline", fake_pipeline)
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_silver_enable=True,
+        claims_bronze_root=bronze_root,
+        claims_reference_release_id="reference-v0",
+        claims_silver_static_disposition="reference_error",
+        claims_output_dir=tmp_path / "outputs",
+        claims_network="testnet",
+        claims_batch_score_rule="mean",
+        claims_silver_paper_max_workers=2,
+    )
+    validator.backend_client = None
+    validator.bt_logging = _logger()
+    validator.target_neurons = [SimpleNamespace(uid=7, hotkey="hotkey7", coldkey="coldkey7", axon_info=SimpleNamespace(ip="", port=0, hotkey=""))]
+    validator._active_run_timing = None
+    validator._build_reference_miner_client = lambda: FakeBronzeClient()  # type: ignore[method-assign]
+    response = SimpleNamespace(
+        protocol_version="claims.v0",
+        schema_version="miner.v0.section_context_compat",
+        miner_version="agent_v1",
+        articles=[
+            {"paper_id": "paper1", "status": "completed", "agent_output": _agent_v1_artifact(), "source_payload": _source_payload()},
+            {"paper_id": "paper2", "status": "completed", "agent_output": _agent_v1_artifact(), "source_payload": _source_payload()},
+        ],
+        extraction=None,
+        source_payload=None,
+    )
+    task = ClaimsTask.from_dict(
+        {
+            "task_id": "task1",
+            "batch_id": "batch1",
+            "papers": [{"paper_id": "paper1", "title": "Paper 1"}, {"paper_id": "paper2", "title": "Paper 2"}],
+        }
+    )
+
+    scores = validator._run_silver_post_pass([response], task=task, run_id="run1")
+
+    assert started_count == 2
+    assert scores == {7: 1.0}
 
 
 def test_neuron_builds_configurable_silver_adjudication_passes() -> None:
@@ -202,10 +588,19 @@ def test_validator_rigor_harness_sets_wrapper_and_inner_command(monkeypatch, tmp
 
     assert config.runtime == "agent-cli"
     assert config.model == "openai/gpt-5-mini"
-    assert config.cli_command == ["python", "-m", "validator.agent_v1.wrappers.hermes_prompt"]
-    assert os.environ["CLAIMS_VALIDATOR_AGENT_INNER_COMMAND"] == (
-        "hermes chat --provider openrouter -m openai/gpt-5-mini --max-turns 30 -q"
-    )
+    assert config.cli_command == [sys.executable, "-m", "validator.agent_v1.wrappers.hermes_prompt"]
+    inner_command = shlex.split(os.environ["CLAIMS_VALIDATOR_AGENT_INNER_COMMAND"])
+    assert Path(inner_command[0]).name == "hermes"
+    assert inner_command[1:] == [
+        "chat",
+        "--provider",
+        "openrouter",
+        "-m",
+        "openai/gpt-5-mini",
+        "--max-turns",
+        "30",
+        "-q",
+    ]
 
 
 def test_validator_native_harness_clears_stage_inner_command(monkeypatch, tmp_path) -> None:
@@ -236,10 +631,12 @@ def test_validator_reference_harness_sets_reference_env(monkeypatch) -> None:
     assert os.environ["CLAIMS_REFERENCE_MINER_RUNTIME"] == "agent-cli"
     assert os.environ["CLAIMS_REFERENCE_MINER_HARNESS"] == "codex-cli"
     assert os.environ["CLAIMS_REFERENCE_MINER_MODEL"] == "gpt-5.5"
-    assert os.environ["CLAIMS_REFERENCE_MINER_CLI_COMMAND"] == "python -m miner.agent_v1.wrappers.codex_prompt"
-    assert os.environ["CLAIMS_REFERENCE_MINER_INNER_COMMAND"] == (
-        "codex exec --model gpt-5.5 --json --sandbox workspace-write --skip-git-repo-check"
+    assert os.environ["CLAIMS_REFERENCE_MINER_CLI_COMMAND"] == (
+        f"{shlex.quote(sys.executable)} -m miner.agent_v1.wrappers.codex_prompt"
     )
+    inner_command = shlex.split(os.environ["CLAIMS_REFERENCE_MINER_INNER_COMMAND"])
+    assert Path(inner_command[0]).name == "codex"
+    assert inner_command[1:] == ["exec", "--model", "gpt-5.5", "--json", "--sandbox", "workspace-write", "--skip-git-repo-check"]
 
 
 def test_validator_builds_model_backed_silver_relation_classifier(monkeypatch) -> None:
@@ -398,6 +795,14 @@ def _source_ref(source_id: str) -> dict:
 
 def _source_payload() -> dict:
     return {"spans": [{"span_id": "s1", "text": "Treatment improved outcome."}]}
+
+
+def _logger() -> SimpleNamespace:
+    return SimpleNamespace(
+        info=lambda *_args, **_kwargs: None,
+        warning=lambda *_args, **_kwargs: None,
+        error=lambda *_args, **_kwargs: None,
+    )
 
 
 class _CapturingBackend:
