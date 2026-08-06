@@ -52,22 +52,30 @@ class SubprocessAgentRuntime:
             elapsed = round(time.time() - started, 3)
             stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else str(exc.stdout or "")
             stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr or "")
-            _write_failure_manifest(
-                run_dir,
-                {
-                    "runtime": self.runtime_name,
-                    "runtime_alias": self.config.runtime,
-                    "command": command,
-                    "returncode": "timeout",
-                    "elapsed_seconds": elapsed,
-                    "timeout_seconds": self.config.timeout_seconds,
-                    "usage": empty_usage("cli_unavailable"),
-                    "skill": skill_pack.manifest(),
-                    "output_exists": output_path.exists(),
-                },
-                stdout,
-                stderr,
-            )
+            manifest = {
+                "runtime": self.runtime_name,
+                "runtime_alias": self.config.runtime,
+                "harness": _harness_from_agent_cli(command),
+                "command": command,
+                "model": _model_from_agent_cli(command),
+                "returncode": "timeout",
+                "elapsed_seconds": elapsed,
+                "timeout_seconds": self.config.timeout_seconds,
+                "usage": usage_from_cli_process(command, stdout, stderr),
+                "skill": skill_pack.manifest(),
+                "output_exists": output_path.exists(),
+            }
+            if _output_is_valid_json(output_path):
+                manifest["output_recovered"] = True
+                manifest["recovery_reason"] = "timeout_with_valid_output"
+                _write_runtime_artifacts(run_dir, manifest, stdout, stderr)
+                return AgentResult(
+                    output_path=output_path,
+                    stdout=stdout,
+                    stderr=stderr,
+                    manifest=manifest,
+                )
+            _write_runtime_artifacts(run_dir, manifest, stdout, stderr)
             raise RuntimeError(
                 f"agent-cli runtime timed out after {self.config.timeout_seconds}s "
                 f"(elapsed={elapsed}s command={command!r})"
@@ -107,11 +115,22 @@ class SubprocessAgentRuntime:
             "output_exists": output_path.exists(),
         }
         if completed.returncode != 0:
-            _write_failure_manifest(run_dir, manifest, completed.stdout, completed.stderr)
+            if _output_is_valid_json(output_path):
+                manifest["output_recovered"] = True
+                manifest["recovery_reason"] = "nonzero_exit_with_valid_output"
+                _write_runtime_artifacts(run_dir, manifest, completed.stdout, completed.stderr)
+                return AgentResult(
+                    output_path=output_path,
+                    stdout=completed.stdout,
+                    stderr=completed.stderr,
+                    manifest=manifest,
+                )
+            _write_runtime_artifacts(run_dir, manifest, completed.stdout, completed.stderr)
             raise RuntimeError(f"agent-cli runtime failed with exit code {completed.returncode}")
         if not output_path.exists():
-            _write_failure_manifest(run_dir, manifest, completed.stdout, completed.stderr)
+            _write_runtime_artifacts(run_dir, manifest, completed.stdout, completed.stderr)
             raise RuntimeError(f"agent-cli runtime did not produce {output_path}")
+        _write_runtime_artifacts(run_dir, manifest, completed.stdout, completed.stderr)
         return AgentResult(
             output_path=output_path,
             stdout=completed.stdout,
@@ -121,9 +140,23 @@ class SubprocessAgentRuntime:
 
 
 def _write_failure_manifest(run_dir: Path, manifest: dict, stdout: str, stderr: str) -> None:
+    _write_runtime_artifacts(run_dir, manifest, stdout, stderr)
+
+
+def _write_runtime_artifacts(run_dir: Path, manifest: dict, stdout: str, stderr: str) -> None:
     (run_dir / "backend_manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     (run_dir / "backend_stdout.txt").write_text(stdout, encoding="utf-8")
     (run_dir / "backend_stderr.txt").write_text(stderr, encoding="utf-8")
+
+
+def _output_is_valid_json(output_path: Path) -> bool:
+    if not output_path.exists():
+        return False
+    try:
+        json.loads(output_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return True
 
 
 def _resolve_executable(command: list[str]) -> list[str]:

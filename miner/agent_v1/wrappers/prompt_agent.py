@@ -7,8 +7,11 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
+
+from miner.agent_v1.artifact import materialize_agent_artifact
 
 
 def main() -> int:
@@ -53,14 +56,12 @@ def main() -> int:
     else:
         stdin = prompt
 
-    completed = subprocess.run(
-        command,
-        cwd=str(args.run_dir),
-        input=stdin,
-        capture_output=True,
-        text=True,
+    completed = _run_inner_agent(
+        command=command,
+        cwd=args.run_dir,
+        stdin=stdin,
+        output=args.output,
         timeout=args.timeout or None,
-        check=False,
     )
     if completed.stdout:
         print(completed.stdout, end="")
@@ -80,6 +81,88 @@ def main() -> int:
         return 1
     args.output.write_text(json.dumps(extracted, indent=2, ensure_ascii=False), encoding="utf-8")
     return 0
+
+
+def _run_inner_agent(
+    *,
+    command: list[str],
+    cwd: Path,
+    stdin: str | None,
+    output: Path,
+    timeout: int | None,
+) -> subprocess.CompletedProcess[str]:
+    if _env_flag("CLAIMS_AGENT_EXIT_ON_VALID_OUTPUT", default=True):
+        return _run_inner_agent_with_output_watch(command=command, cwd=cwd, stdin=stdin, output=output, timeout=timeout)
+    return subprocess.run(
+        command,
+        cwd=str(cwd),
+        input=stdin,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def _run_inner_agent_with_output_watch(
+    *,
+    command: list[str],
+    cwd: Path,
+    stdin: str | None,
+    output: Path,
+    timeout: int | None,
+) -> subprocess.CompletedProcess[str]:
+    stdout_path = cwd / ".agent_inner_stdout.txt"
+    stderr_path = cwd / ".agent_inner_stderr.txt"
+    stdout_path.write_text("", encoding="utf-8")
+    stderr_path.write_text("", encoding="utf-8")
+    poll_seconds = float(os.getenv("CLAIMS_AGENT_OUTPUT_POLL_SECONDS", "1"))
+    stable_seconds = float(os.getenv("CLAIMS_AGENT_OUTPUT_STABLE_SECONDS", "2"))
+    started = time.monotonic()
+    valid_since: float | None = None
+    last_state: tuple[int, int] | None = None
+
+    with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open("w", encoding="utf-8") as stderr_file:
+        process = subprocess.Popen(
+            command,
+            cwd=str(cwd),
+            stdin=subprocess.PIPE if stdin is not None else None,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+        )
+        if stdin is not None and process.stdin is not None:
+            process.stdin.write(stdin)
+            process.stdin.close()
+        while True:
+            returncode = process.poll()
+            if returncode is not None:
+                break
+            now = time.monotonic()
+            if timeout is not None and now - started >= timeout:
+                returncode = _terminate_process(process)
+                break
+            state = _valid_json_file_state(output)
+            if state is None:
+                valid_since = None
+                last_state = None
+            elif state == last_state:
+                if valid_since is not None and now - valid_since >= stable_seconds:
+                    returncode = _terminate_process(process)
+                    break
+            else:
+                last_state = state
+                valid_since = now
+            time.sleep(max(0.1, poll_seconds))
+
+    stdout = stdout_path.read_text(encoding="utf-8")
+    stderr = stderr_path.read_text(encoding="utf-8")
+    if returncode not in (0, None) and _valid_json_file_state(output) is not None:
+        stderr = "\n".join(part for part in [stderr.rstrip(), "Recovered after valid output was written."] if part)
+        returncode = 0
+    elif timeout is not None and time.monotonic() - started >= timeout and returncode not in (0, None):
+        stderr = "\n".join(part for part in [stderr.rstrip(), f"Inner agent timed out after {timeout}s."] if part)
+    return subprocess.CompletedProcess(command, int(returncode or 0), stdout=stdout, stderr=stderr)
 
 
 def _build_prompt(run_dir: Path, skill_dir: Path, request_path: Path, output_path: Path) -> str:
@@ -128,6 +211,32 @@ def _build_prompt(run_dir: Path, skill_dir: Path, request_path: Path, output_pat
 
 def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _terminate_process(process: subprocess.Popen[str]) -> int:
+    process.terminate()
+    try:
+        return process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        return process.wait(timeout=5)
+
+
+def _valid_json_file_state(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        materialize_agent_artifact(payload)
+    except Exception:
+        return None
+    return (stat.st_mtime_ns, stat.st_size)
+
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _extract_json_object(text: str) -> dict[str, Any] | None:
