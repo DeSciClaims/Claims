@@ -15,6 +15,7 @@ def build_silver_record(
     decisions: list[AdjudicationDecision],
     bronze_record_id: str | None = None,
     equivalent_candidate_groups: list[list[str]] | None = None,
+    excluded_candidate_ids: set[str] | None = None,
 ) -> SilverRecord:
     candidates_by_id = {candidate.candidate_id: candidate for candidate in candidates}
     units_by_key: dict[tuple[str, str], SilverUnit] = {}
@@ -23,25 +24,32 @@ def build_silver_record(
     seen_invalid_candidates: set[tuple[str, str | None]] = set()
     seen_reference_errors: set[str] = set()
 
+    accepted_candidate_ids: set[str] = set()
     accepted_bronze_ids: set[str] = set()
     rejected_bronze_ids: set[str] = set()
     for decision in decisions:
         for candidate_id in decision.accepted_candidate_ids:
+            accepted_candidate_ids.add(candidate_id)
             candidate = candidates_by_id.get(candidate_id)
             if candidate and candidate.origin == "bronze":
                 accepted_bronze_ids.add(candidate_id)
+        for candidate_id in decision.valid_alternative_candidate_ids:
+            accepted_candidate_ids.add(candidate_id)
         for candidate_id in decision.rejected_candidate_ids:
             candidate = candidates_by_id.get(candidate_id)
             if candidate and candidate.origin == "bronze":
                 rejected_bronze_ids.add(candidate_id)
+    excluded_ids = set(excluded_candidate_ids or set()) - accepted_candidate_ids
     filtered_equivalent_candidate_groups = _filter_equivalence_groups(
         equivalent_candidate_groups or [],
-        excluded_candidate_ids=rejected_bronze_ids - accepted_bronze_ids,
+        excluded_candidate_ids=excluded_ids | (rejected_bronze_ids - accepted_bronze_ids),
     )
     equivalence_group_by_candidate_id = _equivalence_group_by_candidate_id(filtered_equivalent_candidate_groups)
 
     for candidate in candidates:
         if candidate.origin != "bronze":
+            continue
+        if candidate.candidate_id in excluded_ids:
             continue
         if candidate.candidate_id in rejected_bronze_ids and candidate.candidate_id not in accepted_bronze_ids:
             continue

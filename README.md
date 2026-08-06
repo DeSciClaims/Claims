@@ -160,6 +160,7 @@ python -m neurons.miner \
   --claims.agent-harness dspy-react \
   --claims.agent-model openrouter/openai/gpt-5-mini \
   --claims.pdf-extraction-method pdf-inspector \
+  --claims.batch-max-workers 2 \
   --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 
@@ -179,12 +180,16 @@ python -m neurons.miner \
   --claims.agent-harness hermes-cli \
   --claims.agent-model openai/gpt-5-mini \
   --claims.pdf-extraction-method pdf-inspector \
+  --claims.batch-max-workers 2 \
   --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 
 Supported miner harnesses are `dspy-react`, `langchain-agent`, `hermes-cli`,
 `codex-cli`, and `claude-cli`. For normal neuron runs, do not set
 `CLAIMS_AGENT_INNER_COMMAND`; the harness/model flags derive it when needed.
+For batch tasks, miners return one compact `articles[]` item per assigned
+paper. `agent_v1` articles carry `agent_output`; the top-level `extraction` and
+`source_payload` fields are reserved for single-paper compatibility.
 
 Legacy v0 neuron commands are documented separately in
 [docs/0009-v0-miner-validator.md](./docs/0009-v0-miner-validator.md) and should
@@ -212,7 +217,7 @@ python -m neurons.validator \
   --claims.backend-url http://127.0.0.1:8000 \
   --claims.batch-size 3 \
   --claims.target-uid <MINER_UID> \
-  --claims.batch-score-rule min \
+  --claims.batch-score-rule mean \
   --claims.audit-method llm \
   --claims.validator-pipeline auto \
   --claims.rigor-harness hermes-cli \
@@ -230,14 +235,15 @@ python -m neurons.validator \
 Useful validator flags:
 
 - `--claims.backend-url http://127.0.0.1:8000`: use backend paper release and audit-record APIs.
-- `--claims.batch-size 3`: request a random approved paper batch from the backend.
+- `--claims.batch-size 3`: request a random approved paper batch from the backend. The backend accepts larger V0 sampling batches when enough approved papers are available.
 - `--claims.target-uid 1`: only query a specific miner UID. May be passed more than once for focused smoke tests.
 - `--claims.topic economics`: filter backend-selected papers by topic. May be passed more than once.
-- `--claims.batch-score-rule min`: score the batch by the lowest per-paper score, the current highest-minimum rule.
+- `--claims.batch-score-rule mean`: score the batch by mean Silver score. `min`, `mean`, and `median` are available.
 - `--claims.rigor-harness hermes-cli --claims.rigor-model <MODEL>`: choose the diagnostic validation harness/model.
 - `--claims.reference-harness codex-cli --claims.reference-model <MODEL>`: choose the private reference miner harness/model.
 - `--claims.adjudication-harness hermes-cli`: choose the Silver adjudication harness.
 - `--claims.adjudication-model-a/b/tiebreak-model <MODEL>`: choose the Silver adjudicator models.
+- `--claims.silver-paper-max-workers 3`: run Silver post-pass work for multiple batch papers concurrently.
 - `--claims.silver-relation-mode dspy --claims.silver-relation-model <MODEL>`: classify filtered Bronze/miner graph edges before adjudication.
 - `--claims.allow-paper-reuse`: allow already assigned backend papers to be selected again for local smoke tests.
 - `--claims.task-manifest /path/to/tasks.jsonl`: run a list of tasks.

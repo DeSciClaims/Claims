@@ -55,6 +55,7 @@ class ClaimsPaperTask:
 @dataclass(frozen=True)
 class ClaimsTask:
     task_id: str
+    run_id: str = ""
     paper_url: str = ""
     paper_id: str = ""
     title: str = ""
@@ -82,6 +83,7 @@ class ClaimsTask:
         task_id = str(payload.get("task_id") or paper_id or fallback_task_id).strip()
         return cls(
             task_id=safe_task_id(task_id),
+            run_id=safe_task_id(str(payload.get("run_id") or "").strip()) if payload.get("run_id") else "",
             paper_url=str(payload.get("paper_url") or "").strip(),
             paper_id=paper_id,
             title=title,
@@ -115,6 +117,7 @@ class ClaimsTask:
     def to_synapse_kwargs(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,
+            "run_id": self.run_id,
             "batch_id": self.batch_id,
             "selection_seed": self.selection_seed,
             "task_version": self.task_version,
@@ -155,7 +158,6 @@ def task_cache_key(task: ClaimsTask, *, miner_version: str, model_config: str = 
         "paper_url": normalize_url(task.paper_url) if task.paper_url else "",
         "source_sha256": task.source_sha256,
         "artifact": _stable_artifact_fingerprint(task.artifact),
-        "batch_id": task.batch_id,
         "papers": [
             {
                 "paper_id": paper.paper_id,

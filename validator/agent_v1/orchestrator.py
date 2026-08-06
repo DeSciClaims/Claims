@@ -147,10 +147,12 @@ def run_paper_silver_pipeline(
                 adjudicated_consolidation = list(executor.map(adjudicate, consolidation_cases))
         consensus_records.extend(consensus for consensus, _decision in adjudicated_consolidation)
         decisions.extend(decision for _consensus, decision in adjudicated_consolidation if decision is not None)
+    unresolved_candidate_ids = _unresolved_candidate_ids(diff_cases, decisions)
     candidate_ids_for_equivalence = _candidate_ids_retained_for_silver(
         candidate_pool,
         decisions,
         [],
+        excluded_candidate_ids=unresolved_candidate_ids,
     )
     cases_by_id = {case.case_id: case for case in diff_cases}
     equivalent_candidate_groups = _dedupe_equivalent_candidate_groups(
@@ -171,6 +173,7 @@ def run_paper_silver_pipeline(
         candidates=candidate_pool,
         decisions=decisions,
         equivalent_candidate_groups=equivalent_candidate_groups,
+        excluded_candidate_ids=unresolved_candidate_ids,
     )
     silver_record.metadata["comparison_graph"] = _comparison_graph_metadata(
         candidate_graph_edges=candidate_graph_edges,
@@ -211,11 +214,10 @@ def run_batch_silver_scoring(
     *,
     batch_id: str,
     jobs: list[SilverScoringJob],
-    gate_threshold: float = 0.5,
     max_workers: int = 8,
 ) -> BatchScoreResult:
     paper_scores = score_silver_jobs_parallel(jobs, max_workers=max_workers)
-    return score_batch(batch_id=batch_id, paper_scores=paper_scores, gate_threshold=gate_threshold)
+    return score_batch(batch_id=batch_id, paper_scores=paper_scores)
 
 
 def _score_job(job: SilverScoringJob) -> SilverScoreBreakdown:
@@ -525,8 +527,11 @@ def _candidate_ids_retained_for_silver(
     candidates: list[ComparisonCandidate],
     decisions: list[AdjudicationDecision],
     comparison_equivalent_candidate_groups: list[list[str]],
+    *,
+    excluded_candidate_ids: set[str] | None = None,
 ) -> set[str]:
     candidates_by_id = {candidate.candidate_id: candidate for candidate in candidates}
+    excluded_ids = set(excluded_candidate_ids or set())
     accepted_bronze_ids = {
         candidate_id
         for decision in decisions
@@ -543,14 +548,32 @@ def _candidate_ids_retained_for_silver(
         candidate.candidate_id
         for candidate in candidates
         if candidate.origin == "bronze"
+        and candidate.candidate_id not in excluded_ids
         and (candidate.candidate_id not in rejected_bronze_ids or candidate.candidate_id in accepted_bronze_ids)
     }
     for decision in decisions:
         retained.update(candidate_id for candidate_id in decision.accepted_candidate_ids if candidate_id in candidates_by_id)
         retained.update(candidate_id for candidate_id in decision.valid_alternative_candidate_ids if candidate_id in candidates_by_id)
     for group in comparison_equivalent_candidate_groups:
-        retained.update(candidate_id for candidate_id in group if candidate_id in candidates_by_id)
+        retained.update(candidate_id for candidate_id in group if candidate_id in candidates_by_id and candidate_id not in excluded_ids)
     return retained
+
+
+def _unresolved_candidate_ids(cases: list[BronzeDiffCase], decisions: list[AdjudicationDecision]) -> set[str]:
+    resolved_case_ids = {decision.case_id for decision in decisions}
+    accepted_candidate_ids = {
+        candidate_id
+        for decision in decisions
+        for candidate_id in [*decision.accepted_candidate_ids, *decision.valid_alternative_candidate_ids]
+    }
+    unresolved = {
+        candidate_id
+        for case in cases
+        if case.case_id not in resolved_case_ids
+        for candidate_id in case.candidate_ids
+        if candidate_id
+    }
+    return unresolved - accepted_candidate_ids
 
 
 def _semantic_equivalence_groups(

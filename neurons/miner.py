@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -7,6 +8,7 @@ import sys
 import time
 import traceback
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Tuple
 
@@ -19,6 +21,7 @@ from miner.v0.config import SectionContextV1Config
 from miner.v0.runner import SectionContextV1Runner
 from miner.v0.schema_models import ExtractionArtifact
 
+from .backend_client import BackendClientError, ClaimsBackendClient
 from .harness_profiles import SUPPORTED_HARNESSES, quote_command, resolve_agent_harness
 from .protocol import ClaimExtractionSynapse
 from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsTask, download_pdf, safe_task_id, task_cache_key
@@ -45,6 +48,7 @@ class ClaimsMiner:
         self._in_progress_keys: set[str] = set()
         if self.config.claims_dry_run:
             self.runner = self._build_runner()
+            self.backend_client = None
             self.wallet = None
             self.subtensor = None
             self.metagraph = None
@@ -57,6 +61,7 @@ class ClaimsMiner:
         self.axon = None
         self.uid = self._registered_uid()
         self.runner = self._build_runner()
+        self.backend_client = self._build_backend_client()
 
     def _get_config(self) -> Any:
         base_dir = Path(__file__).resolve().parents[1]
@@ -159,6 +164,47 @@ class ClaimsMiner:
             help="Maximum accepted extraction requests per validator hotkey per minute.",
         )
         parser.add_argument(
+            "--claims.batch-max-workers",
+            dest="claims_batch_max_workers",
+            type=int,
+            default=int(os.getenv("CLAIMS_MINER_BATCH_MAX_WORKERS", "1")),
+            help="Maximum number of papers this miner processes concurrently inside one batch request.",
+        )
+        parser.add_argument(
+            "--claims.batch-include-source-payload",
+            dest="claims_batch_include_source_payload",
+            action="store_true",
+            default=_env_flag("CLAIMS_MINER_BATCH_INCLUDE_SOURCE_PAYLOAD", default=False),
+            help="Include per-paper source_payload objects in batch axon responses. Off by default to keep responses small.",
+        )
+        parser.add_argument(
+            "--claims.backend-url",
+            dest="claims_backend_url",
+            default=os.getenv("CLAIMS_BACKEND_URL", ""),
+            help="Claims backend URL used for signed per-paper artifact uploads.",
+        )
+        parser.add_argument(
+            "--claims.backend-timeout",
+            dest="claims_backend_timeout",
+            type=float,
+            default=float(os.getenv("CLAIMS_BACKEND_TIMEOUT", "60")),
+            help="Claims backend request timeout in seconds.",
+        )
+        parser.add_argument(
+            "--claims.backend-retries",
+            dest="claims_backend_retries",
+            type=int,
+            default=int(os.getenv("CLAIMS_BACKEND_RETRIES", "2")),
+            help="Claims backend retry count for artifact uploads.",
+        )
+        parser.add_argument(
+            "--claims.backend-retry-backoff",
+            dest="claims_backend_retry_backoff",
+            type=float,
+            default=float(os.getenv("CLAIMS_BACKEND_RETRY_BACKOFF", "2")),
+            help="Claims backend exponential retry base delay in seconds.",
+        )
+        parser.add_argument(
             "--claims.dry-run",
             dest="claims_dry_run",
             action="store_true",
@@ -188,6 +234,12 @@ class ClaimsMiner:
         config.claims_agent_max_source_chars = parsed_args.claims_agent_max_source_chars
         config.claims_agent_max_iters = parsed_args.claims_agent_max_iters
         config.claims_max_requests_per_hotkey_minute = parsed_args.claims_max_requests_per_hotkey_minute
+        config.claims_batch_max_workers = max(1, int(parsed_args.claims_batch_max_workers or 1))
+        config.claims_batch_include_source_payload = bool(parsed_args.claims_batch_include_source_payload)
+        config.claims_backend_url = str(parsed_args.claims_backend_url or "").strip()
+        config.claims_backend_timeout = float(parsed_args.claims_backend_timeout or 60.0)
+        config.claims_backend_retries = int(parsed_args.claims_backend_retries or 0)
+        config.claims_backend_retry_backoff = float(parsed_args.claims_backend_retry_backoff or 0.0)
         config.claims_dry_run = parsed_args.claims_dry_run
         config.claims_subtensor_network_arg = _subtensor_network_arg(parsed_args)
         config.full_path = os.path.expanduser(
@@ -222,6 +274,19 @@ class ClaimsMiner:
         uid = self.metagraph.hotkeys.index(hotkey)
         self.bt_logging.info(f"Miner registered with uid {uid}")
         return uid
+
+    def _build_backend_client(self) -> ClaimsBackendClient | None:
+        backend_url = str(getattr(self.config, "claims_backend_url", "") or "").strip()
+        if not backend_url:
+            return None
+        return ClaimsBackendClient(
+            base_url=backend_url,
+            wallet=self.wallet,
+            network="testnet" if str(getattr(self.config, "claims_subtensor_network_arg", "test")) == "test" else "mainnet",
+            timeout_seconds=float(getattr(self.config, "claims_backend_timeout", 60.0)),
+            max_retries=int(getattr(self.config, "claims_backend_retries", 2)),
+            retry_backoff_seconds=float(getattr(self.config, "claims_backend_retry_backoff", 2.0)),
+        )
 
     def _build_runner(self) -> SectionContextV1Runner | AgentV1Runner:
         base_dir = Path(__file__).resolve().parents[1]
@@ -282,6 +347,7 @@ class ClaimsMiner:
             task = ClaimsTask.from_dict(
                 {
                     "task_id": synapse.task_id,
+                    "run_id": getattr(synapse, "run_id", ""),
                     "batch_id": getattr(synapse, "batch_id", ""),
                     "selection_seed": getattr(synapse, "selection_seed", ""),
                     "task_version": getattr(synapse, "task_version", ""),
@@ -307,13 +373,12 @@ class ClaimsMiner:
                 synapse.submission_id = f"sub_{task.task_id}_{uuid.uuid4().hex[:10]}"
                 synapse.batch_id = task.batch_id
                 synapse.articles = articles
-                completed = next((item for item in articles if item.get("status") == "completed"), None)
-                if completed:
-                    synapse.extraction = completed.get("agent_output") or completed.get("extraction")
-                    synapse.source_payload = completed.get("source_payload")
-                    synapse.paper_id = str(completed.get("paper_id") or task.paper_id)
+                synapse.extraction = None
+                synapse.source_payload = None
+                synapse.paper_id = ""
                 synapse.miner_version = str(self.config.claims_pipeline)
                 synapse.error = ""
+                self._log_finished_batch(task.task_id, articles)
                 return synapse
             cache_key = task_cache_key(
                 task,
@@ -373,73 +438,170 @@ class ClaimsMiner:
         return self._run_v0_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
 
     def _run_batch_task(self, task: ClaimsTask, *, validator_hotkey: str) -> list[dict[str, Any]]:
-        articles: list[dict[str, Any]] = []
-        for index, paper in enumerate(task.papers, start=1):
-            paper_task = ClaimsTask.from_dict(
-                {
-                    "task_id": task.task_id,
-                    "batch_id": task.batch_id,
-                    "selection_seed": task.selection_seed,
-                    "task_version": task.task_version,
-                    "scoring_version": task.scoring_version,
-                    "task_type": task.task_type,
-                    "network": task.network,
-                    "netuid": task.netuid,
-                    "paper_id": paper.paper_id,
-                    "title": paper.title,
-                    "paper_url": paper.paper_url,
-                    "source_sha256": paper.source_sha256,
-                    "topics": list(paper.topics),
-                    "release_id": paper.release_id,
-                    "artifact": paper.artifact,
-                    "protocol_version": task.protocol_version,
-                    "schema_version": task.schema_version,
-                },
-                fallback_task_id=f"{task.task_id}_{index}",
-            )
-            cache_key = task_cache_key(
-                paper_task,
-                miner_version=str(self.config.claims_pipeline),
-                model_config=self._model_config_fingerprint(),
-            )
-            paper_id = paper.paper_id or paper_task.paper_id or cache_key[:12]
-            try:
-                cached = self._read_cached_extraction(cache_key)
-                if cached is not None:
-                    extraction = cached
-                    source_payload = self._read_cached_source_payload(cache_key)
-                else:
-                    extraction, source_payload = self._run_task(
-                        paper_task,
-                        cache_key=cache_key,
+        indexed_papers = list(enumerate(task.papers, start=1))
+        worker_count = max(1, min(int(getattr(self.config, "claims_batch_max_workers", 1) or 1), len(indexed_papers) or 1))
+        self.bt_logging.info(
+            f"Running Claims batch task={task.task_id} papers={len(indexed_papers)} workers={worker_count}"
+        )
+        if worker_count == 1:
+            return [
+                self._run_batch_paper(task, index=index, paper=paper, validator_hotkey=validator_hotkey)
+                for index, paper in indexed_papers
+            ]
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            return list(
+                executor.map(
+                    lambda item: self._run_batch_paper(
+                        task,
+                        index=item[0],
+                        paper=item[1],
                         validator_hotkey=validator_hotkey,
-                    )
-                article: dict[str, Any] = {
-                    "paper_id": paper_id,
-                    "title": paper.title,
-                    "source_url": paper.paper_url,
-                    "source_sha256": paper.source_sha256,
-                    "status": "completed",
-                    "agent_output": extraction if self.config.claims_pipeline == "agent_v1" else None,
-                    "extraction": extraction,
-                    "source_payload": source_payload,
-                    "error": None,
-                }
-            except Exception as exc:
-                self.bt_logging.error(f"Failed Claims batch paper_id={paper_id}: {exc}")
-                article = {
-                    "paper_id": paper_id,
-                    "title": paper.title,
-                    "source_url": paper.paper_url,
-                    "source_sha256": paper.source_sha256,
-                    "status": "failed",
-                    "agent_output": None,
-                    "extraction": None,
-                    "source_payload": None,
-                    "error": str(exc),
-                }
-            articles.append(article)
-        return articles
+                    ),
+                    indexed_papers,
+                )
+            )
+
+    def _run_batch_paper(
+        self,
+        task: ClaimsTask,
+        *,
+        index: int,
+        paper: Any,
+        validator_hotkey: str,
+    ) -> dict[str, Any]:
+        paper_task = ClaimsTask.from_dict(
+            {
+                "task_id": task.task_id,
+                "run_id": task.run_id,
+                "batch_id": task.batch_id,
+                "selection_seed": task.selection_seed,
+                "task_version": task.task_version,
+                "scoring_version": task.scoring_version,
+                "task_type": task.task_type,
+                "network": task.network,
+                "netuid": task.netuid,
+                "paper_id": paper.paper_id,
+                "title": paper.title,
+                "paper_url": paper.paper_url,
+                "source_sha256": paper.source_sha256,
+                "topics": list(paper.topics),
+                "release_id": paper.release_id,
+                "artifact": paper.artifact,
+                "protocol_version": task.protocol_version,
+                "schema_version": task.schema_version,
+            },
+            fallback_task_id=f"{task.task_id}_{index}",
+        )
+        cache_key = task_cache_key(
+            paper_task,
+            miner_version=str(self.config.claims_pipeline),
+            model_config=self._model_config_fingerprint(),
+        )
+        paper_id = paper.paper_id or paper_task.paper_id or cache_key[:12]
+        try:
+            cached = self._read_cached_extraction(cache_key)
+            if cached is not None:
+                extraction = cached
+                source_payload = self._read_cached_source_payload(cache_key)
+            else:
+                extraction, source_payload = self._run_task(
+                    paper_task,
+                    cache_key=cache_key,
+                    validator_hotkey=validator_hotkey,
+                )
+            article = {
+                "paper_id": paper_id,
+                "title": paper.title,
+                "source_url": paper.paper_url,
+                "source_sha256": paper.source_sha256,
+                "status": "completed",
+                "error": None,
+            }
+            if self.config.claims_pipeline == "agent_v1":
+                manifest = self._post_batch_artifact(
+                    task=paper_task,
+                    paper=paper,
+                    paper_id=paper_id,
+                    extraction=extraction,
+                    source_payload=source_payload,
+                )
+                if manifest is None:
+                    article["agent_output"] = extraction
+                else:
+                    article.update(manifest)
+            else:
+                article["extraction"] = extraction
+            if source_payload is not None and bool(getattr(self.config, "claims_batch_include_source_payload", False)):
+                article["source_payload"] = source_payload
+            return article
+        except Exception as exc:
+            self.bt_logging.error(f"Failed Claims batch paper_id={paper_id}: {exc}")
+            return {
+                "paper_id": paper_id,
+                "title": paper.title,
+                "source_url": paper.paper_url,
+                "source_sha256": paper.source_sha256,
+                "status": "failed",
+                "error": str(exc),
+            }
+
+    def _post_batch_artifact(
+        self,
+        *,
+        task: ClaimsTask,
+        paper: Any,
+        paper_id: str,
+        extraction: dict[str, Any],
+        source_payload: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if getattr(self, "backend_client", None) is None:
+            return None
+        if not task.run_id:
+            raise RuntimeError("Claims backend artifact upload requires the validator run_id in the task synapse.")
+        artifact_hash = _json_hash(extraction)
+        source_payload_hash = _json_hash(source_payload) if source_payload is not None else None
+        artifact_id = f"artifact_{safe_task_id(task.run_id)}_uid_{int(self.uid)}_{safe_task_id(paper_id)}"
+        claim_count = _claim_count(extraction)
+        evidence_count = _evidence_count(extraction)
+        payload = {
+            "artifact_id": artifact_id,
+            "network": task.network or ("testnet" if str(getattr(self.config, "claims_subtensor_network_arg", "test")) == "test" else "mainnet"),
+            "run_id": task.run_id,
+            "batch_id": task.batch_id,
+            "task_id": task.task_id,
+            "uid": int(self.uid),
+            "hotkey": self.wallet.hotkey.ss58_address,
+            "paper_id": paper_id,
+            "artifact_hash": artifact_hash,
+            "source_payload_hash": source_payload_hash,
+            "agent_output": extraction,
+            "source_payload": source_payload,
+            "metadata": {
+                "transport": "backend_artifact_v1",
+                "title": paper.title,
+                "source_url": paper.paper_url,
+                "source_sha256": paper.source_sha256,
+                "miner_version": str(self.config.claims_pipeline),
+                "protocol_version": task.protocol_version,
+                "schema_version": task.schema_version,
+                "claim_count": claim_count,
+                "evidence_count": evidence_count,
+            },
+            "status": "completed",
+        }
+        try:
+            self.backend_client.post_miner_artifact(payload)
+        except BackendClientError as exc:
+            raise RuntimeError(f"Claims backend artifact upload failed for paper_id={paper_id}: {exc}") from exc
+        return {
+            "artifact_id": artifact_id,
+            "artifact_uri": f"claims-api:/miner-artifacts/{artifact_id}",
+            "artifact_hash": artifact_hash,
+            "source_payload_hash": source_payload_hash,
+            "transport": "backend_artifact_v1",
+            "claim_count": claim_count,
+            "evidence_count": evidence_count,
+        }
 
     def _run_v0_task(self, task: ClaimsTask, *, cache_key: str, validator_hotkey: str) -> tuple[dict[str, Any], None]:
         task_label = task.paper_id or task.paper_url or task.task_id
@@ -541,6 +703,15 @@ class ClaimsMiner:
             f"Finished Claims {self.config.claims_pipeline} task={task_label} claims={claim_count} output_dir={output_dir}"
         )
 
+    def _log_finished_batch(self, task_id: str, articles: list[dict[str, Any]]) -> None:
+        completed = sum(1 for article in articles if article.get("status") == "completed")
+        failed = sum(1 for article in articles if article.get("status") == "failed")
+        self.bt_logging.info(
+            "Finished Claims batch "
+            f"task={task_id} papers={len(articles)} completed={completed} failed={failed} "
+            f"response_bytes={_json_byte_size(articles)}"
+        )
+
     def _model_config_fingerprint(self) -> str:
         if self.config.claims_pipeline == "agent_v1":
             runner_config = self.runner.config
@@ -633,6 +804,36 @@ def _read_json_object(path: Path) -> dict[str, Any] | None:
     except Exception:
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+def _json_byte_size(payload: Any) -> int:
+    return len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def _json_hash(payload: Any) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _claim_count(payload: dict[str, Any]) -> int:
+    claims = payload.get("claims") if isinstance(payload, dict) else None
+    if claims is None and isinstance(payload.get("logic"), dict):
+        claims = payload.get("logic", {}).get("claims")
+    return len(claims) if isinstance(claims, list) else 0
+
+
+def _evidence_count(payload: dict[str, Any]) -> int:
+    evidence = payload.get("evidence") if isinstance(payload, dict) else None
+    if isinstance(evidence, dict):
+        records = evidence.get("records")
+        return len(records) if isinstance(records, list) else 0
+    return len(evidence) if isinstance(evidence, list) else 0
+
+
+def _env_flag(name: str, *, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _apply_bittensor_args(config: Any, parsed_args: argparse.Namespace) -> None:

@@ -65,6 +65,25 @@ class ClaimsBackendClient:
     def post_bronze_record(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/bronze-records", payload)
 
+    def post_miner_artifact(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/miner/artifacts", payload)
+
+    def get_miner_artifact(self, *, artifact_id: str) -> dict[str, Any]:
+        row = self.get(
+            f"/validator/miner-artifacts/{quote(artifact_id)}",
+            query={"network": self.network},
+        )
+        if not isinstance(row, dict):
+            raise BackendClientError("Backend miner artifact lookup returned non-object response.")
+        return row
+
+    def list_miner_artifacts(self, *, run_id: str, uid: int | None = None) -> list[dict[str, Any]]:
+        query: dict[str, Any] = {"network": self.network, "run_id": run_id}
+        if uid is not None:
+            query["uid"] = uid
+        result = self.get("/validator/miner-artifacts", query=query)
+        return result if isinstance(result, list) else []
+
     def get_bronze_record(self, *, paper_id: str, reference_release_id: str) -> dict[str, Any]:
         row = self.get(
             f"/validator/bronze-records/{quote(paper_id)}",

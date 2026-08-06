@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -138,6 +140,7 @@ class LocalCliReferenceMinerClient:
         ]
         if self.claims_repo is not None:
             command.extend(["--claims-repo", str(self.claims_repo)])
+        command = _resolve_executable(command)
         logger.info("Running private reference miner command: %s", " ".join(command))
         completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=3600)
         if completed.stdout.strip():
@@ -243,3 +246,19 @@ def bronze_record_from_backend_row(row: dict[str, Any]) -> BronzeRecord:
         created_at=row.get("created_at"),
         metadata=metadata,
     )
+
+
+def _resolve_executable(command: list[str]) -> list[str]:
+    if not command:
+        return command
+    executable = command[0]
+    executable_name = Path(executable).name
+    if executable_name in {"python", "python3"}:
+        return [sys.executable, *command[1:]]
+    executable_path = Path(executable)
+    if executable_path.is_absolute() or executable_path.exists():
+        return command
+    resolved = shutil.which(executable)
+    if resolved:
+        return [resolved, *command[1:]]
+    return command

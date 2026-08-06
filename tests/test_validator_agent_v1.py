@@ -7,7 +7,7 @@ from pathlib import Path
 from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.grounding import run_grounding_checks
 from validator.agent_v1.models import AgentV1ValidationFinding, RigorAgentResult
-from validator.agent_v1.reference_client import LocalCliReferenceMinerClient, LocalReferenceMinerClient, ReferenceMinerInput
+from validator.agent_v1.reference_client import LocalCliReferenceMinerClient, LocalReferenceMinerClient, ReferenceMinerInput, _resolve_executable
 from validator.agent_v1.runner import AgentV1ValidatorRunner
 from validator.agent_v1.runtime.factory import build_rigor_runtime
 from validator.agent_v1.scoring import score_findings
@@ -362,6 +362,12 @@ def test_local_cli_reference_miner_client_generates_missing_bronze(tmp_path: Pat
 
     assert record.bronze_record_id == "bronze_cli"
     assert Path(record.artifact_path).exists()
+
+
+def test_local_cli_reference_miner_resolves_python_to_current_interpreter() -> None:
+    resolved = _resolve_executable(["python", "-m", "claims_reference_miner"])
+
+    assert resolved == [sys.executable, "-m", "claims_reference_miner"]
 
 
 def _config(tmp_path: Path) -> AgentV1ValidatorConfig:

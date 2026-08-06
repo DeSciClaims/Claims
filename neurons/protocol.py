@@ -22,6 +22,7 @@ class ClaimExtractionSynapse(Synapse):
     protocol_version: str = PROTOCOL_VERSION
     schema_version: str = SCHEMA_VERSION
     task_id: str = ""
+    run_id: str = ""
     batch_id: str = ""
     selection_seed: str = ""
     task_version: str = "claims_task_v0"

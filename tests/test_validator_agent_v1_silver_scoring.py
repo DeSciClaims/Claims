@@ -1051,7 +1051,7 @@ def test_miner_consensus_aggregates_excluding_evaluated_miner() -> None:
     assert [vote.pass_id for vote in consensus.votes] == ["miner_uid_1", "miner_uid_2", "miner_uid_3"]
 
 
-def test_batch_silver_scoring_ranks_gate_passing_miners() -> None:
+def test_batch_silver_scoring_ranks_mean_scores() -> None:
     unit = {
         "silver_record_id": "silver_batch",
         "paper_id": "paper",
@@ -1076,18 +1076,17 @@ def test_batch_silver_scoring_ranks_gate_passing_miners() -> None:
             SilverScoringJob(MinerPaperSubmission("miner_A", "paper", [candidate]), silver),
             SilverScoringJob(MinerPaperSubmission("miner_B", "paper", []), silver),
         ],
-        gate_threshold=0.5,
         max_workers=2,
     )
 
     assert result.winner_miner_id == "miner_A"
-    assert [(miner.miner_id, miner.rank, miner.mean_score, miner.passed_gate) for miner in result.miners] == [
-        ("miner_A", 1, 1.0, True),
-        ("miner_B", 2, 0.0, False),
+    assert [(miner.miner_id, miner.rank, miner.mean_score) for miner in result.miners] == [
+        ("miner_A", 1, 1.0),
+        ("miner_B", 2, 0.0),
     ]
 
 
-def test_batch_gate_requires_every_sampled_paper_to_clear_floor() -> None:
+def test_batch_score_ranks_by_mean_without_gate() -> None:
     result = score_batch(
         batch_id="batch",
         paper_scores=[
@@ -1096,13 +1095,12 @@ def test_batch_gate_requires_every_sampled_paper_to_clear_floor() -> None:
             _score_breakdown("miner_B", "paper_1", 0.6),
             _score_breakdown("miner_B", "paper_2", 0.6),
         ],
-        gate_threshold=0.5,
     )
 
     assert result.winner_miner_id == "miner_B"
-    assert [(miner.miner_id, miner.rank, miner.mean_score, miner.passed_gate) for miner in result.miners] == [
-        ("miner_B", 1, 0.6, True),
-        ("miner_A", 2, 0.5, False),
+    assert [(miner.miner_id, miner.rank, miner.mean_score) for miner in result.miners] == [
+        ("miner_B", 1, 0.6),
+        ("miner_A", 2, 0.5),
     ]
 
 
@@ -1177,6 +1175,40 @@ def test_missing_from_miner_valid_bronze_becomes_miner_error() -> None:
     assert result.adjudication_decisions[0].disposition == "miner_error"
     assert result.adjudication_decisions[0].accepted_candidate_ids == ["bronze:C01"]
     assert result.silver_record.silver_units[0].equivalent_candidate_ids == ["bronze:C01"]
+    assert result.scores[0].score == 0.0
+
+
+def test_unresolved_missing_from_miner_does_not_enter_silver() -> None:
+    result = run_paper_silver_pipeline(
+        paper_id="paper",
+        bronze_artifact=_artifact("paper", "C01", "Treatment A reduced mortality in adults."),
+        miner_artifacts=[
+            MinerArtifactSubmission(
+                miner_id="miner_A",
+                artifact={"paper": {"paper_id": "paper"}, "logic": {"claims": []}},
+            )
+        ],
+        silver_record_id="silver_unresolved",
+        bronze_record_id="bronze_unresolved",
+        adjudication_passes=[
+            StaticAdjudicationPass(
+                pass_id="pass_a",
+                adjudication_profile_id="static_a",
+                model_runtime_id="static",
+                dispositions_by_case_id={},
+            ),
+            StaticAdjudicationPass(
+                pass_id="pass_b",
+                adjudication_profile_id="static_b",
+                model_runtime_id="static",
+                dispositions_by_case_id={},
+            ),
+        ],
+    )
+
+    assert result.diff_cases[0].mismatch_type == "MISSING_FROM_MINER"
+    assert result.adjudication_decisions == []
+    assert result.silver_record.silver_units == []
     assert result.scores[0].score == 0.0
 
 

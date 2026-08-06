@@ -34,9 +34,9 @@ batch task:
 - `paper_url`: downloadable PDF URL for network tasks
 - `source_sha256`: optional expected SHA-256 hash for the PDF
 - `artifact`: optional `ExtractionArtifact` JSON for local smoke tests
-- `articles`: miner response list for batch tasks, one item per assigned paper
-- `extraction`: miner response payload; `agent_v1` miners return the structured ARA projection, while legacy miners return the v0 `section_context_v1_output.json` shape
-- `source_payload`: source spans returned by `agent_v1` miners for grounding checks
+- `articles`: compact miner response list for batch tasks, one item per assigned paper. `agent_v1` batch articles use `agent_output`; legacy batch articles use `extraction`.
+- `extraction`: single-paper miner response payload; left empty for batch tasks to avoid duplicating article artifacts over axon
+- `source_payload`: single-paper source spans returned by `agent_v1` miners for grounding checks; batch source spans live on each article
 - `miner_version`: miner implementation version
 - `error`: miner-side error message, if extraction fails
 
@@ -54,6 +54,7 @@ python -m neurons.miner \
   --axon.external_port 8091 \
   --claims.pipeline agent_v1 \
   --claims.agent-runtime dspy-react \
+  --claims.batch-max-workers 2 \
   --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 
@@ -76,6 +77,7 @@ python -m neurons.miner \
   --claims.pipeline agent_v1 \
   --claims.agent-runtime agent-cli \
   --claims.agent-cli-command ".venv/bin/python -m miner.agent_v1.wrappers.hermes_prompt" \
+  --claims.batch-max-workers 2 \
   --claims.output-dir miner/agent_v1/outputs/neuron/testnet
 ```
 
@@ -95,7 +97,7 @@ python -m neurons.validator \
   --claims.backend-url http://127.0.0.1:8000 \
   --claims.batch-size 3 \
   --claims.target-uid <MINER_UID> \
-  --claims.batch-score-rule min \
+  --claims.batch-score-rule mean \
   --claims.audit-method llm \
   --claims.validator-pipeline auto \
   --claims.output-dir validator/agent_v1/outputs/neuron/testnet \
@@ -105,7 +107,9 @@ python -m neurons.validator \
 The validator asks the backend for a random approved paper batch, sends the
 batch to registered miners, scores each paper response, aggregates the batch
 score with `--claims.batch-score-rule`, posts audit records back to the
-backend, and sets weights on the subnet from the current run scores.
+backend, and sets weights on the subnet from the current run scores. V0 batch
+scoring does not use an all-papers gate; missing or unscored assigned papers
+count as zero before aggregation.
 The backend records the selected batch immediately and excludes assigned papers
 from future selections unless the validator passes `--claims.allow-paper-reuse`
 for a smoke test.
