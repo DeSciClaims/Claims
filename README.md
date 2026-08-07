@@ -187,6 +187,13 @@ python -m neurons.miner \
 Supported miner harnesses are `dspy-react`, `langchain-agent`, `hermes-cli`,
 `codex-cli`, and `claude-cli`. For normal neuron runs, do not set
 `CLAIMS_AGENT_INNER_COMMAND`; the harness/model flags derive it when needed.
+
+Miner batch/PDF knobs:
+
+- PDF reader: `--claims.pdf-extraction-method pdf-inspector|pypdf|grobid` or `SUBNET_CLAIMS_PDF_READER=...`. Default is `pdf-inspector`; `grobid` also needs `GROBID_URL`.
+- Batch parallelism: `--claims.batch-max-workers N` or `CLAIMS_MINER_BATCH_MAX_WORKERS=N`. Default is `1`; use `2-3` when the model/provider can handle concurrent papers.
+- Batch artifacts: set `--claims.backend-url` or `CLAIMS_BACKEND_URL` to the miner-upload API so full artifacts are uploaded outside dendrite responses.
+
 For batch tasks, miners return one compact `articles[]` item per assigned
 paper. `agent_v1` articles carry `agent_output`; the top-level `extraction` and
 `source_payload` fields are reserved for single-paper compatibility.
