@@ -74,6 +74,23 @@ def test_agent_harness_profile_maps_cli_and_native_runtimes() -> None:
     assert codex_inner[1:] == ["exec", "--model", "gpt-5.5", "--json", "--sandbox", "workspace-write", "--skip-git-repo-check"]
 
 
+def test_hermes_wrapper_waits_for_session_footer_by_default(monkeypatch) -> None:
+    from miner.agent_v1.wrappers import hermes_prompt
+
+    called = {}
+
+    def fake_prompt_agent_main() -> int:
+        called["exit_on_valid_output"] = os.getenv("CLAIMS_AGENT_EXIT_ON_VALID_OUTPUT")
+        return 0
+
+    monkeypatch.delenv("CLAIMS_AGENT_EXIT_ON_VALID_OUTPUT", raising=False)
+    monkeypatch.setenv("CLAIMS_AGENT_INNER_COMMAND", "hermes chat -q")
+    monkeypatch.setattr(hermes_prompt, "prompt_agent_main", fake_prompt_agent_main)
+
+    assert hermes_prompt.main() == 0
+    assert called["exit_on_valid_output"] == "false"
+
+
 def test_agent_v1_config_defaults_to_pdf_inspector(monkeypatch) -> None:
     monkeypatch.delenv("SUBNET_CLAIMS_PDF_READER", raising=False)
     monkeypatch.delenv("SUBNET_CLAIMS_PDF_EXTRACTION_METHOD", raising=False)
