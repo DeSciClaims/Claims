@@ -235,6 +235,9 @@ python -m neurons.validator \
   --claims.adjudication-model-a openai/gpt-5 \
   --claims.adjudication-model-b anthropic/claude-sonnet-4 \
   --claims.adjudication-tiebreak-model google/gemini-2.5-pro \
+  --claims.diagnostic-miner-max-workers 2 \
+  --claims.diagnostic-max-workers 10 \
+  --claims.silver-paper-max-workers 10 \
   --claims.output-dir validator/agent_v1/outputs/neuron/testnet \
   --claims.timeout 1800
 ```
@@ -250,7 +253,10 @@ Useful validator flags:
 - `--claims.reference-harness codex-cli --claims.reference-model <MODEL>`: choose the private reference miner harness/model.
 - `--claims.adjudication-harness hermes-cli`: choose the Silver adjudication harness.
 - `--claims.adjudication-model-a/b/tiebreak-model <MODEL>`: choose the Silver adjudicator models.
-- `--claims.silver-paper-max-workers 3`: run Silver post-pass work for multiple batch papers concurrently.
+- `--claims.diagnostic-miner-max-workers 2`: run diagnostic validation for multiple miner responses concurrently.
+- `--claims.diagnostic-max-workers 10`: run diagnostic validation for multiple papers concurrently per miner.
+- `--claims.skip-diagnostic-validation`: skip diagnostic reports when Silver is the only scoring path for a large run.
+- `--claims.silver-paper-max-workers 10`: run Silver post-pass work for multiple batch papers concurrently.
 - `--claims.silver-relation-mode dspy --claims.silver-relation-model <MODEL>`: classify filtered Bronze/miner graph edges before adjudication.
 - `--claims.allow-paper-reuse`: allow already assigned backend papers to be selected again for local smoke tests.
 - `--claims.task-manifest /path/to/tasks.jsonl`: run a list of tasks.

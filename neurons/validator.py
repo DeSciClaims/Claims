@@ -48,6 +48,15 @@ from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsPaperTask, ClaimsTask
 class _PaperSilverPostPassResult:
     paper_id: str
     scores: list[SilverScoreBreakdown]
+    timing_stages: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class _DiagnosticScoreResult:
+    uid: int
+    score: float
+    response: Any | None
+    stage: dict[str, Any] | None = None
 
 
 def _require_bittensor() -> tuple[Any, Any, Any, Any, Any]:
@@ -281,6 +290,27 @@ class ClaimsValidator:
             action="store_true",
             default=_env_flag("CLAIMS_AGENT_V1_SKIP_RIGOR"),
             help="Run agent_v1 deterministic checks only. Useful for smoke tests.",
+        )
+        parser.add_argument(
+            "--claims.skip-diagnostic-validation",
+            dest="claims_skip_diagnostic_validation",
+            action="store_true",
+            default=_env_flag("CLAIMS_SKIP_DIAGNOSTIC_VALIDATION"),
+            help="Skip diagnostic validation reports; Silver scoring still runs when enabled.",
+        )
+        parser.add_argument(
+            "--claims.diagnostic-max-workers",
+            dest="claims_diagnostic_max_workers",
+            type=int,
+            default=int(os.getenv("CLAIMS_DIAGNOSTIC_MAX_WORKERS", "1")),
+            help="Maximum papers to run through diagnostic validation concurrently per miner.",
+        )
+        parser.add_argument(
+            "--claims.diagnostic-miner-max-workers",
+            dest="claims_diagnostic_miner_max_workers",
+            type=int,
+            default=int(os.getenv("CLAIMS_DIAGNOSTIC_MINER_MAX_WORKERS", "1")),
+            help="Maximum miner responses to run through diagnostic validation concurrently.",
         )
         parser.add_argument(
             "--claims.agent-v1-threshold",
@@ -563,6 +593,9 @@ class ClaimsValidator:
         config.claims_rigor_model = parsed_args.claims_rigor_model
         config.claims_agent_v1_runtime = parsed_args.claims_agent_v1_runtime
         config.claims_agent_v1_skip_rigor = parsed_args.claims_agent_v1_skip_rigor
+        config.claims_skip_diagnostic_validation = parsed_args.claims_skip_diagnostic_validation
+        config.claims_diagnostic_max_workers = parsed_args.claims_diagnostic_max_workers
+        config.claims_diagnostic_miner_max_workers = parsed_args.claims_diagnostic_miner_max_workers
         config.claims_agent_v1_threshold = parsed_args.claims_agent_v1_threshold
         config.claims_silver_enable = parsed_args.claims_silver_enable
         config.claims_bronze_root = parsed_args.claims_bronze_root
@@ -698,7 +731,11 @@ class ClaimsValidator:
                 responses = self._query_miners(task, run_id=run_id)
                 self._record_timing_stage(
                     miner_query_timer,
-                    metadata={"target_uids": [int(neuron.uid) for neuron in self.target_neurons]},
+                    metadata={
+                        "target_uids": [int(neuron.uid) for neuron in self.target_neurons],
+                        "paper_count": len(task.paper_tasks()),
+                        "timeout_seconds": float(self.config.claims_timeout),
+                    },
                 )
                 scoring_timer = _timing_start("scoring", "Validation and Silver scoring")
                 scores = self._score_responses(responses, task=task, run_id=run_id)
@@ -825,19 +862,15 @@ class ClaimsValidator:
 
     def _score_responses(self, responses: list[Any], *, task: ClaimsTask, run_id: str) -> dict[int, float]:
         scores = {int(neuron.uid): 0.0 for neuron in self.target_neurons}
-        for index, neuron in enumerate(self.target_neurons):
-            response = responses[index] if index < len(responses) else None
+        scored_responses = list(responses)
+
+        def score_miner_response(index: int, neuron: Any) -> _DiagnosticScoreResult:
+            response = scored_responses[index] if index < len(scored_responses) else None
             uid = int(neuron.uid)
             if response is None or not getattr(response, "articles", None):
                 recovered = self._recover_backend_artifact_response(run_id=run_id, task=task, uid=uid)
                 if recovered is not None:
                     response = recovered
-                    if index < len(responses):
-                        responses[index] = recovered
-                    else:
-                        while len(responses) < index:
-                            responses.append(None)
-                        responses.append(recovered)
             score = 0.0
             miner_metadata = self._miner_metadata(uid, response) if response is not None else self._miner_metadata(uid, None)
             if response is not None and not self._is_protocol_compatible(response):
@@ -852,30 +885,93 @@ class ClaimsValidator:
                     task=task,
                     run_id=run_id,
                     miner_metadata=miner_metadata,
+                    skip_diagnostic=bool(getattr(self.config, "claims_skip_diagnostic_validation", False)),
                 )
-                stage = self._record_timing_stage(diagnostic_timer, metadata={"uid": uid})
-                self._record_miner_timing_stage(uid, stage)
+                stage = _timing_finish(
+                    diagnostic_timer,
+                    metadata={
+                        "uid": uid,
+                        "paper_count": len(task.paper_tasks()),
+                        "skipped": bool(getattr(self.config, "claims_skip_diagnostic_validation", False)),
+                    },
+                )
+                return _DiagnosticScoreResult(uid=uid, score=score, response=response, stage=stage)
             elif response is not None and getattr(response, "extraction", None):
                 diagnostic_timer = _timing_start("diagnostic_validation", "Diagnostic validation")
-                score = self._score_extraction(
-                    response.extraction,
-                    uid=uid,
-                    task=task,
-                    run_id=run_id,
-                    source_payload=getattr(response, "source_payload", None),
-                    miner_metadata=miner_metadata,
+                if bool(getattr(self.config, "claims_skip_diagnostic_validation", False)):
+                    score = 0.0
+                else:
+                    score = self._score_extraction(
+                        response.extraction,
+                        uid=uid,
+                        task=task,
+                        run_id=run_id,
+                        source_payload=getattr(response, "source_payload", None),
+                        miner_metadata=miner_metadata,
+                    )
+                stage = _timing_finish(
+                    diagnostic_timer,
+                    metadata={
+                        "uid": uid,
+                        "paper_count": 1,
+                        "skipped": bool(getattr(self.config, "claims_skip_diagnostic_validation", False)),
+                    },
                 )
-                stage = self._record_timing_stage(diagnostic_timer, metadata={"uid": uid})
-                self._record_miner_timing_stage(uid, stage)
                 self._post_single_report(run_id, task, uid, response, miner_metadata, score, diagnostic_stage=stage)
             elif response is not None and getattr(response, "error", ""):
                 self.bt_logging.warning(f"Miner response error: {response.error}")
                 self._post_miner_response(run_id, task, uid, response, miner_metadata, status="error")
             else:
                 self._post_miner_response(run_id, task, uid, response, miner_metadata, status="missing")
-            scores[uid] = score
+            return _DiagnosticScoreResult(uid=uid, score=score, response=response, stage=locals().get("stage"))
+
+        diagnostic_worker_count = max(
+            1,
+            min(
+                int(getattr(self.config, "claims_diagnostic_miner_max_workers", 1) or 1),
+                len(self.target_neurons) or 1,
+            ),
+        )
+        diagnostic_results: dict[int, _DiagnosticScoreResult] = {}
+        if diagnostic_worker_count > 1 and len(self.target_neurons) > 1:
+            self.bt_logging.info(
+                f"Running diagnostic validation for {len(self.target_neurons)} miner(s) "
+                f"with max_workers={diagnostic_worker_count}."
+            )
+            with ThreadPoolExecutor(max_workers=diagnostic_worker_count) as executor:
+                futures = {
+                    executor.submit(score_miner_response, index, neuron): index
+                    for index, neuron in enumerate(self.target_neurons)
+                }
+                for future in as_completed(futures):
+                    index = futures[future]
+                    uid = int(self.target_neurons[index].uid)
+                    try:
+                        diagnostic_results[index] = future.result()
+                    except Exception as exc:
+                        self.bt_logging.warning(
+                            f"Diagnostic validation failed uid={uid}: {type(exc).__name__}: {exc}"
+                        )
+                        diagnostic_results[index] = _DiagnosticScoreResult(uid=uid, score=0.0, response=None)
+        else:
+            for index, neuron in enumerate(self.target_neurons):
+                diagnostic_results[index] = score_miner_response(index, neuron)
+
+        for index, neuron in enumerate(self.target_neurons):
+            result = diagnostic_results.get(index)
+            uid = int(neuron.uid)
+            if result is None:
+                scores[uid] = 0.0
+                continue
+            scores[uid] = result.score
+            while len(scored_responses) <= index:
+                scored_responses.append(None)
+            scored_responses[index] = result.response
+            if result.stage is not None:
+                self._record_finished_timing_stage(result.stage)
+                self._record_miner_timing_stage(uid, result.stage)
         if bool(getattr(self.config, "claims_silver_enable", False)):
-            silver_scores = self._run_silver_post_pass(responses, task=task, run_id=run_id)
+            silver_scores = self._run_silver_post_pass(scored_responses, task=task, run_id=run_id)
             if silver_scores:
                 silver_scores = {uid: float(silver_scores.get(uid, 0.0)) for uid in scores}
                 self.bt_logging.info(f"Current Silver incentive scores: {sorted(silver_scores.items())}")
@@ -1117,6 +1213,8 @@ class ClaimsValidator:
                 score_metadata_by_miner_id={f"uid_{uid}": (uid, metadata) for uid, metadata in metadata_by_uid.items()},
             )
             persist_stage = _timing_finish(persist_timer, metadata={"paper_id": paper_id})
+            timing_stages.append(persist_stage)
+            paper_stage_seconds["silver_persist"] = float(persist_stage["duration_seconds"])
             self.bt_logging.info(
                 "Silver post-pass completed "
                 f"paper={paper_id} "
@@ -1124,7 +1222,7 @@ class ClaimsValidator:
                 f"silver={paper_stage_seconds.get('silver_adjudication_scoring', 0.0):.3f}s "
                 f"persist={float(persist_stage['duration_seconds']):.3f}s"
             )
-            return _PaperSilverPostPassResult(paper_id=paper_id, scores=result.scores)
+            return _PaperSilverPostPassResult(paper_id=paper_id, scores=result.scores, timing_stages=timing_stages)
 
         paper_jobs = [
             (paper_index, paper)
@@ -1170,6 +1268,7 @@ class ClaimsValidator:
             result = paper_results.get(paper_id)
             if result is None:
                 continue
+            self._record_paper_timing_stages(result.paper_id, result.timing_stages)
             for score in result.scores:
                 uid = _uid_from_miner_id(score.miner_id)
                 if uid is not None:
@@ -1578,6 +1677,7 @@ class ClaimsValidator:
         task: ClaimsTask,
         run_id: str,
         miner_metadata: dict[str, Any],
+        skip_diagnostic: bool = False,
     ) -> float:
         base_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / f"uid_{uid}"
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -1591,12 +1691,15 @@ class ClaimsValidator:
         paper_scores: list[float] = []
         batch_summary: dict[str, int] = {}
         batch_findings: list[dict[str, Any]] = []
-        for index, paper in enumerate(task.paper_tasks(), start=1):
+
+        def score_paper(index: int, paper: ClaimsPaperTask) -> dict[str, Any]:
             paper_id = paper.paper_id or f"paper_{index}"
             paper_timer = _timing_start("diagnostic_validation", "Diagnostic validation")
             article = articles_by_id.get(paper_id)
             report: dict[str, Any] = {}
             paper_miner_metadata = miner_metadata
+            finding_rows: list[dict[str, Any]] = []
+            summary_delta: dict[str, int] = {}
             if article is None and len(articles_by_id) == 1 and len(task.paper_tasks()) == 1:
                 article = next(iter(articles_by_id.values()))
             if not article or article.get("status") != "completed":
@@ -1618,8 +1721,8 @@ class ClaimsValidator:
                         "error": (article or {}).get("error") or "missing article response",
                     },
                 }
-                batch_findings.append(finding)
-                batch_summary["blocker"] = batch_summary.get("blocker", 0) + 1
+                finding_rows.append(finding)
+                summary_delta["blocker"] = summary_delta.get("blocker", 0) + 1
                 result = {
                     "paper_id": paper_id,
                     "title": paper.title,
@@ -1646,8 +1749,8 @@ class ClaimsValidator:
                         "suggestion": "Include `agent_output` for agent_v1 responses or `extraction` for legacy compatibility.",
                         "metadata": {"paper_title": paper.title},
                     }
-                    batch_findings.append(finding)
-                    batch_summary["blocker"] = batch_summary.get("blocker", 0) + 1
+                    finding_rows.append(finding)
+                    summary_delta["blocker"] = summary_delta.get("blocker", 0) + 1
                     result = {
                         "paper_id": paper_id,
                         "title": paper.title,
@@ -1658,46 +1761,51 @@ class ClaimsValidator:
                     }
                 else:
                     paper_miner_metadata = _metadata_for_article(miner_metadata, article)
-                    article_run_id = f"{run_id}/{safe_task_id(paper_id)}"
-                    score = self._score_extraction(
-                        extraction,
-                        uid=uid,
-                        task=task,
-                        run_id=article_run_id,
-                        source_payload=source_payload if isinstance(source_payload, dict) else None,
-                        miner_metadata=None,
-                    )
-                    article_output_dir = Path(self.config.claims_output_dir) / task.task_id / article_run_id / f"uid_{uid}"
-                    report_path = article_output_dir / "agent_v1" / "agent_v1_validation_report.json"
-                    report = _read_json_object(report_path) if report_path.exists() else {}
-                    for severity, count in (report.get("summary") or {}).items():
-                        try:
-                            batch_summary[str(severity)] = batch_summary.get(str(severity), 0) + int(count)
-                        except (TypeError, ValueError):
-                            continue
-                    for finding in report.get("findings", []) or []:
-                        if not isinstance(finding, dict):
-                            continue
-                        batch_findings.append(
-                            {
-                                **finding,
-                                "paper_id": paper_id,
-                                "paper_title": paper.title,
-                                "paper_report_path": str(report_path),
-                            }
+                    if skip_diagnostic:
+                        score = 0.0
+                        report_path = None
+                        summary_delta["skipped"] = summary_delta.get("skipped", 0) + 1
+                    else:
+                        article_run_id = f"{run_id}/{safe_task_id(paper_id)}"
+                        score = self._score_extraction(
+                            extraction,
+                            uid=uid,
+                            task=task,
+                            run_id=article_run_id,
+                            source_payload=source_payload if isinstance(source_payload, dict) else None,
+                            miner_metadata=None,
                         )
+                        article_output_dir = Path(self.config.claims_output_dir) / task.task_id / article_run_id / f"uid_{uid}"
+                        report_path = article_output_dir / "agent_v1" / "agent_v1_validation_report.json"
+                        report = _read_json_object(report_path) if report_path.exists() else {}
+                        for severity, count in (report.get("summary") or {}).items():
+                            try:
+                                summary_delta[str(severity)] = summary_delta.get(str(severity), 0) + int(count)
+                            except (TypeError, ValueError):
+                                continue
+                        for finding in report.get("findings", []) or []:
+                            if not isinstance(finding, dict):
+                                continue
+                            finding_rows.append(
+                                {
+                                    **finding,
+                                    "paper_id": paper_id,
+                                    "paper_title": paper.title,
+                                    "paper_report_path": str(report_path),
+                                }
+                            )
                     result = {
                         "paper_id": paper_id,
                         "title": paper.title,
-                        "status": "completed",
+                        "status": "diagnostic_skipped" if skip_diagnostic else "completed",
                         "score": score,
                         "error": None,
-                        "report_path": str(report_path),
+                        "report_path": str(report_path) if report_path else None,
                         "artifact_summary": summarize_agent_artifact(extraction),
                     }
             paper_stage = _timing_finish(
                 paper_timer,
-                metadata={"uid": uid, "paper_id": paper_id},
+                metadata={"uid": uid, "paper_id": paper_id, "skipped": skip_diagnostic},
             )
             result["timing"] = self._timing_payload(
                 uid=uid,
@@ -1709,8 +1817,47 @@ class ClaimsValidator:
                     *self._diagnostic_model_rows(report.get("metrics") if isinstance(report, dict) else {}),
                 ],
             )
-            article_results.append(result)
-            paper_scores.append(score)
+            return {
+                "index": index,
+                "score": score,
+                "result": result,
+                "summary": summary_delta,
+                "findings": finding_rows,
+            }
+
+        paper_tasks = task.paper_tasks()
+        paper_worker_count = max(
+            1,
+            min(
+                int(getattr(self.config, "claims_diagnostic_max_workers", 1) or 1),
+                len(paper_tasks) or 1,
+            ),
+        )
+        paper_results: dict[int, dict[str, Any]] = {}
+        if paper_worker_count > 1 and len(paper_tasks) > 1 and not skip_diagnostic:
+            self.bt_logging.info(
+                f"Running diagnostic validation for uid={uid} across {len(paper_tasks)} paper(s) "
+                f"with max_workers={paper_worker_count}."
+            )
+            with ThreadPoolExecutor(max_workers=paper_worker_count) as executor:
+                futures = {
+                    executor.submit(score_paper, index, paper): index
+                    for index, paper in enumerate(paper_tasks, start=1)
+                }
+                for future in as_completed(futures):
+                    index = futures[future]
+                    paper_results[index] = future.result()
+        else:
+            for index, paper in enumerate(paper_tasks, start=1):
+                paper_results[index] = score_paper(index, paper)
+
+        for index in sorted(paper_results):
+            item = paper_results[index]
+            article_results.append(item["result"])
+            paper_scores.append(float(item["score"]))
+            for severity, count in record_counts(item.get("summary")).items():
+                batch_summary[severity] = batch_summary.get(severity, 0) + count
+            batch_findings.extend([finding for finding in item.get("findings", []) if isinstance(finding, dict)])
         batch_score = _aggregate_scores(paper_scores, str(getattr(self.config, "claims_batch_score_rule", "mean")))
         batch_audit = {
             "object_type": "AuditRecord",
@@ -1740,7 +1887,7 @@ class ClaimsValidator:
             ),
         }
         _write_json(base_dir / "batch_audit_record.json", batch_audit)
-        response_status = "completed" if any(result.get("status") == "completed" for result in article_results) else "failed"
+        response_status = "completed" if any(result.get("status") in {"completed", "diagnostic_skipped"} for result in article_results) else "failed"
         self._post_miner_response(run_id, task, uid, response, miner_metadata, status=response_status)
         self._post_validation_report(
             {
@@ -1840,10 +1987,154 @@ class ClaimsValidator:
                     "started_at": started_at.isoformat(),
                     "ended_at": ended_at.isoformat() if ended_at else None,
                     "error_summary": None,
+                    "metadata": self._run_metadata(
+                        run_id=run_id,
+                        task=task,
+                        started_at=started_at,
+                        ended_at=ended_at,
+                    ),
                 },
             )
         except BackendClientError as exc:
             self.bt_logging.warning(f"Could not post validator run to backend: {exc}")
+
+    def _run_metadata(
+        self,
+        *,
+        run_id: str,
+        task: ClaimsTask,
+        started_at: datetime,
+        ended_at: datetime | None,
+    ) -> dict[str, Any]:
+        timing = getattr(self, "_active_run_timing", None)
+        if not isinstance(timing, dict):
+            timing = {}
+        stages = [
+            _public_timing_stage(stage)
+            for stage in timing.get("stages", []) if isinstance(stage, dict)
+        ]
+        miners: dict[str, Any] = {}
+        miner_items = (timing.get("miners") or {}).items() if isinstance(timing.get("miners"), dict) else []
+        for uid, miner in miner_items:
+            miner_stages = [
+                _public_timing_stage(stage)
+                for stage in miner.get("stages", []) if isinstance(miner, dict) and isinstance(stage, dict)
+            ]
+            miners[str(uid)] = {
+                "uid": int(miner.get("uid") or uid) if isinstance(miner, dict) else int(uid),
+                "stage_seconds": _sum_stage_seconds(miner_stages),
+                "stages": miner_stages,
+            }
+        papers: dict[str, Any] = {}
+        paper_items = (timing.get("papers") or {}).items() if isinstance(timing.get("papers"), dict) else []
+        for paper_id, paper_timing in paper_items:
+            paper_stages = [
+                _public_timing_stage(stage)
+                for stage in paper_timing.get("stages", []) if isinstance(paper_timing, dict) and isinstance(stage, dict)
+            ]
+            papers[str(paper_id)] = {
+                "paper_id": str(paper_id),
+                "stage_seconds": _sum_stage_seconds(paper_stages),
+                "stages": paper_stages,
+            }
+        timing_metadata: dict[str, Any] = {
+            "schema": "claims_pipeline_timing_v1",
+            "run_id": run_id,
+            "started_at": started_at.isoformat(),
+            "ended_at": ended_at.isoformat() if ended_at else None,
+            "total_seconds": _seconds_between(started_at, ended_at) if ended_at else _active_elapsed_seconds(timing),
+            "stage_seconds": _sum_stage_seconds(stages),
+            "paper_stage_seconds": _sum_stage_seconds(
+                [stage for paper in papers.values() for stage in list(paper.get("stages") or [])]
+            ),
+            "stages": stages,
+            "miners": miners,
+            "papers": papers,
+        }
+        upload_summary = self._artifact_upload_summary(
+            run_id=run_id,
+            task=task,
+            started_at=started_at,
+            ended_at=ended_at,
+        )
+        if upload_summary:
+            timing_metadata["artifact_uploads"] = upload_summary
+        return {
+            "schema": "claims_validator_run_metadata_v1",
+            "paper_count": len(task.paper_tasks()),
+            "target_uids": [int(neuron.uid) for neuron in self.target_neurons],
+            "config": {
+                "claims_batch_size": int(getattr(self.config, "claims_batch_size", 1)),
+                "claims_timeout": float(getattr(self.config, "claims_timeout", 0.0)),
+                "claims_diagnostic_max_workers": int(getattr(self.config, "claims_diagnostic_max_workers", 1) or 1),
+                "claims_diagnostic_miner_max_workers": int(getattr(self.config, "claims_diagnostic_miner_max_workers", 1) or 1),
+                "claims_silver_paper_max_workers": int(getattr(self.config, "claims_silver_paper_max_workers", 1) or 1),
+                "claims_silver_adjudication_max_workers": int(getattr(self.config, "claims_silver_adjudication_max_workers", 1) or 1),
+                "claims_skip_diagnostic_validation": bool(getattr(self.config, "claims_skip_diagnostic_validation", False)),
+            },
+            "timing": timing_metadata,
+        }
+
+    def _artifact_upload_summary(
+        self,
+        *,
+        run_id: str,
+        task: ClaimsTask,
+        started_at: datetime,
+        ended_at: datetime | None,
+    ) -> dict[str, Any]:
+        if self.backend_client is None:
+            return {}
+        try:
+            rows = self.backend_client.list_miner_artifacts(run_id=run_id)
+        except Exception as exc:
+            self.bt_logging.warning(f"Could not summarize miner artifact uploads for run_id={run_id}: {exc}")
+            return {}
+        created_rows: list[tuple[datetime, dict[str, Any]]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            created_at = _parse_datetime(row.get("created_at"))
+            if created_at is not None:
+                created_rows.append((created_at, row))
+        created_rows.sort(key=lambda item: item[0])
+        expected_count = len(task.paper_tasks()) * len(self.target_neurons)
+        summary: dict[str, Any] = {
+            "count": len(rows),
+            "expected_count": expected_count,
+            "complete": expected_count > 0 and len(rows) >= expected_count,
+        }
+        if not created_rows:
+            return summary
+        first_at = created_rows[0][0]
+        last_at = created_rows[-1][0]
+        summary.update(
+            {
+                "first_uploaded_at": first_at.isoformat(),
+                "last_uploaded_at": last_at.isoformat(),
+                "upload_spread_seconds": round(max(0.0, (last_at - first_at).total_seconds()), 3),
+                "first_from_start_seconds": round(max(0.0, (first_at - started_at).total_seconds()), 3),
+                "last_from_start_seconds": round(max(0.0, (last_at - started_at).total_seconds()), 3),
+            }
+        )
+        if ended_at is not None:
+            summary["after_last_upload_seconds"] = round(max(0.0, (ended_at - last_at).total_seconds()), 3)
+        by_uid: dict[str, list[datetime]] = {}
+        for created_at, row in created_rows:
+            by_uid.setdefault(str(row.get("uid") if row.get("uid") is not None else "unknown"), []).append(created_at)
+        summary["by_uid"] = [
+            {
+                "uid": int(uid) if uid.isdigit() else uid,
+                "count": len(values),
+                "first_uploaded_at": values[0].isoformat(),
+                "last_uploaded_at": values[-1].isoformat(),
+                "first_from_start_seconds": round(max(0.0, (values[0] - started_at).total_seconds()), 3),
+                "last_from_start_seconds": round(max(0.0, (values[-1] - started_at).total_seconds()), 3),
+                "upload_spread_seconds": round(max(0.0, (values[-1] - values[0]).total_seconds()), 3),
+            }
+            for uid, values in sorted(by_uid.items(), key=lambda item: item[0])
+        ]
+        return summary
 
     def _record_timing_stage(
         self,
@@ -1857,6 +2148,12 @@ class ClaimsValidator:
             timing.setdefault("stages", []).append(stage)
         return stage
 
+    def _record_finished_timing_stage(self, stage: dict[str, Any]) -> dict[str, Any]:
+        timing = getattr(self, "_active_run_timing", None)
+        if isinstance(timing, dict):
+            timing.setdefault("stages", []).append(stage)
+        return stage
+
     def _record_miner_timing_stage(self, uid: int, stage: dict[str, Any]) -> None:
         timing = getattr(self, "_active_run_timing", None)
         if not isinstance(timing, dict):
@@ -1864,6 +2161,14 @@ class ClaimsValidator:
         miners = timing.setdefault("miners", {})
         miner = miners.setdefault(str(uid), {"uid": uid, "stages": []})
         miner.setdefault("stages", []).append(stage)
+
+    def _record_paper_timing_stages(self, paper_id: str, stages: list[dict[str, Any]]) -> None:
+        timing = getattr(self, "_active_run_timing", None)
+        if not isinstance(timing, dict):
+            return
+        papers = timing.setdefault("papers", {})
+        paper = papers.setdefault(str(paper_id), {"paper_id": str(paper_id), "stages": []})
+        paper.setdefault("stages", []).extend(stages)
 
     def _miner_model_rows(self, uid: int, metadata: dict[str, Any]) -> list[dict[str, Any]]:
         context = _merge_model_contexts(metadata.get("model_contexts"))
@@ -1884,7 +2189,7 @@ class ClaimsValidator:
         return [_drop_empty_model_fields(row)]
 
     def _diagnostic_model_rows(self, metrics: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        if bool(getattr(self.config, "claims_agent_v1_skip_rigor", False)):
+        if bool(getattr(self.config, "claims_skip_diagnostic_validation", False)) or bool(getattr(self.config, "claims_agent_v1_skip_rigor", False)):
             return [
                 _drop_empty_model_fields(
                     {
@@ -1892,6 +2197,7 @@ class ClaimsValidator:
                         "stage_label": "Diagnostic validation",
                         "role": "validator_rigor",
                         "runtime": "skipped",
+                        "harness": "skipped" if bool(getattr(self.config, "claims_skip_diagnostic_validation", False)) else "",
                         "pipeline": str(getattr(self.config, "claims_validator_pipeline", "auto")),
                     }
                 )
@@ -2294,6 +2600,18 @@ def _coerce_score(value: Any) -> float:
     return max(0.0, min(1.0, score))
 
 
+def record_counts(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    counts: dict[str, int] = {}
+    for key, count in value.items():
+        try:
+            counts[str(key)] = int(count)
+        except (TypeError, ValueError):
+            continue
+    return counts
+
+
 def _is_agent_v1_artifact(extraction: dict[str, Any]) -> bool:
     if not isinstance(extraction, dict):
         return False
@@ -2361,6 +2679,35 @@ def _public_timing_stage(stage: dict[str, Any]) -> dict[str, Any]:
         for key, value in stage.items()
         if not key.startswith("_")
     }
+
+
+def _sum_stage_seconds(stages: list[dict[str, Any]]) -> dict[str, float]:
+    totals: dict[str, float] = {}
+    for stage in stages:
+        if not isinstance(stage, dict):
+            continue
+        key = str(stage.get("key") or "")
+        if key:
+            totals[key] = round(totals.get(key, 0.0) + _float_seconds(stage.get("duration_seconds")), 3)
+    return totals
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _seconds_between(started_at: datetime, ended_at: datetime | None) -> float | None:
+    if ended_at is None:
+        return None
+    return round(max(0.0, (ended_at - started_at).total_seconds()), 3)
 
 
 def _public_model_row(row: dict[str, Any]) -> dict[str, Any]:
