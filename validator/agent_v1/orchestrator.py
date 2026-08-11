@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Iterable
 
 from .adjudication_models import AdjudicationConsensus, AdjudicationContextBundle, AdjudicationDecision
@@ -55,6 +57,7 @@ class PaperSilverPipelineResult:
     adjudication_decisions: list[AdjudicationDecision]
     silver_record: SilverRecord
     scores: list[SilverScoreBreakdown]
+    stage_timings: list[dict] = field(default_factory=list)
 
 
 def run_paper_silver_pipeline(
@@ -75,6 +78,9 @@ def run_paper_silver_pipeline(
     source_context_by_span_id: dict[str, str] | None = None,
     adjudication_max_workers: int = 4,
 ) -> PaperSilverPipelineResult:
+    stage_timings: list[dict] = []
+
+    projection_timer = _stage_start("silver_projection", "Silver projection")
     bronze_candidates = project_agent_artifact(bronze_artifact, origin="bronze")
     miner_submissions = [
         MinerPaperSubmission(
@@ -87,7 +93,17 @@ def run_paper_silver_pipeline(
     ]
     candidate_pool = [*bronze_candidates, *[candidate for submission in miner_submissions for candidate in submission.candidates]]
     candidates_by_id = {candidate.candidate_id: candidate for candidate in candidate_pool}
+    stage_timings.append(_stage_finish(
+        projection_timer,
+        paper_id=paper_id,
+        metadata={
+            "bronze_candidate_count": len(bronze_candidates),
+            "miner_count": len(miner_submissions),
+            "candidate_count": len(candidate_pool),
+        },
+    ))
 
+    comparison_timer = _stage_start("silver_comparison", "Comparison graph")
     comparison_results = [
         compare_miner_to_bronze_result(
             paper_id=paper_id,
@@ -108,6 +124,14 @@ def run_paper_silver_pipeline(
         for result in comparison_results
         for case in result.cases
     )
+    stage_timings.append(_stage_finish(
+        comparison_timer,
+        paper_id=paper_id,
+        metadata={
+            "edge_count": len(candidate_graph_edges),
+            "case_count": len(diff_cases),
+        },
+    ))
 
     def adjudicate(case: BronzeDiffCase) -> tuple[AdjudicationConsensus, AdjudicationDecision | None]:
         candidates = [candidates_by_id[candidate_id] for candidate_id in case.candidate_ids if candidate_id in candidates_by_id]
@@ -130,6 +154,7 @@ def run_paper_silver_pipeline(
         decision = _decision_from_consensus(case, consensus, context.candidates)
         return consensus, decision
 
+    adjudication_timer = _stage_start("silver_adjudication", "Adjudication")
     worker_count = max(1, min(int(adjudication_max_workers or 1), len(diff_cases) or 1))
     if worker_count == 1:
         adjudicated = [adjudicate(case) for case in diff_cases]
@@ -138,6 +163,17 @@ def run_paper_silver_pipeline(
             adjudicated = list(executor.map(adjudicate, diff_cases))
     consensus_records = [consensus for consensus, _decision in adjudicated]
     decisions = [decision for _consensus, decision in adjudicated if decision is not None]
+    stage_timings.append(_stage_finish(
+        adjudication_timer,
+        paper_id=paper_id,
+        metadata={
+            "case_count": len(diff_cases),
+            "decision_count": len(decisions),
+            "worker_count": worker_count,
+        },
+    ))
+
+    consolidation_timer = _stage_start("silver_consolidation", "Consolidation")
     consolidation_cases, consolidation_edges = _build_consolidation_cases(
         paper_id=paper_id,
         candidates=candidate_pool,
@@ -156,6 +192,16 @@ def run_paper_silver_pipeline(
                 adjudicated_consolidation = list(executor.map(adjudicate, consolidation_cases))
         consensus_records.extend(consensus for consensus, _decision in adjudicated_consolidation)
         decisions.extend(decision for _consensus, decision in adjudicated_consolidation if decision is not None)
+    stage_timings.append(_stage_finish(
+        consolidation_timer,
+        paper_id=paper_id,
+        metadata={
+            "case_count": len(consolidation_cases),
+            "edge_count": len(consolidation_edges),
+        },
+    ))
+
+    canonical_timer = _stage_start("silver_canonicalization", "Silver canonicalization")
     unresolved_candidate_ids = _unresolved_candidate_ids(diff_cases, decisions)
     candidate_ids_for_equivalence = _candidate_ids_retained_for_silver(
         candidate_pool,
@@ -184,12 +230,30 @@ def run_paper_silver_pipeline(
         equivalent_candidate_groups=equivalent_candidate_groups,
         excluded_candidate_ids=unresolved_candidate_ids,
     )
+    stage_timings.append(_stage_finish(
+        canonical_timer,
+        paper_id=paper_id,
+        metadata={
+            "silver_unit_count": len(silver_record.silver_units),
+            "equivalent_group_count": len(equivalent_candidate_groups),
+            "unresolved_candidate_count": len(unresolved_candidate_ids),
+        },
+    ))
+
+    importance_timer = _stage_start("silver_importance", "Importance tagging")
     silver_record = apply_silver_importance(
         silver_record,
         classifier=importance_classifier,
         paper_context=paper_context or _paper_context_from_artifact(bronze_artifact),
         source_context=source_context,
     )
+    stage_timings.append(_stage_finish(
+        importance_timer,
+        paper_id=paper_id,
+        metadata={"enabled": importance_classifier is not None},
+    ))
+
+    graph_timer = _stage_start("silver_graph_metadata", "Graph metadata")
     silver_record.metadata["comparison_graph"] = _comparison_graph_metadata(
         candidate_graph_edges=candidate_graph_edges,
         diff_cases=diff_cases,
@@ -197,9 +261,17 @@ def run_paper_silver_pipeline(
         adjudication_consensus=consensus_records,
         adjudication_decisions=decisions,
     )
+    stage_timings.append(_stage_finish(graph_timer, paper_id=paper_id))
+
+    scoring_timer = _stage_start("silver_scoring", "Silver scoring")
     scores = score_silver_jobs_parallel(
         [SilverScoringJob(submission=submission, silver_record=silver_record) for submission in miner_submissions]
     )
+    stage_timings.append(_stage_finish(
+        scoring_timer,
+        paper_id=paper_id,
+        metadata={"score_count": len(scores)},
+    ))
     return PaperSilverPipelineResult(
         paper_id=paper_id,
         bronze_candidates=bronze_candidates,
@@ -210,6 +282,7 @@ def run_paper_silver_pipeline(
         adjudication_decisions=decisions,
         silver_record=silver_record,
         scores=scores,
+        stage_timings=stage_timings,
     )
 
 
@@ -242,6 +315,32 @@ def _score_job(job: SilverScoringJob) -> SilverScoreBreakdown:
         silver_record=job.silver_record,
         normal_findings=job.submission.normal_findings,
     )
+
+
+def _stage_start(key: str, label: str) -> dict:
+    return {
+        "key": key,
+        "label": label,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "_started_monotonic": time.perf_counter(),
+    }
+
+
+def _stage_finish(timer: dict, *, paper_id: str, metadata: dict | None = None) -> dict:
+    ended = datetime.now(timezone.utc)
+    started = float(timer.get("_started_monotonic") or time.perf_counter())
+    payload = {
+        "key": str(timer.get("key") or ""),
+        "label": str(timer.get("label") or ""),
+        "started_at": str(timer.get("started_at") or ""),
+        "ended_at": ended.isoformat(),
+        "duration_seconds": round(max(0.0, time.perf_counter() - started), 3),
+    }
+    stage_metadata = {"paper_id": paper_id}
+    if metadata:
+        stage_metadata.update(metadata)
+    payload["metadata"] = stage_metadata
+    return payload
 
 
 def _dedupe_cases(cases: Iterable[BronzeDiffCase]) -> list[BronzeDiffCase]:

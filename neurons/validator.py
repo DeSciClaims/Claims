@@ -1167,6 +1167,7 @@ class ClaimsValidator:
             miner_rows = miners_by_paper.get(paper_id, [])
             if not miner_rows:
                 return None
+            paper_wall_timer = _timing_start("paper_wall", "Paper wall time")
             paper_stage_seconds: dict[str, float] = {}
             timing_stages: list[dict[str, Any]] = []
             reference_timer: dict[str, Any] | None = None
@@ -1192,7 +1193,7 @@ class ClaimsValidator:
                 return None
             silver_timer: dict[str, Any] | None = None
             try:
-                silver_timer = _timing_start("silver_adjudication_scoring", "Silver adjudication and scoring")
+                silver_timer = _timing_start("silver_adjudication_scoring", "Silver post-pass")
                 bronze_source_payload = _bronze_source_payload_from_record(bronze)
                 bronze_source_context = _source_context_from_payload(bronze_source_payload)
                 source_context_by_span_id = _source_context_map_from_payloads(
@@ -1235,7 +1236,24 @@ class ClaimsValidator:
                     silver_timer,
                     metadata={"paper_id": paper_id, "models": [*adjudication_models, *importance_models]},
                 )
-                timing_stages.append(silver_stage)
+                detailed_silver_stages = [
+                    _silver_stage_with_models(
+                        stage,
+                        paper_id=paper_id,
+                        adjudication_models=adjudication_models,
+                        importance_models=importance_models,
+                    )
+                    for stage in getattr(result, "stage_timings", [])
+                    if isinstance(stage, dict)
+                ]
+                if detailed_silver_stages:
+                    timing_stages.extend(detailed_silver_stages)
+                    for stage in detailed_silver_stages:
+                        key = str(stage.get("key") or "")
+                        if key:
+                            paper_stage_seconds[key] = paper_stage_seconds.get(key, 0.0) + float(stage.get("duration_seconds") or 0.0)
+                else:
+                    timing_stages.append(silver_stage)
                 paper_stage_seconds["silver_adjudication_scoring"] = float(silver_stage["duration_seconds"])
             except Exception as exc:
                 if silver_timer is not None:
@@ -1257,12 +1275,19 @@ class ClaimsValidator:
             persist_stage = _timing_finish(persist_timer, metadata={"paper_id": paper_id})
             timing_stages.append(persist_stage)
             paper_stage_seconds["silver_persist"] = float(persist_stage["duration_seconds"])
+            paper_wall_stage = _timing_finish(
+                paper_wall_timer,
+                metadata={"paper_id": paper_id, "miner_count": len(miner_rows)},
+            )
+            timing_stages.append(paper_wall_stage)
+            paper_stage_seconds["paper_wall"] = float(paper_wall_stage["duration_seconds"])
             self.bt_logging.info(
                 "Silver post-pass completed "
                 f"paper={paper_id} "
                 f"reference={paper_stage_seconds.get('reference_miner', 0.0):.3f}s "
                 f"silver={paper_stage_seconds.get('silver_adjudication_scoring', 0.0):.3f}s "
-                f"persist={float(persist_stage['duration_seconds']):.3f}s"
+                f"persist={float(persist_stage['duration_seconds']):.3f}s "
+                f"paper_wall={float(paper_wall_stage['duration_seconds']):.3f}s"
             )
             return _PaperSilverPostPassResult(paper_id=paper_id, scores=result.scores, timing_stages=timing_stages)
 
@@ -2384,8 +2409,8 @@ class ClaimsValidator:
             command = getattr(adjudication_pass, "command", "")
             model = str(getattr(adjudication_pass, "model", "") or _model_from_profile_id(profile_id))
             row = {
-                "stage_key": "silver_adjudication_scoring",
-                "stage_label": "Silver adjudication + scoring",
+                "stage_key": "silver_adjudication",
+                "stage_label": "Adjudication",
                 "role": f"adjudicator_{pass_id}" if pass_id else "adjudicator",
                 "runtime": runtime_id,
                 "provider": _provider_from_command(command) or _provider_from_api_base(
@@ -2408,7 +2433,7 @@ class ClaimsValidator:
         return [
             _drop_empty_model_fields(
                 {
-                    "stage_key": "silver_adjudication_scoring",
+                    "stage_key": "silver_importance",
                     "stage_label": "Silver importance tagging",
                     "role": "silver_importance",
                     "runtime": "openai-compatible-chat-completions",
@@ -2798,6 +2823,26 @@ def _public_timing_stage(stage: dict[str, Any]) -> dict[str, Any]:
         for key, value in stage.items()
         if not key.startswith("_")
     }
+
+
+def _silver_stage_with_models(
+    stage: dict[str, Any],
+    *,
+    paper_id: str,
+    adjudication_models: list[dict[str, Any]],
+    importance_models: list[dict[str, Any]],
+) -> dict[str, Any]:
+    payload = _public_timing_stage(stage)
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    metadata = dict(metadata)
+    metadata.setdefault("paper_id", paper_id)
+    key = str(payload.get("key") or "")
+    if key in {"silver_adjudication", "silver_consolidation"} and adjudication_models:
+        metadata["models"] = adjudication_models
+    elif key == "silver_importance" and importance_models:
+        metadata["models"] = importance_models
+    payload["metadata"] = metadata
+    return payload
 
 
 def _sum_stage_seconds(stages: list[dict[str, Any]]) -> dict[str, float]:
