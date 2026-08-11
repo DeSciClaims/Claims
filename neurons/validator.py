@@ -35,6 +35,7 @@ from validator.agent_v1.reference_client import (
 )
 from validator.agent_v1.relation_classifier import DSPyRelationClassifier
 from validator.agent_v1.runner import AgentV1ValidatorRunner
+from validator.agent_v1.silver_importance import OpenAICompatibleSilverImportanceClassifier
 from validator.judge_v1.config import JudgeV1Config
 from validator.v0.runner import JudgeV2Runner
 
@@ -507,6 +508,31 @@ class ClaimsValidator:
             help="Environment variable containing the relation-classifier API key.",
         )
         parser.add_argument(
+            "--claims.silver-importance-mode",
+            dest="claims_silver_importance_mode",
+            choices=("openrouter", "model", "disabled"),
+            default=os.getenv("CLAIMS_SILVER_IMPORTANCE_MODE", "openrouter"),
+            help="Validator-side model pass that assigns central/supporting/minor tags to final Silver units.",
+        )
+        parser.add_argument(
+            "--claims.silver-importance-model",
+            dest="claims_silver_importance_model",
+            default=os.getenv("CLAIMS_SILVER_IMPORTANCE_MODEL", "deepseek/deepseek-v4-flash"),
+            help="Model id for validator-side Silver unit importance tagging.",
+        )
+        parser.add_argument(
+            "--claims.silver-importance-api-base",
+            dest="claims_silver_importance_api_base",
+            default=os.getenv("CLAIMS_SILVER_IMPORTANCE_API_BASE", os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")),
+            help="OpenAI-compatible API base used by Silver unit importance tagging.",
+        )
+        parser.add_argument(
+            "--claims.silver-importance-api-key-env",
+            dest="claims_silver_importance_api_key_env",
+            default=os.getenv("CLAIMS_SILVER_IMPORTANCE_API_KEY_ENV", "OPENROUTER_API_KEY"),
+            help="Environment variable containing the Silver importance model API key.",
+        )
+        parser.add_argument(
             "--claims.output-dir",
             dest="claims_output_dir",
             type=Path,
@@ -625,6 +651,10 @@ class ClaimsValidator:
         config.claims_silver_relation_model = parsed_args.claims_silver_relation_model
         config.claims_silver_relation_api_base = parsed_args.claims_silver_relation_api_base
         config.claims_silver_relation_api_key_env = parsed_args.claims_silver_relation_api_key_env
+        config.claims_silver_importance_mode = parsed_args.claims_silver_importance_mode
+        config.claims_silver_importance_model = parsed_args.claims_silver_importance_model
+        config.claims_silver_importance_api_base = parsed_args.claims_silver_importance_api_base
+        config.claims_silver_importance_api_key_env = parsed_args.claims_silver_importance_api_key_env
         config.claims_output_dir = parsed_args.claims_output_dir
         config.claims_query_interval = parsed_args.claims_query_interval
         config.claims_timeout = parsed_args.claims_timeout
@@ -1087,7 +1117,7 @@ class ClaimsValidator:
         expected_paper_ids = [paper.paper_id or f"paper_{index}" for index, paper in enumerate(paper_tasks, start=1)]
         scored_paper_ids: set[str] = set()
         metadata_by_uid: dict[int, dict[str, Any]] = {}
-        miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None]]] = {
+        miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None, list[AgentV1ValidationFinding]]]] = {
             paper.paper_id or f"paper_{index}": [] for index, paper in enumerate(paper_tasks, start=1)
         }
         for index, neuron in enumerate(self.target_neurons):
@@ -1112,6 +1142,7 @@ class ClaimsValidator:
                                 extraction,
                                 _metadata_for_article(metadata, article),
                                 source_payload if isinstance(source_payload, dict) else None,
+                                _validation_findings_from_rows(article.get("diagnostic_findings")),
                             )
                         )
             elif getattr(response, "extraction", None) and len(paper_tasks) == 1:
@@ -1120,7 +1151,7 @@ class ClaimsValidator:
                 source_payload = getattr(response, "source_payload", None)
                 if isinstance(extraction, dict) and _is_agent_v1_artifact(extraction):
                     miners_by_paper.setdefault(paper_id, []).append(
-                        (uid, extraction, metadata, source_payload if isinstance(source_payload, dict) else None)
+                        (uid, extraction, metadata, source_payload if isinstance(source_payload, dict) else None, [])
                     )
 
         adjudication_passes, tiebreak_pass = self._build_silver_adjudication_passes()
@@ -1128,6 +1159,8 @@ class ClaimsValidator:
             self.bt_logging.warning("Silver post-pass skipped; no adjudication passes configured.")
             return {}
         adjudication_models = self._adjudication_pass_model_rows(adjudication_passes, tiebreak_pass)
+        importance_classifier = self._build_silver_importance_classifier()
+        importance_models = self._silver_importance_model_rows() if importance_classifier is not None else []
 
         def process_paper(paper_index: int, paper: ClaimsPaperTask) -> _PaperSilverPostPassResult | None:
             paper_id = paper.paper_id or f"paper_{paper_index}"
@@ -1144,7 +1177,7 @@ class ClaimsValidator:
                     request=self._reference_miner_input(task=task, paper=paper, paper_id=paper_id, run_id=run_id),
                     reference_release_id=reference_release_id,
                 )
-                bronze_artifact = _read_json_object(Path(bronze.artifact_path))
+                bronze_artifact = _bronze_artifact_from_record(bronze)
                 reference_models = self._reference_miner_model_rows(bronze, bronze_artifact)
                 reference_stage = _timing_finish(
                     reference_timer,
@@ -1160,27 +1193,36 @@ class ClaimsValidator:
             silver_timer: dict[str, Any] | None = None
             try:
                 silver_timer = _timing_start("silver_adjudication_scoring", "Silver adjudication and scoring")
+                bronze_source_payload = _bronze_source_payload_from_record(bronze)
+                bronze_source_context = _source_context_from_payload(bronze_source_payload)
+                source_context_by_span_id = _source_context_map_from_payloads(
+                    [
+                        bronze_source_payload,
+                        *[source_payload for _uid, _extraction, _metadata, source_payload, _findings in miner_rows],
+                    ]
+                )
                 result = run_paper_silver_pipeline(
                     paper_id=paper_id,
                     bronze_artifact=bronze_artifact,
                     miner_artifacts=[
                         MinerArtifactSubmission(miner_id=f"uid_{uid}", artifact=extraction)
-                        for uid, extraction, _metadata, _source_payload in miner_rows
+                        for uid, extraction, _metadata, _source_payload, _findings in miner_rows
                     ],
                     silver_record_id=f"silver_{run_id}_{safe_task_id(paper_id)}",
                     bronze_record_id=bronze.bronze_record_id,
                     adjudication_passes=adjudication_passes,
                     tiebreak_pass=tiebreak_pass,
                     direct_judge_confidence=float(getattr(self.config, "claims_silver_direct_confidence", 0.9)),
-                    source_context=_source_context_from_bronze(bronze.source_payload_path),
-                    source_context_by_span_id=_source_context_map_from_payloads(
-                        [
-                            _source_payload_from_path(bronze.source_payload_path),
-                            *[source_payload for _uid, _extraction, _metadata, source_payload in miner_rows],
-                        ]
-                    ),
+                    source_context=bronze_source_context,
+                    source_context_by_span_id=source_context_by_span_id,
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
                     relation_classifier=self._build_silver_relation_classifier(),
+                    importance_classifier=importance_classifier,
+                    paper_context=_paper_task_context(paper),
+                    validation_findings_by_miner_id={
+                        f"uid_{uid}": findings
+                        for uid, _extraction, _metadata, _source_payload, findings in miner_rows
+                    },
                 )
                 score_rows = _scores_with_missing_miners(
                     paper_id=paper_id,
@@ -1191,7 +1233,7 @@ class ClaimsValidator:
                 result = replace(result, scores=score_rows)
                 silver_stage = _timing_finish(
                     silver_timer,
-                    metadata={"paper_id": paper_id, "models": adjudication_models},
+                    metadata={"paper_id": paper_id, "models": [*adjudication_models, *importance_models]},
                 )
                 timing_stages.append(silver_stage)
                 paper_stage_seconds["silver_adjudication_scoring"] = float(silver_stage["duration_seconds"])
@@ -1209,7 +1251,7 @@ class ClaimsValidator:
                 miner_rows=miner_rows,
                 paper_stage_seconds=paper_stage_seconds,
                 timing_stages=timing_stages,
-                model_rows=[*reference_models, *adjudication_models],
+                model_rows=[*reference_models, *adjudication_models, *importance_models],
                 score_metadata_by_miner_id={f"uid_{uid}": (uid, metadata) for uid, metadata in metadata_by_uid.items()},
             )
             persist_stage = _timing_finish(persist_timer, metadata={"paper_id": paper_id})
@@ -1413,6 +1455,30 @@ class ClaimsValidator:
             )
         return classifier
 
+    def _build_silver_importance_classifier(self) -> Any | None:
+        mode = str(getattr(self.config, "claims_silver_importance_mode", "openrouter") or "openrouter").strip().lower()
+        if mode in {"", "disabled", "none"}:
+            return None
+        if mode not in {"openrouter", "model"}:
+            self.bt_logging.warning(f"Unknown Silver importance mode {mode!r}; using default supporting tags.")
+            return None
+        api_base = str(getattr(self.config, "claims_silver_importance_api_base", "") or os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"))
+        api_key_env = str(getattr(self.config, "claims_silver_importance_api_key_env", "") or "OPENROUTER_API_KEY")
+        api_key = os.getenv(api_key_env, "")
+        if not api_key:
+            self.bt_logging.warning(
+                f"{api_key_env} is not set; Silver importance classifier will keep default supporting tags."
+            )
+            return None
+        return OpenAICompatibleSilverImportanceClassifier(
+            model=str(getattr(self.config, "claims_silver_importance_model", "") or "deepseek/deepseek-v4-flash"),
+            api_key=api_key,
+            api_base=api_base,
+            temperature=float(os.getenv("CLAIMS_SILVER_IMPORTANCE_TEMPERATURE", "0")),
+            max_tokens=int(os.getenv("CLAIMS_SILVER_IMPORTANCE_MAX_TOKENS", "2048")),
+            timeout_seconds=float(os.getenv("CLAIMS_SILVER_IMPORTANCE_TIMEOUT", "120")),
+        )
+
     def _silver_adjudication_config(self) -> SilverAdjudicationConfig:
         return SilverAdjudicationConfig(
             mode=str(getattr(self.config, "claims_silver_adjudication_mode", "static")),
@@ -1439,7 +1505,7 @@ class ClaimsValidator:
         task: ClaimsTask,
         paper_id: str,
         result: Any,
-        miner_rows: list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None]],
+        miner_rows: list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None, list[AgentV1ValidationFinding]]],
         paper_stage_seconds: dict[str, float] | None = None,
         timing_stages: list[dict[str, Any]] | None = None,
         model_rows: list[dict[str, Any]] | None = None,
@@ -1471,7 +1537,7 @@ class ClaimsValidator:
         network = str(getattr(self.config, "claims_network", "testnet"))
         metadata_by_miner_id = {
             **(score_metadata_by_miner_id or {}),
-            **{f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata, _source_payload in miner_rows},
+            **{f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata, _source_payload, _findings in miner_rows},
         }
         backend_case_ids = {case.case_id: f"{run_id}_{case.case_id}" for case in result.diff_cases}
         for case in result.diff_cases:
@@ -1807,6 +1873,9 @@ class ClaimsValidator:
                 paper_timer,
                 metadata={"uid": uid, "paper_id": paper_id, "skipped": skip_diagnostic},
             )
+            if isinstance(article, dict):
+                article["diagnostic_score"] = score
+                article["diagnostic_findings"] = finding_rows
             result["timing"] = self._timing_payload(
                 uid=uid,
                 paper_id=paper_id,
@@ -2070,6 +2139,8 @@ class ClaimsValidator:
                 "claims_diagnostic_miner_max_workers": int(getattr(self.config, "claims_diagnostic_miner_max_workers", 1) or 1),
                 "claims_silver_paper_max_workers": int(getattr(self.config, "claims_silver_paper_max_workers", 1) or 1),
                 "claims_silver_adjudication_max_workers": int(getattr(self.config, "claims_silver_adjudication_max_workers", 1) or 1),
+                "claims_silver_importance_mode": str(getattr(self.config, "claims_silver_importance_mode", "openrouter") or ""),
+                "claims_silver_importance_model": str(getattr(self.config, "claims_silver_importance_model", "") or ""),
                 "claims_skip_diagnostic_validation": bool(getattr(self.config, "claims_skip_diagnostic_validation", False)),
             },
             "timing": timing_metadata,
@@ -2327,6 +2398,28 @@ class ClaimsValidator:
             }
             rows.append(_drop_empty_model_fields(row))
         return rows
+
+    def _silver_importance_model_rows(self) -> list[dict[str, Any]]:
+        mode = str(getattr(self.config, "claims_silver_importance_mode", "openrouter") or "openrouter")
+        if mode in {"", "disabled", "none"}:
+            return []
+        model = str(getattr(self.config, "claims_silver_importance_model", "") or "deepseek/deepseek-v4-flash")
+        api_base = str(getattr(self.config, "claims_silver_importance_api_base", "") or os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"))
+        return [
+            _drop_empty_model_fields(
+                {
+                    "stage_key": "silver_adjudication_scoring",
+                    "stage_label": "Silver importance tagging",
+                    "role": "silver_importance",
+                    "runtime": "openai-compatible-chat-completions",
+                    "harness": mode,
+                    "provider": _provider_from_model_or_base(model, api_base) or _provider_from_api_base(api_base),
+                    "model": model,
+                    "models": [model] if model else [],
+                    "model_runtime_id": mode,
+                }
+            )
+        ]
 
     def _timing_payload(
         self,
@@ -2629,6 +2722,32 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     except Exception:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _bronze_artifact_from_record(record: Any) -> dict[str, Any]:
+    artifact = getattr(record, "artifact", None)
+    if isinstance(artifact, dict) and artifact:
+        return artifact
+    artifact_path = str(getattr(record, "artifact_path", "") or "")
+    if not artifact_path:
+        raise FileNotFoundError("Bronze record did not include artifact JSON or artifact_uri.")
+    path = Path(artifact_path)
+    if not path.exists():
+        raise FileNotFoundError(
+            "Bronze artifact is not available locally and the backend row did not include artifact JSON: "
+            f"{artifact_path}"
+        )
+    payload = _read_json_object(path)
+    if not payload:
+        raise ValueError(f"Bronze artifact could not be read as a JSON object: {artifact_path}")
+    return payload
+
+
+def _bronze_source_payload_from_record(record: Any) -> dict[str, Any] | None:
+    source_payload = getattr(record, "source_payload", None)
+    if isinstance(source_payload, dict) and source_payload:
+        return source_payload
+    return _source_payload_from_path(str(getattr(record, "source_payload_path", "") or "") or None)
 
 
 def _new_pipeline_timing(*, run_id: str, started_at: datetime) -> dict[str, Any]:
@@ -3010,9 +3129,11 @@ def _float_seconds(value: Any) -> float:
 
 
 def _source_context_from_bronze(source_payload_path: str | None) -> str:
-    if not source_payload_path:
-        return ""
-    payload = _read_json_object(Path(source_payload_path))
+    payload = _source_payload_from_path(source_payload_path)
+    return _source_context_from_payload(payload)
+
+
+def _source_context_from_payload(payload: dict[str, Any] | None) -> str:
     if not payload:
         return ""
     spans = payload.get("spans")
@@ -3056,6 +3177,63 @@ def _source_context_map_from_payloads(payloads: list[dict[str, Any] | None]) -> 
             for alias in _page_span_id_aliases(span_id):
                 span_text_by_id.setdefault(alias, text)
     return span_text_by_id
+
+
+def _paper_task_context(paper: ClaimsPaperTask) -> dict[str, Any]:
+    metadata = getattr(paper, "metadata", None) if isinstance(getattr(paper, "metadata", None), dict) else {}
+    artifact_paper = (paper.artifact or {}).get("paper") if isinstance(paper.artifact, dict) else {}
+    artifact_paper = artifact_paper if isinstance(artifact_paper, dict) else {}
+    return {
+        "paper_id": paper.paper_id or artifact_paper.get("paper_id") or "",
+        "title": paper.title or metadata.get("title") or artifact_paper.get("title") or "",
+        "abstract": metadata.get("abstract") or metadata.get("summary") or artifact_paper.get("abstract") or "",
+        "claims_summary": metadata.get("claims_summary") or "",
+    }
+
+
+def _validation_findings_from_rows(rows: Any) -> list[AgentV1ValidationFinding]:
+    if not isinstance(rows, list):
+        return []
+    findings: list[AgentV1ValidationFinding] = []
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            continue
+        payload = dict(row)
+        payload["finding_id"] = str(payload.get("finding_id") or f"D{index:03d}")
+        payload["pass_name"] = _coerce_validation_pass_name(payload.get("pass_name"))
+        payload["severity"] = _coerce_validation_severity(payload.get("severity"))
+        payload["dimension"] = str(payload.get("dimension") or "diagnostic")
+        payload["message"] = str(payload.get("message") or "Diagnostic validation finding.")
+        try:
+            findings.append(AgentV1ValidationFinding(**payload))
+        except Exception:
+            findings.append(
+                AgentV1ValidationFinding(
+                    finding_id=f"D{index:03d}",
+                    pass_name="structural",
+                    dimension="diagnostic",
+                    severity="major",
+                    target_type=str(row.get("target_type") or "artifact"),
+                    target_id=str(row.get("target_id") or ""),
+                    message=str(row.get("message") or "Diagnostic validation finding could not be parsed."),
+                    metadata={"raw_finding": row, "code": "unparseable_diagnostic_finding"},
+                )
+            )
+    return findings
+
+
+def _coerce_validation_pass_name(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"structural", "grounding", "rigor", "scoring", "silver_comparison"}:
+        return normalized
+    return "structural"
+
+
+def _coerce_validation_severity(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"blocker", "critical", "major", "minor", "warning", "suggestion"}:
+        return normalized
+    return "major"
 
 
 def _page_span_id_aliases(span_id: str) -> list[str]:

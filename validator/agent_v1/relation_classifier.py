@@ -180,7 +180,10 @@ def _candidate_payload(candidate: ComparisonCandidate) -> dict[str, Any]:
         "qualifier": candidate.qualifier,
         "source_span_ids": candidate.source_span_ids,
         "source_quotes": candidate.source_quotes[:3],
-        "importance": candidate.importance,
+        "evidence_ids": candidate.evidence_ids,
+        "evidence_records": candidate.metadata.get("evidence_records", [])[:3]
+        if isinstance(candidate.metadata.get("evidence_records"), list)
+        else [],
     }
 
 
@@ -188,7 +191,7 @@ def _relation_classifier_instructions() -> str:
     return """
 You classify whether two extracted scientific claim records refer to the same underlying paper claim.
 
-Use only the candidate statements, qualifiers, source span IDs, and source quotes provided.
+Use only the candidate statements, qualifiers, linked evidence records, source span IDs, and source quotes provided.
 
 Return one JSON object:
 {

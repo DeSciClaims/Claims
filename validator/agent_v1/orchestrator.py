@@ -10,14 +10,18 @@ from .adjudication_runner import AdjudicationPass, run_adjudication_case
 from .batch_scoring import BatchScoreResult, score_batch
 from .bronze_diff import compare_miner_to_bronze_result
 from .comparison_models import BronzeDiffCase, CandidatePairEdge, ComparisonCandidate, SilverRecord, SilverScoreBreakdown
+from .models import AgentV1ValidationFinding
 from .pairing import RelationClassifier, build_candidate_pairs
 from .record_projection import project_agent_artifact
 from .relation_classifier import classify_candidate_pair
 from .silver_builder import build_silver_record
+from .silver_importance import SilverImportanceClassifier, apply_silver_importance
 from .silver_scoring import score_miner_against_silver
 
 
 CONSOLIDATION_SEMANTIC_CONFIDENCE = 0.88
+CONSOLIDATION_COMPATIBLE_CONFIDENCE = 0.72
+SAME_UNIT_RELATIONS = {"semantic_equivalent", "compatible_refinement", "compatible_split_merge"}
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,7 @@ class MinerPaperSubmission:
     miner_id: str
     paper_id: str
     candidates: list[ComparisonCandidate]
+    normal_findings: list[AgentV1ValidationFinding] | None = None
 
 
 @dataclass(frozen=True)
@@ -63,6 +68,9 @@ def run_paper_silver_pipeline(
     tiebreak_pass: AdjudicationPass | None = None,
     direct_judge_confidence: float = 0.9,
     relation_classifier: RelationClassifier | None = None,
+    importance_classifier: SilverImportanceClassifier | None = None,
+    paper_context: dict | None = None,
+    validation_findings_by_miner_id: dict[str, list[AgentV1ValidationFinding]] | None = None,
     source_context: str = "",
     source_context_by_span_id: dict[str, str] | None = None,
     adjudication_max_workers: int = 4,
@@ -73,6 +81,7 @@ def run_paper_silver_pipeline(
             miner_id=submission.miner_id,
             paper_id=paper_id,
             candidates=project_agent_artifact(submission.artifact, origin="miner", miner_id=submission.miner_id),
+            normal_findings=(validation_findings_by_miner_id or {}).get(submission.miner_id, []),
         )
         for submission in miner_artifacts
     ]
@@ -175,6 +184,12 @@ def run_paper_silver_pipeline(
         equivalent_candidate_groups=equivalent_candidate_groups,
         excluded_candidate_ids=unresolved_candidate_ids,
     )
+    silver_record = apply_silver_importance(
+        silver_record,
+        classifier=importance_classifier,
+        paper_context=paper_context or _paper_context_from_artifact(bronze_artifact),
+        source_context=source_context,
+    )
     silver_record.metadata["comparison_graph"] = _comparison_graph_metadata(
         candidate_graph_edges=candidate_graph_edges,
         diff_cases=diff_cases,
@@ -225,6 +240,7 @@ def _score_job(job: SilverScoringJob) -> SilverScoreBreakdown:
         miner_id=job.submission.miner_id,
         miner_candidates=job.submission.candidates,
         silver_record=job.silver_record,
+        normal_findings=job.submission.normal_findings,
     )
 
 
@@ -306,7 +322,11 @@ def _build_consolidation_cases(
 
 
 def _edge_can_open_consolidation_case(edge: CandidatePairEdge) -> bool:
-    return edge.relation == "semantic_equivalent" and edge.confidence >= CONSOLIDATION_SEMANTIC_CONFIDENCE
+    if edge.relation == "semantic_equivalent":
+        return edge.confidence >= CONSOLIDATION_SEMANTIC_CONFIDENCE
+    if edge.relation in {"compatible_refinement", "compatible_split_merge"}:
+        return edge.confidence >= CONSOLIDATION_COMPATIBLE_CONFIDENCE
+    return False
 
 
 def _candidate_pairs_from_cases(cases: list[BronzeDiffCase]) -> set[tuple[str, str]]:
@@ -349,15 +369,32 @@ def _graph_case_id(paper_id: str, mismatch_type: str, candidate_ids: list[str]) 
 
 
 def _dedupe_equivalent_candidate_groups(groups: Iterable[list[str]]) -> list[list[str]]:
-    seen: set[tuple[str, ...]] = set()
-    deduped: list[list[str]] = []
+    parent: dict[str, str] = {}
+
+    def find(item: str) -> str:
+        parent.setdefault(item, item)
+        while parent[item] != item:
+            parent[item] = parent[parent[item]]
+            item = parent[item]
+        return item
+
+    def union(left: str, right: str) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parent[right_root] = left_root
+
     for group in groups:
-        key = tuple(sorted(candidate_id for candidate_id in group if candidate_id))
-        if len(key) < 2 or key in seen:
+        ids = [candidate_id for candidate_id in group if candidate_id]
+        if len(ids) < 2:
             continue
-        seen.add(key)
-        deduped.append(list(key))
-    return deduped
+        first = ids[0]
+        for candidate_id in ids[1:]:
+            union(first, candidate_id)
+    components: dict[str, list[str]] = {}
+    for candidate_id in sorted(parent):
+        components.setdefault(find(candidate_id), []).append(candidate_id)
+    return [sorted(ids) for ids in components.values() if len(ids) >= 2]
 
 
 def _equivalent_candidate_groups_from_decisions(
@@ -388,7 +425,7 @@ def _decision_creates_equivalence_group(
         return decision.disposition == "benign_difference"
     edge = case.metadata.get("candidate_graph_edge") if isinstance(case.metadata, dict) else None
     relation = edge.get("relation") if isinstance(edge, dict) else None
-    if relation == "semantic_equivalent":
+    if relation in SAME_UNIT_RELATIONS:
         return True
     return decision.disposition == "benign_difference"
 
@@ -738,11 +775,7 @@ def _decision_from_consensus(
 
 
 def _case_importance(candidates: list[ComparisonCandidate]):
-    if any(candidate.importance == "central" for candidate in candidates):
-        return "central"
-    if any(candidate.importance == "supporting" for candidate in candidates):
-        return "supporting"
-    return "minor"
+    return "supporting"
 
 
 def _case_decision_same_silver_unit(case: BronzeDiffCase, disposition: str) -> bool:
@@ -755,3 +788,14 @@ def _case_decision_same_silver_unit(case: BronzeDiffCase, disposition: str) -> b
     if relation in {"compatible_refinement", "compatible_split_merge"} and disposition in {"accepted_improvement", "benign_difference"}:
         return True
     return disposition == "benign_difference"
+
+
+def _paper_context_from_artifact(artifact: dict) -> dict:
+    paper = artifact.get("paper") if isinstance(artifact.get("paper"), dict) else {}
+    logic = artifact.get("logic") if isinstance(artifact.get("logic"), dict) else {}
+    return {
+        "paper_id": paper.get("paper_id") or "",
+        "title": paper.get("title") or paper.get("paper_title") or "",
+        "abstract": paper.get("abstract") or paper.get("summary") or "",
+        "claims_summary": logic.get("claims_summary") or "",
+    }

@@ -78,6 +78,7 @@ class SilverUnit(BaseModel):
     equivalent_candidate_ids: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
     source_span_ids: list[str] = Field(default_factory=list)
+    source_quotes: list[str] = Field(default_factory=list)
     adjudication_case_ids: list[str] = Field(default_factory=list)
     scoring_mode: Literal["required", "accepted_improvement"] = "required"
     metadata: dict[str, Any] = Field(default_factory=dict)

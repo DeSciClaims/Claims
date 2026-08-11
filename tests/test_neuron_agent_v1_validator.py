@@ -13,12 +13,14 @@ from neurons.protocol import ClaimExtractionSynapse
 from neurons.tasks import ClaimsTask
 from neurons.validator import (
     ClaimsValidator,
+    _bronze_artifact_from_record,
     _is_agent_v1_artifact,
     _metadata_for_article,
     _scores_for_unscored_papers,
     _scores_with_missing_miners,
     _stable_hash,
     _source_context_map_from_payloads,
+    _validation_findings_from_rows,
 )
 from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
@@ -46,6 +48,19 @@ def test_source_context_map_merges_reader_span_ids() -> None:
     assert _source_context_map_from_payloads(
         [{"spans": [{"span_id": "paper-p004-001", "text": "Only old reader text."}]}]
     )["paper-p004-markdown"] == "Only old reader text."
+
+
+def test_bronze_artifact_from_record_prefers_portable_payload_and_rejects_stale_path() -> None:
+    portable = {"paper": {"paper_id": "paper"}, "logic": {"claims": []}}
+
+    assert _bronze_artifact_from_record(SimpleNamespace(artifact=portable, artifact_path="/missing/path.json")) == portable
+
+    try:
+        _bronze_artifact_from_record(SimpleNamespace(artifact=None, artifact_path="/missing/path.json"))
+    except FileNotFoundError as exc:
+        assert "did not include artifact JSON" in str(exc)
+    else:
+        raise AssertionError("Expected stale Bronze artifact path to fail instead of returning an empty object")
 
 
 def test_validator_hydrates_manifest_only_article_from_backend() -> None:
@@ -662,6 +677,44 @@ def test_validator_can_disable_silver_relation_classifier() -> None:
     validator.config = SimpleNamespace(claims_silver_relation_mode="heuristic")
 
     assert validator._build_silver_relation_classifier() is None
+
+
+def test_validator_builds_silver_importance_classifier(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_TEST_IMPORTANCE_KEY", "test-key")
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.bt_logging = SimpleNamespace(warning=lambda *_args, **_kwargs: None)
+    validator.config = SimpleNamespace(
+        claims_silver_importance_mode="openrouter",
+        claims_silver_importance_model="deepseek/deepseek-v4-flash",
+        claims_silver_importance_api_base="https://openrouter.ai/api/v1",
+        claims_silver_importance_api_key_env="CLAIMS_TEST_IMPORTANCE_KEY",
+    )
+
+    classifier = validator._build_silver_importance_classifier()
+
+    assert classifier is not None
+    assert classifier.model == "deepseek/deepseek-v4-flash"
+    assert classifier.api_key == "test-key"
+
+
+def test_validation_finding_rows_feed_silver_scoring() -> None:
+    findings = _validation_findings_from_rows(
+        [
+            {
+                "finding_id": "G001",
+                "pass_name": "grounding",
+                "dimension": "source_payload",
+                "severity": "critical",
+                "target_type": "claim",
+                "target_id": "C01",
+                "message": "Evidence quote is not grounded.",
+            }
+        ]
+    )
+
+    assert len(findings) == 1
+    assert findings[0].pass_name == "grounding"
+    assert findings[0].severity == "critical"
 
 
 def test_validator_backend_client_uses_configured_timeout_and_retries() -> None:

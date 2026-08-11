@@ -8,7 +8,14 @@ from validator.agent_v1.comparison_models import CandidatePairEdge
 from validator.agent_v1.adjudication_consensus import aggregate_adjudication_votes
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, build_silver_adjudication_passes
 from validator.agent_v1.adjudication_models import AdjudicationContextBundle, AdjudicationDecision, AdjudicationVote
-from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass, _parse_json_object
+from validator.agent_v1.adjudication_passes import (
+    CLIAdjudicationPass,
+    OpenAICompatibleAdjudicationPass,
+    StaticAdjudicationPass,
+    _adjudication_cli_prompt,
+    _adjudication_messages,
+    _parse_json_object,
+)
 from validator.agent_v1.adjudication_runner import run_adjudication_case
 from validator.agent_v1.adjudication_queue import (
     QueuedAdjudicationWorker,
@@ -31,7 +38,9 @@ from validator.agent_v1.orchestrator import (
 from validator.agent_v1.pairing import filter_candidate_pairs
 from validator.agent_v1.relation_classifier import DSPyRelationClassifier
 from validator.agent_v1.silver_builder import build_silver_record
+from validator.agent_v1.silver_importance import OpenAICompatibleSilverImportanceClassifier, apply_silver_importance
 from validator.agent_v1.silver_scoring import score_miner_against_silver
+from validator.agent_v1.models import AgentV1ValidationFinding
 
 
 def test_silver_scoring_matches_end_to_end_toy_example() -> None:
@@ -146,6 +155,46 @@ def test_silver_scoring_zero_coverage_scores_zero() -> None:
     assert score.coverage == 0.0
     assert score.quality == 1.0
     assert score.score == 0.0
+
+
+def test_silver_scoring_multiplies_diagnostic_quality() -> None:
+    candidate = _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment A reduced mortality.")
+    silver = SilverRecord(
+        silver_record_id="silver",
+        paper_id="paper",
+        silver_units=[
+            {
+                "silver_unit_id": "u1",
+                "paper_id": "paper",
+                "statement": "Treatment A reduced mortality.",
+                "importance": "central",
+                "equivalent_candidate_ids": ["miner:uid_9:C01"],
+            }
+        ],
+    )
+    diagnostic_finding = AgentV1ValidationFinding(
+        finding_id="D001",
+        pass_name="grounding",
+        dimension="source_payload",
+        severity="critical",
+        target_type="claim",
+        target_id="C01",
+        message="Evidence is not grounded in the supplied source span.",
+    )
+
+    score = score_miner_against_silver(
+        miner_id="uid_9",
+        miner_candidates=[candidate],
+        silver_record=silver,
+        normal_findings=[diagnostic_finding],
+    )
+
+    assert score.coverage == 1.0
+    assert score.metadata["diagnostic_quality"] == 0.75
+    assert score.metadata["adjudication_quality"] == 1.0
+    assert score.quality == 0.75
+    assert score.score == 0.75
+    assert score.findings == [diagnostic_finding]
 
 
 def test_empty_silver_record_is_not_a_perfect_score() -> None:
@@ -842,7 +891,7 @@ def test_silver_pipeline_dedupes_semantic_equivalent_miner_only_improvements() -
     assert [(score.miner_id, score.score) for score in result.scores] == [("uid_9", 1.0), ("uid_10", 1.0)]
 
 
-def test_silver_consolidation_ignores_compatible_refinement_edges() -> None:
+def test_silver_consolidation_adjudicates_compatible_refinement_edges() -> None:
     def classifier(left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
         return CandidatePairEdge(
             edge_id=f"{left.candidate_id}::{right.candidate_id}",
@@ -879,9 +928,60 @@ def test_silver_consolidation_ignores_compatible_refinement_edges() -> None:
         relation_classifier=classifier,
     )
 
-    assert [case.mismatch_type for case in result.diff_cases] == ["EXTRA_FROM_MINER", "EXTRA_FROM_MINER"]
-    assert len(result.silver_record.silver_units) == 2
-    assert result.silver_record.metadata["comparison_graph"]["equivalence_group_count"] == 0
+    assert [case.mismatch_type for case in result.diff_cases] == [
+        "EXTRA_FROM_MINER",
+        "EXTRA_FROM_MINER",
+        "COMPATIBLE_REFINEMENT",
+    ]
+    assert len(result.silver_record.silver_units) == 1
+    assert result.silver_record.metadata["comparison_graph"]["equivalence_group_count"] == 1
+
+
+def test_equivalent_candidate_groups_are_transitive_components() -> None:
+    candidates = [
+        _candidate("miner:uid_9:C01", "miner", "uid_9", "Claim A."),
+        _candidate("miner:uid_9:C02", "miner", "uid_9", "Claim A restated."),
+        _candidate("miner:uid_10:C01", "miner", "uid_10", "Claim A refined."),
+    ]
+    silver = build_silver_record(
+        paper_id="paper",
+        silver_record_id="silver_transitive",
+        candidates=candidates,
+        decisions=[
+            AdjudicationDecision(
+                case_id="case_a",
+                disposition="accepted_improvement",
+                accepted_candidate_ids=["miner:uid_9:C01"],
+                creates_optional_improvement_unit=True,
+                creates_required_silver_unit=False,
+            ),
+            AdjudicationDecision(
+                case_id="case_b",
+                disposition="accepted_improvement",
+                accepted_candidate_ids=["miner:uid_9:C02"],
+                creates_optional_improvement_unit=True,
+                creates_required_silver_unit=False,
+            ),
+            AdjudicationDecision(
+                case_id="case_c",
+                disposition="accepted_improvement",
+                accepted_candidate_ids=["miner:uid_10:C01"],
+                creates_optional_improvement_unit=True,
+                creates_required_silver_unit=False,
+            ),
+        ],
+        equivalent_candidate_groups=[
+            ["miner:uid_9:C01", "miner:uid_9:C02"],
+            ["miner:uid_9:C02", "miner:uid_10:C01"],
+        ],
+    )
+
+    assert len(silver.silver_units) == 1
+    assert silver.silver_units[0].equivalent_candidate_ids == [
+        "miner:uid_10:C01",
+        "miner:uid_9:C01",
+        "miner:uid_9:C02",
+    ]
 
 
 def test_silver_record_dedupes_required_bronze_units_across_miners() -> None:
@@ -946,6 +1046,41 @@ def test_silver_record_dedupes_equivalent_accepted_improvements() -> None:
     assert silver.silver_units[0].adjudication_case_ids == ["case_uid_10", "case_uid_9"]
     assert score_miner_against_silver(miner_id="uid_9", miner_candidates=[candidates[0]], silver_record=silver).score == 1.0
     assert score_miner_against_silver(miner_id="uid_10", miner_candidates=[candidates[1]], silver_record=silver).score == 1.0
+
+
+def test_silver_record_dedupes_bronze_equivalent_improvement_as_required_unit() -> None:
+    candidates = [
+        _candidate("bronze:C01", "bronze", None, "Individual variants have small effects."),
+        _candidate("miner:uid_9:C01", "miner", "uid_9", "Single variants have very small individual effects."),
+    ]
+    silver = build_silver_record(
+        paper_id="paper",
+        silver_record_id="silver_required_equivalence",
+        candidates=candidates,
+        decisions=[
+            AdjudicationDecision(
+                case_id="extra_case",
+                disposition="accepted_improvement",
+                accepted_candidate_ids=["miner:uid_9:C01"],
+                creates_required_silver_unit=False,
+                creates_optional_improvement_unit=True,
+            ),
+            AdjudicationDecision(
+                case_id="equivalence_case",
+                disposition="benign_difference",
+                accepted_candidate_ids=["bronze:C01", "miner:uid_9:C01"],
+                creates_required_silver_unit=True,
+                creates_optional_improvement_unit=False,
+            ),
+        ],
+        equivalent_candidate_groups=[["bronze:C01", "miner:uid_9:C01"]],
+    )
+
+    assert len(silver.silver_units) == 1
+    assert silver.silver_units[0].required_for_completeness is True
+    assert silver.silver_units[0].scoring_mode == "required"
+    assert silver.silver_units[0].equivalent_candidate_ids == ["bronze:C01", "miner:uid_9:C01"]
+    assert silver.silver_units[0].adjudication_case_ids == ["equivalence_case", "extra_case"]
 
 
 def test_silver_record_does_not_resurrect_rejected_bronze_from_equivalence_group() -> None:
@@ -1030,6 +1165,111 @@ def test_dspy_relation_classifier_falls_back_to_heuristic() -> None:
 
     assert edge.relation == "semantic_equivalent"
     assert "DSPy classifier fallback" in (edge.rationale or "")
+
+
+def test_adjudication_prompt_is_anonymous_and_includes_evidence() -> None:
+    case = BronzeDiffCase(
+        case_id="case_1",
+        paper_id="paper",
+        miner_id="uid_9",
+        mismatch_type="EXTRA_FROM_MINER",
+        candidate_ids=["miner:uid_9:C01"],
+        miner_candidate_id="miner:uid_9:C01",
+        question="Is this miner-only candidate valid?",
+    )
+    candidate = _candidate(
+        "miner:uid_9:C01",
+        "miner",
+        "uid_9",
+        "Treatment A reduced mortality.",
+        evidence_ids=["EV01"],
+        source_span_ids=["S01"],
+    )
+    candidate.metadata["evidence_records"] = [
+        {
+            "evidence_id": "EV01",
+            "summary": "The paper reports lower mortality.",
+            "source_refs": [{"span_ids": ["S01"], "quote": "lower mortality"}],
+        }
+    ]
+    context = AdjudicationContextBundle(case=case, candidates=[candidate], source_context="S01: lower mortality")
+
+    messages = _adjudication_messages(context)
+    content = messages[1]["content"]
+    import json
+
+    payload = json.loads(content)
+
+    assert "miner:uid_9:C01" not in content
+    assert '"origin"' not in content
+    assert "uid_9" not in content
+    assert payload["case"]["case_type"] == "single_candidate"
+    assert payload["candidates"][0]["anonymous_id"] == "candidate_1"
+    assert payload["candidates"][0]["evidence_records"][0]["evidence_id"] == "EV01"
+    assert payload["allowed_dispositions"] == sorted(
+        [
+            "both_invalid",
+            "candidate_a_only",
+            "candidate_b_only",
+            "exclude_candidate",
+            "include_candidate",
+            "insufficient_information",
+            "same_unit",
+            "separate_valid_units",
+        ]
+    )
+
+    cli_prompt = _adjudication_cli_prompt(context)
+    assert "Bronze/miner" not in cli_prompt
+    assert "miner:uid_9:C01" not in cli_prompt
+    assert "uid_9" not in cli_prompt
+    assert "candidate_1" in cli_prompt
+
+
+def test_silver_importance_classifier_tags_final_units() -> None:
+    silver = SilverRecord(
+        silver_record_id="silver",
+        paper_id="paper",
+        silver_units=[
+            {
+                "silver_unit_id": "u1",
+                "paper_id": "paper",
+                "statement": "The intervention changed the primary outcome.",
+                "importance": "supporting",
+                "equivalent_candidate_ids": ["bronze:C01"],
+            },
+            {
+                "silver_unit_id": "u2",
+                "paper_id": "paper",
+                "statement": "The paper mentions a background assay.",
+                "importance": "supporting",
+                "equivalent_candidate_ids": ["miner:uid_9:C02"],
+            },
+        ],
+    )
+    classifier = OpenAICompatibleSilverImportanceClassifier(
+        model="deepseek/deepseek-v4-flash",
+        api_key="test",
+        completion_fn=lambda _messages: (
+            '{"units":['
+            '{"silver_unit_id":"u1","importance":"central","rationale":"main outcome"},'
+            '{"silver_unit_id":"u2","importance":"minor","rationale":"peripheral detail"}'
+            ']}'
+        ),
+    )
+
+    tagged = apply_silver_importance(
+        silver,
+        classifier=classifier,
+        paper_context={"title": "Paper title", "abstract": "Primary outcome abstract."},
+        source_context="",
+    )
+
+    assert [(unit.silver_unit_id, unit.importance) for unit in tagged.silver_units] == [
+        ("u1", "central"),
+        ("u2", "minor"),
+    ]
+    assert tagged.metadata["importance_assignment"]["applied_count"] == 2
 
 
 def test_miner_consensus_aggregates_excluding_evaluated_miner() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shlex
@@ -22,6 +23,16 @@ ALLOWED_DISPOSITIONS: set[str] = {
     "accepted_improvement",
     "benign_difference",
     "both_valid",
+    "both_invalid",
+    "insufficient_information",
+}
+PROMPT_DISPOSITIONS: set[str] = {
+    "include_candidate",
+    "exclude_candidate",
+    "same_unit",
+    "separate_valid_units",
+    "candidate_a_only",
+    "candidate_b_only",
     "both_invalid",
     "insufficient_information",
 }
@@ -208,27 +219,29 @@ class CLIAdjudicationPass:
 
 
 def _adjudication_messages(context: AdjudicationContextBundle) -> list[dict[str, str]]:
-    candidate_lines = []
-    for candidate in context.candidates:
-        candidate_lines.append(
-            {
-                "candidate_id": candidate.candidate_id,
-                "origin": candidate.origin,
-                "miner_id": candidate.miner_id,
-                "record_id": candidate.record_id,
-                "statement": candidate.statement,
-                "source_span_ids": candidate.source_span_ids,
-                "source_quotes": candidate.source_quotes[:3],
-            }
-        )
+    candidate_lines = _anonymous_candidate_payloads(context)
     user_payload = {
-        "case": context.case.model_dump(mode="json"),
-        "candidate_order_seed": context.candidate_order_seed,
+        "case": {
+            "case_tracking_id": hashlib.sha256(context.case.case_id.encode("utf-8")).hexdigest()[:16],
+            "paper_id": context.case.paper_id,
+            "case_type": _neutral_case_type(context),
+            "question": _neutral_question(context),
+        },
         "candidates": candidate_lines,
         "source_context": context.source_context[:12000],
-        "allowed_dispositions": sorted(ALLOWED_DISPOSITIONS),
+        "allowed_dispositions": sorted(PROMPT_DISPOSITIONS),
+        "disposition_meanings": {
+            "include_candidate": "For a single-candidate case, include the candidate in the final Silver record.",
+            "exclude_candidate": "For a single-candidate case, reject the candidate.",
+            "same_unit": "For a multi-candidate case, all candidates describe the same Silver unit.",
+            "separate_valid_units": "For a multi-candidate case, candidates are valid but should remain separate Silver units.",
+            "candidate_a_only": "For a two-candidate case, include candidate_1 and reject candidate_2.",
+            "candidate_b_only": "For a two-candidate case, include candidate_2 and reject candidate_1.",
+            "both_invalid": "Reject all candidates in this case.",
+            "insufficient_information": "The supplied claim, evidence, and source context are insufficient to decide.",
+        },
         "required_json_schema": {
-            "disposition": "one allowed disposition",
+            "disposition": "one allowed neutral disposition",
             "material_findings": ["short stable finding codes"],
             "cited_span_ids": ["source span ids supporting the decision"],
             "confidence": "number from 0 to 1",
@@ -241,7 +254,9 @@ def _adjudication_messages(context: AdjudicationContextBundle) -> list[dict[str,
             "role": "system",
             "content": (
                 "You are an adjudication pass for scientific claim extraction. "
-                "Resolve only the provided Bronze/miner discrepancy. "
+                "Resolve only the provided anonymous candidate case. "
+                "Do not infer anything from candidate order. "
+                "Use the claim statements, linked evidence records, source quotes, and source spans. "
                 "Use the allowed disposition labels exactly. "
                 "Cite source span ids when possible. "
                 "Return only a JSON object matching the requested schema."
@@ -256,7 +271,7 @@ def _adjudication_cli_prompt(context: AdjudicationContextBundle) -> str:
     return "\n\n".join(
         [
             "# Claims Silver adjudication task",
-            "Resolve the provided Bronze/miner discrepancy for scientific claim extraction.",
+            "Resolve the provided anonymous scientific claim candidate case.",
             "Return only one strict JSON object. Do not wrap it in markdown.",
             "If you cannot decide from the supplied context, set disposition to `insufficient_information`.",
             "",
@@ -287,11 +302,13 @@ def vote_from_payload(
     adjudication_profile_id: str,
     model_runtime_id: str,
 ) -> AdjudicationVote:
-    disposition = _coerce_disposition(payload.get("disposition"))
+    disposition, neutral_disposition = _coerce_prompt_disposition(context, payload.get("disposition"))
     cited_span_ids = _string_list(payload.get("cited_span_ids"))
     known_span_ids = {span_id for candidate in context.candidates for span_id in candidate.source_span_ids}
     valid_cited_span_ids = [span_id for span_id in cited_span_ids if not known_span_ids or span_id in known_span_ids]
     material_findings = _string_list(payload.get("material_findings")) or [disposition]
+    if neutral_disposition and neutral_disposition != disposition:
+        material_findings = [*material_findings, f"neutral_disposition:{neutral_disposition}"]
     confidence = _clamp_float(payload.get("confidence"), default=0.0)
     insufficient_information = bool(payload.get("insufficient_information")) or disposition == "insufficient_information"
     if insufficient_information:
@@ -311,6 +328,103 @@ def vote_from_payload(
         rationale=str(payload.get("rationale") or ""),
         insufficient_information=insufficient_information,
     )
+
+
+def _anonymous_candidate_payloads(context: AdjudicationContextBundle) -> list[dict[str, Any]]:
+    payloads = []
+    for index, candidate in enumerate(_anonymous_candidate_order(context), start=1):
+        payloads.append(
+            {
+                "anonymous_id": f"candidate_{index}",
+                "statement": candidate.statement,
+                "qualifier": candidate.qualifier,
+                "evidence_ids": candidate.evidence_ids,
+                "source_span_ids": candidate.source_span_ids,
+                "source_quotes": candidate.source_quotes[:3],
+                "evidence_records": _candidate_evidence_records(candidate),
+            }
+        )
+    return payloads
+
+
+def _anonymous_candidate_order(context: AdjudicationContextBundle):
+    seed = context.candidate_order_seed or context.case.case_id
+    return sorted(
+        context.candidates,
+        key=lambda candidate: hashlib.sha256(f"{seed}|{candidate.candidate_id}".encode("utf-8")).hexdigest(),
+    )
+
+
+def _candidate_evidence_records(candidate: Any) -> list[dict[str, Any]]:
+    records = candidate.metadata.get("evidence_records") if isinstance(candidate.metadata, dict) else None
+    if not isinstance(records, list):
+        return []
+    cleaned = []
+    for record in records[:5]:
+        if not isinstance(record, dict):
+            continue
+        cleaned.append(
+            {
+                "evidence_id": record.get("evidence_id") or "",
+                "title": record.get("title") or "",
+                "role": record.get("role") or "",
+                "summary": record.get("summary") or "",
+                "evidence_method": record.get("evidence_method") or "",
+                "outcome_type": record.get("outcome_type") or "",
+                "presentation_type": record.get("presentation_type") or "",
+                "source_refs": record.get("source_refs") if isinstance(record.get("source_refs"), list) else [],
+            }
+        )
+    return cleaned
+
+
+def _neutral_case_type(context: AdjudicationContextBundle) -> str:
+    if len(context.candidates) <= 1:
+        return "single_candidate"
+    edge = context.case.metadata.get("candidate_graph_edge") if isinstance(context.case.metadata, dict) else None
+    relation = edge.get("relation") if isinstance(edge, dict) else ""
+    return f"candidate_relation:{relation or 'unknown'}"
+
+
+def _neutral_question(context: AdjudicationContextBundle) -> str:
+    if len(context.candidates) <= 1:
+        return "Should this candidate be included in the final Silver record?"
+    return "Do these candidates represent the same Silver unit, separate valid units, or should any candidate be rejected?"
+
+
+def _coerce_prompt_disposition(
+    context: AdjudicationContextBundle,
+    value: Any,
+) -> tuple[AdjudicationDisposition, str]:
+    normalized = str(value or "").strip().lower()
+    if normalized in ALLOWED_DISPOSITIONS:
+        return normalized, normalized  # type: ignore[return-value]
+    if normalized not in PROMPT_DISPOSITIONS:
+        return "insufficient_information", normalized
+    if normalized == "insufficient_information":
+        return "insufficient_information", normalized
+    if normalized == "both_invalid":
+        return "both_invalid", normalized
+    if normalized == "same_unit":
+        return "benign_difference", normalized
+    if normalized == "separate_valid_units":
+        return "both_valid", normalized
+    ordered = _anonymous_candidate_order(context)
+    if normalized == "include_candidate":
+        return "accepted_improvement", normalized
+    if normalized == "exclude_candidate":
+        candidate = ordered[0] if ordered else None
+        return ("reference_error" if getattr(candidate, "origin", "") == "bronze" else "miner_error"), normalized
+    if normalized in {"candidate_a_only", "candidate_b_only"}:
+        accepted_index = 0 if normalized == "candidate_a_only" else 1
+        accepted = ordered[accepted_index] if len(ordered) > accepted_index else None
+        rejected = [candidate for index, candidate in enumerate(ordered) if index != accepted_index]
+        if getattr(accepted, "origin", "") == "bronze" and any(candidate.origin == "miner" for candidate in rejected):
+            return "miner_error", normalized
+        if getattr(accepted, "origin", "") == "miner" and any(candidate.origin == "bronze" for candidate in rejected):
+            return "reference_error", normalized
+        return "both_valid", normalized
+    return "insufficient_information", normalized
 
 
 def _parse_json_object(content: str) -> dict[str, Any]:

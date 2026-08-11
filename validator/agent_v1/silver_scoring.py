@@ -69,9 +69,11 @@ def score_miner_against_silver(
             )
         )
 
-    all_findings = [*normal_findings, *findings]
     coverage = _coverage(scored_units, covered)
-    quality = _quality(all_findings)
+    diagnostic_quality, _diagnostic_passed, diagnostic_summary = score_findings(normal_findings)
+    adjudication_quality = _adjudication_quality(findings)
+    quality = max(0.0, round(diagnostic_quality * adjudication_quality, 4))
+    all_findings = [*normal_findings, *findings]
     _finding_score, _finding_passed, summary = score_findings(all_findings)
     score = _silver_score(
         coverage=coverage,
@@ -89,14 +91,20 @@ def score_miner_against_silver(
         missing_required_silver_units=missing,
         accepted_improvements=improvements,
         invalid_extra_candidates=[candidate.candidate_id for candidate in invalid_extras],
-        findings=findings,
+        findings=all_findings,
         metadata={
             "normal_finding_count": len(normal_findings),
+            "silver_finding_count": len(findings),
             "passed": score > 0,
             "finding_summary": summary,
+            "diagnostic_finding_summary": diagnostic_summary,
+            "coverage": coverage,
+            "diagnostic_quality": diagnostic_quality,
+            "adjudication_quality": adjudication_quality,
+            "quality_formula": "diagnostic_quality * adjudication_quality",
             "covered_silver_units": covered,
             "missing_silver_units": missing,
-            "formula": "score = Silver coverage * quality; every scored Silver unit, including accepted improvements, contributes to coverage",
+            "formula": "score = Silver coverage * diagnostic quality * adjudication quality; every scored Silver unit, including accepted improvements, contributes to coverage",
         },
     )
 
@@ -129,7 +137,7 @@ def _coverage(scored_units: list[SilverUnit], covered_unit_ids: list[str]) -> fl
     return round(numerator / denominator, 4)
 
 
-def _quality(findings: list[AgentV1ValidationFinding]) -> float:
+def _adjudication_quality(findings: list[AgentV1ValidationFinding]) -> float:
     quality_penalty = sum(PENALTIES.get(finding.severity, 0.0) for finding in findings if finding.dimension != "completeness")
     return max(0.0, round(1.0 - quality_penalty, 4))
 
