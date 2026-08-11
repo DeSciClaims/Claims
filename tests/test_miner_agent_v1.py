@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+from miner.agent_v1.artifact import materialize_agent_artifact
 from miner.agent_v1.config import AgentV1Config
 from miner.agent_v1.ingest import (
     SOURCE_PAYLOAD_SCHEMA_VERSION,
@@ -74,7 +76,7 @@ def test_agent_harness_profile_maps_cli_and_native_runtimes() -> None:
     assert codex_inner[1:] == ["exec", "--model", "gpt-5.5", "--json", "--sandbox", "workspace-write", "--skip-git-repo-check"]
 
 
-def test_hermes_wrapper_waits_for_session_footer_by_default(monkeypatch) -> None:
+def test_hermes_wrapper_exits_on_valid_output_by_default(monkeypatch) -> None:
     from miner.agent_v1.wrappers import hermes_prompt
 
     called = {}
@@ -88,7 +90,7 @@ def test_hermes_wrapper_waits_for_session_footer_by_default(monkeypatch) -> None
     monkeypatch.setattr(hermes_prompt, "prompt_agent_main", fake_prompt_agent_main)
 
     assert hermes_prompt.main() == 0
-    assert called["exit_on_valid_output"] == "false"
+    assert called["exit_on_valid_output"] == "true"
 
 
 def test_agent_v1_config_defaults_to_pdf_inspector(monkeypatch) -> None:
@@ -551,3 +553,17 @@ def _valid_ara_payload() -> dict:
         "src": {"environment": ["agent_v1 test"], "artifacts": []},
         "metadata": {},
     }
+
+
+def test_materialize_agent_artifact_coerces_cli_structured_text_fields() -> None:
+    payload = _valid_ara_payload()
+    payload["logic"]["experiments"][0]["setup"] = {
+        "population": "Study sample",
+        "condition": "Treatment arm",
+    }
+    payload["logic"]["claims"][0]["conditions"] = ["Study sample conditions."]
+
+    artifact = materialize_agent_artifact(payload)
+
+    assert artifact.logic.experiments[0].setup == '{"condition": "Treatment arm", "population": "Study sample"}'
+    assert artifact.logic.claims[0].conditions == '["Study sample conditions."]'

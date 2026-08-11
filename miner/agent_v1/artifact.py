@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from types import UnionType
+from typing import Any, Union, get_args, get_origin
+
+from pydantic import BaseModel
 
 from .artifact_models import Artifact
 
@@ -43,6 +46,7 @@ def materialize_agent_artifact(raw: dict[str, Any], *, fallback_paper: dict[str,
         },
     )
     _normalize_source_ref_roles(payload)
+    _coerce_schema_text_fields(payload, Artifact)
     return Artifact.model_validate(payload)
 
 
@@ -78,3 +82,54 @@ def _coerce_source_ref_role(role: str) -> str:
     if normalized in {"limitation", "rationale", "discussion", "conclusion", "analysis", "inference"}:
         return "interpretation"
     return "metadata"
+
+
+def _coerce_schema_text_fields(value: dict[str, Any], model_type: type[BaseModel]) -> None:
+    for field_name, field_info in model_type.model_fields.items():
+        if field_name not in value:
+            continue
+        value[field_name] = _coerce_value_for_annotation(value[field_name], field_info.annotation)
+
+
+def _coerce_value_for_annotation(value: Any, annotation: Any) -> Any:
+    if value is None:
+        return value
+    if annotation is Any:
+        return value
+    if _is_base_model_type(annotation):
+        if isinstance(value, dict):
+            _coerce_schema_text_fields(value, annotation)
+        return value
+
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+    if origin is list:
+        if isinstance(value, list) and args:
+            return [_coerce_value_for_annotation(item, args[0]) for item in value]
+        return value
+    if origin in {Union, UnionType}:
+        if str in args:
+            return _coerce_text(value)
+        for arg in args:
+            coerced = _coerce_value_for_annotation(value, arg)
+            if coerced is not value:
+                return coerced
+        return value
+    if annotation is str:
+        return _coerce_text(value)
+    return value
+
+
+def _is_base_model_type(annotation: Any) -> bool:
+    return isinstance(annotation, type) and issubclass(annotation, BaseModel)
+
+
+def _coerce_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict | list):
+        try:
+            return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        except TypeError:
+            return str(value)
+    return str(value)
