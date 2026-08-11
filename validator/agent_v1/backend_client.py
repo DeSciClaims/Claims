@@ -48,6 +48,8 @@ class ClaimsBackendClient:
             artifact_sha256=str(row.get("artifact_hash") or ""),
             artifact_path=str(row.get("artifact_uri") or ""),
             source_payload_path=str(row.get("source_payload_uri") or "") or None,
+            artifact=row.get("artifact") if isinstance(row.get("artifact"), dict) else None,
+            source_payload=row.get("source_payload") if isinstance(row.get("source_payload"), dict) else None,
             created_at=row.get("created_at"),
             metadata=row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
         )

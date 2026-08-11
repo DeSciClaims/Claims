@@ -7,7 +7,14 @@ from pathlib import Path
 from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.grounding import run_grounding_checks
 from validator.agent_v1.models import AgentV1ValidationFinding, RigorAgentResult
-from validator.agent_v1.reference_client import LocalCliReferenceMinerClient, LocalReferenceMinerClient, ReferenceMinerInput, _resolve_executable
+from validator.agent_v1.reference_client import (
+    BackendBackedReferenceMinerClient,
+    BronzeRecord,
+    LocalCliReferenceMinerClient,
+    LocalReferenceMinerClient,
+    ReferenceMinerInput,
+    _resolve_executable,
+)
 from validator.agent_v1.runner import AgentV1ValidatorRunner
 from validator.agent_v1.runtime.factory import build_rigor_runtime
 from validator.agent_v1.scoring import score_findings
@@ -332,6 +339,58 @@ def test_local_reference_miner_client_reads_bronze_manifest(tmp_path: Path) -> N
     assert record.bronze_record_id == "bronze_001"
     assert Path(record.artifact_path).exists()
     assert Path(record.source_payload_path or "").exists()
+    assert record.artifact == _valid_artifact()
+    assert record.source_payload == _source_payload()
+
+
+def test_backend_backed_reference_miner_posts_portable_bronze_payload(tmp_path: Path) -> None:
+    class Backend:
+        def __init__(self) -> None:
+            self.posts: list[dict] = []
+
+        def get_bronze_record(self, *, paper_id: str, reference_release_id: str) -> dict:
+            return {
+                "bronze_record_id": "bronze_stale",
+                "paper_id": paper_id,
+                "reference_release_id": reference_release_id,
+                "reference_profile_id": "cached",
+                "model_runtime_id": "cached-model",
+                "artifact_hash": "cached-hash",
+                "artifact_uri": "/other/machine/agent_output.json",
+                "source_payload_uri": "/other/machine/source_payload.json",
+                "metadata": {"artifact_summary": {"claims": []}},
+            }
+
+        def post_bronze_record(self, payload: dict) -> dict:
+            self.posts.append(payload)
+            return payload
+
+    class Delegate:
+        def get_or_create_bronze(self, *, request: ReferenceMinerInput, reference_release_id: str) -> BronzeRecord:
+            return BronzeRecord(
+                bronze_record_id="bronze_local",
+                paper_id=request.paper_id,
+                reference_release_id=reference_release_id,
+                reference_profile_id="local",
+                model_runtime_id="local-model",
+                artifact_sha256="local-hash",
+                artifact_path=str(tmp_path / "agent_output.json"),
+                source_payload_path=str(tmp_path / "source_payload.json"),
+                artifact=_valid_artifact(),
+                source_payload=_source_payload(),
+            )
+
+    backend = Backend()
+    record = BackendBackedReferenceMinerClient(backend=backend, delegate=Delegate()).get_or_create_bronze(
+        request=ReferenceMinerInput(paper_id="paper", run_id="run_001", batch_id="batch_001"),
+        reference_release_id="reference-v0",
+    )
+
+    assert record.bronze_record_id == "bronze_local"
+    assert backend.posts[-1]["artifact"] == _valid_artifact()
+    assert backend.posts[-1]["source_payload"] == _source_payload()
+    assert backend.posts[-1]["artifact_uri"] == "claims-api:/bronze-records/bronze_local/artifact"
+    assert backend.posts[-1]["source_payload_uri"] == "claims-api:/bronze-records/bronze_local/source-payload"
 
 
 def test_local_cli_reference_miner_client_generates_missing_bronze(tmp_path: Path) -> None:

@@ -28,6 +28,8 @@ class BronzeRecord(BaseModel):
     source_payload_sha256: str | None = None
     artifact_path: str
     source_payload_path: str | None = None
+    artifact: dict[str, Any] | None = None
+    source_payload: dict[str, Any] | None = None
     created_at: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -73,11 +75,13 @@ class LocalReferenceMinerClient:
             record.artifact_path = str(artifact_path)
         if not artifact_path.exists():
             raise FileNotFoundError(f"Bronze artifact does not exist: {artifact_path}")
+        record.artifact = _read_json_object(artifact_path)
         if record.source_payload_path:
             source_payload_path = Path(record.source_payload_path)
             if not source_payload_path.is_absolute():
                 source_payload_path = (manifest_path.parent / source_payload_path).resolve()
                 record.source_payload_path = str(source_payload_path)
+            record.source_payload = _read_json_object(source_payload_path)
         return record
 
     def get_or_create_bronze(self, *, request: ReferenceMinerInput, reference_release_id: str) -> BronzeRecord:
@@ -184,13 +188,14 @@ class BackendBackedReferenceMinerClient:
             if self.delegate is None:
                 raise
         else:
-            if not isinstance(record.metadata.get("artifact_summary"), dict) and self.delegate is not None:
+            if (not _record_has_portable_payload(record) or not isinstance(record.metadata.get("artifact_summary"), dict)) and self.delegate is not None:
                 try:
                     local_record = self.delegate.get_or_create_bronze(request=request, reference_release_id=reference_release_id)
                     local_record.metadata = {**record.metadata, **local_record.metadata}
                     record = local_record
                 except Exception:
-                    pass
+                    if not _record_has_portable_payload(record):
+                        raise
             self._post_bronze_record(record=record, request=request)
             return record
         record = self.delegate.get_or_create_bronze(request=request, reference_release_id=reference_release_id)
@@ -210,6 +215,12 @@ class BackendBackedReferenceMinerClient:
             artifact_summary = summarize_agent_artifact_path(record.artifact_path)
             if artifact_summary:
                 metadata["artifact_summary"] = artifact_summary
+        artifact = record.artifact if isinstance(record.artifact, dict) else _read_json_object(record.artifact_path)
+        source_payload = (
+            record.source_payload
+            if isinstance(record.source_payload, dict)
+            else _read_json_object(record.source_payload_path)
+        )
         self.backend.post_bronze_record(
             {
                 "bronze_record_id": record.bronze_record_id,
@@ -221,8 +232,14 @@ class BackendBackedReferenceMinerClient:
                 "reference_profile_id": record.reference_profile_id,
                 "model_runtime_id": record.model_runtime_id,
                 "artifact_hash": record.artifact_sha256,
-                "artifact_uri": record.artifact_path,
-                "source_payload_uri": record.source_payload_path,
+                "artifact_uri": f"claims-api:/bronze-records/{record.bronze_record_id}/artifact",
+                "source_payload_uri": (
+                    f"claims-api:/bronze-records/{record.bronze_record_id}/source-payload"
+                    if isinstance(source_payload, dict)
+                    else None
+                ),
+                "artifact": artifact,
+                "source_payload": source_payload,
                 "metadata": metadata,
                 "status": "created",
             }
@@ -243,9 +260,30 @@ def bronze_record_from_backend_row(row: dict[str, Any]) -> BronzeRecord:
         source_payload_sha256=metadata.get("source_payload_sha256"),
         artifact_path=str(row.get("artifact_uri") or ""),
         source_payload_path=str(row.get("source_payload_uri") or "") or None,
+        artifact=row.get("artifact") if isinstance(row.get("artifact"), dict) else None,
+        source_payload=row.get("source_payload") if isinstance(row.get("source_payload"), dict) else None,
         created_at=row.get("created_at"),
         metadata=metadata,
     )
+
+
+def _record_has_portable_payload(record: BronzeRecord) -> bool:
+    return (
+        isinstance(record.artifact, dict)
+        and bool(record.artifact)
+        and isinstance(record.source_payload, dict)
+        and bool(record.source_payload)
+    )
+
+
+def _read_json_object(path: str | Path | None) -> dict[str, Any] | None:
+    if not path:
+        return None
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _resolve_executable(command: list[str]) -> list[str]:
