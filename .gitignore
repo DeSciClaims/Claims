@@ -47,3 +47,6 @@ data
 
 .cache
 outputs
+
+validator/agent_v1/bronze/
+validator/agent_v1/tmp/
