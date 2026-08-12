@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+from contextlib import contextmanager
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -62,6 +64,7 @@ class DSPyRelationClassifier:
         dspy_module: Any | None = None,
         program: Any | None = None,
         fallback_to_heuristic: bool = True,
+        request_gate: Any | None = None,
     ) -> None:
         self.model = model or os.getenv("CLAIMS_SILVER_RELATION_MODEL") or os.getenv("OPENROUTER_MODEL", "openrouter/openai/gpt-4o-mini")
         self.api_key = api_key if api_key is not None else os.getenv("OPENROUTER_API_KEY", "")
@@ -71,7 +74,9 @@ class DSPyRelationClassifier:
         self.timeout_seconds = float(os.getenv("CLAIMS_SILVER_RELATION_TIMEOUT", "120"))
         self._dspy_module = dspy_module
         self._program = program
+        self._program_lock = threading.Lock()
         self.fallback_to_heuristic = fallback_to_heuristic
+        self.request_gate = request_gate
 
     @classmethod
     def from_env(cls) -> "DSPyRelationClassifier":
@@ -99,59 +104,63 @@ class DSPyRelationClassifier:
 
     def _classify_with_dspy(self, left: ComparisonCandidate, right: ComparisonCandidate) -> dict[str, Any]:
         program = self._program or self._build_program()
-        prediction = program(
-            task_instructions=_relation_classifier_instructions(),
-            left_candidate_json=json.dumps(_candidate_payload(left), ensure_ascii=False, indent=2),
-            right_candidate_json=json.dumps(_candidate_payload(right), ensure_ascii=False, indent=2),
-            allowed_relations_json=json.dumps(sorted(ALLOWED_RELATIONS), ensure_ascii=False),
-        )
+        with _request_slot(self.request_gate):
+            prediction = program(
+                task_instructions=_relation_classifier_instructions(),
+                left_candidate_json=json.dumps(_candidate_payload(left), ensure_ascii=False, indent=2),
+                right_candidate_json=json.dumps(_candidate_payload(right), ensure_ascii=False, indent=2),
+                allowed_relations_json=json.dumps(sorted(ALLOWED_RELATIONS), ensure_ascii=False),
+            )
         raw = str(getattr(prediction, "relation_json", prediction if isinstance(prediction, str) else ""))
         return _parse_json_object(raw)
 
     def _build_program(self):
-        dspy_module = self._dspy_module
-        if dspy_module is None:
-            try:
-                import dspy as imported_dspy
-            except ImportError as exc:  # pragma: no cover - depends on local install
-                raise RuntimeError("dspy is required for DSPy relation classification.") from exc
-            dspy_module = imported_dspy
-            self._dspy_module = dspy_module
-        if not self.api_key:
-            raise RuntimeError("OPENROUTER_API_KEY is required for DSPy relation classification.")
+        with self._program_lock:
+            if self._program is not None:
+                return self._program
+            dspy_module = self._dspy_module
+            if dspy_module is None:
+                try:
+                    import dspy as imported_dspy
+                except ImportError as exc:  # pragma: no cover - depends on local install
+                    raise RuntimeError("dspy is required for DSPy relation classification.") from exc
+                dspy_module = imported_dspy
+                self._dspy_module = dspy_module
+            if not self.api_key:
+                raise RuntimeError("OPENROUTER_API_KEY is required for DSPy relation classification.")
 
-        lm = dspy_module.LM(
-            model=self.model,
-            api_key=self.api_key,
-            api_base=self.api_base,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            timeout=self.timeout_seconds,
-            num_retries=_env_int("CLAIMS_SILVER_RELATION_RETRIES", 1),
-        )
+            lm = dspy_module.LM(
+                model=self.model,
+                api_key=self.api_key,
+                api_base=self.api_base,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                timeout=self.timeout_seconds,
+                num_retries=_env_int("CLAIMS_SILVER_RELATION_RETRIES", 1),
+            )
 
-        class RelationSignature(dspy_module.Signature):
-            """Classify the relation between two extracted scientific claim candidates. Return strict JSON only."""
+            class RelationSignature(dspy_module.Signature):
+                """Classify the relation between two extracted scientific claim candidates. Return strict JSON only."""
 
-            task_instructions: str = dspy_module.InputField()
-            left_candidate_json: str = dspy_module.InputField()
-            right_candidate_json: str = dspy_module.InputField()
-            allowed_relations_json: str = dspy_module.InputField()
-            relation_json: str = dspy_module.OutputField(desc="Strict JSON object with relation, confidence, and rationale.")
+                task_instructions: str = dspy_module.InputField()
+                left_candidate_json: str = dspy_module.InputField()
+                right_candidate_json: str = dspy_module.InputField()
+                allowed_relations_json: str = dspy_module.InputField()
+                relation_json: str = dspy_module.OutputField(desc="Strict JSON object with relation, confidence, and rationale.")
 
-        program = dspy_module.Predict(RelationSignature)
-        if hasattr(dspy_module, "context"):
-            base_program = program
+            program = dspy_module.Predict(RelationSignature)
+            if hasattr(dspy_module, "context"):
+                base_program = program
 
-            def run_in_context(**kwargs):
-                with dspy_module.context(lm=lm):
-                    return base_program(**kwargs)
+                def run_in_context(**kwargs):
+                    with dspy_module.context(lm=lm):
+                        return base_program(**kwargs)
 
-            self._program = run_in_context
-        else:
-            dspy_module.configure(lm=lm)
-            self._program = program
-        return self._program
+                self._program = run_in_context
+            else:
+                dspy_module.configure(lm=lm)
+                self._program = program
+            return self._program
 
 
 def _similarity(left: str, right: str) -> float:
@@ -252,3 +261,15 @@ def _parse_json_object(value: str) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise ValueError("relation classifier returned non-object JSON")
     return parsed
+
+
+@contextmanager
+def _request_slot(request_gate: Any | None):
+    if request_gate is None:
+        yield
+        return
+    request_gate.acquire()
+    try:
+        yield
+    finally:
+        request_gate.release()

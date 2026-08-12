@@ -3,14 +3,30 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import threading
 from dataclasses import dataclass
 from typing import Literal
 
-from .adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
+from .adjudication_passes import (
+    CLIAdjudicationPass,
+    DSPyAdjudicationPass,
+    OpenAICompatibleAdjudicationPass,
+    StaticAdjudicationPass,
+)
 from .adjudication_runner import AdjudicationPass
 
 
-SilverAdjudicationMode = Literal["static", "local-replay", "openai-compatible", "model", "cli", "hermes-cli", "codex-cli", "claude-cli"]
+SilverAdjudicationMode = Literal[
+    "static",
+    "local-replay",
+    "dspy",
+    "openai-compatible",
+    "model",
+    "cli",
+    "hermes-cli",
+    "codex-cli",
+    "claude-cli",
+]
 
 
 @dataclass(frozen=True)
@@ -31,11 +47,19 @@ class SilverAdjudicationConfig:
     cli_timeout_seconds: float = 900.0
     cli_provider: str = "openrouter"
     cli_max_turns: int = 10
+    temperature: float = 0.0
+    max_tokens: int = 2048
+    timeout_seconds: float = 120.0
+    retries: int = 1
+    max_in_flight: int = 32
 
     @classmethod
     def from_env(cls, *, mode_default: str = "static", api_key_env_default: str = "OPENAI_API_KEY") -> "SilverAdjudicationConfig":
         return cls(
-            mode=os.getenv("CLAIMS_SILVER_ADJUDICATION_MODE", mode_default),
+            mode=os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_HARNESS",
+                os.getenv("CLAIMS_SILVER_ADJUDICATION_MODE", mode_default),
+            ),
             static_disposition=os.getenv("CLAIMS_SILVER_STATIC_DISPOSITION", "benign_difference"),
             local_replay_disposition=os.getenv("CLAIMS_SILVER_LOCAL_REPLAY_DISPOSITION", "reference_error"),
             api_base=os.getenv("CLAIMS_SILVER_ADJUDICATION_API_BASE", os.getenv("OPENROUTER_API_BASE", "https://api.openai.com/v1")),
@@ -51,6 +75,11 @@ class SilverAdjudicationConfig:
             cli_timeout_seconds=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_TIMEOUT", "900")),
             cli_provider=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "openrouter"),
             cli_max_turns=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_MAX_TURNS", "10")),
+            temperature=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_TEMPERATURE", "0")),
+            max_tokens=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "2048")),
+            timeout_seconds=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_TIMEOUT", "120")),
+            retries=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_RETRIES", "1")),
+            max_in_flight=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_IN_FLIGHT", "32")),
         )
 
 
@@ -60,10 +89,13 @@ def build_silver_adjudication_passes(config: SilverAdjudicationConfig) -> tuple[
         return _static_passes(config.static_disposition)
     if mode == "local-replay":
         return _local_replay_passes(config.local_replay_disposition)
+    request_gate = threading.BoundedSemaphore(max(1, config.max_in_flight))
+    if mode == "dspy":
+        return _dspy_passes(config, request_gate=request_gate)
     if mode == "openai-compatible":
-        return _openai_compatible_passes(config)
+        return _openai_compatible_passes(config, request_gate=request_gate)
     if mode in {"cli", "hermes-cli", "codex-cli", "claude-cli"}:
-        return _cli_passes(config, mode=mode)
+        return _cli_passes(config, mode=mode, request_gate=request_gate)
     raise ValueError(f"Unknown Silver adjudication mode: {config.mode}")
 
 
@@ -121,10 +153,12 @@ def _local_replay_passes(disposition: str) -> tuple[list[AdjudicationPass], None
     )
 
 
-def _openai_compatible_passes(config: SilverAdjudicationConfig) -> tuple[list[AdjudicationPass], AdjudicationPass | None]:
-    api_key = os.getenv(config.api_key_env, "")
-    if not api_key:
-        raise RuntimeError(f"{config.api_key_env} is required for Silver model adjudication.")
+def _openai_compatible_passes(
+    config: SilverAdjudicationConfig,
+    *,
+    request_gate,
+) -> tuple[list[AdjudicationPass], AdjudicationPass | None]:
+    api_key = _api_key(config)
     model_a = _direct_api_model_id(config.model_a, config.api_base)
     model_b = _direct_api_model_id(config.model_b, config.api_base)
     passes: list[AdjudicationPass] = [
@@ -135,6 +169,10 @@ def _openai_compatible_passes(config: SilverAdjudicationConfig) -> tuple[list[Ad
             model=model_a,
             api_key=api_key,
             api_base=config.api_base,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            timeout_seconds=config.timeout_seconds,
+            request_gate=request_gate,
         ),
         OpenAICompatibleAdjudicationPass(
             pass_id="pass_b",
@@ -143,6 +181,10 @@ def _openai_compatible_passes(config: SilverAdjudicationConfig) -> tuple[list[Ad
             model=model_b,
             api_key=api_key,
             api_base=config.api_base,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            timeout_seconds=config.timeout_seconds,
+            request_gate=request_gate,
         ),
     ]
     tiebreak = None
@@ -155,11 +197,47 @@ def _openai_compatible_passes(config: SilverAdjudicationConfig) -> tuple[list[Ad
             model=tiebreak_model,
             api_key=api_key,
             api_base=config.api_base,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            timeout_seconds=config.timeout_seconds,
+            request_gate=request_gate,
         )
     return passes, tiebreak
 
 
-def _cli_passes(config: SilverAdjudicationConfig, *, mode: str) -> tuple[list[AdjudicationPass], AdjudicationPass | None]:
+def _dspy_passes(
+    config: SilverAdjudicationConfig,
+    *,
+    request_gate,
+) -> tuple[list[AdjudicationPass], AdjudicationPass | None]:
+    api_key = _api_key(config)
+
+    def build(pass_id: str, model: str) -> DSPyAdjudicationPass:
+        return DSPyAdjudicationPass(
+            pass_id=pass_id,
+            adjudication_profile_id=f"dspy:{model}",
+            model_runtime_id="dspy-predict",
+            model=model,
+            api_key=api_key,
+            api_base=config.api_base,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            timeout_seconds=config.timeout_seconds,
+            num_retries=config.retries,
+            request_gate=request_gate,
+        )
+
+    passes: list[AdjudicationPass] = [build("pass_a", config.model_a), build("pass_b", config.model_b)]
+    tiebreak = build("pass_c", config.tiebreak_model) if config.tiebreak_model.strip() else None
+    return passes, tiebreak
+
+
+def _cli_passes(
+    config: SilverAdjudicationConfig,
+    *,
+    mode: str,
+    request_gate,
+) -> tuple[list[AdjudicationPass], AdjudicationPass | None]:
     command_a = _cli_command(config, explicit=config.cli_command_a, model=config.model_a, mode=mode)
     command_b = _cli_command(config, explicit=config.cli_command_b, model=config.model_b, mode=mode)
     passes: list[AdjudicationPass] = [
@@ -170,6 +248,7 @@ def _cli_passes(config: SilverAdjudicationConfig, *, mode: str) -> tuple[list[Ad
             command=command_a,
             prompt_mode=config.cli_prompt_mode,
             timeout_seconds=config.cli_timeout_seconds,
+            request_gate=request_gate,
         ),
         CLIAdjudicationPass(
             pass_id="pass_b",
@@ -178,6 +257,7 @@ def _cli_passes(config: SilverAdjudicationConfig, *, mode: str) -> tuple[list[Ad
             command=command_b,
             prompt_mode=config.cli_prompt_mode,
             timeout_seconds=config.cli_timeout_seconds,
+            request_gate=request_gate,
         ),
     ]
     tiebreak = None
@@ -189,6 +269,7 @@ def _cli_passes(config: SilverAdjudicationConfig, *, mode: str) -> tuple[list[Ad
             command=_cli_command(config, explicit=config.cli_tiebreak_command, model=config.tiebreak_model, mode=mode),
             prompt_mode=config.cli_prompt_mode,
             timeout_seconds=config.cli_timeout_seconds,
+            request_gate=request_gate,
         )
     return passes, tiebreak
 
@@ -215,6 +296,15 @@ def _direct_api_model_id(model: str, api_base: str) -> str:
     if "openrouter.ai/api" in api_base and model.startswith("openrouter/"):
         return model.removeprefix("openrouter/")
     return model
+
+
+def _api_key(config: SilverAdjudicationConfig) -> str:
+    api_key = os.getenv(config.api_key_env, "")
+    if not api_key and "openrouter.ai/api" in config.api_base:
+        api_key = os.getenv("OPENROUTER_API_KEY", "")
+    if not api_key:
+        raise RuntimeError(f"{config.api_key_env} is required for Silver model adjudication.")
+    return api_key
 
 
 def _span_ids_from_messages(messages: list[dict[str, str]]) -> list[str]:

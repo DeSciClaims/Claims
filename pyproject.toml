@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "bittensor",
-    "dspy-ai",
+    "dspy==3.1.2",
     "langchain",
     "langchain-openai",
     "lxml",

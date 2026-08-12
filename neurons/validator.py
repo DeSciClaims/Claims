@@ -385,14 +385,17 @@ class ClaimsValidator:
             "--claims.silver-adjudication-mode",
             "--claims.adjudication-harness",
             dest="claims_silver_adjudication_mode",
-            choices=("static", "openai-compatible", "model", "cli", "hermes-cli", "codex-cli", "claude-cli"),
+            choices=("static", "dspy", "openai-compatible", "model", "cli", "hermes-cli", "codex-cli", "claude-cli"),
             default=os.getenv("CLAIMS_SILVER_ADJUDICATION_HARNESS", os.getenv("CLAIMS_SILVER_ADJUDICATION_MODE", "static")),
             help="Adjudication pass runtime for Silver cases.",
         )
         parser.add_argument(
             "--claims.silver-adjudication-api-base",
             dest="claims_silver_adjudication_api_base",
-            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_API_BASE", "https://api.openai.com/v1"),
+            default=os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_API_BASE",
+                os.getenv("OPENROUTER_API_BASE", "https://api.openai.com/v1"),
+            ),
             help="OpenAI-compatible chat completions API base for model-backed Silver adjudication.",
         )
         parser.add_argument(
@@ -459,6 +462,13 @@ class ClaimsValidator:
             type=float,
             default=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_TIMEOUT", "900")),
             help="Timeout in seconds for each CLI Silver adjudication pass.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-max-in-flight",
+            dest="claims_silver_adjudication_max_in_flight",
+            type=int,
+            default=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_IN_FLIGHT", "32")),
+            help="Global cap on simultaneous Silver adjudicator model calls across all papers and passes.",
         )
         parser.add_argument(
             "--claims.silver-adjudication-max-workers",
@@ -1183,6 +1193,9 @@ class ClaimsValidator:
             self.bt_logging.warning("Silver post-pass skipped; no adjudication passes configured.")
             return {}
         adjudication_models = self._adjudication_pass_model_rows(adjudication_passes, tiebreak_pass)
+        relation_classifier = self._build_silver_relation_classifier(
+            request_gate=getattr(adjudication_passes[0], "request_gate", None)
+        )
         importance_classifier = self._build_silver_importance_classifier()
         importance_models = self._silver_importance_model_rows() if importance_classifier is not None else []
 
@@ -1241,7 +1254,7 @@ class ClaimsValidator:
                     source_context=bronze_source_context,
                     source_context_by_span_id=source_context_by_span_id,
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
-                    relation_classifier=self._build_silver_relation_classifier(),
+                    relation_classifier=relation_classifier,
                     importance_classifier=importance_classifier,
                     paper_context=_paper_task_context(paper),
                     validation_findings_by_miner_id={
@@ -1482,7 +1495,7 @@ class ClaimsValidator:
             self.bt_logging.warning(f"Silver adjudication pass configuration failed: {exc}")
             return [], None
 
-    def _build_silver_relation_classifier(self) -> Any | None:
+    def _build_silver_relation_classifier(self, *, request_gate: Any | None = None) -> Any | None:
         mode = str(getattr(self.config, "claims_silver_relation_mode", "heuristic") or "heuristic").strip().lower()
         if mode in {"", "heuristic", "disabled"}:
             return None
@@ -1497,6 +1510,7 @@ class ClaimsValidator:
             api_key=os.getenv(api_key_env, ""),
             api_base=api_base,
             fallback_to_heuristic=True,
+            request_gate=request_gate,
         )
         if not os.getenv(api_key_env, ""):
             self.bt_logging.warning(
@@ -1545,6 +1559,11 @@ class ClaimsValidator:
             cli_timeout_seconds=float(getattr(self.config, "claims_silver_adjudication_cli_timeout", 900)),
             cli_provider=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "openrouter"),
             cli_max_turns=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_MAX_TURNS", "10")),
+            temperature=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_TEMPERATURE", "0")),
+            max_tokens=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "2048")),
+            timeout_seconds=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_TIMEOUT", "120")),
+            retries=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_RETRIES", "1")),
+            max_in_flight=int(getattr(self.config, "claims_silver_adjudication_max_in_flight", 32)),
         )
 
     def _persist_silver_pipeline_result(
@@ -2490,6 +2509,7 @@ class ClaimsValidator:
                 "stage_key": "silver_adjudication",
                 "stage_label": "Adjudication",
                 "role": f"adjudicator_{pass_id}" if pass_id else "adjudicator",
+                "harness": "dspy" if runtime_id == "dspy-predict" else _harness_from_runtime(runtime_id),
                 "runtime": runtime_id,
                 "provider": _provider_from_command(command) or _provider_from_api_base(
                     str(getattr(self.config, "claims_silver_adjudication_api_base", ""))

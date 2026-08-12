@@ -6,9 +6,11 @@ import os
 import re
 import shlex
 import subprocess
+import threading
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -76,11 +78,13 @@ class OpenAICompatibleAdjudicationPass:
     max_tokens: int = 2048
     timeout_seconds: float = 90.0
     completion_fn: Callable[[list[dict[str, str]]], str] | None = field(default=None, compare=False, repr=False)
+    request_gate: Any | None = field(default=None, compare=False, repr=False)
 
     def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
         messages = _adjudication_messages(context)
         try:
-            content = self.completion_fn(messages) if self.completion_fn is not None else self._complete(messages)
+            with _request_slot(self.request_gate):
+                content = self.completion_fn(messages) if self.completion_fn is not None else self._complete(messages)
             payload = _parse_json_object(content)
             return self._vote_from_payload(context, payload)
         except Exception as exc:
@@ -154,6 +158,7 @@ class CLIAdjudicationPass:
     command: list[str] | str
     prompt_mode: str = "append"
     timeout_seconds: float = 900.0
+    request_gate: Any | None = field(default=None, compare=False, repr=False)
 
     def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
         prompt = ""
@@ -169,14 +174,15 @@ class CLIAdjudicationPass:
                 stdin = prompt
             else:
                 command.append(prompt)
-            completed = subprocess.run(
-                command,
-                input=stdin,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout_seconds or None,
-                check=False,
-            )
+            with _request_slot(self.request_gate):
+                completed = subprocess.run(
+                    command,
+                    input=stdin,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout_seconds or None,
+                    check=False,
+                )
             if completed.returncode != 0:
                 raise RuntimeError(f"CLI exited {completed.returncode}: {completed.stderr[-1000:]}")
             payload = _parse_json_object(completed.stdout)
@@ -218,16 +224,134 @@ class CLIAdjudicationPass:
             )
 
 
+@dataclass
+class DSPyAdjudicationPass:
+    pass_id: str
+    adjudication_profile_id: str
+    model_runtime_id: str
+    model: str
+    api_key: str
+    api_base: str = "https://openrouter.ai/api/v1"
+    temperature: float = 0.0
+    max_tokens: int = 2048
+    timeout_seconds: float = 120.0
+    num_retries: int = 1
+    request_gate: Any | None = field(default=None, compare=False, repr=False)
+    dspy_module: Any | None = field(default=None, compare=False, repr=False)
+    program: Any | None = field(default=None, compare=False, repr=False)
+    _program_lock: threading.Lock = field(default_factory=threading.Lock, init=False, compare=False, repr=False)
+
+    def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
+        try:
+            with _request_slot(self.request_gate):
+                payload = self._complete(context)
+            return vote_from_payload(
+                context,
+                payload,
+                pass_id=self.pass_id,
+                adjudication_profile_id=self.adjudication_profile_id,
+                model_runtime_id=self.model_runtime_id,
+            )
+        except Exception as exc:
+            return AdjudicationVote(
+                case_id=context.case.case_id,
+                pass_id=self.pass_id,
+                adjudication_profile_id=self.adjudication_profile_id,
+                model_runtime_id=self.model_runtime_id,
+                candidate_order=[candidate.candidate_id for candidate in context.candidates],
+                disposition="insufficient_information",
+                material_findings=["adjudication_pass_failed"],
+                cited_span_ids=[],
+                confidence=0.0,
+                rationale=f"DSPy adjudication pass failed: {type(exc).__name__}: {exc}",
+                insufficient_information=True,
+            )
+
+    def _complete(self, context: AdjudicationContextBundle) -> dict[str, Any]:
+        payload = _adjudication_payload(context)
+        program = self.program or self._build_program()
+        prediction = program(
+            task_instructions=_adjudication_system_instructions(),
+            case_json=json.dumps(payload["case"], ensure_ascii=False, sort_keys=True),
+            candidates_json=json.dumps(payload["candidates"], ensure_ascii=False, sort_keys=True),
+            source_context=str(payload["source_context"]),
+            allowed_dispositions_json=json.dumps(payload["allowed_dispositions"], ensure_ascii=False),
+            disposition_meanings_json=json.dumps(payload["disposition_meanings"], ensure_ascii=False, sort_keys=True),
+            required_json_schema=json.dumps(payload["required_json_schema"], ensure_ascii=False, sort_keys=True),
+        )
+        raw = str(getattr(prediction, "adjudication_json", prediction if isinstance(prediction, str) else ""))
+        return _parse_json_object(raw)
+
+    def _build_program(self):
+        with self._program_lock:
+            if self.program is not None:
+                return self.program
+            dspy_module = self.dspy_module
+            if dspy_module is None:
+                try:
+                    import dspy as imported_dspy
+                except ImportError as exc:  # pragma: no cover - depends on local install
+                    raise RuntimeError("dspy is required for DSPy Silver adjudication.") from exc
+                dspy_module = imported_dspy
+                self.dspy_module = dspy_module
+            if not self.api_key:
+                raise RuntimeError("An API key is required for DSPy Silver adjudication.")
+
+            lm = dspy_module.LM(
+                model=_dspy_model_id(self.model, self.api_base),
+                api_key=self.api_key,
+                api_base=self.api_base,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                timeout=self.timeout_seconds,
+                num_retries=self.num_retries,
+            )
+
+            class AdjudicationSignature(dspy_module.Signature):
+                """Resolve an anonymous scientific claim case. Return one strict JSON object only."""
+
+                task_instructions: str = dspy_module.InputField()
+                case_json: str = dspy_module.InputField()
+                candidates_json: str = dspy_module.InputField()
+                source_context: str = dspy_module.InputField()
+                allowed_dispositions_json: str = dspy_module.InputField()
+                disposition_meanings_json: str = dspy_module.InputField()
+                required_json_schema: str = dspy_module.InputField()
+                adjudication_json: str = dspy_module.OutputField(
+                    desc="Strict JSON object matching required_json_schema."
+                )
+
+            base_program = dspy_module.Predict(AdjudicationSignature)
+            if hasattr(dspy_module, "context"):
+
+                def run_in_context(**kwargs):
+                    with dspy_module.context(lm=lm):
+                        return base_program(**kwargs)
+
+                self.program = run_in_context
+            else:
+                dspy_module.configure(lm=lm)
+                self.program = base_program
+            return self.program
+
+
 def _adjudication_messages(context: AdjudicationContextBundle) -> list[dict[str, str]]:
-    candidate_lines = _anonymous_candidate_payloads(context)
-    user_payload = {
+    user_payload = _adjudication_payload(context)
+    return [
+        {"role": "system", "content": _adjudication_system_instructions()},
+        {"role": "user", "content": json.dumps(user_payload, sort_keys=True)},
+    ]
+
+
+def _adjudication_payload(context: AdjudicationContextBundle) -> dict[str, Any]:
+    return {
         "case": {
             "case_tracking_id": hashlib.sha256(context.case.case_id.encode("utf-8")).hexdigest()[:16],
             "paper_id": context.case.paper_id,
             "case_type": _neutral_case_type(context),
             "question": _neutral_question(context),
         },
-        "candidates": candidate_lines,
+        "candidates": _anonymous_candidate_payloads(context),
         "source_context": context.source_context[:12000],
         "allowed_dispositions": sorted(PROMPT_DISPOSITIONS),
         "disposition_meanings": {
@@ -249,21 +373,18 @@ def _adjudication_messages(context: AdjudicationContextBundle) -> list[dict[str,
             "insufficient_information": "boolean",
         },
     }
-    return [
-        {
-            "role": "system",
-            "content": (
-                "You are an adjudication pass for scientific claim extraction. "
-                "Resolve only the provided anonymous candidate case. "
-                "Do not infer anything from candidate order. "
-                "Use the claim statements, linked evidence records, source quotes, and source spans. "
-                "Use the allowed disposition labels exactly. "
-                "Cite source span ids when possible. "
-                "Return only a JSON object matching the requested schema."
-            ),
-        },
-        {"role": "user", "content": json.dumps(user_payload, sort_keys=True)},
-    ]
+
+
+def _adjudication_system_instructions() -> str:
+    return (
+        "You are an adjudication pass for scientific claim extraction. "
+        "Resolve only the provided anonymous candidate case. "
+        "Do not infer anything from candidate order. "
+        "Use the claim statements, linked evidence records, source quotes, and source spans. "
+        "Use the allowed disposition labels exactly. "
+        "Cite source span ids when possible. "
+        "Return only a JSON object matching the requested schema."
+    )
 
 
 def _adjudication_cli_prompt(context: AdjudicationContextBundle) -> str:
@@ -449,6 +570,25 @@ def _parse_json_object(content: str) -> dict[str, Any]:
     if last_error is not None:
         raise last_error
     raise ValueError("adjudication pass did not return a JSON object")
+
+
+@contextmanager
+def _request_slot(request_gate: Any | None):
+    if request_gate is None:
+        yield
+        return
+    request_gate.acquire()
+    try:
+        yield
+    finally:
+        request_gate.release()
+
+
+def _dspy_model_id(model: str, api_base: str) -> str:
+    normalized = model.strip()
+    if "openrouter.ai/api" in api_base and normalized and not normalized.startswith("openrouter/"):
+        return f"openrouter/{normalized}"
+    return normalized
 
 
 def _json_object_candidates(text: str) -> list[str]:

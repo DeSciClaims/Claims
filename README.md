@@ -231,10 +231,11 @@ python -m neurons.validator \
   --claims.rigor-model openai/gpt-4o-mini \
   --claims.reference-harness codex-cli \
   --claims.reference-model gpt-5.5 \
-  --claims.adjudication-harness hermes-cli \
+  --claims.adjudication-harness dspy \
   --claims.adjudication-model-a openai/gpt-5 \
   --claims.adjudication-model-b anthropic/claude-sonnet-4 \
   --claims.adjudication-tiebreak-model google/gemini-2.5-pro \
+  --claims.silver-adjudication-max-in-flight 32 \
   --claims.diagnostic-miner-max-workers 2 \
   --claims.diagnostic-max-workers 10 \
   --claims.silver-paper-max-workers 10 \
@@ -251,8 +252,9 @@ Useful validator flags:
 - `--claims.batch-score-rule mean`: score the batch by mean Silver score. `min`, `mean`, and `median` are available.
 - `--claims.rigor-harness hermes-cli --claims.rigor-model <MODEL>`: choose the diagnostic validation harness/model.
 - `--claims.reference-harness codex-cli --claims.reference-model <MODEL>`: choose the private reference miner harness/model.
-- `--claims.adjudication-harness hermes-cli`: choose the Silver adjudication harness.
+- `--claims.adjudication-harness dspy`: call adjudicator models in-process through DSPy/OpenRouter; CLI harnesses remain available.
 - `--claims.adjudication-model-a/b/tiebreak-model <MODEL>`: choose the Silver adjudicator models.
+- `--claims.silver-adjudication-max-in-flight 32`: cap adjudicator requests globally across papers and passes.
 - `--claims.diagnostic-miner-max-workers 2`: run diagnostic validation for multiple miner responses concurrently.
 - `--claims.diagnostic-max-workers 10`: run diagnostic validation for multiple papers concurrently per miner.
 - `--claims.skip-diagnostic-validation`: skip diagnostic reports when Silver is the only scoring path for a large run.

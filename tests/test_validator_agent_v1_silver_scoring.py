@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 from validator.agent_v1.bronze_diff import compare_miner_to_bronze, compare_miner_to_bronze_result
@@ -10,6 +13,7 @@ from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, bui
 from validator.agent_v1.adjudication_models import AdjudicationContextBundle, AdjudicationDecision, AdjudicationVote
 from validator.agent_v1.adjudication_passes import (
     CLIAdjudicationPass,
+    DSPyAdjudicationPass,
     OpenAICompatibleAdjudicationPass,
     StaticAdjudicationPass,
     _adjudication_cli_prompt,
@@ -529,6 +533,136 @@ def test_silver_adjudication_factory_builds_cli_passes() -> None:
     assert passes[0].command == ["fake-hermes", "chat", "-m", "openai/gpt-5", "-q"]
     assert passes[1].command == ["fake-hermes", "chat", "-m", "anthropic/claude-sonnet-4", "-q"]
     assert tiebreak.command == ["fake-hermes", "chat", "-m", "google/gemini-2.5-pro", "-q"]
+
+
+def test_dspy_adjudication_pass_uses_anonymous_structured_payload() -> None:
+    case = BronzeDiffCase(
+        case_id="case_dspy",
+        paper_id="paper",
+        miner_id="miner_A",
+        mismatch_type="COMPATIBLE_REFINEMENT",
+        candidate_ids=["bronze:C01", "miner:uid_9:C01"],
+        bronze_candidate_id="bronze:C01",
+        miner_candidate_id="miner:uid_9:C01",
+        question="Which candidate is valid?",
+    )
+    context = AdjudicationContextBundle(
+        case=case,
+        candidates=[
+            _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality.", source_span_ids=["S1"]),
+            _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment A reduced mortality.", source_span_ids=["S1"]),
+        ],
+        source_context="S1: Treatment A reduced mortality.",
+    )
+    captured: dict = {}
+
+    def program(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            adjudication_json=json.dumps(
+                {
+                    "disposition": "same_unit",
+                    "material_findings": ["same_scientific_unit"],
+                    "cited_span_ids": ["S1"],
+                    "confidence": 0.94,
+                    "rationale": "Both anonymous candidates state the same supported result.",
+                    "insufficient_information": False,
+                }
+            )
+        )
+
+    adjudication_pass = DSPyAdjudicationPass(
+        pass_id="pass_a",
+        adjudication_profile_id="dspy:openai/gpt-4o-mini",
+        model_runtime_id="dspy-predict",
+        model="openai/gpt-4o-mini",
+        api_key="test",
+        program=program,
+    )
+
+    vote = adjudication_pass.run(context)
+    candidates = json.loads(captured["candidates_json"])
+
+    assert vote.disposition == "benign_difference"
+    assert vote.confidence == 0.94
+    assert [candidate["anonymous_id"] for candidate in candidates] == ["candidate_1", "candidate_2"]
+    assert all("origin" not in candidate and "miner_id" not in candidate for candidate in candidates)
+    assert captured["source_context"] == "S1: Treatment A reduced mortality."
+
+
+def test_silver_adjudication_factory_builds_dspy_passes_with_shared_limit(monkeypatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    passes, tiebreak = build_silver_adjudication_passes(
+        SilverAdjudicationConfig(
+            mode="dspy",
+            api_base="https://openrouter.ai/api/v1",
+            model_a="deepseek/deepseek-v4-flash",
+            model_b="qwen/qwen3.7-flash",
+            tiebreak_model="openai/gpt-4o-mini",
+            max_in_flight=7,
+        )
+    )
+
+    assert [type(adjudication_pass) for adjudication_pass in passes] == [DSPyAdjudicationPass, DSPyAdjudicationPass]
+    assert isinstance(tiebreak, DSPyAdjudicationPass)
+    assert passes[0].request_gate is passes[1].request_gate
+    assert tiebreak.request_gate is passes[0].request_gate
+    assert passes[0].model == "deepseek/deepseek-v4-flash"
+    assert passes[1].model == "qwen/qwen3.7-flash"
+
+
+def test_dspy_adjudication_global_request_gate_limits_parallel_calls() -> None:
+    case = BronzeDiffCase(
+        case_id="case_dspy_limit",
+        paper_id="paper",
+        miner_id="miner_A",
+        mismatch_type="EXTRA_FROM_MINER",
+        candidate_ids=["miner:uid_9:C01"],
+        miner_candidate_id="miner:uid_9:C01",
+        question="Should this candidate be included?",
+    )
+    context = AdjudicationContextBundle(
+        case=case,
+        candidates=[_candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment A reduced mortality.")],
+    )
+    state_lock = threading.Lock()
+    state = {"active": 0, "peak": 0}
+
+    def program(**_kwargs):
+        with state_lock:
+            state["active"] += 1
+            state["peak"] = max(state["peak"], state["active"])
+        time.sleep(0.03)
+        with state_lock:
+            state["active"] -= 1
+        return SimpleNamespace(
+            adjudication_json=json.dumps(
+                {
+                    "disposition": "include_candidate",
+                    "material_findings": ["valid_candidate"],
+                    "cited_span_ids": [],
+                    "confidence": 0.9,
+                    "rationale": "Supported.",
+                    "insufficient_information": False,
+                }
+            )
+        )
+
+    adjudication_pass = DSPyAdjudicationPass(
+        pass_id="pass_a",
+        adjudication_profile_id="dspy:test",
+        model_runtime_id="dspy-predict",
+        model="openai/gpt-4o-mini",
+        api_key="test",
+        request_gate=threading.BoundedSemaphore(2),
+        program=program,
+    )
+
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        votes = list(executor.map(adjudication_pass.run, [context] * 6))
+
+    assert state["peak"] == 2
+    assert all(vote.disposition == "accepted_improvement" for vote in votes)
 
 
 def test_adjudication_passes_run_in_parallel() -> None:
