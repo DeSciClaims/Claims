@@ -656,6 +656,7 @@ class ClaimsValidator:
         config.claims_silver_adjudication_cli_command_template = parsed_args.claims_silver_adjudication_cli_command_template
         config.claims_silver_adjudication_cli_prompt_mode = parsed_args.claims_silver_adjudication_cli_prompt_mode
         config.claims_silver_adjudication_cli_timeout = parsed_args.claims_silver_adjudication_cli_timeout
+        config.claims_silver_adjudication_max_in_flight = parsed_args.claims_silver_adjudication_max_in_flight
         config.claims_silver_adjudication_max_workers = parsed_args.claims_silver_adjudication_max_workers
         config.claims_silver_paper_max_workers = parsed_args.claims_silver_paper_max_workers
         config.claims_silver_direct_confidence = parsed_args.claims_silver_direct_confidence
@@ -1190,8 +1191,7 @@ class ClaimsValidator:
 
         adjudication_passes, tiebreak_pass = self._build_silver_adjudication_passes()
         if not adjudication_passes:
-            self.bt_logging.warning("Silver post-pass skipped; no adjudication passes configured.")
-            return {}
+            raise RuntimeError("Silver scoring is enabled, but no adjudication passes are configured.")
         adjudication_models = self._adjudication_pass_model_rows(adjudication_passes, tiebreak_pass)
         relation_classifier = self._build_silver_relation_classifier(
             request_gate=getattr(adjudication_passes[0], "request_gate", None)
@@ -1492,8 +1492,7 @@ class ClaimsValidator:
         try:
             return build_silver_adjudication_passes(self._silver_adjudication_config())
         except Exception as exc:
-            self.bt_logging.warning(f"Silver adjudication pass configuration failed: {exc}")
-            return [], None
+            raise RuntimeError(f"Silver adjudication pass configuration failed: {exc}") from exc
 
     def _build_silver_relation_classifier(self, *, request_gate: Any | None = None) -> Any | None:
         mode = str(getattr(self.config, "claims_silver_relation_mode", "heuristic") or "heuristic").strip().lower()
@@ -1563,7 +1562,7 @@ class ClaimsValidator:
             max_tokens=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "2048")),
             timeout_seconds=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_TIMEOUT", "120")),
             retries=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_RETRIES", "1")),
-            max_in_flight=int(getattr(self.config, "claims_silver_adjudication_max_in_flight", 32)),
+            max_in_flight=int(getattr(self.config, "claims_silver_adjudication_max_in_flight", None) or 32),
         )
 
     def _persist_silver_pipeline_result(

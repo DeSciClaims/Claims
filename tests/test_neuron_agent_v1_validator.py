@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from neurons.protocol import ClaimExtractionSynapse
 from neurons.tasks import ClaimsTask
 from neurons.validator import (
@@ -587,6 +589,32 @@ def test_neuron_builds_configurable_silver_adjudication_passes() -> None:
     assert passes[0].command[:3] == ["codex", "exec", "--model"]
     assert passes[0].command[3] == "gpt-5.5"
     assert passes[1].command[3] == "gpt-5-mini"
+
+
+def test_neuron_silver_adjudication_config_defaults_nullable_request_limit() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_silver_adjudication_mode="dspy",
+        claims_silver_adjudication_max_in_flight=None,
+    )
+
+    config = validator._silver_adjudication_config()
+
+    assert config.max_in_flight == 32
+
+
+def test_neuron_invalid_silver_adjudication_config_fails_loudly(monkeypatch) -> None:
+    monkeypatch.delenv("CLAIMS_TEST_MISSING_ADJUDICATION_KEY", raising=False)
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_silver_adjudication_mode="dspy",
+        claims_silver_adjudication_api_base="https://example.test/v1",
+        claims_silver_adjudication_api_key_env="CLAIMS_TEST_MISSING_ADJUDICATION_KEY",
+        claims_silver_adjudication_max_in_flight=4,
+    )
+
+    with pytest.raises(RuntimeError, match="Silver adjudication pass configuration failed"):
+        validator._build_silver_adjudication_passes()
 
 
 def test_validator_rigor_harness_sets_wrapper_and_inner_command(monkeypatch, tmp_path) -> None:
