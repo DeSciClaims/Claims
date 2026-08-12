@@ -41,6 +41,7 @@ from validator.v0.runner import JudgeV2Runner
 
 from .backend_client import BackendClientError, ClaimsBackendClient
 from .harness_profiles import SUPPORTED_HARNESSES, quote_command, resolve_agent_harness
+from .memory_monitor import ValidatorMemorySampler
 from .protocol import ClaimExtractionSynapse
 from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsPaperTask, ClaimsTask, download_pdf, load_task_manifest, safe_task_id
 
@@ -103,6 +104,7 @@ class ClaimsValidator:
         self.Config, self.Dendrite, self.Subtensor, self.Wallet, self.bt_logging = _require_bittensor()
         self.config = self._get_config()
         self._setup_logging()
+        self._memory_sampler: ValidatorMemorySampler | None = None
         if self.config.claims_dry_run:
             self.wallet = None
             self.subtensor = None
@@ -751,12 +753,25 @@ class ClaimsValidator:
             run_id = None
             run_started_at = None
             try:
-                task = self._next_task(step)
                 run_id = _make_run_id()
                 run_started_at = datetime.now(timezone.utc)
                 self._active_run_timing = _new_pipeline_timing(run_id=run_id, started_at=run_started_at)
+                self._start_memory_sampler()
+                task_timer = _timing_start("task_selection", "Task selection")
+                task = self._next_task(step)
+                self._record_timing_stage(
+                    task_timer,
+                    metadata={"paper_count": len(task.paper_tasks()), "backend": bool(getattr(self.config, "claims_backend_url", ""))},
+                )
+                target_refresh_timer = _timing_start("target_refresh", "Target miner refresh")
                 self.target_neurons = self._load_target_neurons()
+                self._record_timing_stage(
+                    target_refresh_timer,
+                    metadata={"target_uids": [int(neuron.uid) for neuron in self.target_neurons]},
+                )
+                run_open_timer = _timing_start("run_open", "Open run record")
                 self._post_validator_run(run_id, task, status="running", started_at=run_started_at)
+                self._record_timing_stage(run_open_timer)
                 miner_query_timer = _timing_start("miner_query", "Miner query")
                 responses = self._query_miners(task, run_id=run_id)
                 self._record_timing_stage(
@@ -773,9 +788,13 @@ class ClaimsValidator:
                 weight_timer = _timing_start("weights", "Weight update")
                 weight_event = self._set_weights(scores)
                 self._record_timing_stage(weight_timer)
+                weight_persist_timer = _timing_start("weight_event_persist", "Persist weight event")
                 self._post_weight_event(run_id, scores, weight_event)
+                self._record_timing_stage(weight_persist_timer)
                 run_ended_at = datetime.now(timezone.utc)
                 _finish_pipeline_timing(self._active_run_timing, ended_at=run_ended_at)
+                self._stop_memory_sampler()
+                run_close_timer = _timing_start("run_close", "Close run record")
                 self._post_validator_run(
                     run_id,
                     task,
@@ -783,15 +802,20 @@ class ClaimsValidator:
                     started_at=run_started_at,
                     ended_at=run_ended_at,
                 )
+                self._record_timing_stage(run_close_timer)
                 step += 1
                 if self.config.claims_max_steps and step >= self.config.claims_max_steps:
                     self.bt_logging.info("Reached configured max steps; exiting.")
                     return
+                sleep_timer = _timing_start("query_interval_sleep", "Query interval sleep")
                 time.sleep(float(self.config.claims_query_interval))
+                self._record_timing_stage(sleep_timer)
             except KeyboardInterrupt:
+                self._stop_memory_sampler()
                 self.bt_logging.success("Validator stopped.")
                 return
             except Exception:
+                self._stop_memory_sampler()
                 self.bt_logging.error(traceback.format_exc())
                 if task is not None and run_id is not None and run_started_at is not None:
                     _finish_pipeline_timing(self._active_run_timing, ended_at=datetime.now(timezone.utc))
@@ -2145,6 +2169,9 @@ class ClaimsValidator:
             "miners": miners,
             "papers": papers,
         }
+        memory_summary = self._memory_summary()
+        if memory_summary:
+            timing_metadata["memory"] = memory_summary
         upload_summary = self._artifact_upload_summary(
             run_id=run_id,
             task=task,
@@ -2169,6 +2196,57 @@ class ClaimsValidator:
                 "claims_skip_diagnostic_validation": bool(getattr(self.config, "claims_skip_diagnostic_validation", False)),
             },
             "timing": timing_metadata,
+        }
+
+    def _start_memory_sampler(self) -> None:
+        interval = float(os.getenv("CLAIMS_MEMORY_SAMPLE_INTERVAL", "1.0") or 1.0)
+        sampler = ValidatorMemorySampler(interval_seconds=interval)
+        self._memory_sampler = sampler
+        sampler.start()
+        if not sampler.enabled:
+            self.bt_logging.warning("Validator memory telemetry disabled: install psutil to enable it.")
+
+    def _stop_memory_sampler(self) -> None:
+        sampler = getattr(self, "_memory_sampler", None)
+        if sampler is not None:
+            sampler.stop()
+
+    def _memory_summary(self) -> dict[str, Any]:
+        sampler = getattr(self, "_memory_sampler", None)
+        if sampler is None:
+            return {}
+        summary = sampler.summary()
+        if not summary:
+            return {}
+        stage_memory: dict[str, Any] = {}
+        timing = getattr(self, "_active_run_timing", None)
+        stages = timing.get("stages", []) if isinstance(timing, dict) else []
+        for stage in stages:
+            if not isinstance(stage, dict):
+                continue
+            key = str(stage.get("key") or "")
+            interval = sampler.interval_summary(str(stage.get("started_at") or ""), str(stage.get("ended_at") or ""))
+            if key and interval:
+                stage_memory[key] = _merge_memory_summaries(stage_memory.get(key), interval)
+        paper_memory: dict[str, Any] = {}
+        papers = timing.get("papers", {}) if isinstance(timing, dict) else {}
+        for paper_id, paper in (papers.items() if isinstance(papers, dict) else []):
+            paper_stages = paper.get("stages", []) if isinstance(paper, dict) else []
+            stage_summaries: dict[str, Any] = {}
+            for stage in paper_stages:
+                if not isinstance(stage, dict):
+                    continue
+                key = str(stage.get("key") or "")
+                interval = sampler.interval_summary(str(stage.get("started_at") or ""), str(stage.get("ended_at") or ""))
+                if key and interval:
+                    stage_summaries[key] = _merge_memory_summaries(stage_summaries.get(key), interval)
+            if stage_summaries:
+                paper_memory[str(paper_id)] = {"stages": stage_summaries}
+        return {
+            **summary,
+            "scope": "validator_process_tree",
+            "stages": stage_memory,
+            "papers": paper_memory,
         }
 
     def _artifact_upload_summary(
@@ -2854,6 +2932,29 @@ def _sum_stage_seconds(stages: list[dict[str, Any]]) -> dict[str, float]:
         if key:
             totals[key] = round(totals.get(key, 0.0) + _float_seconds(stage.get("duration_seconds")), 3)
     return totals
+
+
+def _merge_memory_summaries(current: Any, incoming: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(current, dict) or not current:
+        return dict(incoming)
+    start_values = [value for value in [current.get("process_tree_rss_start_mb"), incoming.get("process_tree_rss_start_mb")] if isinstance(value, (int, float))]
+    end_values = [value for value in [current.get("process_tree_rss_end_mb"), incoming.get("process_tree_rss_end_mb")] if isinstance(value, (int, float))]
+    peak_values = [value for value in [current.get("process_tree_rss_peak_mb"), incoming.get("process_tree_rss_peak_mb")] if isinstance(value, (int, float))]
+    available_values = [value for value in [current.get("system_available_min_mb"), incoming.get("system_available_min_mb")] if isinstance(value, (int, float))]
+    process_values = [value for value in [current.get("process_count_peak"), incoming.get("process_count_peak")] if isinstance(value, (int, float))]
+    merged = dict(current)
+    if start_values:
+        merged["process_tree_rss_start_mb"] = start_values[0]
+    if end_values:
+        merged["process_tree_rss_end_mb"] = end_values[-1]
+    if peak_values:
+        merged["process_tree_rss_peak_mb"] = max(peak_values)
+    if available_values:
+        merged["system_available_min_mb"] = min(available_values)
+    if process_values:
+        merged["process_count_peak"] = int(max(process_values))
+    merged["sample_count"] = int(current.get("sample_count") or 0) + int(incoming.get("sample_count") or 0)
+    return merged
 
 
 def _parse_datetime(value: Any) -> datetime | None:

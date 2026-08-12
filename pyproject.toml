@@ -16,6 +16,7 @@ dependencies = [
     "lxml",
     "openpyxl",
     "pdf-inspector",
+    "psutil",
     "pydantic>=2",
     "pypdf",
     "python-dotenv",

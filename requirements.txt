@@ -2,6 +2,7 @@ pydantic==2.12.5
 pdf-inspector==0.2.6
 bittensor==10.5.0
 python-dotenv==1.2.1
+psutil>=6
 requests>=2.33.0,<3.0
 streamlit>=1
 lxml
