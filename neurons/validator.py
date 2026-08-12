@@ -557,8 +557,8 @@ class ClaimsValidator:
             "--claims.query-interval",
             dest="claims_query_interval",
             type=float,
-            default=60.0,
-            help="Seconds to wait between validation rounds.",
+            default=float(os.getenv("CLAIMS_QUERY_INTERVAL", "60")),
+            help="Seconds to wait after one validation round finishes before starting the next.",
         )
         parser.add_argument(
             "--claims.timeout",

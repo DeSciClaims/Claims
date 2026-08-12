@@ -264,7 +264,7 @@ Useful validator flags:
 - `--claims.task-manifest /path/to/tasks.jsonl`: run a list of tasks.
 - `--claims.audit-only`: score miners and write audit files without setting weights.
 - `--claims.max-steps 1`: run one validation round and exit.
-- `--claims.query-interval 60`: wait time between validation rounds.
+- `--claims.query-interval 60` or `CLAIMS_QUERY_INTERVAL=60`: delay after one validation round finishes before the next starts.
 - `--claims.require-validator-permit`: fail fast unless the hotkey has validator permit.
 
 Optional Silver graph-pairing envs:
