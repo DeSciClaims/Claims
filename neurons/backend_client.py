@@ -177,6 +177,16 @@ class ClaimsBackendClient:
     def post_silver_score_report(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/silver-score-reports", payload)
 
+    def post_model_usage_events(self, events: list[dict[str, Any]]) -> dict[str, Any]:
+        submitted = 0
+        stored = 0
+        for offset in range(0, len(events), 1000):
+            chunk = events[offset : offset + 1000]
+            result = self.post("/validator/model-usage-events", {"events": chunk})
+            submitted += int(result.get("submitted") or len(chunk))
+            stored += int(result.get("stored") or 0)
+        return {"submitted": submitted, "stored": stored}
+
     def _url(self, path: str) -> str:
         return f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
 

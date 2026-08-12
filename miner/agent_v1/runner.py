@@ -220,8 +220,12 @@ def _runtime_metrics(manifests: list[dict[str, Any]]) -> dict[str, Any]:
         "token_usage": {
             "prompt_tokens": usage.get("prompt_tokens"),
             "completion_tokens": usage.get("completion_tokens"),
+            "reasoning_tokens": usage.get("reasoning_tokens"),
+            "cache_read_tokens": usage.get("cache_read_tokens"),
+            "cache_write_tokens": usage.get("cache_write_tokens"),
             "total_tokens": usage.get("total_tokens"),
         },
         "cost_usd": usage.get("cost_usd"),
+        "cost_kind": usage.get("cost_kind", "unavailable"),
         "usage_source": usage.get("source", "unavailable"),
     }

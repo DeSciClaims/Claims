@@ -417,9 +417,13 @@ def _metrics(started: float, rigor_manifest: dict[str, Any]) -> AgentV1Validatio
         token_usage={
             "prompt_tokens": usage.get("prompt_tokens"),
             "completion_tokens": usage.get("completion_tokens"),
+            "reasoning_tokens": usage.get("reasoning_tokens"),
+            "cache_read_tokens": usage.get("cache_read_tokens"),
+            "cache_write_tokens": usage.get("cache_write_tokens"),
             "total_tokens": usage.get("total_tokens"),
         },
         cost_usd=usage.get("cost_usd") if isinstance(usage.get("cost_usd"), int | float) else None,
+        cost_kind=str(usage.get("cost_kind") or "unavailable"),
         usage_source=str(usage.get("source", "unavailable")),
     )
 

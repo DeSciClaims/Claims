@@ -20,7 +20,7 @@ from miner.agent_v1.runner import AgentV1Runner
 from miner.agent_v1.runtime.base import AgentRequest, AgentResult
 from miner.agent_v1.runtime.langchain_agent import _structured_payload, _validation_status
 from miner.agent_v1.runtime.subprocess_cli import SubprocessAgentRuntime
-from miner.agent_v1.runtime.usage import usage_from_codex_jsonl, usage_from_hermes_sessions_jsonl
+from miner.agent_v1.runtime.usage import usage_from_codex_jsonl, usage_from_dspy_lm, usage_from_hermes_sessions_jsonl
 from miner.agent_v1.schema import agent_json_schema
 from miner.agent_v1.skillpack import load_skill_pack
 from miner.agent_v1.tools import AgentToolbox
@@ -409,7 +409,36 @@ def test_agent_v1_parses_hermes_jsonl_usage() -> None:
     assert usage["completion_tokens"] == 25
     assert usage["total_tokens"] == 180
     assert usage["cost_usd"] == 0.123
+    assert usage["cost_kind"] == "estimated"
+    assert usage["cache_read_tokens"] == 40
+    assert usage["reasoning_tokens"] == 5
     assert usage["source"] == "hermes_sessions_export"
+
+
+def test_agent_v1_parses_dspy_history_cost_and_cache_tokens() -> None:
+    lm = SimpleNamespace(
+        history=[
+            {
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 25,
+                    "total_tokens": 125,
+                    "prompt_tokens_details": {"cached_tokens": 40},
+                    "completion_tokens_details": {"reasoning_tokens": 5},
+                },
+                "cost": 0.0042,
+            }
+        ]
+    )
+
+    usage = usage_from_dspy_lm(lm)
+
+    assert usage["prompt_tokens"] == 100
+    assert usage["completion_tokens"] == 25
+    assert usage["cache_read_tokens"] == 40
+    assert usage["reasoning_tokens"] == 5
+    assert usage["cost_usd"] == 0.0042
+    assert usage["cost_kind"] == "estimated"
 
 
 def test_miner_batch_task_returns_one_article_per_paper(monkeypatch, tmp_path: Path) -> None:

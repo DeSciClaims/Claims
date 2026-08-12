@@ -14,6 +14,7 @@ from .adjudication_passes import (
     StaticAdjudicationPass,
 )
 from .adjudication_runner import AdjudicationPass
+from .model_usage import UsageSink
 
 
 SilverAdjudicationMode = Literal[
@@ -83,7 +84,11 @@ class SilverAdjudicationConfig:
         )
 
 
-def build_silver_adjudication_passes(config: SilverAdjudicationConfig) -> tuple[list[AdjudicationPass], AdjudicationPass | None]:
+def build_silver_adjudication_passes(
+    config: SilverAdjudicationConfig,
+    *,
+    usage_sink: UsageSink | None = None,
+) -> tuple[list[AdjudicationPass], AdjudicationPass | None]:
     mode = _normalize_mode(config.mode)
     if mode == "static":
         return _static_passes(config.static_disposition)
@@ -91,11 +96,11 @@ def build_silver_adjudication_passes(config: SilverAdjudicationConfig) -> tuple[
         return _local_replay_passes(config.local_replay_disposition)
     request_gate = threading.BoundedSemaphore(max(1, config.max_in_flight))
     if mode == "dspy":
-        return _dspy_passes(config, request_gate=request_gate)
+        return _dspy_passes(config, request_gate=request_gate, usage_sink=usage_sink)
     if mode == "openai-compatible":
-        return _openai_compatible_passes(config, request_gate=request_gate)
+        return _openai_compatible_passes(config, request_gate=request_gate, usage_sink=usage_sink)
     if mode in {"cli", "hermes-cli", "codex-cli", "claude-cli"}:
-        return _cli_passes(config, mode=mode, request_gate=request_gate)
+        return _cli_passes(config, mode=mode, request_gate=request_gate, usage_sink=usage_sink)
     raise ValueError(f"Unknown Silver adjudication mode: {config.mode}")
 
 
@@ -157,6 +162,7 @@ def _openai_compatible_passes(
     config: SilverAdjudicationConfig,
     *,
     request_gate,
+    usage_sink: UsageSink | None,
 ) -> tuple[list[AdjudicationPass], AdjudicationPass | None]:
     api_key = _api_key(config)
     model_a = _direct_api_model_id(config.model_a, config.api_base)
@@ -173,6 +179,7 @@ def _openai_compatible_passes(
             max_tokens=config.max_tokens,
             timeout_seconds=config.timeout_seconds,
             request_gate=request_gate,
+            usage_sink=usage_sink,
         ),
         OpenAICompatibleAdjudicationPass(
             pass_id="pass_b",
@@ -185,6 +192,7 @@ def _openai_compatible_passes(
             max_tokens=config.max_tokens,
             timeout_seconds=config.timeout_seconds,
             request_gate=request_gate,
+            usage_sink=usage_sink,
         ),
     ]
     tiebreak = None
@@ -201,6 +209,7 @@ def _openai_compatible_passes(
             max_tokens=config.max_tokens,
             timeout_seconds=config.timeout_seconds,
             request_gate=request_gate,
+            usage_sink=usage_sink,
         )
     return passes, tiebreak
 
@@ -209,6 +218,7 @@ def _dspy_passes(
     config: SilverAdjudicationConfig,
     *,
     request_gate,
+    usage_sink: UsageSink | None,
 ) -> tuple[list[AdjudicationPass], AdjudicationPass | None]:
     api_key = _api_key(config)
 
@@ -225,6 +235,7 @@ def _dspy_passes(
             timeout_seconds=config.timeout_seconds,
             num_retries=config.retries,
             request_gate=request_gate,
+            usage_sink=usage_sink,
         )
 
     passes: list[AdjudicationPass] = [build("pass_a", config.model_a), build("pass_b", config.model_b)]
@@ -237,6 +248,7 @@ def _cli_passes(
     *,
     mode: str,
     request_gate,
+    usage_sink: UsageSink | None,
 ) -> tuple[list[AdjudicationPass], AdjudicationPass | None]:
     command_a = _cli_command(config, explicit=config.cli_command_a, model=config.model_a, mode=mode)
     command_b = _cli_command(config, explicit=config.cli_command_b, model=config.model_b, mode=mode)
@@ -249,6 +261,9 @@ def _cli_passes(
             prompt_mode=config.cli_prompt_mode,
             timeout_seconds=config.cli_timeout_seconds,
             request_gate=request_gate,
+            model=config.model_a,
+            provider=config.cli_provider,
+            usage_sink=usage_sink,
         ),
         CLIAdjudicationPass(
             pass_id="pass_b",
@@ -258,6 +273,9 @@ def _cli_passes(
             prompt_mode=config.cli_prompt_mode,
             timeout_seconds=config.cli_timeout_seconds,
             request_gate=request_gate,
+            model=config.model_b,
+            provider=config.cli_provider,
+            usage_sink=usage_sink,
         ),
     ]
     tiebreak = None
@@ -270,6 +288,9 @@ def _cli_passes(
             prompt_mode=config.cli_prompt_mode,
             timeout_seconds=config.cli_timeout_seconds,
             request_gate=request_gate,
+            model=config.tiebreak_model,
+            provider=config.cli_provider,
+            usage_sink=usage_sink,
         )
     return passes, tiebreak
 

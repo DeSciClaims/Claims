@@ -7,6 +7,7 @@ import re
 import shlex
 import subprocess
 import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -16,7 +17,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from miner.agent_v1.runtime.usage import empty_usage, usage_from_cli_process, usage_from_dspy_lm
+
 from .adjudication_models import AdjudicationContextBundle, AdjudicationDisposition, AdjudicationVote
+from .model_usage import UsageSink, provider_from_model_or_base
 
 
 ALLOWED_DISPOSITIONS: set[str] = {
@@ -79,15 +83,26 @@ class OpenAICompatibleAdjudicationPass:
     timeout_seconds: float = 90.0
     completion_fn: Callable[[list[dict[str, str]]], str] | None = field(default=None, compare=False, repr=False)
     request_gate: Any | None = field(default=None, compare=False, repr=False)
+    usage_sink: UsageSink | None = field(default=None, compare=False, repr=False)
 
     def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
         messages = _adjudication_messages(context)
+        started_at = datetime.now(timezone.utc)
+        started = time.perf_counter()
+        usage = empty_usage("completion_fn_unavailable")
+        status = "success"
+        error = None
         try:
             with _request_slot(self.request_gate):
-                content = self.completion_fn(messages) if self.completion_fn is not None else self._complete(messages)
+                if self.completion_fn is not None:
+                    content = self.completion_fn(messages)
+                else:
+                    content, usage = self._complete(messages)
             payload = _parse_json_object(content)
             return self._vote_from_payload(context, payload)
         except Exception as exc:
+            status = "failed"
+            error = f"{type(exc).__name__}: {exc}"
             return AdjudicationVote(
                 case_id=context.case.case_id,
                 pass_id=self.pass_id,
@@ -101,8 +116,23 @@ class OpenAICompatibleAdjudicationPass:
                 rationale=f"Adjudication pass failed: {type(exc).__name__}: {exc}",
                 insufficient_information=True,
             )
+        finally:
+            _emit_adjudication_usage(
+                self.usage_sink,
+                context=context,
+                pass_id=self.pass_id,
+                harness="openai-compatible",
+                runtime=self.model_runtime_id,
+                provider=provider_from_model_or_base(self.model, self.api_base),
+                model=self.model,
+                usage=usage,
+                status=status,
+                error=error,
+                started_at=started_at,
+                duration_seconds=time.perf_counter() - started,
+            )
 
-    def _complete(self, messages: list[dict[str, str]]) -> str:
+    def _complete(self, messages: list[dict[str, str]]) -> tuple[str, dict[str, Any]]:
         endpoint = f"{self.api_base.rstrip('/')}/chat/completions"
         request_body = json.dumps(
             {
@@ -138,7 +168,8 @@ class OpenAICompatibleAdjudicationPass:
         content = message.get("content") if isinstance(message, dict) else None
         if not isinstance(content, str) or not content.strip():
             raise ValueError("model endpoint response did not include message content")
-        return content
+        usage = _usage_from_openai_response(response_payload)
+        return content, usage
 
     def _vote_from_payload(self, context: AdjudicationContextBundle, payload: dict[str, Any]) -> AdjudicationVote:
         return vote_from_payload(
@@ -159,11 +190,19 @@ class CLIAdjudicationPass:
     prompt_mode: str = "append"
     timeout_seconds: float = 900.0
     request_gate: Any | None = field(default=None, compare=False, repr=False)
+    model: str = ""
+    provider: str = ""
+    usage_sink: UsageSink | None = field(default=None, compare=False, repr=False)
 
     def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
         prompt = ""
         command: list[str] = []
         completed: subprocess.CompletedProcess[str] | None = None
+        started_at = datetime.now(timezone.utc)
+        started = time.perf_counter()
+        usage = empty_usage("cli_not_started")
+        status = "success"
+        error = None
         try:
             prompt = _adjudication_cli_prompt(context)
             command = shlex.split(self.command) if isinstance(self.command, str) else list(self.command)
@@ -185,6 +224,7 @@ class CLIAdjudicationPass:
                 )
             if completed.returncode != 0:
                 raise RuntimeError(f"CLI exited {completed.returncode}: {completed.stderr[-1000:]}")
+            usage = usage_from_cli_process(command, completed.stdout, completed.stderr)
             payload = _parse_json_object(completed.stdout)
             _write_cli_debug_artifact(
                 context=context,
@@ -201,6 +241,10 @@ class CLIAdjudicationPass:
                 model_runtime_id=self.model_runtime_id,
             )
         except Exception as exc:
+            status = "failed"
+            error = f"{type(exc).__name__}: {exc}"
+            if completed is not None:
+                usage = usage_from_cli_process(command, completed.stdout, completed.stderr)
             _write_cli_debug_artifact(
                 context=context,
                 pass_id=self.pass_id,
@@ -222,6 +266,22 @@ class CLIAdjudicationPass:
                 rationale=f"CLI adjudication pass failed: {type(exc).__name__}: {exc}",
                 insufficient_information=True,
             )
+        finally:
+            model = self.model or _model_from_profile_id(self.adjudication_profile_id)
+            _emit_adjudication_usage(
+                self.usage_sink,
+                context=context,
+                pass_id=self.pass_id,
+                harness=self.model_runtime_id,
+                runtime=self.model_runtime_id,
+                provider=self.provider or provider_from_model_or_base(model),
+                model=model,
+                usage=usage,
+                status=status,
+                error=error,
+                started_at=started_at,
+                duration_seconds=time.perf_counter() - started,
+            )
 
 
 @dataclass
@@ -239,6 +299,8 @@ class DSPyAdjudicationPass:
     request_gate: Any | None = field(default=None, compare=False, repr=False)
     dspy_module: Any | None = field(default=None, compare=False, repr=False)
     program: Any | None = field(default=None, compare=False, repr=False)
+    usage_sink: UsageSink | None = field(default=None, compare=False, repr=False)
+    _base_program: Any | None = field(default=None, init=False, compare=False, repr=False)
     _program_lock: threading.Lock = field(default_factory=threading.Lock, init=False, compare=False, repr=False)
 
     def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
@@ -269,21 +331,62 @@ class DSPyAdjudicationPass:
 
     def _complete(self, context: AdjudicationContextBundle) -> dict[str, Any]:
         payload = _adjudication_payload(context)
-        program = self.program or self._build_program()
-        prediction = program(
-            task_instructions=_adjudication_system_instructions(),
-            case_json=json.dumps(payload["case"], ensure_ascii=False, sort_keys=True),
-            candidates_json=json.dumps(payload["candidates"], ensure_ascii=False, sort_keys=True),
-            source_context=str(payload["source_context"]),
-            allowed_dispositions_json=json.dumps(payload["allowed_dispositions"], ensure_ascii=False),
-            disposition_meanings_json=json.dumps(payload["disposition_meanings"], ensure_ascii=False, sort_keys=True),
-            required_json_schema=json.dumps(payload["required_json_schema"], ensure_ascii=False, sort_keys=True),
-        )
-        raw = str(getattr(prediction, "adjudication_json", prediction if isinstance(prediction, str) else ""))
-        return _parse_json_object(raw)
+        kwargs = {
+            "task_instructions": _adjudication_system_instructions(),
+            "case_json": json.dumps(payload["case"], ensure_ascii=False, sort_keys=True),
+            "candidates_json": json.dumps(payload["candidates"], ensure_ascii=False, sort_keys=True),
+            "source_context": str(payload["source_context"]),
+            "allowed_dispositions_json": json.dumps(payload["allowed_dispositions"], ensure_ascii=False),
+            "disposition_meanings_json": json.dumps(payload["disposition_meanings"], ensure_ascii=False, sort_keys=True),
+            "required_json_schema": json.dumps(payload["required_json_schema"], ensure_ascii=False, sort_keys=True),
+        }
+        started_at = datetime.now(timezone.utc)
+        started = time.perf_counter()
+        usage = empty_usage("dspy_program_unavailable")
+        status = "success"
+        error = None
+        lm = None
+        try:
+            if self.program is not None:
+                prediction = self.program(**kwargs)
+            else:
+                program = self._build_program()
+                lm = self._new_lm()
+                dspy_module = self.dspy_module
+                if hasattr(dspy_module, "context"):
+                    with dspy_module.context(lm=lm):
+                        prediction = program(**kwargs)
+                else:  # pragma: no cover - retained for older DSPy versions
+                    dspy_module.configure(lm=lm)
+                    prediction = program(**kwargs)
+            raw = str(getattr(prediction, "adjudication_json", prediction if isinstance(prediction, str) else ""))
+            return _parse_json_object(raw)
+        except Exception as exc:
+            status = "failed"
+            error = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            if lm is not None:
+                usage = usage_from_dspy_lm(lm)
+            _emit_adjudication_usage(
+                self.usage_sink,
+                context=context,
+                pass_id=self.pass_id,
+                harness="dspy",
+                runtime=self.model_runtime_id,
+                provider=provider_from_model_or_base(self.model, self.api_base),
+                model=self.model,
+                usage=usage,
+                status=status,
+                error=error,
+                started_at=started_at,
+                duration_seconds=time.perf_counter() - started,
+            )
 
     def _build_program(self):
         with self._program_lock:
+            if self._base_program is not None:
+                return self._base_program
             if self.program is not None:
                 return self.program
             dspy_module = self.dspy_module
@@ -296,16 +399,6 @@ class DSPyAdjudicationPass:
                 self.dspy_module = dspy_module
             if not self.api_key:
                 raise RuntimeError("An API key is required for DSPy Silver adjudication.")
-
-            lm = dspy_module.LM(
-                model=_dspy_model_id(self.model, self.api_base),
-                api_key=self.api_key,
-                api_base=self.api_base,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                timeout=self.timeout_seconds,
-                num_retries=self.num_retries,
-            )
 
             class AdjudicationSignature(dspy_module.Signature):
                 """Resolve an anonymous scientific claim case. Return one strict JSON object only."""
@@ -321,18 +414,100 @@ class DSPyAdjudicationPass:
                     desc="Strict JSON object matching required_json_schema."
                 )
 
-            base_program = dspy_module.Predict(AdjudicationSignature)
-            if hasattr(dspy_module, "context"):
+            self._base_program = dspy_module.Predict(AdjudicationSignature)
+            return self._base_program
 
-                def run_in_context(**kwargs):
-                    with dspy_module.context(lm=lm):
-                        return base_program(**kwargs)
+    def _new_lm(self):
+        return self.dspy_module.LM(
+            model=_dspy_model_id(self.model, self.api_base),
+            api_key=self.api_key,
+            api_base=self.api_base,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            timeout=self.timeout_seconds,
+            num_retries=self.num_retries,
+        )
 
-                self.program = run_in_context
-            else:
-                dspy_module.configure(lm=lm)
-                self.program = base_program
-            return self.program
+
+def _emit_adjudication_usage(
+    usage_sink: UsageSink | None,
+    *,
+    context: AdjudicationContextBundle,
+    pass_id: str,
+    harness: str,
+    runtime: str,
+    provider: str,
+    model: str,
+    usage: dict[str, Any],
+    status: str,
+    error: str | None,
+    started_at: datetime,
+    duration_seconds: float,
+) -> None:
+    if usage_sink is None:
+        return
+    consolidation = bool(
+        isinstance(context.case.metadata, dict)
+        and (
+            context.case.metadata.get("consolidation")
+            or (context.case.metadata.get("comparison_graph") or {}).get("consolidation")
+        )
+    )
+    usage_sink(
+        {
+            "paper_id": context.case.paper_id,
+            "stage_key": "silver_consolidation" if consolidation else "silver_adjudication",
+            "stage_label": "Consolidation" if consolidation else "Adjudication",
+            "role": "adjudicator",
+            "operation_id": f"{context.case.case_id}:{pass_id}",
+            "pass_id": pass_id,
+            "case_id": context.case.case_id,
+            "harness": harness,
+            "runtime": runtime,
+            "provider": provider,
+            "model": model,
+            "usage": usage,
+            "status": status,
+            "error": error,
+            "started_at": started_at,
+            "ended_at": datetime.now(timezone.utc),
+            "duration_seconds": duration_seconds,
+            "metadata": {
+                "case_type": context.case.mismatch_type,
+                "candidate_count": len(context.candidates),
+            },
+        }
+    )
+
+
+def _usage_from_openai_response(response_payload: dict[str, Any]) -> dict[str, Any]:
+    usage = response_payload.get("usage") if isinstance(response_payload.get("usage"), dict) else {}
+    prompt_details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
+    completion_details = usage.get("completion_tokens_details") if isinstance(usage.get("completion_tokens_details"), dict) else {}
+    cost = usage.get("cost") if isinstance(usage.get("cost"), int | float) else None
+    return {
+        "prompt_tokens": _optional_int(usage.get("prompt_tokens")),
+        "completion_tokens": _optional_int(usage.get("completion_tokens")),
+        "reasoning_tokens": _optional_int(completion_details.get("reasoning_tokens")),
+        "cache_read_tokens": _optional_int(prompt_details.get("cached_tokens")),
+        "cache_write_tokens": None,
+        "total_tokens": _optional_int(usage.get("total_tokens")),
+        "cost_usd": float(cost) if cost is not None else None,
+        "cost_kind": "actual" if cost is not None else "unavailable",
+        "source": "openai_compatible_response",
+    }
+
+
+def _model_from_profile_id(profile_id: str) -> str:
+    return profile_id.split(":", 1)[1] if ":" in profile_id else ""
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return None
 
 
 def _adjudication_messages(context: AdjudicationContextBundle) -> list[dict[str, str]]:

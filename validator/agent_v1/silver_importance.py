@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from .comparison_models import SilverRecord
+from .model_usage import UsageSink, provider_from_model_or_base
 
 
 IMPORTANCE_TAGS = {"central", "supporting", "minor"}
@@ -34,6 +37,7 @@ class OpenAICompatibleSilverImportanceClassifier:
     max_tokens: int = 2048
     timeout_seconds: float = 120.0
     completion_fn: Callable[[list[dict[str, str]]], str] | None = field(default=None, compare=False, repr=False)
+    usage_sink: UsageSink | None = field(default=None, compare=False, repr=False)
 
     def classify(
         self,
@@ -49,10 +53,45 @@ class OpenAICompatibleSilverImportanceClassifier:
             paper_context=paper_context,
             source_context=source_context,
         )
-        content = self.completion_fn(messages) if self.completion_fn is not None else self._complete(messages)
-        return _parse_importance_response(content)
+        started_at = datetime.now(timezone.utc)
+        started = time.perf_counter()
+        usage = _empty_usage("completion_fn_unavailable")
+        status = "success"
+        error = None
+        try:
+            if self.completion_fn is not None:
+                content = self.completion_fn(messages)
+            else:
+                content, usage = self._complete(messages)
+            return _parse_importance_response(content)
+        except Exception as exc:
+            status = "failed"
+            error = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            if self.usage_sink is not None:
+                self.usage_sink(
+                    {
+                        "paper_id": silver_record.paper_id,
+                        "stage_key": "silver_importance",
+                        "stage_label": "Importance tagging",
+                        "role": "importance_classifier",
+                        "operation_id": silver_record.silver_record_id,
+                        "harness": "openai-compatible",
+                        "runtime": "openai-compatible-chat-completions",
+                        "provider": provider_from_model_or_base(self.model, self.api_base),
+                        "model": self.model,
+                        "usage": usage,
+                        "status": status,
+                        "error": error,
+                        "started_at": started_at,
+                        "ended_at": datetime.now(timezone.utc),
+                        "duration_seconds": time.perf_counter() - started,
+                        "metadata": {"silver_unit_count": len(silver_record.silver_units)},
+                    }
+                )
 
-    def _complete(self, messages: list[dict[str, str]]) -> str:
+    def _complete(self, messages: list[dict[str, str]]) -> tuple[str, dict[str, Any]]:
         if not self.api_key:
             raise RuntimeError("Silver importance classifier API key is required.")
         endpoint = f"{self.api_base.rstrip('/')}/chat/completions"
@@ -90,7 +129,7 @@ class OpenAICompatibleSilverImportanceClassifier:
         content = message.get("content") if isinstance(message, dict) else None
         if not isinstance(content, str) or not content.strip():
             raise ValueError("importance endpoint response did not include message content")
-        return content
+        return content, _usage_from_response(response_payload)
 
 
 def apply_silver_importance(
@@ -254,3 +293,43 @@ def silver_importance_classifier_from_env() -> OpenAICompatibleSilverImportanceC
         max_tokens=int(os.getenv("CLAIMS_SILVER_IMPORTANCE_MAX_TOKENS", "2048")),
         timeout_seconds=float(os.getenv("CLAIMS_SILVER_IMPORTANCE_TIMEOUT", "120")),
     )
+
+
+def _usage_from_response(response_payload: dict[str, Any]) -> dict[str, Any]:
+    usage = response_payload.get("usage") if isinstance(response_payload.get("usage"), dict) else {}
+    prompt_details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
+    completion_details = usage.get("completion_tokens_details") if isinstance(usage.get("completion_tokens_details"), dict) else {}
+    cost = usage.get("cost") if isinstance(usage.get("cost"), int | float) else None
+    return {
+        "prompt_tokens": _optional_int(usage.get("prompt_tokens")),
+        "completion_tokens": _optional_int(usage.get("completion_tokens")),
+        "reasoning_tokens": _optional_int(completion_details.get("reasoning_tokens")),
+        "cache_read_tokens": _optional_int(prompt_details.get("cached_tokens")),
+        "cache_write_tokens": None,
+        "total_tokens": _optional_int(usage.get("total_tokens")),
+        "cost_usd": float(cost) if cost is not None else None,
+        "cost_kind": "actual" if cost is not None else "unavailable",
+        "source": "openai_compatible_response",
+    }
+
+
+def _empty_usage(source: str) -> dict[str, Any]:
+    return {
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "reasoning_tokens": None,
+        "cache_read_tokens": None,
+        "cache_write_tokens": None,
+        "total_tokens": None,
+        "cost_usd": None,
+        "cost_kind": "unavailable",
+        "source": source,
+    }
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return None

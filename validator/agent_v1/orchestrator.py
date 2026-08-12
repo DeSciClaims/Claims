@@ -71,6 +71,7 @@ def run_paper_silver_pipeline(
     tiebreak_pass: AdjudicationPass | None = None,
     direct_judge_confidence: float = 0.9,
     relation_classifier: RelationClassifier | None = None,
+    consolidation_relation_classifier: RelationClassifier | None = None,
     importance_classifier: SilverImportanceClassifier | None = None,
     paper_context: dict | None = None,
     validation_findings_by_miner_id: dict[str, list[AgentV1ValidationFinding]] | None = None,
@@ -178,7 +179,7 @@ def run_paper_silver_pipeline(
         paper_id=paper_id,
         candidates=candidate_pool,
         decisions=decisions,
-        relation_classifier=relation_classifier,
+        relation_classifier=consolidation_relation_classifier or relation_classifier,
         existing_cases=diff_cases,
     )
     if consolidation_cases:

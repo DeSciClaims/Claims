@@ -555,6 +555,7 @@ def test_dspy_adjudication_pass_uses_anonymous_structured_payload() -> None:
         source_context="S1: Treatment A reduced mortality.",
     )
     captured: dict = {}
+    usage_events: list[dict] = []
 
     def program(**kwargs):
         captured.update(kwargs)
@@ -578,6 +579,7 @@ def test_dspy_adjudication_pass_uses_anonymous_structured_payload() -> None:
         model="openai/gpt-4o-mini",
         api_key="test",
         program=program,
+        usage_sink=usage_events.append,
     )
 
     vote = adjudication_pass.run(context)
@@ -588,6 +590,10 @@ def test_dspy_adjudication_pass_uses_anonymous_structured_payload() -> None:
     assert [candidate["anonymous_id"] for candidate in candidates] == ["candidate_1", "candidate_2"]
     assert all("origin" not in candidate and "miner_id" not in candidate for candidate in candidates)
     assert captured["source_context"] == "S1: Treatment A reduced mortality."
+    assert usage_events[0]["stage_key"] == "silver_adjudication"
+    assert usage_events[0]["case_id"] == "case_dspy"
+    assert usage_events[0]["harness"] == "dspy"
+    assert usage_events[0]["status"] == "success"
 
 
 def test_silver_adjudication_factory_builds_dspy_passes_with_shared_limit(monkeypatch) -> None:

@@ -156,7 +156,13 @@ class LocalCliReferenceMinerClient:
                 "private reference miner command failed "
                 f"with exit={completed.returncode}: {completed.stderr.strip() or completed.stdout.strip()}"
             )
-        return self.get_bronze(paper_id=request.paper_id, reference_release_id=reference_release_id)
+        record = self.get_bronze(paper_id=request.paper_id, reference_release_id=reference_release_id)
+        record.metadata = {
+            **record.metadata,
+            "generated_for_run_id": request.run_id,
+            "generated_for_batch_id": request.batch_id,
+        }
+        return record
 
     def _materialize_input(self, request: ReferenceMinerInput) -> tuple[Path, str]:
         if request.input_path and request.input_kind:

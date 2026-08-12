@@ -32,9 +32,17 @@ class AgentV1ValidationMetrics(BaseModel):
     elapsed_seconds: float = 0.0
     rigor_agent_elapsed_seconds: float | None = None
     token_usage: dict[str, int | None] = Field(
-        default_factory=lambda: {"prompt_tokens": None, "completion_tokens": None, "total_tokens": None}
+        default_factory=lambda: {
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "reasoning_tokens": None,
+            "cache_read_tokens": None,
+            "cache_write_tokens": None,
+            "total_tokens": None,
+        }
     )
     cost_usd: float | None = None
+    cost_kind: str = "unavailable"
     usage_source: str = "unavailable"
 
 

@@ -26,6 +26,7 @@ from validator.agent_v1.batch_scoring import score_batch
 from validator.agent_v1.comparison_models import SilverScoreBreakdown
 from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.models import AgentV1ValidationFinding
+from validator.agent_v1.model_usage import ModelUsageCollector
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline
 from validator.agent_v1.reference_client import (
     BackendBackedReferenceMinerClient,
@@ -105,6 +106,7 @@ class ClaimsValidator:
         self.config = self._get_config()
         self._setup_logging()
         self._memory_sampler: ValidatorMemorySampler | None = None
+        self._active_model_usage: ModelUsageCollector | None = None
         if self.config.claims_dry_run:
             self.wallet = None
             self.subtensor = None
@@ -770,6 +772,11 @@ class ClaimsValidator:
                 self._start_memory_sampler()
                 task_timer = _timing_start("task_selection", "Task selection")
                 task = self._next_task(step)
+                self._active_model_usage = ModelUsageCollector(
+                    network=task.network or str(getattr(self.config, "claims_network", "testnet")),
+                    run_id=run_id,
+                    batch_id=task.batch_id or task.task_id,
+                )
                 self._record_timing_stage(
                     task_timer,
                     metadata={"paper_count": len(task.paper_tasks()), "backend": bool(getattr(self.config, "claims_backend_url", ""))},
@@ -802,6 +809,7 @@ class ClaimsValidator:
                 weight_persist_timer = _timing_start("weight_event_persist", "Persist weight event")
                 self._post_weight_event(run_id, scores, weight_event)
                 self._record_timing_stage(weight_persist_timer)
+                self._flush_model_usage_events()
                 run_ended_at = datetime.now(timezone.utc)
                 _finish_pipeline_timing(self._active_run_timing, ended_at=run_ended_at)
                 self._stop_memory_sampler()
@@ -813,6 +821,7 @@ class ClaimsValidator:
                     started_at=run_started_at,
                     ended_at=run_ended_at,
                 )
+                self._flush_model_usage_events()
                 self._record_timing_stage(run_close_timer)
                 step += 1
                 if self.config.claims_max_steps and step >= self.config.claims_max_steps:
@@ -823,10 +832,12 @@ class ClaimsValidator:
                 self._record_timing_stage(sleep_timer)
             except KeyboardInterrupt:
                 self._stop_memory_sampler()
+                self._flush_model_usage_events()
                 self.bt_logging.success("Validator stopped.")
                 return
             except Exception:
                 self._stop_memory_sampler()
+                self._flush_model_usage_events()
                 self.bt_logging.error(traceback.format_exc())
                 if task is not None and run_id is not None and run_started_at is not None:
                     _finish_pipeline_timing(self._active_run_timing, ended_at=datetime.now(timezone.utc))
@@ -837,6 +848,7 @@ class ClaimsValidator:
                         started_at=run_started_at,
                         ended_at=datetime.now(timezone.utc),
                     )
+                    self._flush_model_usage_events()
                 time.sleep(float(self.config.claims_query_interval))
 
     def _load_tasks(self) -> list[ClaimsTask]:
@@ -1194,7 +1206,14 @@ class ClaimsValidator:
             raise RuntimeError("Silver scoring is enabled, but no adjudication passes are configured.")
         adjudication_models = self._adjudication_pass_model_rows(adjudication_passes, tiebreak_pass)
         relation_classifier = self._build_silver_relation_classifier(
-            request_gate=getattr(adjudication_passes[0], "request_gate", None)
+            request_gate=getattr(adjudication_passes[0], "request_gate", None),
+            stage_key="silver_comparison",
+            stage_label="Comparison graph",
+        )
+        consolidation_relation_classifier = self._build_silver_relation_classifier(
+            request_gate=getattr(adjudication_passes[0], "request_gate", None),
+            stage_key="silver_consolidation",
+            stage_label="Consolidation",
         )
         importance_classifier = self._build_silver_importance_classifier()
         importance_models = self._silver_importance_model_rows() if importance_classifier is not None else []
@@ -1216,6 +1235,7 @@ class ClaimsValidator:
                     reference_release_id=reference_release_id,
                 )
                 bronze_artifact = _bronze_artifact_from_record(bronze)
+                self._record_reference_miner_usage(bronze=bronze, run_id=run_id, paper_id=paper_id)
                 reference_models = self._reference_miner_model_rows(bronze, bronze_artifact)
                 reference_stage = _timing_finish(
                     reference_timer,
@@ -1255,6 +1275,7 @@ class ClaimsValidator:
                     source_context_by_span_id=source_context_by_span_id,
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
                     relation_classifier=relation_classifier,
+                    consolidation_relation_classifier=consolidation_relation_classifier,
                     importance_classifier=importance_classifier,
                     paper_context=_paper_task_context(paper),
                     validation_findings_by_miner_id={
@@ -1490,11 +1511,21 @@ class ClaimsValidator:
 
     def _build_silver_adjudication_passes(self) -> tuple[list[Any], Any | None]:
         try:
-            return build_silver_adjudication_passes(self._silver_adjudication_config())
+            usage_collector = getattr(self, "_active_model_usage", None)
+            return build_silver_adjudication_passes(
+                self._silver_adjudication_config(),
+                usage_sink=usage_collector.record if usage_collector is not None else None,
+            )
         except Exception as exc:
             raise RuntimeError(f"Silver adjudication pass configuration failed: {exc}") from exc
 
-    def _build_silver_relation_classifier(self, *, request_gate: Any | None = None) -> Any | None:
+    def _build_silver_relation_classifier(
+        self,
+        *,
+        request_gate: Any | None = None,
+        stage_key: str = "silver_comparison",
+        stage_label: str = "Comparison graph",
+    ) -> Any | None:
         mode = str(getattr(self.config, "claims_silver_relation_mode", "heuristic") or "heuristic").strip().lower()
         if mode in {"", "heuristic", "disabled"}:
             return None
@@ -1504,12 +1535,16 @@ class ClaimsValidator:
         api_base = str(getattr(self.config, "claims_silver_relation_api_base", "") or os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"))
         api_key_env = str(getattr(self.config, "claims_silver_relation_api_key_env", "") or "OPENROUTER_API_KEY")
         model = str(getattr(self.config, "claims_silver_relation_model", "") or os.getenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", "openrouter/openai/gpt-5-mini"))
+        usage_collector = getattr(self, "_active_model_usage", None)
         classifier = DSPyRelationClassifier(
             model=_dspy_relation_model(model, api_base=api_base),
             api_key=os.getenv(api_key_env, ""),
             api_base=api_base,
             fallback_to_heuristic=True,
             request_gate=request_gate,
+            usage_sink=usage_collector.record if usage_collector is not None else None,
+            stage_key=stage_key,
+            stage_label=stage_label,
         )
         if not os.getenv(api_key_env, ""):
             self.bt_logging.warning(
@@ -1532,6 +1567,7 @@ class ClaimsValidator:
                 f"{api_key_env} is not set; Silver importance classifier will keep default supporting tags."
             )
             return None
+        usage_collector = getattr(self, "_active_model_usage", None)
         return OpenAICompatibleSilverImportanceClassifier(
             model=str(getattr(self.config, "claims_silver_importance_model", "") or "deepseek/deepseek-v4-flash"),
             api_key=api_key,
@@ -1539,6 +1575,7 @@ class ClaimsValidator:
             temperature=float(os.getenv("CLAIMS_SILVER_IMPORTANCE_TEMPERATURE", "0")),
             max_tokens=int(os.getenv("CLAIMS_SILVER_IMPORTANCE_MAX_TOKENS", "2048")),
             timeout_seconds=float(os.getenv("CLAIMS_SILVER_IMPORTANCE_TIMEOUT", "120")),
+            usage_sink=usage_collector.record if usage_collector is not None else None,
         )
 
     def _silver_adjudication_config(self) -> SilverAdjudicationConfig:
@@ -1911,6 +1948,12 @@ class ClaimsValidator:
                         article_output_dir = Path(self.config.claims_output_dir) / task.task_id / article_run_id / f"uid_{uid}"
                         report_path = article_output_dir / "agent_v1" / "agent_v1_validation_report.json"
                         report = _read_json_object(report_path) if report_path.exists() else {}
+                        self._record_diagnostic_model_usage(
+                            run_id=run_id,
+                            paper_id=paper_id,
+                            uid=uid,
+                            report=report,
+                        )
                         for severity, count in (report.get("summary") or {}).items():
                             try:
                                 summary_delta[str(severity)] = summary_delta.get(str(severity), 0) + int(count)
@@ -2042,6 +2085,117 @@ class ClaimsValidator:
             }
         )
         return batch_score
+
+    def _record_diagnostic_model_usage(
+        self,
+        *,
+        run_id: str,
+        paper_id: str,
+        uid: int,
+        report: dict[str, Any],
+    ) -> None:
+        if getattr(self, "_active_model_usage", None) is None:
+            return
+        metrics = report.get("metrics") if isinstance(report.get("metrics"), dict) else {}
+        token_usage = metrics.get("token_usage") if isinstance(metrics.get("token_usage"), dict) else {}
+        model = str(getattr(self.config, "claims_rigor_model", "") or "unknown")
+        harness = str(getattr(self.config, "claims_rigor_harness", "") or "unknown")
+        findings = report.get("findings") if isinstance(report.get("findings"), list) else []
+        failed = any(
+            isinstance(finding, dict)
+            and str(finding.get("pass_name") or "") == "rigor"
+            and "runtime failed" in str(finding.get("message") or "").lower()
+            for finding in findings
+        )
+        self._active_model_usage.record(
+            {
+                "paper_id": paper_id,
+                "uid": uid,
+                "stage_key": "diagnostic_validation",
+                "stage_label": "Diagnostic validation",
+                "role": "validator_rigor",
+                "operation_id": f"{run_id}:{paper_id}:uid_{uid}:rigor",
+                "harness": harness,
+                "runtime": str(getattr(self.config, "claims_agent_v1_runtime", "") or harness),
+                "provider": _provider_from_model_or_base(
+                    model,
+                    str(os.getenv("CLAIMS_RIGOR_API_BASE") or os.getenv("OPENROUTER_API_BASE") or ""),
+                ),
+                "model": model,
+                "usage": {
+                    "prompt_tokens": token_usage.get("prompt_tokens"),
+                    "completion_tokens": token_usage.get("completion_tokens"),
+                    "reasoning_tokens": token_usage.get("reasoning_tokens"),
+                    "cache_read_tokens": token_usage.get("cache_read_tokens"),
+                    "cache_write_tokens": token_usage.get("cache_write_tokens"),
+                    "total_tokens": token_usage.get("total_tokens"),
+                    "cost_usd": metrics.get("cost_usd"),
+                    "cost_kind": metrics.get("cost_kind") or ("estimated" if metrics.get("cost_usd") is not None else "unavailable"),
+                    "source": metrics.get("usage_source") or "unavailable",
+                },
+                "status": "failed" if failed else "success",
+                "error": "Rigor model runtime failed." if failed else None,
+                "duration_seconds": metrics.get("rigor_agent_elapsed_seconds") or metrics.get("elapsed_seconds"),
+                "metadata": {"finding_count": len(findings)},
+            }
+        )
+
+    def _record_reference_miner_usage(self, *, bronze: Any, run_id: str, paper_id: str) -> None:
+        if getattr(self, "_active_model_usage", None) is None:
+            return
+        metadata = bronze.metadata if isinstance(getattr(bronze, "metadata", None), dict) else {}
+        if str(metadata.get("generated_for_run_id") or "") != run_id:
+            return
+        metrics = metadata.get("runtime_metrics") if isinstance(metadata.get("runtime_metrics"), dict) else {}
+        token_usage = metrics.get("token_usage") if isinstance(metrics.get("token_usage"), dict) else {}
+        model = str(metadata.get("model") or getattr(bronze, "model_runtime_id", "") or "unknown")
+        harness = str(metadata.get("harness") or "unknown")
+        self._active_model_usage.record(
+            {
+                "paper_id": paper_id,
+                "stage_key": "reference_miner",
+                "stage_label": "Reference miner / Bronze",
+                "role": "reference_miner",
+                "operation_id": str(getattr(bronze, "bronze_record_id", "") or paper_id),
+                "harness": harness,
+                "runtime": str(metadata.get("runtime") or harness),
+                "provider": _provider_from_model_or_base(model, ""),
+                "model": model,
+                "usage": {
+                    "prompt_tokens": token_usage.get("prompt_tokens"),
+                    "completion_tokens": token_usage.get("completion_tokens"),
+                    "reasoning_tokens": token_usage.get("reasoning_tokens"),
+                    "cache_read_tokens": token_usage.get("cache_read_tokens"),
+                    "cache_write_tokens": token_usage.get("cache_write_tokens"),
+                    "total_tokens": token_usage.get("total_tokens"),
+                    "cost_usd": metrics.get("cost_usd"),
+                    "cost_kind": metrics.get("cost_kind") or ("estimated" if metrics.get("cost_usd") is not None else "unavailable"),
+                    "source": metrics.get("usage_source") or "unavailable",
+                },
+                "status": "success",
+                "duration_seconds": metrics.get("elapsed_seconds"),
+                "metadata": {"reference_release_id": getattr(bronze, "reference_release_id", "")},
+            }
+        )
+
+    def _flush_model_usage_events(self) -> None:
+        collector = getattr(self, "_active_model_usage", None)
+        if collector is None:
+            return
+        events = collector.snapshot()
+        if not events:
+            self._active_model_usage = None
+            return
+        backup_path = Path(self.config.claims_output_dir) / "model_usage" / f"{collector.run_id}.json"
+        _write_json(backup_path, {"events": events})
+        if self.backend_client is None:
+            return
+        try:
+            self.backend_client.post_model_usage_events(events)
+        except Exception as exc:
+            self.bt_logging.warning(f"Could not post validator model usage events: {exc}")
+            return
+        self._active_model_usage = None
 
     def _score_v0_extraction(self, extraction: dict[str, Any], *, output_dir: Path, task: ClaimsTask) -> float:
         extraction_path = output_dir / "section_context_v1_output.json"
@@ -3110,8 +3264,13 @@ def _runtime_metrics_summary(metrics: dict[str, Any]) -> dict[str, Any]:
             "attempt_count": _optional_float(metrics.get("attempt_count")),
             "prompt_tokens": _optional_float(token_usage.get("prompt_tokens")),
             "completion_tokens": _optional_float(token_usage.get("completion_tokens")),
+            "reasoning_tokens": _optional_float(token_usage.get("reasoning_tokens")),
+            "cache_read_tokens": _optional_float(token_usage.get("cache_read_tokens")),
+            "cache_write_tokens": _optional_float(token_usage.get("cache_write_tokens")),
             "total_tokens": _optional_float(token_usage.get("total_tokens")),
             "cost_usd": _optional_float(metrics.get("cost_usd")),
+            "cost_kind": str(metrics.get("cost_kind") or ""),
+            "usage_source": str(metrics.get("usage_source") or ""),
         }
     )
 

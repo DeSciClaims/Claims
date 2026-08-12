@@ -3,11 +3,16 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import Any
 
+from miner.agent_v1.runtime.usage import empty_usage, usage_from_dspy_lm
+
 from .comparison_models import CandidatePairEdge, ComparisonCandidate, RelationType
+from .model_usage import UsageSink, provider_from_model_or_base
 
 
 ALLOWED_RELATIONS: set[str] = {
@@ -65,6 +70,9 @@ class DSPyRelationClassifier:
         program: Any | None = None,
         fallback_to_heuristic: bool = True,
         request_gate: Any | None = None,
+        usage_sink: UsageSink | None = None,
+        stage_key: str = "silver_comparison",
+        stage_label: str = "Comparison graph",
     ) -> None:
         self.model = model or os.getenv("CLAIMS_SILVER_RELATION_MODEL") or os.getenv("OPENROUTER_MODEL", "openrouter/openai/gpt-4o-mini")
         self.api_key = api_key if api_key is not None else os.getenv("OPENROUTER_API_KEY", "")
@@ -74,9 +82,13 @@ class DSPyRelationClassifier:
         self.timeout_seconds = float(os.getenv("CLAIMS_SILVER_RELATION_TIMEOUT", "120"))
         self._dspy_module = dspy_module
         self._program = program
+        self._base_program = None
         self._program_lock = threading.Lock()
         self.fallback_to_heuristic = fallback_to_heuristic
         self.request_gate = request_gate
+        self.usage_sink = usage_sink
+        self.stage_key = stage_key
+        self.stage_label = stage_label
 
     @classmethod
     def from_env(cls) -> "DSPyRelationClassifier":
@@ -103,19 +115,71 @@ class DSPyRelationClassifier:
             return edge
 
     def _classify_with_dspy(self, left: ComparisonCandidate, right: ComparisonCandidate) -> dict[str, Any]:
-        program = self._program or self._build_program()
-        with _request_slot(self.request_gate):
-            prediction = program(
-                task_instructions=_relation_classifier_instructions(),
-                left_candidate_json=json.dumps(_candidate_payload(left), ensure_ascii=False, indent=2),
-                right_candidate_json=json.dumps(_candidate_payload(right), ensure_ascii=False, indent=2),
-                allowed_relations_json=json.dumps(sorted(ALLOWED_RELATIONS), ensure_ascii=False),
-            )
-        raw = str(getattr(prediction, "relation_json", prediction if isinstance(prediction, str) else ""))
-        return _parse_json_object(raw)
+        kwargs = {
+            "task_instructions": _relation_classifier_instructions(),
+            "left_candidate_json": json.dumps(_candidate_payload(left), ensure_ascii=False, indent=2),
+            "right_candidate_json": json.dumps(_candidate_payload(right), ensure_ascii=False, indent=2),
+            "allowed_relations_json": json.dumps(sorted(ALLOWED_RELATIONS), ensure_ascii=False),
+        }
+        started_at = datetime.now(timezone.utc)
+        started = time.perf_counter()
+        usage = empty_usage("dspy_program_unavailable")
+        status = "success"
+        error = None
+        lm = None
+        try:
+            with _request_slot(self.request_gate):
+                if self._program is not None:
+                    prediction = self._program(**kwargs)
+                else:
+                    program = self._build_program()
+                    lm = self._new_lm()
+                    if hasattr(self._dspy_module, "context"):
+                        with self._dspy_module.context(lm=lm):
+                            prediction = program(**kwargs)
+                    else:  # pragma: no cover - retained for older DSPy versions
+                        self._dspy_module.configure(lm=lm)
+                        prediction = program(**kwargs)
+            raw = str(getattr(prediction, "relation_json", prediction if isinstance(prediction, str) else ""))
+            return _parse_json_object(raw)
+        except Exception as exc:
+            status = "failed"
+            error = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            if lm is not None:
+                usage = usage_from_dspy_lm(lm)
+            if self.usage_sink is not None:
+                paper_id = left.paper_id or right.paper_id
+                edge_id = f"{left.candidate_id}::{right.candidate_id}"
+                self.usage_sink(
+                    {
+                        "paper_id": paper_id,
+                        "stage_key": self.stage_key,
+                        "stage_label": self.stage_label,
+                        "role": "relation_classifier",
+                        "operation_id": edge_id,
+                        "harness": "dspy",
+                        "runtime": "dspy-predict",
+                        "provider": provider_from_model_or_base(self.model, self.api_base),
+                        "model": self.model,
+                        "usage": usage,
+                        "status": status,
+                        "error": error,
+                        "started_at": started_at,
+                        "ended_at": datetime.now(timezone.utc),
+                        "duration_seconds": time.perf_counter() - started,
+                        "metadata": {
+                            "left_candidate_id": left.candidate_id,
+                            "right_candidate_id": right.candidate_id,
+                        },
+                    }
+                )
 
     def _build_program(self):
         with self._program_lock:
+            if self._base_program is not None:
+                return self._base_program
             if self._program is not None:
                 return self._program
             dspy_module = self._dspy_module
@@ -129,16 +193,6 @@ class DSPyRelationClassifier:
             if not self.api_key:
                 raise RuntimeError("OPENROUTER_API_KEY is required for DSPy relation classification.")
 
-            lm = dspy_module.LM(
-                model=self.model,
-                api_key=self.api_key,
-                api_base=self.api_base,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-                timeout=self.timeout_seconds,
-                num_retries=_env_int("CLAIMS_SILVER_RELATION_RETRIES", 1),
-            )
-
             class RelationSignature(dspy_module.Signature):
                 """Classify the relation between two extracted scientific claim candidates. Return strict JSON only."""
 
@@ -148,19 +202,19 @@ class DSPyRelationClassifier:
                 allowed_relations_json: str = dspy_module.InputField()
                 relation_json: str = dspy_module.OutputField(desc="Strict JSON object with relation, confidence, and rationale.")
 
-            program = dspy_module.Predict(RelationSignature)
-            if hasattr(dspy_module, "context"):
-                base_program = program
+            self._base_program = dspy_module.Predict(RelationSignature)
+            return self._base_program
 
-                def run_in_context(**kwargs):
-                    with dspy_module.context(lm=lm):
-                        return base_program(**kwargs)
-
-                self._program = run_in_context
-            else:
-                dspy_module.configure(lm=lm)
-                self._program = program
-            return self._program
+    def _new_lm(self):
+        return self._dspy_module.LM(
+            model=self.model,
+            api_key=self.api_key,
+            api_base=self.api_base,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            timeout=self.timeout_seconds,
+            num_retries=_env_int("CLAIMS_SILVER_RELATION_RETRIES", 1),
+        )
 
 
 def _similarity(left: str, right: str) -> float:
