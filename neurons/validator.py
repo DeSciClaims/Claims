@@ -1559,7 +1559,7 @@ class ClaimsValidator:
             cli_provider=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "openrouter"),
             cli_max_turns=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_MAX_TURNS", "10")),
             temperature=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_TEMPERATURE", "0")),
-            max_tokens=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "2048")),
+            max_tokens=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "8192")),
             timeout_seconds=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_TIMEOUT", "120")),
             retries=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_RETRIES", "1")),
             max_in_flight=int(getattr(self.config, "claims_silver_adjudication_max_in_flight", None) or 32),

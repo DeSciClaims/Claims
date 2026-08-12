@@ -75,7 +75,7 @@ class OpenAICompatibleAdjudicationPass:
     api_key: str
     api_base: str = "https://api.openai.com/v1"
     temperature: float = 0.0
-    max_tokens: int = 2048
+    max_tokens: int = 8192
     timeout_seconds: float = 90.0
     completion_fn: Callable[[list[dict[str, str]]], str] | None = field(default=None, compare=False, repr=False)
     request_gate: Any | None = field(default=None, compare=False, repr=False)
@@ -233,7 +233,7 @@ class DSPyAdjudicationPass:
     api_key: str
     api_base: str = "https://openrouter.ai/api/v1"
     temperature: float = 0.0
-    max_tokens: int = 2048
+    max_tokens: int = 8192
     timeout_seconds: float = 120.0
     num_retries: int = 1
     request_gate: Any | None = field(default=None, compare=False, repr=False)
