@@ -38,8 +38,13 @@ def compare_miner_to_bronze_result(
     bronze_candidates: list[ComparisonCandidate],
     miner_candidates: list[ComparisonCandidate],
     relation_classifier: RelationClassifier | None = None,
+    candidate_graph_edges: list[CandidatePairEdge] | None = None,
 ) -> BronzeComparisonResult:
-    edges = build_candidate_pairs(bronze_candidates, miner_candidates, relation_classifier=relation_classifier)
+    edges = (
+        candidate_graph_edges
+        if candidate_graph_edges is not None
+        else build_candidate_pairs(bronze_candidates, miner_candidates, relation_classifier=relation_classifier)
+    )
     paired_bronze_ids: set[str] = set()
     paired_miner_ids: set[str] = set()
     for edge in edges:

@@ -69,6 +69,9 @@ class StaticAdjudicationPass:
             insufficient_information=disposition == "insufficient_information",
         )
 
+    def run_many(self, contexts: list[AdjudicationContextBundle]) -> list[AdjudicationVote]:
+        return [self.run(context) for context in contexts]
+
 
 @dataclass(frozen=True)
 class OpenAICompatibleAdjudicationPass:
@@ -120,6 +123,49 @@ class OpenAICompatibleAdjudicationPass:
             _emit_adjudication_usage(
                 self.usage_sink,
                 context=context,
+                pass_id=self.pass_id,
+                harness="openai-compatible",
+                runtime=self.model_runtime_id,
+                provider=provider_from_model_or_base(self.model, self.api_base),
+                model=self.model,
+                usage=usage,
+                status=status,
+                error=error,
+                started_at=started_at,
+                duration_seconds=time.perf_counter() - started,
+            )
+
+    def run_many(self, contexts: list[AdjudicationContextBundle]) -> list[AdjudicationVote]:
+        if len(contexts) <= 1:
+            return [self.run(context) for context in contexts]
+        messages = _adjudication_batch_messages(contexts)
+        started_at = datetime.now(timezone.utc)
+        started = time.perf_counter()
+        usage = empty_usage("completion_fn_unavailable")
+        status = "success"
+        error = None
+        try:
+            with _request_slot(self.request_gate):
+                if self.completion_fn is not None:
+                    content = self.completion_fn(messages)
+                else:
+                    content, usage = self._complete(messages)
+            payload = _parse_batch_json_object(content)
+            return _votes_from_batch_payload(
+                contexts,
+                payload,
+                pass_id=self.pass_id,
+                adjudication_profile_id=self.adjudication_profile_id,
+                model_runtime_id=self.model_runtime_id,
+            )
+        except Exception as exc:
+            status = "failed"
+            error = f"{type(exc).__name__}: {exc}"
+            return [_failed_adjudication_vote(context, self, error) for context in contexts]
+        finally:
+            _emit_adjudication_batch_usage(
+                self.usage_sink,
+                contexts=contexts,
                 pass_id=self.pass_id,
                 harness="openai-compatible",
                 runtime=self.model_runtime_id,
@@ -283,6 +329,85 @@ class CLIAdjudicationPass:
                 duration_seconds=time.perf_counter() - started,
             )
 
+    def run_many(self, contexts: list[AdjudicationContextBundle]) -> list[AdjudicationVote]:
+        if len(contexts) <= 1:
+            return [self.run(context) for context in contexts]
+        prompt = ""
+        command: list[str] = []
+        completed: subprocess.CompletedProcess[str] | None = None
+        started_at = datetime.now(timezone.utc)
+        started = time.perf_counter()
+        usage = empty_usage("cli_not_started")
+        status = "success"
+        error = None
+        try:
+            prompt = _adjudication_batch_cli_prompt(contexts)
+            command = shlex.split(self.command) if isinstance(self.command, str) else list(self.command)
+            if not command:
+                raise ValueError("CLI adjudication command is empty")
+            stdin = None
+            if self.prompt_mode == "stdin":
+                stdin = prompt
+            else:
+                command.append(prompt)
+            with _request_slot(self.request_gate):
+                completed = subprocess.run(
+                    command,
+                    input=stdin,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout_seconds or None,
+                    check=False,
+                )
+            if completed.returncode != 0:
+                raise RuntimeError(f"CLI exited {completed.returncode}: {completed.stderr[-1000:]}")
+            usage = usage_from_cli_process(command, completed.stdout, completed.stderr)
+            payload = _parse_batch_json_object(completed.stdout)
+            _write_cli_batch_debug_artifact(
+                contexts=contexts,
+                pass_id=self.pass_id,
+                command=command,
+                prompt=prompt,
+                completed=completed,
+            )
+            return _votes_from_batch_payload(
+                contexts,
+                payload,
+                pass_id=self.pass_id,
+                adjudication_profile_id=self.adjudication_profile_id,
+                model_runtime_id=self.model_runtime_id,
+            )
+        except Exception as exc:
+            status = "failed"
+            error = f"{type(exc).__name__}: {exc}"
+            if completed is not None:
+                usage = usage_from_cli_process(command, completed.stdout, completed.stderr)
+            _write_cli_batch_debug_artifact(
+                contexts=contexts,
+                pass_id=self.pass_id,
+                command=command,
+                prompt=prompt,
+                completed=completed,
+                error=error,
+            )
+            return [_failed_adjudication_vote(context, self, error) for context in contexts]
+        finally:
+            model = self.model or _model_from_profile_id(self.adjudication_profile_id)
+            _emit_adjudication_batch_usage(
+                self.usage_sink,
+                contexts=contexts,
+                pass_id=self.pass_id,
+                harness=self.model_runtime_id,
+                runtime=self.model_runtime_id,
+                provider=self.provider or provider_from_model_or_base(model),
+                model=model,
+                usage=usage,
+                status=status,
+                error=error,
+                started_at=started_at,
+                duration_seconds=time.perf_counter() - started,
+            )
+
 
 @dataclass
 class DSPyAdjudicationPass:
@@ -299,8 +424,10 @@ class DSPyAdjudicationPass:
     request_gate: Any | None = field(default=None, compare=False, repr=False)
     dspy_module: Any | None = field(default=None, compare=False, repr=False)
     program: Any | None = field(default=None, compare=False, repr=False)
+    batch_program: Any | None = field(default=None, compare=False, repr=False)
     usage_sink: UsageSink | None = field(default=None, compare=False, repr=False)
     _base_program: Any | None = field(default=None, init=False, compare=False, repr=False)
+    _base_batch_program: Any | None = field(default=None, init=False, compare=False, repr=False)
     _program_lock: threading.Lock = field(default_factory=threading.Lock, init=False, compare=False, repr=False)
 
     def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
@@ -327,6 +454,78 @@ class DSPyAdjudicationPass:
                 confidence=0.0,
                 rationale=f"DSPy adjudication pass failed: {type(exc).__name__}: {exc}",
                 insufficient_information=True,
+            )
+
+    def run_many(self, contexts: list[AdjudicationContextBundle]) -> list[AdjudicationVote]:
+        if len(contexts) <= 1:
+            return [self.run(context) for context in contexts]
+        try:
+            with _request_slot(self.request_gate):
+                payload = self._complete_batch(contexts)
+            return _votes_from_batch_payload(
+                contexts,
+                payload,
+                pass_id=self.pass_id,
+                adjudication_profile_id=self.adjudication_profile_id,
+                model_runtime_id=self.model_runtime_id,
+            )
+        except Exception as exc:
+            error = f"{type(exc).__name__}: {exc}"
+            return [_failed_adjudication_vote(context, self, error) for context in contexts]
+
+    def _complete_batch(self, contexts: list[AdjudicationContextBundle]) -> dict[str, Any]:
+        kwargs = {
+            "task_instructions": _adjudication_batch_system_instructions(),
+            "cases_json": json.dumps(_adjudication_batch_payload(contexts)["cases"], ensure_ascii=False),
+            "allowed_dispositions_json": json.dumps(sorted(PROMPT_DISPOSITIONS), ensure_ascii=False),
+            "required_json_schema": json.dumps(_adjudication_batch_schema(), ensure_ascii=False),
+        }
+        started_at = datetime.now(timezone.utc)
+        started = time.perf_counter()
+        usage = empty_usage("dspy_program_unavailable")
+        status = "success"
+        error = None
+        lm = None
+        try:
+            if self.batch_program is not None:
+                prediction = self.batch_program(**kwargs)
+            else:
+                program = self._build_batch_program()
+                lm = self._new_lm(
+                    max_tokens=max(
+                        self.max_tokens,
+                        int(os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_MAX_TOKENS", "16384")),
+                    )
+                )
+                dspy_module = self.dspy_module
+                if hasattr(dspy_module, "context"):
+                    with dspy_module.context(lm=lm):
+                        prediction = program(**kwargs)
+                else:  # pragma: no cover - retained for older DSPy versions
+                    dspy_module.configure(lm=lm)
+                    prediction = program(**kwargs)
+            raw = str(getattr(prediction, "adjudications_json", prediction if isinstance(prediction, str) else ""))
+            return _parse_batch_json_object(raw)
+        except Exception as exc:
+            status = "failed"
+            error = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            if lm is not None:
+                usage = usage_from_dspy_lm(lm)
+            _emit_adjudication_batch_usage(
+                self.usage_sink,
+                contexts=contexts,
+                pass_id=self.pass_id,
+                harness="dspy",
+                runtime=self.model_runtime_id,
+                provider=provider_from_model_or_base(self.model, self.api_base),
+                model=self.model,
+                usage=usage,
+                status=status,
+                error=error,
+                started_at=started_at,
+                duration_seconds=time.perf_counter() - started,
             )
 
     def _complete(self, context: AdjudicationContextBundle) -> dict[str, Any]:
@@ -417,13 +616,44 @@ class DSPyAdjudicationPass:
             self._base_program = dspy_module.Predict(AdjudicationSignature)
             return self._base_program
 
-    def _new_lm(self):
+    def _build_batch_program(self):
+        with self._program_lock:
+            if self._base_batch_program is not None:
+                return self._base_batch_program
+            if self.batch_program is not None:
+                return self.batch_program
+            dspy_module = self.dspy_module
+            if dspy_module is None:
+                try:
+                    import dspy as imported_dspy
+                except ImportError as exc:  # pragma: no cover - depends on local install
+                    raise RuntimeError("dspy is required for DSPy Silver adjudication.") from exc
+                dspy_module = imported_dspy
+                self.dspy_module = dspy_module
+            if not self.api_key:
+                raise RuntimeError("An API key is required for DSPy Silver adjudication.")
+
+            class BatchAdjudicationSignature(dspy_module.Signature):
+                """Resolve a batch of anonymous scientific claim cases. Return strict JSON only."""
+
+                task_instructions: str = dspy_module.InputField()
+                cases_json: str = dspy_module.InputField()
+                allowed_dispositions_json: str = dspy_module.InputField()
+                required_json_schema: str = dspy_module.InputField()
+                adjudications_json: str = dspy_module.OutputField(
+                    desc="Strict JSON object matching required_json_schema."
+                )
+
+            self._base_batch_program = dspy_module.Predict(BatchAdjudicationSignature)
+            return self._base_batch_program
+
+    def _new_lm(self, *, max_tokens: int | None = None):
         return self.dspy_module.LM(
             model=_dspy_model_id(self.model, self.api_base),
             api_key=self.api_key,
             api_base=self.api_base,
             temperature=self.temperature,
-            max_tokens=self.max_tokens,
+            max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
             timeout=self.timeout_seconds,
             num_retries=self.num_retries,
         )
@@ -480,6 +710,66 @@ def _emit_adjudication_usage(
     )
 
 
+def _emit_adjudication_batch_usage(
+    usage_sink: UsageSink | None,
+    *,
+    contexts: list[AdjudicationContextBundle],
+    pass_id: str,
+    harness: str,
+    runtime: str,
+    provider: str,
+    model: str,
+    usage: dict[str, Any],
+    status: str,
+    error: str | None,
+    started_at: datetime,
+    duration_seconds: float,
+) -> None:
+    if usage_sink is None or not contexts:
+        return
+    consolidation = all(_is_consolidation_context(context) for context in contexts)
+    case_ids = [context.case.case_id for context in contexts]
+    tracking_ids = [_case_tracking_id(context) for context in contexts]
+    digest = hashlib.sha256("|".join(case_ids).encode("utf-8")).hexdigest()[:16]
+    usage_sink(
+        {
+            "paper_id": contexts[0].case.paper_id,
+            "stage_key": "silver_consolidation" if consolidation else "silver_adjudication",
+            "stage_label": "Consolidation" if consolidation else "Adjudication",
+            "role": "adjudicator",
+            "operation_id": f"adjudication_batch:{pass_id}:{digest}",
+            "pass_id": pass_id,
+            "harness": harness,
+            "runtime": runtime,
+            "provider": provider,
+            "model": model,
+            "usage": usage,
+            "status": status,
+            "error": error,
+            "started_at": started_at,
+            "ended_at": datetime.now(timezone.utc),
+            "duration_seconds": duration_seconds,
+            "metadata": {
+                "batch": True,
+                "case_count": len(contexts),
+                "case_ids": case_ids,
+                "case_tracking_ids": tracking_ids,
+                "case_types": [context.case.mismatch_type for context in contexts],
+            },
+        }
+    )
+
+
+def _is_consolidation_context(context: AdjudicationContextBundle) -> bool:
+    return bool(
+        isinstance(context.case.metadata, dict)
+        and (
+            context.case.metadata.get("consolidation")
+            or (context.case.metadata.get("comparison_graph") or {}).get("consolidation")
+        )
+    )
+
+
 def _usage_from_openai_response(response_payload: dict[str, Any]) -> dict[str, Any]:
     usage = response_payload.get("usage") if isinstance(response_payload.get("usage"), dict) else {}
     prompt_details = usage.get("prompt_tokens_details") if isinstance(usage.get("prompt_tokens_details"), dict) else {}
@@ -518,6 +808,53 @@ def _adjudication_messages(context: AdjudicationContextBundle) -> list[dict[str,
     ]
 
 
+def _adjudication_batch_messages(contexts: list[AdjudicationContextBundle]) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": _adjudication_batch_system_instructions()},
+        {"role": "user", "content": json.dumps(_adjudication_batch_payload(contexts), sort_keys=True)},
+    ]
+
+
+def _adjudication_batch_payload(contexts: list[AdjudicationContextBundle]) -> dict[str, Any]:
+    cases = []
+    for context in contexts:
+        payload = _adjudication_payload(context)
+        cases.append(
+            {
+                "case_tracking_id": _case_tracking_id(context),
+                "case": payload["case"],
+                "candidates": payload["candidates"],
+                "source_context": payload["source_context"],
+            }
+        )
+    return {
+        "cases": cases,
+        "allowed_dispositions": sorted(PROMPT_DISPOSITIONS),
+        "disposition_meanings": _adjudication_disposition_meanings(),
+        "required_json_schema": _adjudication_batch_schema(),
+    }
+
+
+def _adjudication_batch_schema() -> dict[str, Any]:
+    return {
+        "results": [
+            {
+                "case_tracking_id": "exact input tracking id",
+                "disposition": "one allowed neutral disposition",
+                "material_findings": ["short stable finding codes"],
+                "cited_span_ids": ["source span ids supporting the decision"],
+                "confidence": "number from 0 to 1",
+                "rationale": "brief explanation grounded in cited spans",
+                "insufficient_information": "boolean",
+            }
+        ]
+    }
+
+
+def _case_tracking_id(context: AdjudicationContextBundle) -> str:
+    return hashlib.sha256(context.case.case_id.encode("utf-8")).hexdigest()[:16]
+
+
 def _adjudication_payload(context: AdjudicationContextBundle) -> dict[str, Any]:
     return {
         "case": {
@@ -529,16 +866,7 @@ def _adjudication_payload(context: AdjudicationContextBundle) -> dict[str, Any]:
         "candidates": _anonymous_candidate_payloads(context),
         "source_context": context.source_context[:12000],
         "allowed_dispositions": sorted(PROMPT_DISPOSITIONS),
-        "disposition_meanings": {
-            "include_candidate": "For a single-candidate case, include the candidate in the final Silver record.",
-            "exclude_candidate": "For a single-candidate case, reject the candidate.",
-            "same_unit": "For a multi-candidate case, all candidates describe the same Silver unit.",
-            "separate_valid_units": "For a multi-candidate case, candidates are valid but should remain separate Silver units.",
-            "candidate_a_only": "For a two-candidate case, include candidate_1 and reject candidate_2.",
-            "candidate_b_only": "For a two-candidate case, include candidate_2 and reject candidate_1.",
-            "both_invalid": "Reject all candidates in this case.",
-            "insufficient_information": "The supplied claim, evidence, and source context are insufficient to decide.",
-        },
+        "disposition_meanings": _adjudication_disposition_meanings(),
         "required_json_schema": {
             "disposition": "one allowed neutral disposition",
             "material_findings": ["short stable finding codes"],
@@ -547,6 +875,19 @@ def _adjudication_payload(context: AdjudicationContextBundle) -> dict[str, Any]:
             "rationale": "brief explanation grounded in cited spans",
             "insufficient_information": "boolean",
         },
+    }
+
+
+def _adjudication_disposition_meanings() -> dict[str, str]:
+    return {
+        "include_candidate": "For a single-candidate case, include the candidate in the final Silver record.",
+        "exclude_candidate": "For a single-candidate case, reject the candidate.",
+        "same_unit": "For a multi-candidate case, all candidates describe the same Silver unit.",
+        "separate_valid_units": "For a multi-candidate case, candidates are valid but should remain separate Silver units.",
+        "candidate_a_only": "For a two-candidate case, include candidate_1 and reject candidate_2.",
+        "candidate_b_only": "For a two-candidate case, include candidate_2 and reject candidate_1.",
+        "both_invalid": "Reject all candidates in this case.",
+        "insufficient_information": "The supplied claim, evidence, and source context are insufficient to decide.",
     }
 
 
@@ -559,6 +900,17 @@ def _adjudication_system_instructions() -> str:
         "Use the allowed disposition labels exactly. "
         "Cite source span ids when possible. "
         "Return only a JSON object matching the requested schema."
+    )
+
+
+def _adjudication_batch_system_instructions() -> str:
+    return (
+        "You are an adjudication pass for scientific claim extraction. "
+        "Resolve every provided anonymous candidate case independently. "
+        "Do not infer anything from candidate order or from neighboring cases. "
+        "Use each case's claim statements, linked evidence records, source quotes, and source spans. "
+        "Use the allowed disposition labels exactly. Preserve each case_tracking_id exactly. "
+        "Return exactly one result per input case and only the requested JSON object."
     )
 
 
@@ -586,6 +938,21 @@ def _adjudication_cli_prompt(context: AdjudicationContextBundle) -> str:
                 },
                 sort_keys=True,
             ),
+        ]
+    )
+
+
+def _adjudication_batch_cli_prompt(contexts: list[AdjudicationContextBundle]) -> str:
+    return "\n\n".join(
+        [
+            "# Claims Silver adjudication batch",
+            "Resolve every anonymous case independently.",
+            "Return only one strict JSON object with one result per case. Do not wrap it in markdown.",
+            "Preserve each case_tracking_id exactly.",
+            "If a case cannot be decided from its supplied context, use `insufficient_information` for that case.",
+            "",
+            "## Batch Payload",
+            json.dumps(_adjudication_batch_payload(contexts), sort_keys=True),
         ]
     )
 
@@ -623,6 +990,72 @@ def vote_from_payload(
         confidence=confidence,
         rationale=str(payload.get("rationale") or ""),
         insufficient_information=insufficient_information,
+    )
+
+
+def _votes_from_batch_payload(
+    contexts: list[AdjudicationContextBundle],
+    payload: dict[str, Any],
+    *,
+    pass_id: str,
+    adjudication_profile_id: str,
+    model_runtime_id: str,
+) -> list[AdjudicationVote]:
+    results = payload.get("results") if isinstance(payload.get("results"), list) else []
+    by_tracking_id = {
+        str(result.get("case_tracking_id") or ""): result
+        for result in results
+        if isinstance(result, dict)
+    }
+    votes: list[AdjudicationVote] = []
+    for context in contexts:
+        result = by_tracking_id.get(_case_tracking_id(context))
+        if result is None:
+            votes.append(
+                _failed_adjudication_vote(
+                    context,
+                    None,
+                    "batch response omitted this case",
+                    pass_id=pass_id,
+                    adjudication_profile_id=adjudication_profile_id,
+                    model_runtime_id=model_runtime_id,
+                )
+            )
+            continue
+        votes.append(
+            vote_from_payload(
+                context,
+                result,
+                pass_id=pass_id,
+                adjudication_profile_id=adjudication_profile_id,
+                model_runtime_id=model_runtime_id,
+            )
+        )
+    return votes
+
+
+def _failed_adjudication_vote(
+    context: AdjudicationContextBundle,
+    adjudication_pass: Any | None,
+    error: str,
+    *,
+    pass_id: str | None = None,
+    adjudication_profile_id: str | None = None,
+    model_runtime_id: str | None = None,
+) -> AdjudicationVote:
+    return AdjudicationVote(
+        case_id=context.case.case_id,
+        pass_id=pass_id or str(getattr(adjudication_pass, "pass_id", "unknown")),
+        adjudication_profile_id=adjudication_profile_id
+        or str(getattr(adjudication_pass, "adjudication_profile_id", "unknown")),
+        model_runtime_id=model_runtime_id or str(getattr(adjudication_pass, "model_runtime_id", "unknown")),
+        candidate_order=[candidate.candidate_id for candidate in context.candidates],
+        disposition="insufficient_information",
+        material_findings=["adjudication_batch_failed"],
+        cited_span_ids=[],
+        confidence=0.0,
+        rationale=f"Adjudication batch failed: {error}",
+        insufficient_information=True,
     )
 
 
@@ -747,6 +1180,29 @@ def _parse_json_object(content: str) -> dict[str, Any]:
     raise ValueError("adjudication pass did not return a JSON object")
 
 
+def _parse_batch_json_object(content: str) -> dict[str, Any]:
+    stripped = content.strip()
+    candidates = [stripped]
+    candidates.extend(match.group(1) for match in re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, flags=re.DOTALL))
+    candidates.extend(_json_object_candidates(stripped))
+    last_error: Exception | None = None
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            try:
+                parsed = json.loads(_escape_control_chars_in_json_strings(candidate))
+            except json.JSONDecodeError as repaired_exc:
+                last_error = repaired_exc
+                continue
+        if isinstance(parsed, dict) and isinstance(parsed.get("results"), list):
+            return parsed
+    if last_error is not None:
+        raise last_error
+    raise ValueError("adjudication batch did not return a JSON object with results")
+
+
 @contextmanager
 def _request_slot(request_gate: Any | None):
     if request_gate is None:
@@ -848,6 +1304,40 @@ def _write_cli_debug_artifact(
     path = root / f"{stamp}_{context.case.case_id}_{pass_id}.json"
     payload = {
         "case_id": context.case.case_id,
+        "pass_id": pass_id,
+        "command": command,
+        "prompt_mode": "debug_capture",
+        "prompt_chars": len(prompt),
+        "prompt": prompt if os.getenv("CLAIMS_SILVER_ADJUDICATION_DEBUG_PROMPT", "").strip().lower() in {"1", "true", "yes"} else "",
+        "returncode": completed.returncode if completed is not None else None,
+        "stdout": completed.stdout if completed is not None else "",
+        "stderr": completed.stderr if completed is not None else "",
+        "error": error,
+    }
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _write_cli_batch_debug_artifact(
+    *,
+    contexts: list[AdjudicationContextBundle],
+    pass_id: str,
+    command: list[str],
+    prompt: str,
+    completed: subprocess.CompletedProcess[str] | None,
+    error: str | None = None,
+) -> None:
+    debug_root = os.getenv("CLAIMS_SILVER_ADJUDICATION_DEBUG_DIR", "").strip()
+    if not debug_root or not contexts:
+        return
+    root = Path(debug_root).expanduser()
+    root.mkdir(parents=True, exist_ok=True)
+    case_ids = [context.case.case_id for context in contexts]
+    digest = hashlib.sha256("|".join(case_ids).encode("utf-8")).hexdigest()[:12]
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+    path = root / f"{stamp}_batch_{digest}_{pass_id}.json"
+    payload = {
+        "case_ids": case_ids,
+        "case_count": len(case_ids),
         "pass_id": pass_id,
         "command": command,
         "prompt_mode": "debug_capture",

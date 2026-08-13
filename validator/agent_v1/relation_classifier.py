@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
@@ -68,11 +69,13 @@ class DSPyRelationClassifier:
         max_tokens: int | None = None,
         dspy_module: Any | None = None,
         program: Any | None = None,
+        batch_program: Any | None = None,
         fallback_to_heuristic: bool = True,
         request_gate: Any | None = None,
         usage_sink: UsageSink | None = None,
         stage_key: str = "silver_comparison",
         stage_label: str = "Comparison graph",
+        batch_size: int | None = None,
     ) -> None:
         self.model = model or os.getenv("CLAIMS_SILVER_RELATION_MODEL") or os.getenv("OPENROUTER_MODEL", "openrouter/openai/gpt-4o-mini")
         self.api_key = api_key if api_key is not None else os.getenv("OPENROUTER_API_KEY", "")
@@ -83,12 +86,18 @@ class DSPyRelationClassifier:
         self._dspy_module = dspy_module
         self._program = program
         self._base_program = None
+        self._batch_program = batch_program
+        self._provided_batch_program = batch_program
         self._program_lock = threading.Lock()
         self.fallback_to_heuristic = fallback_to_heuristic
         self.request_gate = request_gate
         self.usage_sink = usage_sink
         self.stage_key = stage_key
         self.stage_label = stage_label
+        self.batch_size = max(
+            1,
+            batch_size if batch_size is not None else _env_int("CLAIMS_SILVER_RELATION_BATCH_SIZE", 16),
+        )
 
     @classmethod
     def from_env(cls) -> "DSPyRelationClassifier":
@@ -113,6 +122,153 @@ class DSPyRelationClassifier:
             edge = classify_candidate_pair_heuristic(left, right)
             edge.rationale = f"{edge.rationale} DSPy classifier fallback: {type(exc).__name__}: {exc}"
             return edge
+
+    def classify_many(
+        self,
+        pairs: list[tuple[ComparisonCandidate, ComparisonCandidate]],
+    ) -> list[CandidatePairEdge]:
+        edges: list[CandidatePairEdge] = []
+        for start in range(0, len(pairs), self.batch_size):
+            batch = pairs[start : start + self.batch_size]
+            if len(batch) == 1:
+                left, right = batch[0]
+                edges.append(self(left, right))
+                continue
+            try:
+                payload = self._classify_batch_with_dspy(batch)
+                results = payload.get("results") if isinstance(payload.get("results"), list) else []
+                results_by_pair = {
+                    (str(item.get("left_candidate_id") or ""), str(item.get("right_candidate_id") or "")): item
+                    for item in results
+                    if isinstance(item, dict)
+                }
+                for left, right in batch:
+                    result = results_by_pair.get((left.candidate_id, right.candidate_id))
+                    if result is None:
+                        edges.append(self._batch_fallback(left, right, "missing batch result"))
+                        continue
+                    edges.append(
+                        CandidatePairEdge(
+                            edge_id=f"{left.candidate_id}::{right.candidate_id}",
+                            left_candidate_id=left.candidate_id,
+                            right_candidate_id=right.candidate_id,
+                            relation=_coerce_relation(result.get("relation")),
+                            confidence=_clamp_float(result.get("confidence"), default=0.0),
+                            rationale=str(result.get("rationale") or ""),
+                        )
+                    )
+            except Exception as exc:
+                if not self.fallback_to_heuristic:
+                    raise
+                reason = f"{type(exc).__name__}: {exc}"
+                edges.extend(self._batch_fallback(left, right, reason) for left, right in batch)
+        return edges
+
+    def _batch_fallback(
+        self,
+        left: ComparisonCandidate,
+        right: ComparisonCandidate,
+        reason: str,
+    ) -> CandidatePairEdge:
+        edge = classify_candidate_pair_heuristic(left, right)
+        edge.rationale = f"{edge.rationale} DSPy batch classifier fallback: {reason}"
+        return edge
+
+    def _classify_batch_with_dspy(
+        self,
+        pairs: list[tuple[ComparisonCandidate, ComparisonCandidate]],
+    ) -> dict[str, Any]:
+        pair_rows = [
+            {
+                "left_candidate_id": left.candidate_id,
+                "right_candidate_id": right.candidate_id,
+                "left_candidate": _candidate_payload(left),
+                "right_candidate": _candidate_payload(right),
+            }
+            for left, right in pairs
+        ]
+        kwargs = {
+            "task_instructions": _relation_batch_instructions(),
+            "candidate_pairs_json": json.dumps(pair_rows, ensure_ascii=False),
+            "allowed_relations_json": json.dumps(sorted(ALLOWED_RELATIONS), ensure_ascii=False),
+            "required_json_schema": json.dumps(
+                {
+                    "results": [
+                        {
+                            "left_candidate_id": "exact input id",
+                            "right_candidate_id": "exact input id",
+                            "relation": "one allowed relation",
+                            "confidence": "number from 0 to 1",
+                            "rationale": "short explanation",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+        }
+        started_at = datetime.now(timezone.utc)
+        started = time.perf_counter()
+        usage = empty_usage("dspy_program_unavailable")
+        status = "success"
+        error = None
+        lm = None
+        try:
+            with _request_slot(self.request_gate):
+                if self._provided_batch_program is not None:
+                    prediction = self._provided_batch_program(**kwargs)
+                else:
+                    program = self._build_batch_program()
+                    lm = self._new_lm(
+                        max_tokens=max(
+                            self.max_tokens,
+                            _env_int("CLAIMS_SILVER_RELATION_BATCH_MAX_TOKENS", 8192),
+                        )
+                    )
+                    if hasattr(self._dspy_module, "context"):
+                        with self._dspy_module.context(lm=lm):
+                            prediction = program(**kwargs)
+                    else:  # pragma: no cover - retained for older DSPy versions
+                        self._dspy_module.configure(lm=lm)
+                        prediction = program(**kwargs)
+            raw = str(getattr(prediction, "relations_json", prediction if isinstance(prediction, str) else ""))
+            return _parse_json_object(raw)
+        except Exception as exc:
+            status = "failed"
+            error = f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            if lm is not None:
+                usage = usage_from_dspy_lm(lm)
+            if self.usage_sink is not None:
+                pair_ids = [f"{left.candidate_id}::{right.candidate_id}" for left, right in pairs]
+                digest = hashlib.sha256("|".join(pair_ids).encode("utf-8")).hexdigest()[:16]
+                self.usage_sink(
+                    {
+                        "paper_id": next(
+                            (left.paper_id or right.paper_id for left, right in pairs if left.paper_id or right.paper_id),
+                            None,
+                        ),
+                        "stage_key": self.stage_key,
+                        "stage_label": self.stage_label,
+                        "role": "relation_classifier",
+                        "operation_id": f"relation_batch:{digest}",
+                        "harness": "dspy",
+                        "runtime": "dspy-predict-batch",
+                        "provider": provider_from_model_or_base(self.model, self.api_base),
+                        "model": self.model,
+                        "usage": usage,
+                        "status": status,
+                        "error": error,
+                        "started_at": started_at,
+                        "ended_at": datetime.now(timezone.utc),
+                        "duration_seconds": time.perf_counter() - started,
+                        "metadata": {
+                            "batch": True,
+                            "pair_count": len(pairs),
+                            "pair_ids": pair_ids,
+                        },
+                    }
+                )
 
     def _classify_with_dspy(self, left: ComparisonCandidate, right: ComparisonCandidate) -> dict[str, Any]:
         kwargs = {
@@ -205,13 +361,40 @@ class DSPyRelationClassifier:
             self._base_program = dspy_module.Predict(RelationSignature)
             return self._base_program
 
-    def _new_lm(self):
+    def _build_batch_program(self):
+        with self._program_lock:
+            if self._batch_program is not None:
+                return self._batch_program
+            dspy_module = self._dspy_module
+            if dspy_module is None:
+                try:
+                    import dspy as imported_dspy
+                except ImportError as exc:  # pragma: no cover - depends on local install
+                    raise RuntimeError("dspy is required for DSPy relation classification.") from exc
+                dspy_module = imported_dspy
+                self._dspy_module = dspy_module
+            if not self.api_key:
+                raise RuntimeError("OPENROUTER_API_KEY is required for DSPy relation classification.")
+
+            class BatchRelationSignature(dspy_module.Signature):
+                """Classify a batch of scientific claim pairs. Return strict JSON only."""
+
+                task_instructions: str = dspy_module.InputField()
+                candidate_pairs_json: str = dspy_module.InputField()
+                allowed_relations_json: str = dspy_module.InputField()
+                required_json_schema: str = dspy_module.InputField()
+                relations_json: str = dspy_module.OutputField(desc="Strict JSON object matching required_json_schema.")
+
+            self._batch_program = dspy_module.Predict(BatchRelationSignature)
+            return self._batch_program
+
+    def _new_lm(self, *, max_tokens: int | None = None):
         return self._dspy_module.LM(
             model=self.model,
             api_key=self.api_key,
             api_base=self.api_base,
             temperature=self.temperature,
-            max_tokens=self.max_tokens,
+            max_tokens=max_tokens if max_tokens is not None else self.max_tokens,
             timeout=self.timeout_seconds,
             num_retries=_env_int("CLAIMS_SILVER_RELATION_RETRIES", 1),
         )
@@ -276,6 +459,14 @@ Prefer partial_overlap over semantic_equivalent when an important field is missi
 Prefer compatible_refinement when the difference is an added valid qualifier or detail.
 Prefer contradiction for material numeric/scope/method disagreement.
 """.strip()
+
+
+def _relation_batch_instructions() -> str:
+    return (
+        _relation_classifier_instructions()
+        + "\n\nClassify every input pair independently. Return exactly one result for every pair, "
+        "preserving both candidate IDs exactly. Return only the required JSON object."
+    )
 
 
 def _coerce_relation(value: Any) -> RelationType:

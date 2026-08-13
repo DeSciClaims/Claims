@@ -235,6 +235,7 @@ python -m neurons.validator \
   --claims.adjudication-model-a openai/gpt-5 \
   --claims.adjudication-model-b anthropic/claude-sonnet-4 \
   --claims.adjudication-tiebreak-model google/gemini-2.5-pro \
+  --claims.silver-adjudication-batch-size 8 \
   --claims.silver-adjudication-max-in-flight 32 \
   --claims.diagnostic-miner-max-workers 2 \
   --claims.diagnostic-max-workers 10 \
@@ -254,6 +255,7 @@ Useful validator flags:
 - `--claims.reference-harness codex-cli --claims.reference-model <MODEL>`: choose the private reference miner harness/model.
 - `--claims.adjudication-harness dspy`: call adjudicator models in-process through DSPy/OpenRouter; CLI harnesses remain available.
 - `--claims.adjudication-model-a/b/tiebreak-model <MODEL>`: choose the Silver adjudicator models.
+- `--claims.silver-adjudication-batch-size 8`: adjudicate several anonymous cases per model call; use `1` to disable batching.
 - `--claims.silver-adjudication-max-in-flight 32`: cap Silver model calls globally across papers and passes; use `0` for unlimited.
 - `--claims.diagnostic-miner-max-workers 2`: run diagnostic validation for multiple miner responses concurrently.
 - `--claims.diagnostic-max-workers 10`: run diagnostic validation for multiple papers concurrently per miner.
@@ -273,6 +275,9 @@ Optional Silver graph-pairing envs:
 - `CLAIMS_SILVER_PAIRING_EMBEDDING_MODEL=nvidia/nemotron-3-embed-1b:free`: embedding model used for Bronze-to-miner and miner-to-Bronze top-k retrieval.
 - `CLAIMS_SILVER_PAIRING_TOP_K=4`: candidate edges retained per retrieval direction.
 - `CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS=64`: small candidate sets at or below this size also run dense pairing.
+- `CLAIMS_SILVER_RELATION_BATCH_SIZE=16`: relation pairs classified per DSPy request in comparison and consolidation; use `1` to disable batching.
+
+Each backend run record stores the effective non-secret validator configuration, Git revision, timing, and process-tree memory telemetry for reproducible capacity comparisons.
 
 For local smoke tests without the backend, pass exactly one of
 `--claims.paper-url`, `--claims.task-artifact`, or `--claims.task-manifest`.

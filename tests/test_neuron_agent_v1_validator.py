@@ -18,6 +18,7 @@ from neurons.validator import (
     _bronze_artifact_from_record,
     _is_agent_v1_artifact,
     _metadata_for_article,
+    _run_config_snapshot,
     _scores_for_unscored_papers,
     _scores_with_missing_miners,
     _stable_hash,
@@ -35,6 +36,43 @@ def test_protocol_can_carry_source_payload() -> None:
     synapse = ClaimExtractionSynapse(source_payload={"spans": [{"span_id": "s1", "text": "Grounded text."}]})
 
     assert synapse.source_payload == {"spans": [{"span_id": "s1", "text": "Grounded text."}]}
+
+
+def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "must-not-be-persisted")
+    monkeypatch.setenv("CLAIMS_SILVER_RELATION_BATCH_SIZE", "12")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_BATCH_MAX_TOKENS", "24000")
+    monkeypatch.setenv("CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS", "48")
+    config = SimpleNamespace(
+        netuid=530,
+        subtensor=SimpleNamespace(network="test"),
+        claims_network="testnet",
+        claims_batch_size=10,
+        claims_silver_enable=True,
+        claims_silver_paper_max_workers=10,
+        claims_silver_adjudication_mode="hermes-cli",
+        claims_silver_adjudication_model_a="deepseek/deepseek-v4-flash",
+        claims_silver_adjudication_model_b="qwen/qwen3.7-flash",
+        claims_silver_adjudication_tiebreak_model="deepseek/deepseek-v4-flash",
+        claims_silver_adjudication_max_workers=9,
+        claims_silver_adjudication_batch_size=8,
+        claims_silver_adjudication_max_in_flight=0,
+        claims_diagnostic_max_workers=10,
+        claims_diagnostic_miner_max_workers=2,
+    )
+
+    snapshot = _run_config_snapshot(config)
+
+    assert snapshot["schema"] == "claims_validator_config_v2"
+    assert snapshot["netuid"] == 530
+    assert snapshot["subtensor_network"] == "test"
+    assert snapshot["claims_silver_adjudication_max_in_flight"] == 0
+    assert snapshot["claims_silver_adjudication_batch_size"] == 8
+    assert snapshot["claims_silver_relation_batch_size"] == 12
+    assert snapshot["claims_silver_adjudication_batch_max_tokens"] == 24000
+    assert snapshot["claims_silver_pairing_max_dense_pairs"] == 48
+    assert "api_key" not in json.dumps(snapshot).lower()
+    assert "must-not-be-persisted" not in json.dumps(snapshot)
 
 
 def test_source_context_map_merges_reader_span_ids() -> None:

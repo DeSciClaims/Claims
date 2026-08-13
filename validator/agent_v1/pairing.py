@@ -58,7 +58,7 @@ def build_candidate_pairs(
         for pair in (excluded_unordered_pairs or set())
     }
     seen_pairs: set[tuple[str, str]] = set()
-    edges: list[CandidatePairEdge] = []
+    eligible_hits: list[PairFilterHit] = []
     for hit in filter_hits:
         left_id = hit.left.candidate_id
         right_id = hit.right.candidate_id
@@ -71,7 +71,51 @@ def build_candidate_pairs(
             if pair_key in seen_pairs:
                 continue
             seen_pairs.add(pair_key)
-        edge = classifier(hit.left, hit.right)
+        eligible_hits.append(hit)
+
+    classify_many = getattr(classifier, "classify_many", None)
+    if callable(classify_many) and len(eligible_hits) > 1:
+        classified_edges = list(classify_many([(hit.left, hit.right) for hit in eligible_hits]))
+    else:
+        classified_edges = [classifier(hit.left, hit.right) for hit in eligible_hits]
+
+    return _finalize_classified_edges(
+        eligible_hits,
+        classified_edges,
+        min_confidence=min_confidence,
+    )
+
+
+def classify_filtered_candidate_pairs(
+    filter_hits: list[PairFilterHit],
+    *,
+    min_confidence: float = 0.55,
+    relation_classifier: RelationClassifier | None = None,
+) -> list[CandidatePairEdge]:
+    classifier = relation_classifier or classify_candidate_pair
+    classify_many = getattr(classifier, "classify_many", None)
+    if callable(classify_many) and len(filter_hits) > 1:
+        classified_edges = list(classify_many([(hit.left, hit.right) for hit in filter_hits]))
+    else:
+        classified_edges = [classifier(hit.left, hit.right) for hit in filter_hits]
+    return _finalize_classified_edges(filter_hits, classified_edges, min_confidence=min_confidence)
+
+
+def _finalize_classified_edges(
+    filter_hits: list[PairFilterHit],
+    classified_edges: list[CandidatePairEdge],
+    *,
+    min_confidence: float,
+) -> list[CandidatePairEdge]:
+    hits_by_pair = {
+        (hit.left.candidate_id, hit.right.candidate_id): hit
+        for hit in filter_hits
+    }
+    edges: list[CandidatePairEdge] = []
+    for edge in classified_edges:
+        hit = hits_by_pair.get((edge.left_candidate_id, edge.right_candidate_id))
+        if hit is None:
+            continue
         edge.filter_sources = sorted(hit.sources)
         edge.metadata = {
             **edge.metadata,

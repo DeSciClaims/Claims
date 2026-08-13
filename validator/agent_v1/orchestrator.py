@@ -8,12 +8,17 @@ from datetime import datetime, timezone
 from typing import Iterable
 
 from .adjudication_models import AdjudicationConsensus, AdjudicationContextBundle, AdjudicationDecision
-from .adjudication_runner import AdjudicationPass, run_adjudication_case
+from .adjudication_runner import AdjudicationPass, run_adjudication_cases
 from .batch_scoring import BatchScoreResult, score_batch
 from .bronze_diff import compare_miner_to_bronze_result
 from .comparison_models import BronzeDiffCase, CandidatePairEdge, ComparisonCandidate, SilverRecord, SilverScoreBreakdown
 from .models import AgentV1ValidationFinding
-from .pairing import RelationClassifier, build_candidate_pairs
+from .pairing import (
+    RelationClassifier,
+    build_candidate_pairs,
+    classify_filtered_candidate_pairs,
+    filter_candidate_pairs,
+)
 from .record_projection import project_agent_artifact
 from .relation_classifier import classify_candidate_pair
 from .silver_builder import build_silver_record
@@ -78,6 +83,7 @@ def run_paper_silver_pipeline(
     source_context: str = "",
     source_context_by_span_id: dict[str, str] | None = None,
     adjudication_max_workers: int = 4,
+    adjudication_batch_size: int = 8,
 ) -> PaperSilverPipelineResult:
     stage_timings: list[dict] = []
 
@@ -105,6 +111,21 @@ def run_paper_silver_pipeline(
     ))
 
     comparison_timer = _stage_start("silver_comparison", "Comparison graph")
+    comparison_hits = {
+        submission.miner_id: filter_candidate_pairs(bronze_candidates, submission.candidates)
+        for submission in miner_submissions
+    }
+    comparison_edges = classify_filtered_candidate_pairs(
+        [hit for hits in comparison_hits.values() for hit in hits],
+        relation_classifier=relation_classifier,
+    )
+    edges_by_miner_id: dict[str, list[CandidatePairEdge]] = {
+        submission.miner_id: [] for submission in miner_submissions
+    }
+    for edge in comparison_edges:
+        right_candidate = candidates_by_id.get(edge.right_candidate_id)
+        if right_candidate is not None and right_candidate.miner_id in edges_by_miner_id:
+            edges_by_miner_id[right_candidate.miner_id].append(edge)
     comparison_results = [
         compare_miner_to_bronze_result(
             paper_id=paper_id,
@@ -112,6 +133,7 @@ def run_paper_silver_pipeline(
             bronze_candidates=bronze_candidates,
             miner_candidates=submission.candidates,
             relation_classifier=relation_classifier,
+            candidate_graph_edges=edges_by_miner_id.get(submission.miner_id, []),
         )
         for submission in miner_submissions
     ]
@@ -129,14 +151,15 @@ def run_paper_silver_pipeline(
         comparison_timer,
         paper_id=paper_id,
         metadata={
+            "filtered_pair_count": sum(len(hits) for hits in comparison_hits.values()),
             "edge_count": len(candidate_graph_edges),
             "case_count": len(diff_cases),
         },
     ))
 
-    def adjudicate(case: BronzeDiffCase) -> tuple[AdjudicationConsensus, AdjudicationDecision | None]:
+    def adjudication_context(case: BronzeDiffCase) -> AdjudicationContextBundle:
         candidates = [candidates_by_id[candidate_id] for candidate_id in case.candidate_ids if candidate_id in candidates_by_id]
-        context = AdjudicationContextBundle(
+        return AdjudicationContextBundle(
             case=case,
             candidates=candidates,
             source_context=_source_context_for_candidates(
@@ -146,22 +169,25 @@ def run_paper_silver_pipeline(
             ),
             candidate_order_seed=case.case_id,
         )
-        consensus = run_adjudication_case(
-            context,
+
+    def adjudicate_cases(cases: list[BronzeDiffCase]) -> list[tuple[AdjudicationConsensus, AdjudicationDecision | None]]:
+        contexts = [adjudication_context(case) for case in cases]
+        consensus_records = run_adjudication_cases(
+            contexts,
             passes=adjudication_passes,
             tiebreak_pass=tiebreak_pass,
             direct_judge_confidence=direct_judge_confidence,
+            batch_size=max(1, int(adjudication_batch_size or 1)),
+            max_workers=max(1, int(adjudication_max_workers or 1)),
         )
-        decision = _decision_from_consensus(case, consensus, context.candidates)
-        return consensus, decision
+        return [
+            (consensus, _decision_from_consensus(context.case, consensus, context.candidates))
+            for context, consensus in zip(contexts, consensus_records, strict=True)
+        ]
 
     adjudication_timer = _stage_start("silver_adjudication", "Adjudication")
     worker_count = max(1, min(int(adjudication_max_workers or 1), len(diff_cases) or 1))
-    if worker_count == 1:
-        adjudicated = [adjudicate(case) for case in diff_cases]
-    else:
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            adjudicated = list(executor.map(adjudicate, diff_cases))
+    adjudicated = adjudicate_cases(diff_cases)
     consensus_records = [consensus for consensus, _decision in adjudicated]
     decisions = [decision for _consensus, decision in adjudicated if decision is not None]
     stage_timings.append(_stage_finish(
@@ -171,6 +197,7 @@ def run_paper_silver_pipeline(
             "case_count": len(diff_cases),
             "decision_count": len(decisions),
             "worker_count": worker_count,
+            "batch_size": max(1, int(adjudication_batch_size or 1)),
         },
     ))
 
@@ -186,11 +213,7 @@ def run_paper_silver_pipeline(
         candidate_graph_edges = _dedupe_candidate_graph_edges([*candidate_graph_edges, *consolidation_edges])
         diff_cases = _dedupe_cases([*diff_cases, *consolidation_cases])
         worker_count = max(1, min(int(adjudication_max_workers or 1), len(consolidation_cases) or 1))
-        if worker_count == 1:
-            adjudicated_consolidation = [adjudicate(case) for case in consolidation_cases]
-        else:
-            with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                adjudicated_consolidation = list(executor.map(adjudicate, consolidation_cases))
+        adjudicated_consolidation = adjudicate_cases(consolidation_cases)
         consensus_records.extend(consensus for consensus, _decision in adjudicated_consolidation)
         decisions.extend(decision for _consensus, decision in adjudicated_consolidation if decision is not None)
     stage_timings.append(_stage_finish(
@@ -199,6 +222,7 @@ def run_paper_silver_pipeline(
         metadata={
             "case_count": len(consolidation_cases),
             "edge_count": len(consolidation_edges),
+            "batch_size": max(1, int(adjudication_batch_size or 1)),
         },
     ))
 

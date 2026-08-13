@@ -6,6 +6,7 @@ import os
 import re
 import shlex
 import statistics
+import subprocess
 import sys
 import time
 import traceback
@@ -50,6 +51,9 @@ from .model_usage_upload import (
 )
 from .protocol import ClaimExtractionSynapse
 from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsPaperTask, ClaimsTask, download_pdf, load_task_manifest, safe_task_id
+
+
+_CODE_STATE_CACHE: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -483,7 +487,14 @@ class ClaimsValidator:
             dest="claims_silver_adjudication_max_workers",
             type=int,
             default=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_WORKERS", "4")),
-            help="Maximum Silver adjudication cases to run concurrently.",
+            help="Maximum Silver adjudication batch requests to run concurrently per paper.",
+        )
+        parser.add_argument(
+            "--claims.silver-adjudication-batch-size",
+            dest="claims_silver_adjudication_batch_size",
+            type=int,
+            default=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE", "8")),
+            help="Anonymous adjudication cases per model request; use 1 to disable batching.",
         )
         parser.add_argument(
             "--claims.silver-paper-max-workers",
@@ -666,6 +677,7 @@ class ClaimsValidator:
         config.claims_silver_adjudication_cli_timeout = parsed_args.claims_silver_adjudication_cli_timeout
         config.claims_silver_adjudication_max_in_flight = parsed_args.claims_silver_adjudication_max_in_flight
         config.claims_silver_adjudication_max_workers = parsed_args.claims_silver_adjudication_max_workers
+        config.claims_silver_adjudication_batch_size = parsed_args.claims_silver_adjudication_batch_size
         config.claims_silver_paper_max_workers = parsed_args.claims_silver_paper_max_workers
         config.claims_silver_direct_confidence = parsed_args.claims_silver_direct_confidence
         config.claims_silver_relation_mode = parsed_args.claims_silver_relation_mode
@@ -1282,6 +1294,7 @@ class ClaimsValidator:
                     source_context=bronze_source_context,
                     source_context_by_span_id=source_context_by_span_id,
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
+                    adjudication_batch_size=int(getattr(self.config, "claims_silver_adjudication_batch_size", 8)),
                     relation_classifier=relation_classifier,
                     consolidation_relation_classifier=consolidation_relation_classifier,
                     importance_classifier=importance_classifier,
@@ -2413,17 +2426,8 @@ class ClaimsValidator:
             "schema": "claims_validator_run_metadata_v1",
             "paper_count": len(task.paper_tasks()),
             "target_uids": [int(neuron.uid) for neuron in self.target_neurons],
-            "config": {
-                "claims_batch_size": int(getattr(self.config, "claims_batch_size", 1)),
-                "claims_timeout": float(getattr(self.config, "claims_timeout", 0.0)),
-                "claims_diagnostic_max_workers": int(getattr(self.config, "claims_diagnostic_max_workers", 1) or 1),
-                "claims_diagnostic_miner_max_workers": int(getattr(self.config, "claims_diagnostic_miner_max_workers", 1) or 1),
-                "claims_silver_paper_max_workers": int(getattr(self.config, "claims_silver_paper_max_workers", 1) or 1),
-                "claims_silver_adjudication_max_workers": int(getattr(self.config, "claims_silver_adjudication_max_workers", 1) or 1),
-                "claims_silver_importance_mode": str(getattr(self.config, "claims_silver_importance_mode", "openrouter") or ""),
-                "claims_silver_importance_model": str(getattr(self.config, "claims_silver_importance_model", "") or ""),
-                "claims_skip_diagnostic_validation": bool(getattr(self.config, "claims_skip_diagnostic_validation", False)),
-            },
+            "runtime": _runtime_snapshot(),
+            "config": _run_config_snapshot(self.config),
             "timing": timing_metadata,
         }
 
@@ -3827,6 +3831,136 @@ def _uid_from_miner_id(miner_id: str) -> int | None:
 def _make_run_id() -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return f"run_{stamp}_{uuid.uuid4().hex[:6]}"
+
+
+def _run_config_snapshot(config: Any) -> dict[str, Any]:
+    """Return effective, replay-relevant validator settings without secrets or local paths."""
+
+    subtensor = getattr(config, "subtensor", None)
+    return {
+        "schema": "claims_validator_config_v2",
+        "netuid": int(getattr(config, "netuid", 0) or 0),
+        "subtensor_network": str(getattr(subtensor, "network", "") or ""),
+        "claims_network": str(getattr(config, "claims_network", "testnet") or "testnet"),
+        "claims_validator_pipeline": str(getattr(config, "claims_validator_pipeline", "auto") or "auto"),
+        "claims_task_type": str(getattr(config, "claims_task_type", "agent_v1_claim_extraction") or ""),
+        "claims_batch_size": int(getattr(config, "claims_batch_size", 1) or 1),
+        "claims_batch_score_rule": str(getattr(config, "claims_batch_score_rule", "mean") or "mean"),
+        "claims_allow_paper_reuse": bool(getattr(config, "claims_allow_paper_reuse", False)),
+        "claims_timeout": float(getattr(config, "claims_timeout", 0.0)),
+        "claims_query_interval": float(getattr(config, "claims_query_interval", 0.0)),
+        "claims_max_steps": int(getattr(config, "claims_max_steps", 0) or 0),
+        "claims_audit_only": bool(getattr(config, "claims_audit_only", False)),
+        "claims_audit_method": str(getattr(config, "claims_audit_method", "deterministic") or ""),
+        "claims_agent_v1_validation_mode": str(getattr(config, "claims_agent_v1_validation_mode", "") or ""),
+        "claims_agent_v1_threshold": float(getattr(config, "claims_agent_v1_threshold", 0.7)),
+        "claims_rigor_harness": str(getattr(config, "claims_rigor_harness", "") or ""),
+        "claims_rigor_model": str(getattr(config, "claims_rigor_model", "") or ""),
+        "claims_agent_v1_runtime": str(getattr(config, "claims_agent_v1_runtime", "") or ""),
+        "claims_agent_v1_skip_rigor": bool(getattr(config, "claims_agent_v1_skip_rigor", False)),
+        "claims_skip_diagnostic_validation": bool(getattr(config, "claims_skip_diagnostic_validation", False)),
+        "claims_diagnostic_max_workers": int(getattr(config, "claims_diagnostic_max_workers", 1) or 1),
+        "claims_diagnostic_miner_max_workers": int(getattr(config, "claims_diagnostic_miner_max_workers", 1) or 1),
+        "claims_silver_enable": bool(getattr(config, "claims_silver_enable", False)),
+        "claims_silver_paper_max_workers": int(getattr(config, "claims_silver_paper_max_workers", 1) or 1),
+        "claims_silver_adjudication_mode": str(getattr(config, "claims_silver_adjudication_mode", "static") or ""),
+        "claims_silver_adjudication_model_a": str(getattr(config, "claims_silver_adjudication_model_a", "") or ""),
+        "claims_silver_adjudication_model_b": str(getattr(config, "claims_silver_adjudication_model_b", "") or ""),
+        "claims_silver_adjudication_tiebreak_model": str(
+            getattr(config, "claims_silver_adjudication_tiebreak_model", "") or ""
+        ),
+        "claims_silver_adjudication_cli_prompt_mode": str(
+            getattr(config, "claims_silver_adjudication_cli_prompt_mode", "append") or "append"
+        ),
+        "claims_silver_adjudication_cli_timeout": float(
+            getattr(config, "claims_silver_adjudication_cli_timeout", 900.0)
+        ),
+        "claims_silver_adjudication_max_workers": int(
+            getattr(config, "claims_silver_adjudication_max_workers", 1) or 1
+        ),
+        "claims_silver_adjudication_batch_size": int(
+            getattr(config, "claims_silver_adjudication_batch_size", 8) or 1
+        ),
+        "claims_silver_adjudication_max_in_flight": int(
+            getattr(config, "claims_silver_adjudication_max_in_flight", 32)
+        ),
+        "claims_silver_adjudication_max_tokens": int(
+            os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "8192") or 8192
+        ),
+        "claims_silver_adjudication_batch_max_tokens": int(
+            os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_MAX_TOKENS", "16384") or 16384
+        ),
+        "claims_silver_direct_confidence": float(getattr(config, "claims_silver_direct_confidence", 0.9)),
+        "claims_silver_relation_mode": str(getattr(config, "claims_silver_relation_mode", "dspy") or ""),
+        "claims_silver_relation_model": str(getattr(config, "claims_silver_relation_model", "") or ""),
+        "claims_silver_relation_batch_size": int(os.getenv("CLAIMS_SILVER_RELATION_BATCH_SIZE", "16") or 16),
+        "claims_silver_relation_batch_max_tokens": int(
+            os.getenv("CLAIMS_SILVER_RELATION_BATCH_MAX_TOKENS", "8192") or 8192
+        ),
+        "claims_silver_relation_timeout": float(os.getenv("CLAIMS_SILVER_RELATION_TIMEOUT", "120") or 120),
+        "claims_silver_pairing_embedding_mode": str(os.getenv("CLAIMS_SILVER_PAIRING_EMBEDDING_MODE", "") or ""),
+        "claims_silver_pairing_embedding_model": str(
+            os.getenv("CLAIMS_SILVER_PAIRING_EMBEDDING_MODEL", "nvidia/nemotron-3-embed-1b:free") or ""
+        ),
+        "claims_silver_pairing_top_k": int(os.getenv("CLAIMS_SILVER_PAIRING_TOP_K", "4") or 4),
+        "claims_silver_pairing_max_dense_pairs": int(
+            os.getenv("CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS", "0") or 0
+        ),
+        "claims_silver_pairing_embedding_threshold": float(
+            os.getenv("CLAIMS_SILVER_PAIRING_EMBEDDING_THRESHOLD", "0.64") or 0.64
+        ),
+        "claims_silver_pairing_high_similarity": float(
+            os.getenv("CLAIMS_SILVER_PAIRING_HIGH_SIMILARITY", "0.88") or 0.88
+        ),
+        "claims_silver_pairing_span_page_proximity": int(
+            os.getenv("CLAIMS_SILVER_PAIRING_SPAN_PAGE_PROXIMITY", "1") or 1
+        ),
+        "claims_silver_importance_mode": str(getattr(config, "claims_silver_importance_mode", "openrouter") or ""),
+        "claims_silver_importance_model": str(getattr(config, "claims_silver_importance_model", "") or ""),
+        "claims_reference_release_id": str(getattr(config, "claims_reference_release_id", "reference-v0") or ""),
+        "claims_reference_harness": str(getattr(config, "claims_reference_harness", "") or ""),
+        "claims_reference_model": str(getattr(config, "claims_reference_model", "") or ""),
+        "claims_reference_pdf_reader": str(getattr(config, "claims_reference_pdf_reader", "") or ""),
+        "claims_reference_profile_id": str(os.getenv("CLAIMS_REFERENCE_PROFILE_ID", "") or ""),
+        "claims_memory_sample_interval": float(os.getenv("CLAIMS_MEMORY_SAMPLE_INTERVAL", "1.0") or 1.0),
+    }
+
+
+def _runtime_snapshot() -> dict[str, Any]:
+    global _CODE_STATE_CACHE
+    if _CODE_STATE_CACHE is None:
+        repo_root = Path(__file__).resolve().parents[1]
+        revision = ""
+        dirty: bool | None = None
+        try:
+            revision_result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+            if revision_result.returncode == 0:
+                revision = revision_result.stdout.strip()
+            dirty_result = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=no"],
+                cwd=repo_root,
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=False,
+            )
+            if dirty_result.returncode == 0:
+                dirty = bool(dirty_result.stdout.strip())
+        except (OSError, subprocess.SubprocessError):
+            pass
+        _CODE_STATE_CACHE = {
+            "python_version": sys.version.split()[0],
+            "git_revision": revision,
+            "git_dirty": dirty,
+        }
+    return dict(_CODE_STATE_CACHE)
 
 
 def _apply_bittensor_args(config: Any, parsed_args: argparse.Namespace) -> None:

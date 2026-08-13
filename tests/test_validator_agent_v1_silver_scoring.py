@@ -20,7 +20,7 @@ from validator.agent_v1.adjudication_passes import (
     _adjudication_messages,
     _parse_json_object,
 )
-from validator.agent_v1.adjudication_runner import run_adjudication_case
+from validator.agent_v1.adjudication_runner import run_adjudication_case, run_adjudication_cases
 from validator.agent_v1.adjudication_queue import (
     QueuedAdjudicationWorker,
     adjudication_job_payload,
@@ -39,7 +39,7 @@ from validator.agent_v1.orchestrator import (
     run_batch_silver_scoring,
     run_paper_silver_pipeline,
 )
-from validator.agent_v1.pairing import filter_candidate_pairs
+from validator.agent_v1.pairing import build_candidate_pairs, filter_candidate_pairs
 from validator.agent_v1.relation_classifier import DSPyRelationClassifier
 from validator.agent_v1.silver_builder import build_silver_record
 from validator.agent_v1.silver_importance import OpenAICompatibleSilverImportanceClassifier, apply_silver_importance
@@ -535,6 +535,63 @@ def test_silver_adjudication_factory_builds_cli_passes() -> None:
     assert tiebreak.command == ["fake-hermes", "chat", "-m", "google/gemini-2.5-pro", "-q"]
 
 
+def test_cli_adjudication_pass_runs_one_process_for_case_batch(monkeypatch) -> None:
+    process_calls: list[list[str]] = []
+
+    def context(index: int) -> AdjudicationContextBundle:
+        candidate_id = f"miner:uid_9:C{index:02d}"
+        return AdjudicationContextBundle(
+            case=BronzeDiffCase(
+                case_id=f"case_cli_batch_{index}",
+                paper_id="paper",
+                miner_id="uid_9",
+                mismatch_type="EXTRA_FROM_MINER",
+                candidate_ids=[candidate_id],
+                question="Should this candidate be included?",
+            ),
+            candidates=[_candidate(candidate_id, "miner", "uid_9", f"Supported claim {index}.")],
+        )
+
+    def fake_run(command, **_kwargs):
+        process_calls.append(command)
+        prompt = command[-1]
+        payload = json.loads(prompt.split("## Batch Payload\n", 1)[1])
+        stdout = json.dumps(
+            {
+                "results": [
+                    {
+                        "case_tracking_id": case["case_tracking_id"],
+                        "disposition": "include_candidate",
+                        "material_findings": ["supported"],
+                        "cited_span_ids": [],
+                        "confidence": 0.95,
+                        "rationale": "Supported by the supplied context.",
+                        "insufficient_information": False,
+                    }
+                    for case in payload["cases"]
+                ]
+            }
+        )
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr("validator.agent_v1.adjudication_passes.subprocess.run", fake_run)
+    adjudication_pass = CLIAdjudicationPass(
+        pass_id="pass_a",
+        adjudication_profile_id="hermes-cli:test-model",
+        model_runtime_id="hermes-cli",
+        command=["hermes", "chat", "-q"],
+    )
+
+    votes = adjudication_pass.run_many([context(1), context(2), context(3)])
+
+    assert len(process_calls) == 1
+    assert [vote.disposition for vote in votes] == [
+        "accepted_improvement",
+        "accepted_improvement",
+        "accepted_improvement",
+    ]
+
+
 def test_dspy_adjudication_pass_uses_anonymous_structured_payload() -> None:
     case = BronzeDiffCase(
         case_id="case_dspy",
@@ -594,6 +651,66 @@ def test_dspy_adjudication_pass_uses_anonymous_structured_payload() -> None:
     assert usage_events[0]["case_id"] == "case_dspy"
     assert usage_events[0]["harness"] == "dspy"
     assert usage_events[0]["status"] == "success"
+
+
+def test_dspy_adjudication_pass_batches_anonymous_cases() -> None:
+    batch_calls: list[list[dict]] = []
+    usage_events: list[dict] = []
+
+    def context(index: int) -> AdjudicationContextBundle:
+        candidate_id = f"miner:uid_9:C{index:02d}"
+        return AdjudicationContextBundle(
+            case=BronzeDiffCase(
+                case_id=f"case_batch_{index}",
+                paper_id="paper",
+                miner_id="uid_9",
+                mismatch_type="EXTRA_FROM_MINER",
+                candidate_ids=[candidate_id],
+                question="Should this candidate be included?",
+            ),
+            candidates=[_candidate(candidate_id, "miner", "uid_9", f"Supported claim {index}.")],
+        )
+
+    def batch_program(**kwargs):
+        cases = json.loads(kwargs["cases_json"])
+        batch_calls.append(cases)
+        return SimpleNamespace(
+            adjudications_json=json.dumps(
+                {
+                    "results": [
+                        {
+                            "case_tracking_id": case["case_tracking_id"],
+                            "disposition": "include_candidate",
+                            "material_findings": ["supported"],
+                            "cited_span_ids": [],
+                            "confidence": 0.95,
+                            "rationale": "The anonymous candidate is supported.",
+                            "insufficient_information": False,
+                        }
+                        for case in cases
+                    ]
+                }
+            )
+        )
+
+    adjudication_pass = DSPyAdjudicationPass(
+        pass_id="pass_a",
+        adjudication_profile_id="dspy:openai/gpt-4o-mini",
+        model_runtime_id="dspy-predict",
+        model="openai/gpt-4o-mini",
+        api_key="test",
+        batch_program=batch_program,
+        usage_sink=usage_events.append,
+    )
+
+    votes = adjudication_pass.run_many([context(1), context(2)])
+
+    assert len(batch_calls) == 1
+    assert len(batch_calls[0]) == 2
+    assert [vote.disposition for vote in votes] == ["accepted_improvement", "accepted_improvement"]
+    assert len(usage_events) == 1
+    assert usage_events[0]["metadata"]["case_count"] == 2
+    assert "case_id" not in usage_events[0]
 
 
 def test_silver_adjudication_factory_builds_dspy_passes_with_shared_limit(monkeypatch) -> None:
@@ -711,6 +828,54 @@ def test_adjudication_passes_run_in_parallel() -> None:
 
     assert consensus.route == "direct"
     assert elapsed < 0.35
+
+
+def test_adjudication_runner_batches_cases_for_each_pass() -> None:
+    batch_calls: list[tuple[str, int]] = []
+
+    class BatchPass:
+        adjudication_profile_id = "batch"
+        model_runtime_id = "batch"
+
+        def __init__(self, pass_id: str) -> None:
+            self.pass_id = pass_id
+
+        def run(self, _context: AdjudicationContextBundle) -> AdjudicationVote:
+            raise AssertionError("batched cases must not use the single-case path")
+
+        def run_many(self, contexts: list[AdjudicationContextBundle]) -> list[AdjudicationVote]:
+            batch_calls.append((self.pass_id, len(contexts)))
+            return [
+                _vote(self.pass_id, "accepted_improvement", 0.95, ["valid"]).model_copy(
+                    update={"case_id": context.case.case_id}
+                )
+                for context in contexts
+            ]
+
+    contexts = [
+        AdjudicationContextBundle(
+            case=BronzeDiffCase(
+                case_id=f"case_{index}",
+                paper_id="paper",
+                miner_id="uid_9",
+                mismatch_type="EXTRA_FROM_MINER",
+                candidate_ids=[f"miner:uid_9:C{index:02d}"],
+                question="Should this candidate be included?",
+            ),
+            candidates=[_candidate(f"miner:uid_9:C{index:02d}", "miner", "uid_9", f"Claim {index}.")],
+        )
+        for index in range(10)
+    ]
+
+    consensuses = run_adjudication_cases(
+        contexts,
+        passes=[BatchPass("pass_a"), BatchPass("pass_b")],
+        batch_size=4,
+        max_workers=6,
+    )
+
+    assert sorted(size for _pass_id, size in batch_calls) == [2, 2, 4, 4, 4, 4]
+    assert all(consensus.route == "direct" for consensus in consensuses)
 
 
 def test_queued_adjudication_worker_posts_consensus_and_completes_job() -> None:
@@ -858,6 +1023,63 @@ def test_silver_pipeline_scores_semantic_equivalent_miner_claim() -> None:
     assert result.silver_record.silver_units[0].equivalent_candidate_ids == ["bronze:C01", "miner:miner_A:C01"]
     assert result.scores[0].coverage == 1.0
     assert result.scores[0].score == 1.0
+
+
+def test_silver_pipeline_batches_comparison_pairs_across_miners() -> None:
+    batch_calls: list[list[tuple[str, str]]] = []
+
+    class BatchClassifier:
+        def edge(self, left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
+            return CandidatePairEdge(
+                edge_id=f"{left.candidate_id}::{right.candidate_id}",
+                left_candidate_id=left.candidate_id,
+                right_candidate_id=right.candidate_id,
+                relation="semantic_equivalent",
+                confidence=0.95,
+            )
+
+        def __call__(self, left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
+            return self.edge(left, right)
+
+        def classify_many(
+            self,
+            pairs: list[tuple[ComparisonCandidate, ComparisonCandidate]],
+        ) -> list[CandidatePairEdge]:
+            batch_calls.append([(left.candidate_id, right.candidate_id) for left, right in pairs])
+            return [self.edge(left, right) for left, right in pairs]
+
+    result = run_paper_silver_pipeline(
+        paper_id="paper",
+        bronze_artifact=_artifact("paper", "C01", "Treatment A reduced mortality."),
+        miner_artifacts=[
+            MinerArtifactSubmission(
+                miner_id="uid_9",
+                artifact=_artifact("paper", "C01", "Treatment A reduced mortality in adults."),
+            ),
+            MinerArtifactSubmission(
+                miner_id="uid_10",
+                artifact=_artifact("paper", "C01", "Treatment A lowered adult mortality."),
+            ),
+        ],
+        silver_record_id="silver",
+        adjudication_passes=[
+            StaticAdjudicationPass(
+                pass_id="pass_a",
+                adjudication_profile_id="static_a",
+                model_runtime_id="static",
+                dispositions_by_case_id={},
+                default_disposition="both_valid",
+            )
+        ],
+        relation_classifier=BatchClassifier(),
+    )
+
+    assert len(batch_calls) == 1
+    assert {right_id for _left_id, right_id in batch_calls[0]} == {
+        "miner:uid_9:C01",
+        "miner:uid_10:C01",
+    }
+    assert len(result.scores) == 2
 
 
 def test_pairing_does_not_create_dense_all_pairs_by_default() -> None:
@@ -1342,6 +1564,50 @@ def test_dspy_relation_classifier_falls_back_to_heuristic() -> None:
 
     assert edge.relation == "semantic_equivalent"
     assert "DSPy classifier fallback" in (edge.rationale or "")
+
+
+def test_dspy_relation_classifier_batches_filtered_pairs() -> None:
+    batch_calls: list[list[dict]] = []
+
+    def batch_program(**kwargs):
+        pairs = json.loads(kwargs["candidate_pairs_json"])
+        batch_calls.append(pairs)
+        return SimpleNamespace(
+            relations_json=json.dumps(
+                {
+                    "results": [
+                        {
+                            "left_candidate_id": pair["left_candidate_id"],
+                            "right_candidate_id": pair["right_candidate_id"],
+                            "relation": "semantic_equivalent",
+                            "confidence": 0.95,
+                            "rationale": "Same supported claim.",
+                        }
+                        for pair in pairs
+                    ]
+                }
+            )
+        )
+
+    classifier = DSPyRelationClassifier(
+        batch_program=batch_program,
+        fallback_to_heuristic=False,
+        batch_size=16,
+    )
+    bronze = [
+        _candidate("bronze:C01", "bronze", None, "Claim one.", source_span_ids=["paper-span-0001"]),
+        _candidate("bronze:C02", "bronze", None, "Claim two.", source_span_ids=["paper-span-0001"]),
+    ]
+    miners = [
+        _candidate("miner:uid_9:C01", "miner", "uid_9", "Claim one restated.", source_span_ids=["paper-span-0001"]),
+        _candidate("miner:uid_9:C02", "miner", "uid_9", "Claim two restated.", source_span_ids=["paper-span-0001"]),
+    ]
+
+    edges = build_candidate_pairs(bronze, miners, relation_classifier=classifier)
+
+    assert len(batch_calls) == 1
+    assert len(batch_calls[0]) == 4
+    assert len(edges) == 4
 
 
 def test_adjudication_prompt_is_anonymous_and_includes_evidence() -> None:
