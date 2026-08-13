@@ -94,7 +94,9 @@ def build_silver_adjudication_passes(
         return _static_passes(config.static_disposition)
     if mode == "local-replay":
         return _local_replay_passes(config.local_replay_disposition)
-    request_gate = threading.BoundedSemaphore(max(1, config.max_in_flight))
+    if config.max_in_flight < 0:
+        raise ValueError("Silver adjudication max_in_flight must be 0 (unlimited) or a positive integer.")
+    request_gate = threading.BoundedSemaphore(config.max_in_flight) if config.max_in_flight > 0 else None
     if mode == "dspy":
         return _dspy_passes(config, request_gate=request_gate, usage_sink=usage_sink)
     if mode == "openai-compatible":

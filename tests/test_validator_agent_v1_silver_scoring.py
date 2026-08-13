@@ -617,6 +617,24 @@ def test_silver_adjudication_factory_builds_dspy_passes_with_shared_limit(monkey
     assert passes[1].model == "qwen/qwen3.7-flash"
 
 
+def test_silver_adjudication_factory_disables_shared_limit_with_zero(monkeypatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
+    passes, tiebreak = build_silver_adjudication_passes(
+        SilverAdjudicationConfig(
+            mode="dspy",
+            api_base="https://openrouter.ai/api/v1",
+            model_a="deepseek/deepseek-v4-flash",
+            model_b="qwen/qwen3.7-flash",
+            tiebreak_model="openai/gpt-4o-mini",
+            max_in_flight=0,
+        )
+    )
+
+    assert all(adjudication_pass.request_gate is None for adjudication_pass in passes)
+    assert tiebreak is not None
+    assert tiebreak.request_gate is None
+
+
 def test_dspy_adjudication_global_request_gate_limits_parallel_calls() -> None:
     case = BronzeDiffCase(
         case_id="case_dspy_limit",

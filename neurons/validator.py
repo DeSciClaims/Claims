@@ -43,6 +43,11 @@ from validator.v0.runner import JudgeV2Runner
 from .backend_client import BackendClientError, ClaimsBackendClient
 from .harness_profiles import SUPPORTED_HARNESSES, quote_command, resolve_agent_harness
 from .memory_monitor import ValidatorMemorySampler
+from .model_usage_upload import (
+    pending_model_usage_backups,
+    prepare_model_usage_backup,
+    upload_model_usage_backup,
+)
 from .protocol import ClaimExtractionSynapse
 from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsPaperTask, ClaimsTask, download_pdf, load_task_manifest, safe_task_id
 
@@ -107,6 +112,7 @@ class ClaimsValidator:
         self._setup_logging()
         self._memory_sampler: ValidatorMemorySampler | None = None
         self._active_model_usage: ModelUsageCollector | None = None
+        self._model_usage_upload_summary: dict[str, Any] = {}
         if self.config.claims_dry_run:
             self.wallet = None
             self.subtensor = None
@@ -470,7 +476,7 @@ class ClaimsValidator:
             dest="claims_silver_adjudication_max_in_flight",
             type=int,
             default=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_IN_FLIGHT", "32")),
-            help="Global cap on simultaneous Silver adjudicator model calls across all papers and passes.",
+            help="Global cap on simultaneous Silver model calls across all papers and passes; use 0 for unlimited.",
         )
         parser.add_argument(
             "--claims.silver-adjudication-max-workers",
@@ -759,6 +765,7 @@ class ClaimsValidator:
         if self.config.claims_dry_run:
             self.bt_logging.info(f"Dry run completed; loaded {len(self.tasks)} task(s).")
             return
+        self._resume_pending_model_usage_uploads()
         step = 0
         self._active_run_timing = None
         while True:
@@ -768,6 +775,7 @@ class ClaimsValidator:
             try:
                 run_id = _make_run_id()
                 run_started_at = datetime.now(timezone.utc)
+                self._model_usage_upload_summary = {}
                 self._active_run_timing = _new_pipeline_timing(run_id=run_id, started_at=run_started_at)
                 self._start_memory_sampler()
                 task_timer = _timing_start("task_selection", "Task selection")
@@ -1599,7 +1607,11 @@ class ClaimsValidator:
             max_tokens=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "8192")),
             timeout_seconds=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_TIMEOUT", "120")),
             retries=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_RETRIES", "1")),
-            max_in_flight=int(getattr(self.config, "claims_silver_adjudication_max_in_flight", None) or 32),
+            max_in_flight=(
+                32
+                if getattr(self.config, "claims_silver_adjudication_max_in_flight", None) is None
+                else int(self.config.claims_silver_adjudication_max_in_flight)
+            ),
         )
 
     def _persist_silver_pipeline_result(
@@ -2187,15 +2199,57 @@ class ClaimsValidator:
             self._active_model_usage = None
             return
         backup_path = Path(self.config.claims_output_dir) / "model_usage" / f"{collector.run_id}.json"
-        _write_json(backup_path, {"events": events})
+        prepare_model_usage_backup(
+            backup_path,
+            events=events,
+            network=collector.network,
+            run_id=collector.run_id,
+            batch_id=collector.batch_id,
+        )
         if self.backend_client is None:
             return
         try:
-            self.backend_client.post_model_usage_events(events)
+            summary = upload_model_usage_backup(
+                backup_path,
+                backend_client=self.backend_client,
+                chunk_size=int(os.getenv("CLAIMS_MODEL_USAGE_UPLOAD_CHUNK_SIZE", "1000") or 1000),
+            )
         except Exception as exc:
+            self._model_usage_upload_summary = {
+                "run_id": collector.run_id,
+                "expected_event_count": len(events),
+                "status": "failed",
+                "error": str(exc),
+            }
             self.bt_logging.warning(f"Could not post validator model usage events: {exc}")
             return
+        self._model_usage_upload_summary = {"run_id": collector.run_id, **summary}
+        self.bt_logging.info(
+            "Validator model usage upload "
+            f"run={collector.run_id} expected={len(events)} "
+            f"stored={int(summary.get('stored_event_count') or 0)} "
+            f"status={summary.get('status')}"
+        )
         self._active_model_usage = None
+
+    def _resume_pending_model_usage_uploads(self) -> None:
+        if self.backend_client is None:
+            return
+        root = Path(self.config.claims_output_dir) / "model_usage"
+        for backup_path in pending_model_usage_backups(root):
+            try:
+                summary = upload_model_usage_backup(
+                    backup_path,
+                    backend_client=self.backend_client,
+                    chunk_size=int(os.getenv("CLAIMS_MODEL_USAGE_UPLOAD_CHUNK_SIZE", "1000") or 1000),
+                )
+                self.bt_logging.info(
+                    "Resumed validator model usage upload "
+                    f"backup={backup_path.name} stored={int(summary.get('stored_event_count') or 0)} "
+                    f"status={summary.get('status')}"
+                )
+            except Exception as exc:
+                self.bt_logging.warning(f"Could not resume model usage backup {backup_path}: {exc}")
 
     def _score_v0_extraction(self, extraction: dict[str, Any], *, output_dir: Path, task: ClaimsTask) -> float:
         extraction_path = output_dir / "section_context_v1_output.json"
@@ -2352,6 +2406,9 @@ class ClaimsValidator:
         )
         if upload_summary:
             timing_metadata["artifact_uploads"] = upload_summary
+        model_usage_upload = getattr(self, "_model_usage_upload_summary", None)
+        if isinstance(model_usage_upload, dict) and model_usage_upload:
+            timing_metadata["model_usage_upload"] = dict(model_usage_upload)
         return {
             "schema": "claims_validator_run_metadata_v1",
             "paper_count": len(task.paper_tasks()),

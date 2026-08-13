@@ -4,6 +4,7 @@ import hashlib
 import json
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -177,15 +178,81 @@ class ClaimsBackendClient:
     def post_silver_score_report(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/silver-score-reports", payload)
 
-    def post_model_usage_events(self, events: list[dict[str, Any]]) -> dict[str, Any]:
+    def get_model_usage_event_status(self, *, run_id: str, expected_event_count: int) -> dict[str, Any]:
+        result = self.get(
+            "/validator/model-usage-events/status",
+            query={
+                "run_id": run_id,
+                "network": self.network,
+                "expected_event_count": expected_event_count,
+            },
+        )
+        if not isinstance(result, dict):
+            raise BackendClientError("Backend model usage status returned a non-object response.")
+        return result
+
+    def post_model_usage_events(
+        self,
+        events: list[dict[str, Any]],
+        *,
+        start_offset: int = 0,
+        chunk_size: int = 1000,
+        on_progress: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        expected = len(events)
+        start_offset = max(0, min(int(start_offset), expected))
+        chunk_size = max(1, min(int(chunk_size), 1000))
         submitted = 0
-        stored = 0
-        for offset in range(0, len(events), 1000):
-            chunk = events[offset : offset + 1000]
+        inserted = 0
+        uploaded = start_offset
+        for offset in range(start_offset, expected, chunk_size):
+            chunk = events[offset : offset + chunk_size]
             result = self.post("/validator/model-usage-events", {"events": chunk})
+            accepted = int(result.get("accepted", result.get("stored", 0)) or 0)
+            if accepted != len(chunk):
+                raise BackendClientError(
+                    f"Backend accepted {accepted} of {len(chunk)} model usage events at offset {offset}."
+                )
             submitted += int(result.get("submitted") or len(chunk))
-            stored += int(result.get("stored") or 0)
-        return {"submitted": submitted, "stored": stored}
+            inserted += int(result.get("inserted") or 0)
+            uploaded = offset + len(chunk)
+            if on_progress is not None:
+                on_progress(
+                    {
+                        "expected_event_count": expected,
+                        "uploaded_event_count": uploaded,
+                        "inserted_event_count": inserted,
+                        "next_offset": uploaded,
+                    }
+                )
+        verification_error = None
+        try:
+            status = self.get_model_usage_event_status(
+                run_id=str(events[0].get("run_id") or "") if events else "",
+                expected_event_count=expected,
+            )
+            stored = int(status.get("stored_event_count") or 0)
+            verified = True
+            complete = bool(status.get("complete"))
+        except BackendClientError as exc:
+            # Supports a rolling deployment where validators update before
+            # the backend status route. Every successful immutable chunk is
+            # still checkpointed and can be verified on the next startup.
+            stored = uploaded
+            verified = False
+            complete = uploaded >= expected
+            verification_error = str(exc)
+        return {
+            "expected_event_count": expected,
+            "submitted_event_count": submitted,
+            "uploaded_event_count": uploaded,
+            "inserted_event_count": inserted,
+            "stored_event_count": stored,
+            "next_offset": uploaded,
+            "verified": verified,
+            "complete": complete,
+            "verification_error": verification_error,
+        }
 
     def _url(self, path: str) -> str:
         return f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"

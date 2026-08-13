@@ -604,6 +604,18 @@ def test_neuron_silver_adjudication_config_defaults_nullable_request_limit() -> 
     assert config.max_tokens == 8192
 
 
+def test_neuron_silver_adjudication_config_preserves_unlimited_request_limit() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_silver_adjudication_mode="dspy",
+        claims_silver_adjudication_max_in_flight=0,
+    )
+
+    config = validator._silver_adjudication_config()
+
+    assert config.max_in_flight == 0
+
+
 def test_neuron_invalid_silver_adjudication_config_fails_loudly(monkeypatch) -> None:
     monkeypatch.delenv("CLAIMS_TEST_MISSING_ADJUDICATION_KEY", raising=False)
     validator = ClaimsValidator.__new__(ClaimsValidator)

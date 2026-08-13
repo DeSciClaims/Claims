@@ -60,6 +60,40 @@ def test_backend_client_retries_transient_errors_with_fresh_nonce(monkeypatch) -
     assert _header(requests[0][0], "X-Claims-Nonce") != _header(requests[1][0], "X-Claims-Nonce")
 
 
+def test_model_usage_upload_chunks_and_verifies_stored_count(monkeypatch) -> None:
+    posted: list[list[str]] = []
+    progress: list[dict] = []
+
+    def fake_post(self, path, payload):
+        assert path == "/validator/model-usage-events"
+        event_ids = [event["usage_event_id"] for event in payload["events"]]
+        posted.append(event_ids)
+        return {
+            "submitted": len(event_ids),
+            "accepted": len(event_ids),
+            "inserted": len(event_ids),
+        }
+
+    def fake_status(self, *, run_id, expected_event_count):
+        assert run_id == "run_usage"
+        assert expected_event_count == 5
+        return {"stored_event_count": 5, "complete": True}
+
+    monkeypatch.setattr(ClaimsBackendClient, "post", fake_post)
+    monkeypatch.setattr(ClaimsBackendClient, "get_model_usage_event_status", fake_status)
+    client = ClaimsBackendClient("https://api.example.test", wallet=SimpleNamespace(hotkey=_FakeHotkey()))
+    events = [{"usage_event_id": f"usage_{index}", "run_id": "run_usage"} for index in range(5)]
+
+    result = client.post_model_usage_events(events, chunk_size=2, on_progress=progress.append)
+
+    assert posted == [["usage_0", "usage_1"], ["usage_2", "usage_3"], ["usage_4"]]
+    assert [row["next_offset"] for row in progress] == [2, 4, 5]
+    assert result["expected_event_count"] == 5
+    assert result["stored_event_count"] == 5
+    assert result["verified"] is True
+    assert result["complete"] is True
+
+
 def test_agent_v1_backend_client_posts_silver_record_metadata(monkeypatch) -> None:
     captured = {}
 
