@@ -6,6 +6,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
+import pytest
+
 from validator.agent_v1.bronze_diff import compare_miner_to_bronze, compare_miner_to_bronze_result
 from validator.agent_v1.comparison_models import CandidatePairEdge
 from validator.agent_v1.adjudication_consensus import aggregate_adjudication_votes
@@ -876,6 +878,97 @@ def test_adjudication_runner_batches_cases_for_each_pass() -> None:
 
     assert sorted(size for _pass_id, size in batch_calls) == [2, 2, 4, 4, 4, 4]
     assert all(consensus.route == "direct" for consensus in consensuses)
+
+
+def test_adjudication_runner_retries_cases_omitted_from_batch_response() -> None:
+    single_case_calls: list[str] = []
+
+    class PartialBatchPass:
+        pass_id = "pass_a"
+        adjudication_profile_id = "batch"
+        model_runtime_id = "batch"
+
+        def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
+            single_case_calls.append(context.case.case_id)
+            return _vote("pass_a", "accepted_improvement", 0.95, ["valid"]).model_copy(
+                update={"case_id": context.case.case_id}
+            )
+
+        def run_many(self, contexts: list[AdjudicationContextBundle]) -> list[AdjudicationVote]:
+            first, second = contexts
+            return [
+                _vote("pass_a", "accepted_improvement", 0.95, ["valid"]).model_copy(
+                    update={"case_id": first.case.case_id}
+                ),
+                AdjudicationVote(
+                    case_id=second.case.case_id,
+                    pass_id="pass_a",
+                    adjudication_profile_id="batch",
+                    model_runtime_id="batch",
+                    disposition="insufficient_information",
+                    material_findings=["adjudication_batch_failed"],
+                    confidence=0.0,
+                    rationale="Adjudication batch failed: batch response omitted this case",
+                    insufficient_information=True,
+                ),
+            ]
+
+    contexts = [
+        AdjudicationContextBundle(
+            case=BronzeDiffCase(
+                case_id=f"case_retry_{index}",
+                paper_id="paper",
+                miner_id="uid_9",
+                mismatch_type="EXTRA_FROM_MINER",
+                candidate_ids=[f"miner:uid_9:C{index:02d}"],
+                question="Should this candidate be included?",
+            ),
+            candidates=[_candidate(f"miner:uid_9:C{index:02d}", "miner", "uid_9", f"Claim {index}.")],
+        )
+        for index in range(2)
+    ]
+
+    consensuses = run_adjudication_cases(
+        contexts,
+        passes=[PartialBatchPass()],
+        batch_size=2,
+        max_workers=1,
+    )
+
+    assert single_case_calls == ["case_retry_1"]
+    assert [consensus.route for consensus in consensuses] == ["direct", "direct"]
+
+
+def test_silver_pipeline_rejects_operational_adjudication_outage() -> None:
+    class FailedPass:
+        pass_id = "pass_a"
+        adjudication_profile_id = "failed"
+        model_runtime_id = "failed"
+
+        def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
+            return AdjudicationVote(
+                case_id=context.case.case_id,
+                pass_id=self.pass_id,
+                adjudication_profile_id=self.adjudication_profile_id,
+                model_runtime_id=self.model_runtime_id,
+                disposition="insufficient_information",
+                material_findings=["adjudication_pass_failed"],
+                confidence=0.0,
+                rationale="Provider unavailable.",
+                insufficient_information=True,
+            )
+
+    bronze = _artifact("paper", "C01", "Treatment improved outcome.")
+    miner = _artifact("paper", "C01", "A distinct miner claim.")
+
+    with pytest.raises(RuntimeError, match="failed operationally"):
+        run_paper_silver_pipeline(
+            paper_id="paper",
+            bronze_artifact=bronze,
+            miner_artifacts=[MinerArtifactSubmission(miner_id="uid_9", artifact=miner)],
+            silver_record_id="silver_run_paper",
+            adjudication_passes=[FailedPass()],
+        )
 
 
 def test_queued_adjudication_worker_posts_consensus_and_completes_job() -> None:
@@ -1785,6 +1878,19 @@ def test_batch_score_ranks_by_mean_without_gate() -> None:
         ("miner_B", 1, 0.6),
         ("miner_A", 2, 0.5),
     ]
+
+
+def test_batch_score_has_no_winner_when_all_scores_are_zero() -> None:
+    result = score_batch(
+        batch_id="batch",
+        paper_scores=[
+            _score_breakdown("miner_A", "paper", 0.0),
+            _score_breakdown("miner_B", "paper", 0.0),
+        ],
+    )
+
+    assert result.winner_miner_id is None
+    assert [miner.rank for miner in result.miners] == [1, 1]
 
 
 def test_paper_silver_pipeline_builds_silver_and_scores_from_artifacts() -> None:

@@ -104,7 +104,15 @@ def _run_pass_batches(
     def run_job(adjudication_pass: AdjudicationPass, batch: list[AdjudicationContextBundle]):
         run_many = getattr(adjudication_pass, "run_many", None)
         if callable(run_many) and len(batch) > 1:
-            return list(run_many(batch))
+            votes = list(run_many(batch))
+            votes_by_case_id = {vote.case_id: vote for vote in votes}
+            retried_votes: list[AdjudicationVote] = []
+            for context in batch:
+                vote = votes_by_case_id.get(context.case.case_id)
+                if vote is None or _is_operational_batch_failure(vote):
+                    vote = adjudication_pass.run(context)
+                retried_votes.append(vote)
+            return retried_votes
         return [adjudication_pass.run(context) for context in batch]
 
     completed: dict[tuple[int, str], AdjudicationVote] = {}
@@ -140,3 +148,7 @@ def _run_pass_batches(
             if (pass_index, case_id) in completed
         ]
     return votes_by_case
+
+
+def _is_operational_batch_failure(vote: AdjudicationVote) -> bool:
+    return "adjudication_batch_failed" in vote.material_findings

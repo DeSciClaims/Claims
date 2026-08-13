@@ -47,5 +47,5 @@ def score_batch(
             rank = index + 1
         item.rank = rank
 
-    winner = miners[0].miner_id if miners else None
+    winner = miners[0].miner_id if miners and miners[0].mean_score > 0.0 else None
     return BatchScoreResult(batch_id=batch_id, miners=miners, winner_miner_id=winner)

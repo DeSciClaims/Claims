@@ -189,6 +189,7 @@ def run_paper_silver_pipeline(
     worker_count = max(1, min(int(adjudication_max_workers or 1), len(diff_cases) or 1))
     adjudicated = adjudicate_cases(diff_cases)
     consensus_records = [consensus for consensus, _decision in adjudicated]
+    _raise_for_operational_adjudication_failures(consensus_records, stage="primary")
     decisions = [decision for _consensus, decision in adjudicated if decision is not None]
     stage_timings.append(_stage_finish(
         adjudication_timer,
@@ -214,7 +215,9 @@ def run_paper_silver_pipeline(
         diff_cases = _dedupe_cases([*diff_cases, *consolidation_cases])
         worker_count = max(1, min(int(adjudication_max_workers or 1), len(consolidation_cases) or 1))
         adjudicated_consolidation = adjudicate_cases(consolidation_cases)
-        consensus_records.extend(consensus for consensus, _decision in adjudicated_consolidation)
+        consolidation_consensus = [consensus for consensus, _decision in adjudicated_consolidation]
+        _raise_for_operational_adjudication_failures(consolidation_consensus, stage="consolidation")
+        consensus_records.extend(consolidation_consensus)
         decisions.extend(decision for _consensus, decision in adjudicated_consolidation if decision is not None)
     stage_timings.append(_stage_finish(
         consolidation_timer,
@@ -742,6 +745,32 @@ def _unresolved_candidate_ids(cases: list[BronzeDiffCase], decisions: list[Adjud
         if candidate_id
     }
     return unresolved - accepted_candidate_ids
+
+
+def _raise_for_operational_adjudication_failures(
+    consensus_records: list[AdjudicationConsensus],
+    *,
+    stage: str,
+) -> None:
+    failed_case_ids = [
+        consensus.case_id
+        for consensus in consensus_records
+        if consensus.votes and all(_is_operational_adjudication_failure(vote) for vote in consensus.votes)
+    ]
+    if not failed_case_ids:
+        return
+    raise RuntimeError(
+        f"Silver {stage} adjudication failed operationally for "
+        f"{len(failed_case_ids)}/{len(consensus_records)} cases; refusing to score an incomplete Silver record."
+    )
+
+
+def _is_operational_adjudication_failure(vote: object) -> bool:
+    findings = getattr(vote, "material_findings", [])
+    return any(
+        finding in {"adjudication_batch_failed", "adjudication_pass_failed"}
+        for finding in findings
+    )
 
 
 def _semantic_equivalence_groups(

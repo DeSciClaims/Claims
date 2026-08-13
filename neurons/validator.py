@@ -1437,6 +1437,17 @@ class ClaimsValidator:
                     if result is not None:
                         paper_results[result.paper_id] = result
 
+        failed_paper_ids = [
+            paper.paper_id or f"paper_{paper_index}"
+            for paper_index, paper in paper_jobs
+            if (paper.paper_id or f"paper_{paper_index}") not in paper_results
+        ]
+        if failed_paper_ids:
+            raise RuntimeError(
+                "Silver post-pass failed for processable paper(s): "
+                f"{failed_paper_ids}; refusing to publish partial incentive scores."
+            )
+
         for paper_id in expected_paper_ids:
             result = paper_results.get(paper_id)
             if result is None:

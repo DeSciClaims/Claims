@@ -581,6 +581,73 @@ def test_neuron_silver_post_pass_parallelizes_batch_papers(monkeypatch, tmp_path
     assert scores == {7: 1.0}
 
 
+def test_neuron_silver_post_pass_refuses_partial_scores_after_pipeline_failure(monkeypatch, tmp_path) -> None:
+    bronze_root = tmp_path / "bronze"
+    bronze_dir = bronze_root / "paper1"
+    bronze_dir.mkdir(parents=True)
+    (bronze_dir / "agent_output.json").write_text(json.dumps(_agent_v1_artifact()), encoding="utf-8")
+    (bronze_dir / "source_payload.json").write_text(json.dumps(_source_payload()), encoding="utf-8")
+    (bronze_dir / "bronze_manifest.json").write_text(
+        json.dumps(
+            {
+                "bronze_record_id": "bronze_paper1",
+                "paper_id": "paper1",
+                "reference_release_id": "reference-v0",
+                "reference_profile_id": "reference-agent-v1-strong",
+                "artifact_sha256": "hash",
+                "artifact_path": "agent_output.json",
+                "source_payload_path": "source_payload.json",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_pipeline(**_kwargs):
+        raise RuntimeError("adjudication provider unavailable")
+
+    monkeypatch.setattr("neurons.validator.run_paper_silver_pipeline", fail_pipeline)
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_silver_enable=True,
+        claims_bronze_root=bronze_root,
+        claims_reference_release_id="reference-v0",
+        claims_silver_static_disposition="reference_error",
+        claims_output_dir=tmp_path / "outputs",
+        claims_network="testnet",
+    )
+    validator.backend_client = None
+    validator.bt_logging = _logger()
+    validator.target_neurons = [
+        SimpleNamespace(
+            uid=7,
+            hotkey="hotkey7",
+            coldkey="coldkey7",
+            axon_info=SimpleNamespace(ip="", port=0, hotkey=""),
+        )
+    ]
+    response = SimpleNamespace(
+        protocol_version="claims.v0",
+        schema_version="miner.v0.section_context_compat",
+        miner_version="agent_v1",
+        articles=[
+            {
+                "paper_id": "paper1",
+                "status": "completed",
+                "agent_output": _agent_v1_artifact(),
+                "source_payload": _source_payload(),
+            }
+        ],
+        extraction=None,
+        source_payload=None,
+    )
+    task = ClaimsTask.from_dict(
+        {"task_id": "task1", "batch_id": "batch1", "papers": [{"paper_id": "paper1", "title": "Paper 1"}]}
+    )
+
+    with pytest.raises(RuntimeError, match="refusing to publish partial incentive scores"):
+        validator._run_silver_post_pass([response], task=task, run_id="run1")
+
+
 def test_neuron_builds_configurable_silver_adjudication_passes() -> None:
     validator = ClaimsValidator.__new__(ClaimsValidator)
     validator.bt_logging = SimpleNamespace(warning=lambda *_args, **_kwargs: None)
