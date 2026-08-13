@@ -8,6 +8,8 @@ import shlex
 import statistics
 import subprocess
 import sys
+import signal
+import threading
 import time
 import traceback
 import uuid
@@ -117,6 +119,8 @@ class ClaimsValidator:
         self._memory_sampler: ValidatorMemorySampler | None = None
         self._active_model_usage: ModelUsageCollector | None = None
         self._model_usage_upload_summary: dict[str, Any] = {}
+        self._run_heartbeat_stop: threading.Event | None = None
+        self._run_heartbeat_thread: threading.Thread | None = None
         if self.config.claims_dry_run:
             self.wallet = None
             self.subtensor = None
@@ -201,6 +205,13 @@ class ClaimsValidator:
             type=float,
             default=float(os.getenv("CLAIMS_BACKEND_RETRY_BACKOFF", "2")),
             help="Initial backoff in seconds between transient Claims backend retry attempts.",
+        )
+        parser.add_argument(
+            "--claims.run-heartbeat-interval",
+            dest="claims_run_heartbeat_interval",
+            type=float,
+            default=float(os.getenv("CLAIMS_RUN_HEARTBEAT_INTERVAL", "60")),
+            help="Seconds between backend run heartbeats. Zero disables heartbeats.",
         )
         parser.add_argument(
             "--claims.network",
@@ -635,6 +646,7 @@ class ClaimsValidator:
         config.claims_backend_timeout = parsed_args.claims_backend_timeout
         config.claims_backend_retries = parsed_args.claims_backend_retries
         config.claims_backend_retry_backoff = parsed_args.claims_backend_retry_backoff
+        config.claims_run_heartbeat_interval = parsed_args.claims_run_heartbeat_interval
         config.claims_network = parsed_args.claims_network
         config.claims_batch_size = parsed_args.claims_batch_size
         config.claims_task_type = parsed_args.claims_task_type
@@ -809,6 +821,7 @@ class ClaimsValidator:
                 )
                 run_open_timer = _timing_start("run_open", "Open run record")
                 self._post_validator_run(run_id, task, status="running", started_at=run_started_at)
+                self._start_run_heartbeat(run_id)
                 self._record_timing_stage(run_open_timer)
                 miner_query_timer = _timing_start("miner_query", "Miner query")
                 responses = self._query_miners(task, run_id=run_id)
@@ -833,6 +846,7 @@ class ClaimsValidator:
                 run_ended_at = datetime.now(timezone.utc)
                 _finish_pipeline_timing(self._active_run_timing, ended_at=run_ended_at)
                 self._stop_memory_sampler()
+                self._stop_run_heartbeat()
                 run_close_timer = _timing_start("run_close", "Close run record")
                 self._post_validator_run(
                     run_id,
@@ -852,11 +866,24 @@ class ClaimsValidator:
                 self._record_timing_stage(sleep_timer)
             except KeyboardInterrupt:
                 self._stop_memory_sampler()
+                self._stop_run_heartbeat()
                 self._flush_model_usage_events()
+                if task is not None and run_id is not None and run_started_at is not None:
+                    run_ended_at = datetime.now(timezone.utc)
+                    _finish_pipeline_timing(self._active_run_timing, ended_at=run_ended_at)
+                    self._post_validator_run(
+                        run_id,
+                        task,
+                        status="cancelled",
+                        started_at=run_started_at,
+                        ended_at=run_ended_at,
+                        error_summary="Validator interrupted by operator or termination signal.",
+                    )
                 self.bt_logging.success("Validator stopped.")
                 return
             except Exception:
                 self._stop_memory_sampler()
+                self._stop_run_heartbeat()
                 self._flush_model_usage_events()
                 self.bt_logging.error(traceback.format_exc())
                 if task is not None and run_id is not None and run_started_at is not None:
@@ -2327,6 +2354,7 @@ class ClaimsValidator:
         status: str,
         started_at: datetime,
         ended_at: datetime | None = None,
+        error_summary: str | None = None,
     ) -> None:
         if self.backend_client is None:
             return
@@ -2343,7 +2371,7 @@ class ClaimsValidator:
                     "status": status,
                     "started_at": started_at.isoformat(),
                     "ended_at": ended_at.isoformat() if ended_at else None,
-                    "error_summary": None,
+                    "error_summary": error_summary,
                     "metadata": self._run_metadata(
                         run_id=run_id,
                         task=task,
@@ -2354,6 +2382,35 @@ class ClaimsValidator:
             )
         except BackendClientError as exc:
             self.bt_logging.warning(f"Could not post validator run to backend: {exc}")
+
+    def _start_run_heartbeat(self, run_id: str) -> None:
+        self._stop_run_heartbeat()
+        interval = float(getattr(self.config, "claims_run_heartbeat_interval", 60.0) or 0.0)
+        if self.backend_client is None or interval <= 0:
+            return
+        stop = threading.Event()
+
+        def send_heartbeats() -> None:
+            while not stop.wait(interval):
+                try:
+                    self.backend_client.heartbeat_validator_run(run_id=run_id)
+                except BackendClientError as exc:
+                    self.bt_logging.warning(f"Could not heartbeat validator run {run_id}: {exc}")
+
+        thread = threading.Thread(target=send_heartbeats, name=f"claims-run-heartbeat-{run_id}", daemon=True)
+        self._run_heartbeat_stop = stop
+        self._run_heartbeat_thread = thread
+        thread.start()
+
+    def _stop_run_heartbeat(self) -> None:
+        stop = self._run_heartbeat_stop
+        thread = self._run_heartbeat_thread
+        self._run_heartbeat_stop = None
+        self._run_heartbeat_thread = None
+        if stop is not None:
+            stop.set()
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=2.0)
 
     def _run_metadata(
         self,
@@ -2424,6 +2481,11 @@ class ClaimsValidator:
             timing_metadata["model_usage_upload"] = dict(model_usage_upload)
         return {
             "schema": "claims_validator_run_metadata_v1",
+            "heartbeat_enabled": bool(
+                self.backend_client is not None
+                and float(getattr(self.config, "claims_run_heartbeat_interval", 60.0) or 0.0) > 0
+            ),
+            "heartbeat_interval_seconds": float(getattr(self.config, "claims_run_heartbeat_interval", 60.0) or 0.0),
             "paper_count": len(task.paper_tasks()),
             "target_uids": [int(neuron.uid) for neuron in self.target_neurons],
             "runtime": _runtime_snapshot(),
@@ -3849,6 +3911,7 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_allow_paper_reuse": bool(getattr(config, "claims_allow_paper_reuse", False)),
         "claims_timeout": float(getattr(config, "claims_timeout", 0.0)),
         "claims_query_interval": float(getattr(config, "claims_query_interval", 0.0)),
+        "claims_run_heartbeat_interval": float(getattr(config, "claims_run_heartbeat_interval", 60.0) or 0.0),
         "claims_max_steps": int(getattr(config, "claims_max_steps", 0) or 0),
         "claims_audit_only": bool(getattr(config, "claims_audit_only", False)),
         "claims_audit_method": str(getattr(config, "claims_audit_method", "deterministic") or ""),
@@ -4011,8 +4074,17 @@ def _dspy_relation_model(model: str, *, api_base: str) -> str:
 
 
 def main() -> int:
-    ClaimsValidator().run()
-    return 0
+    previous_sigterm = signal.getsignal(signal.SIGTERM)
+
+    def terminate_as_interrupt(_signum: int, _frame: Any) -> None:
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, terminate_as_interrupt)
+    try:
+        ClaimsValidator().run()
+        return 0
+    finally:
+        signal.signal(signal.SIGTERM, previous_sigterm)
 
 
 if __name__ == "__main__":

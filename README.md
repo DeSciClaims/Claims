@@ -267,6 +267,7 @@ Useful validator flags:
 - `--claims.audit-only`: score miners and write audit files without setting weights.
 - `--claims.max-steps 1`: run one validation round and exit.
 - `--claims.query-interval 60` or `CLAIMS_QUERY_INTERVAL=60`: delay after one validation round finishes before the next starts.
+- `--claims.run-heartbeat-interval 60`: keep backend run status live; interrupted runs close automatically.
 - `--claims.require-validator-permit`: fail fast unless the hotkey has validator permit.
 
 Optional Silver graph-pairing envs:

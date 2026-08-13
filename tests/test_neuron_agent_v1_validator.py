@@ -71,8 +71,33 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_silver_relation_batch_size"] == 12
     assert snapshot["claims_silver_adjudication_batch_max_tokens"] == 24000
     assert snapshot["claims_silver_pairing_max_dense_pairs"] == 48
+    assert snapshot["claims_run_heartbeat_interval"] == 60.0
     assert "api_key" not in json.dumps(snapshot).lower()
     assert "must-not-be-persisted" not in json.dumps(snapshot)
+
+
+def test_validator_run_heartbeat_starts_and_stops() -> None:
+    calls: list[str] = []
+
+    class FakeBackend:
+        def heartbeat_validator_run(self, *, run_id: str) -> None:
+            calls.append(run_id)
+
+    validator = object.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(claims_run_heartbeat_interval=0.01)
+    validator.backend_client = FakeBackend()
+    validator.bt_logging = _logger()
+    validator._run_heartbeat_stop = None
+    validator._run_heartbeat_thread = None
+
+    validator._start_run_heartbeat("run_heartbeat")
+    time.sleep(0.035)
+    validator._stop_run_heartbeat()
+    stopped_count = len(calls)
+    time.sleep(0.02)
+
+    assert stopped_count >= 1
+    assert calls == ["run_heartbeat"] * stopped_count
 
 
 def test_source_context_map_merges_reader_span_ids() -> None:

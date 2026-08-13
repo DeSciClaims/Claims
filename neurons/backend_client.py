@@ -66,6 +66,12 @@ class ClaimsBackendClient:
     def post_bronze_record(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/bronze-records", payload)
 
+    def heartbeat_validator_run(self, *, run_id: str) -> dict[str, Any]:
+        return self.post(
+            f"/validator/runs/{quote(run_id)}/heartbeat",
+            {"network": self.network},
+        )
+
     def post_miner_artifact(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/miner/artifacts", payload)
 
