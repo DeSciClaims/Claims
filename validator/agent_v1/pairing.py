@@ -47,11 +47,30 @@ def build_candidate_pairs(
     *,
     min_confidence: float = 0.55,
     relation_classifier: RelationClassifier | None = None,
+    exclude_self_pairs: bool = False,
+    deduplicate_unordered_pairs: bool = False,
+    excluded_unordered_pairs: set[tuple[str, str]] | None = None,
 ) -> list[CandidatePairEdge]:
     classifier = relation_classifier or classify_candidate_pair
     filter_hits = filter_candidate_pairs(left, right)
+    excluded_pairs = {
+        tuple(sorted(pair))
+        for pair in (excluded_unordered_pairs or set())
+    }
+    seen_pairs: set[tuple[str, str]] = set()
     edges: list[CandidatePairEdge] = []
     for hit in filter_hits:
+        left_id = hit.left.candidate_id
+        right_id = hit.right.candidate_id
+        if exclude_self_pairs and left_id == right_id:
+            continue
+        pair_key = tuple(sorted((left_id, right_id)))
+        if pair_key in excluded_pairs:
+            continue
+        if deduplicate_unordered_pairs:
+            if pair_key in seen_pairs:
+                continue
+            seen_pairs.add(pair_key)
         edge = classifier(hit.left, hit.right)
         edge.filter_sources = sorted(hit.sources)
         edge.metadata = {

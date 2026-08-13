@@ -380,7 +380,14 @@ def _build_consolidation_cases(
         return [], []
     retained = [candidate for candidate in candidates if candidate.candidate_id in retained_ids]
     existing_pairs = _candidate_pairs_from_cases(existing_cases)
-    candidate_edges = build_candidate_pairs(retained, retained, relation_classifier=relation_classifier)
+    candidate_edges = build_candidate_pairs(
+        retained,
+        retained,
+        relation_classifier=relation_classifier,
+        exclude_self_pairs=True,
+        deduplicate_unordered_pairs=True,
+        excluded_unordered_pairs=existing_pairs,
+    )
     cases: list[BronzeDiffCase] = []
     edges: list[CandidatePairEdge] = []
     seen_pairs: set[tuple[str, str]] = set()

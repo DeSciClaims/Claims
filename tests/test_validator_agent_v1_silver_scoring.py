@@ -816,6 +816,18 @@ def test_bronze_diff_accepts_injected_relation_classifier() -> None:
 
 
 def test_silver_pipeline_scores_semantic_equivalent_miner_claim() -> None:
+    classifier_calls: list[tuple[str, str]] = []
+
+    def classifier(left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
+        classifier_calls.append((left.candidate_id, right.candidate_id))
+        return CandidatePairEdge(
+            edge_id=f"{left.candidate_id}::{right.candidate_id}",
+            left_candidate_id=left.candidate_id,
+            right_candidate_id=right.candidate_id,
+            relation="semantic_equivalent",
+            confidence=0.95,
+        )
+
     result = run_paper_silver_pipeline(
         paper_id="paper",
         bronze_artifact=_artifact("paper", "C01", "Treatment A reduced mortality."),
@@ -835,8 +847,10 @@ def test_silver_pipeline_scores_semantic_equivalent_miner_claim() -> None:
                 default_disposition="both_valid",
             )
         ],
+        relation_classifier=classifier,
     )
 
+    assert classifier_calls == [("bronze:C01", "miner:miner_A:C01")]
     assert len(result.diff_cases) == 1
     assert result.diff_cases[0].mismatch_type == "SEMANTIC_EQUIVALENCE_CANDIDATE"
     assert result.diff_cases[0].metadata["candidate_graph_edge"]["relation"] == "semantic_equivalent"
@@ -990,7 +1004,10 @@ def test_partial_overlap_both_valid_stays_two_silver_units() -> None:
 
 
 def test_silver_pipeline_dedupes_semantic_equivalent_miner_only_improvements() -> None:
+    classifier_calls: list[tuple[str, str]] = []
+
     def classifier(left: ComparisonCandidate, right: ComparisonCandidate) -> CandidatePairEdge:
+        classifier_calls.append((left.candidate_id, right.candidate_id))
         return CandidatePairEdge(
             edge_id=f"{left.candidate_id}::{right.candidate_id}",
             left_candidate_id=left.candidate_id,
@@ -1026,6 +1043,8 @@ def test_silver_pipeline_dedupes_semantic_equivalent_miner_only_improvements() -
         relation_classifier=classifier,
     )
 
+    assert len(classifier_calls) == 1
+    assert {classifier_calls[0][0], classifier_calls[0][1]} == {"miner:uid_9:C01", "miner:uid_10:C01"}
     assert len(result.diff_cases) == 3
     assert [case.mismatch_type for case in result.diff_cases].count("SEMANTIC_EQUIVALENCE_CANDIDATE") == 1
     assert len(result.silver_record.silver_units) == 1
