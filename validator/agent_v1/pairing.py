@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass, field
 from urllib.request import Request, urlopen
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 from .comparison_models import CandidatePairEdge, ComparisonCandidate
 from .relation_classifier import classify_candidate_pair
@@ -32,6 +32,7 @@ class PairFilterHit:
     right: ComparisonCandidate
     sources: set[str] = field(default_factory=set)
     score: float = 0.0
+    semantic_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -133,12 +134,27 @@ def filter_candidate_pairs(
     right: list[ComparisonCandidate],
     *,
     top_k: int | None = None,
+    include_exact_statement_matches: bool = False,
     embedding_provider: Callable[[list[ComparisonCandidate]], dict[str, list[float]]] | None = None,
 ) -> list[PairFilterHit]:
     hits: dict[tuple[str, str], PairFilterHit] = {}
     source_hints: dict[tuple[str, str], SourceSpanHint] = {}
     for left_candidate in left:
         for right_candidate in right:
+            if left_candidate.candidate_id == right_candidate.candidate_id:
+                continue
+            if (
+                include_exact_statement_matches
+                and left_candidate.normalized_statement
+                and left_candidate.normalized_statement == right_candidate.normalized_statement
+            ):
+                _add_hit(
+                    hits,
+                    left_candidate,
+                    right_candidate,
+                    source="normalized_statement_match",
+                    score=1.0,
+                )
             source_hint = _source_span_hint(left_candidate, right_candidate)
             if source_hint is None:
                 continue
@@ -168,6 +184,102 @@ def filter_candidate_pairs(
 
     return sorted(
         hits.values(),
+        key=lambda hit: (-hit.score, hit.left.candidate_id, hit.right.candidate_id),
+    )
+
+
+def bound_consolidation_pair_hits(
+    hits: list[PairFilterHit],
+    *,
+    excluded_unordered_pairs: set[tuple[str, str]] | None = None,
+    top_k: int | None = None,
+) -> list[PairFilterHit]:
+    excluded = {tuple(sorted(pair)) for pair in (excluded_unordered_pairs or set())}
+    by_pair: dict[tuple[str, str], PairFilterHit] = {}
+    for hit in hits:
+        left_id = hit.left.candidate_id
+        right_id = hit.right.candidate_id
+        if left_id == right_id:
+            continue
+        pair_key = tuple(sorted((left_id, right_id)))
+        if pair_key in excluded:
+            continue
+        existing = by_pair.get(pair_key)
+        if existing is None:
+            left_candidate, right_candidate = (
+                (hit.left, hit.right)
+                if left_id <= right_id
+                else (hit.right, hit.left)
+            )
+            existing = PairFilterHit(
+                left=left_candidate,
+                right=right_candidate,
+                sources=set(hit.sources),
+                score=hit.score,
+                semantic_score=hit.semantic_score,
+            )
+            by_pair[pair_key] = existing
+            continue
+        existing.sources.update(hit.sources)
+        existing.score = max(existing.score, hit.score)
+        if hit.semantic_score is not None:
+            existing.semantic_score = max(existing.semantic_score or 0.0, hit.semantic_score)
+
+    neighbor_limit = (
+        top_k
+        if top_k is not None
+        else _env_int("CLAIMS_SILVER_CONSOLIDATION_TOP_K", DEFAULT_TOP_K)
+    )
+    if neighbor_limit <= 0:
+        return _sorted_pair_hits(by_pair.values())
+
+    incident: dict[str, list[tuple[tuple[str, str], PairFilterHit]]] = {}
+    candidates_by_statement: dict[str, set[str]] = {}
+    for pair_key, hit in by_pair.items():
+        incident.setdefault(pair_key[0], []).append((pair_key, hit))
+        incident.setdefault(pair_key[1], []).append((pair_key, hit))
+        for candidate in (hit.left, hit.right):
+            if candidate.normalized_statement:
+                candidates_by_statement.setdefault(candidate.normalized_statement, set()).add(candidate.candidate_id)
+
+    selected_pairs: set[tuple[str, str]] = set()
+    for candidate_id, candidate_hits in incident.items():
+        ranked = sorted(
+            candidate_hits,
+            key=lambda item: _consolidation_hit_rank(item[1], candidate_id),
+        )
+        selected_pairs.update(pair_key for pair_key, _hit in ranked[:neighbor_limit])
+
+    # Exact restatements need only a spanning star, not a quadratic clique.
+    for candidate_ids in candidates_by_statement.values():
+        ordered_ids = sorted(candidate_ids)
+        if len(ordered_ids) < 2:
+            continue
+        anchor = ordered_ids[0]
+        for candidate_id in ordered_ids[1:]:
+            pair_key = tuple(sorted((anchor, candidate_id)))
+            if pair_key in by_pair:
+                selected_pairs.add(pair_key)
+
+    return _sorted_pair_hits(by_pair[pair_key] for pair_key in selected_pairs)
+
+
+def _consolidation_hit_rank(hit: PairFilterHit, candidate_id: str) -> tuple:
+    other_id = hit.right.candidate_id if hit.left.candidate_id == candidate_id else hit.left.candidate_id
+    exact_statement = hit.left.normalized_statement == hit.right.normalized_statement
+    semantic_score = hit.semantic_score if hit.semantic_score is not None else -1.0
+    return (
+        -int(exact_statement),
+        -int(hit.semantic_score is not None),
+        -semantic_score,
+        -hit.score,
+        other_id,
+    )
+
+
+def _sorted_pair_hits(hits: Iterable[PairFilterHit]) -> list[PairFilterHit]:
+    return sorted(
+        hits,
         key=lambda hit: (-hit.score, hit.left.candidate_id, hit.right.candidate_id),
     )
 
@@ -211,6 +323,7 @@ def _add_embedding_hits(
                 right_candidate,
                 source="embedding_high_similarity" if forward_score >= high_threshold else "embedding_retrieval",
                 score=forward_score,
+                semantic_score=forward_score,
             )
         if reverse_score is not None:
             _add_hit(
@@ -219,6 +332,7 @@ def _add_embedding_hits(
                 right_candidate,
                 source="reverse_embedding_high_similarity" if reverse_score >= high_threshold else "reverse_embedding_retrieval",
                 score=reverse_score,
+                semantic_score=reverse_score,
             )
 
 
@@ -251,7 +365,8 @@ def _candidate_embeddings(
     *,
     embedding_provider: Callable[[list[ComparisonCandidate]], dict[str, list[float]]] | None,
 ) -> dict[str, list[float]]:
-    if not candidates:
+    unique_candidates = list({candidate.candidate_id: candidate for candidate in candidates}.values())
+    if not unique_candidates:
         return {}
     provider = embedding_provider
     if provider is None:
@@ -259,7 +374,7 @@ def _candidate_embeddings(
     if provider is None:
         return {}
     try:
-        return provider(candidates)
+        return provider(unique_candidates)
     except Exception:
         return {}
 
@@ -319,6 +434,7 @@ def _add_hit(
     *,
     source: str,
     score: float,
+    semantic_score: float | None = None,
 ) -> None:
     key = (left_candidate.candidate_id, right_candidate.candidate_id)
     hit = hits.get(key)
@@ -327,6 +443,8 @@ def _add_hit(
         hits[key] = hit
     hit.sources.add(source)
     hit.score = max(hit.score, score)
+    if semantic_score is not None:
+        hit.semantic_score = max(hit.semantic_score or 0.0, semantic_score)
 
 
 def _apply_source_hints(

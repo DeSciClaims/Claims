@@ -15,7 +15,7 @@ from .comparison_models import BronzeDiffCase, CandidatePairEdge, ComparisonCand
 from .models import AgentV1ValidationFinding
 from .pairing import (
     RelationClassifier,
-    build_candidate_pairs,
+    bound_consolidation_pair_hits,
     classify_filtered_candidate_pairs,
     filter_candidate_pairs,
 )
@@ -203,7 +203,7 @@ def run_paper_silver_pipeline(
     ))
 
     consolidation_timer = _stage_start("silver_consolidation", "Consolidation")
-    consolidation_cases, consolidation_edges = _build_consolidation_cases(
+    consolidation_cases, consolidation_edges, consolidation_pairing = _build_consolidation_cases(
         paper_id=paper_id,
         candidates=candidate_pool,
         decisions=decisions,
@@ -226,6 +226,7 @@ def run_paper_silver_pipeline(
             "case_count": len(consolidation_cases),
             "edge_count": len(consolidation_edges),
             "batch_size": max(1, int(adjudication_batch_size or 1)),
+            **consolidation_pairing,
         },
     ))
 
@@ -397,23 +398,38 @@ def _build_consolidation_cases(
     decisions: list[AdjudicationDecision],
     relation_classifier: RelationClassifier | None,
     existing_cases: list[BronzeDiffCase],
-) -> tuple[list[BronzeDiffCase], list[CandidatePairEdge]]:
+) -> tuple[list[BronzeDiffCase], list[CandidatePairEdge], dict[str, int]]:
     retained_ids = {
         candidate_id
         for decision in decisions
         for candidate_id in [*decision.accepted_candidate_ids, *decision.valid_alternative_candidate_ids]
     }
     if len(retained_ids) < 2:
-        return [], []
+        return [], [], {
+            "retained_candidate_count": len(retained_ids),
+            "representative_candidate_count": len(retained_ids),
+            "unbounded_pair_count": 0,
+            "filtered_pair_count": 0,
+        }
     retained = [candidate for candidate in candidates if candidate.candidate_id in retained_ids]
+    cases_by_id = {case.case_id: case for case in existing_cases}
+    existing_equivalence_groups = _dedupe_equivalent_candidate_groups(
+        _equivalent_candidate_groups_from_decisions(decisions, cases_by_id=cases_by_id)
+    )
+    representatives = _consolidation_representatives(retained, existing_equivalence_groups)
     existing_pairs = _candidate_pairs_from_cases(existing_cases)
-    candidate_edges = build_candidate_pairs(
-        retained,
-        retained,
-        relation_classifier=relation_classifier,
-        exclude_self_pairs=True,
-        deduplicate_unordered_pairs=True,
+    unbounded_hits = filter_candidate_pairs(
+        representatives,
+        representatives,
+        include_exact_statement_matches=True,
+    )
+    bounded_hits = bound_consolidation_pair_hits(
+        unbounded_hits,
         excluded_unordered_pairs=existing_pairs,
+    )
+    candidate_edges = classify_filtered_candidate_pairs(
+        bounded_hits,
+        relation_classifier=relation_classifier,
     )
     cases: list[BronzeDiffCase] = []
     edges: list[CandidatePairEdge] = []
@@ -452,7 +468,48 @@ def _build_consolidation_cases(
                 },
             )
         )
-    return cases, edges
+    return cases, edges, {
+        "retained_candidate_count": len(retained),
+        "representative_candidate_count": len(representatives),
+        "unbounded_pair_count": len({
+            tuple(sorted((hit.left.candidate_id, hit.right.candidate_id)))
+            for hit in unbounded_hits
+            if hit.left.candidate_id != hit.right.candidate_id
+        }),
+        "filtered_pair_count": len(bounded_hits),
+    }
+
+
+def _consolidation_representatives(
+    retained: list[ComparisonCandidate],
+    equivalence_groups: list[list[str]],
+) -> list[ComparisonCandidate]:
+    candidates_by_id = {candidate.candidate_id: candidate for candidate in retained}
+    replaced_ids: set[str] = set()
+    for group in equivalence_groups:
+        group_candidates = [
+            candidates_by_id[candidate_id]
+            for candidate_id in group
+            if candidate_id in candidates_by_id
+        ]
+        if len(group_candidates) < 2:
+            continue
+        representative = sorted(
+            group_candidates,
+            key=lambda candidate: (
+                -len(candidate.source_span_ids),
+                -len(candidate.evidence_ids),
+                -len(candidate.source_quotes),
+                -len(candidate.statement),
+                candidate.candidate_id,
+            ),
+        )[0]
+        replaced_ids.update(
+            candidate.candidate_id
+            for candidate in group_candidates
+            if candidate.candidate_id != representative.candidate_id
+        )
+    return [candidate for candidate in retained if candidate.candidate_id not in replaced_ids]
 
 
 def _edge_can_open_consolidation_case(edge: CandidatePairEdge) -> bool:

@@ -257,6 +257,7 @@ Useful validator flags:
 - `--claims.adjudication-model-a/b/tiebreak-model <MODEL>`: choose the Silver adjudicator models.
 - `--claims.silver-adjudication-batch-size 8`: adjudicate several anonymous cases per model call; use `1` to disable batching.
 - `--claims.silver-adjudication-max-in-flight 32`: cap Silver model calls globally across papers and passes; use `0` for unlimited.
+- Hermes adjudication uses the bundled `claims-silver-adjudicator` skill and mode-`0600` temporary task files by default, avoiding large command-line arguments. Set `CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE=append` only for legacy CLI behavior.
 - `--claims.diagnostic-miner-max-workers 2`: run diagnostic validation for multiple miner responses concurrently.
 - `--claims.diagnostic-max-workers 10`: run diagnostic validation for multiple papers concurrently per miner.
 - `--claims.skip-diagnostic-validation`: skip diagnostic reports when Silver is the only scoring path for a large run.
@@ -275,6 +276,7 @@ Optional Silver graph-pairing envs:
 - `CLAIMS_SILVER_PAIRING_EMBEDDING_MODE=openrouter`: enable embedding retrieval before relation classification.
 - `CLAIMS_SILVER_PAIRING_EMBEDDING_MODEL=nvidia/nemotron-3-embed-1b:free`: embedding model used for Bronze-to-miner and miner-to-Bronze top-k retrieval.
 - `CLAIMS_SILVER_PAIRING_TOP_K=4`: candidate edges retained per retrieval direction.
+- `CLAIMS_SILVER_CONSOLIDATION_TOP_K=4`: strongest post-adjudication consolidation neighbors retained per candidate; use `0` for the unbounded graph.
 - `CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS=64`: small candidate sets at or below this size also run dense pairing.
 - `CLAIMS_SILVER_RELATION_BATCH_SIZE=16`: relation pairs classified per DSPy request in comparison and consolidation; use `1` to disable batching.
 - `CLAIMS_SILVER_RELATION_MAX_WORKERS=4`: relation-classification batches run concurrently up to this bounded worker count.

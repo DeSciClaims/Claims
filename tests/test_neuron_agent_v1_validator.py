@@ -46,6 +46,7 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     monkeypatch.setenv("CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE", "120")
     monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_BATCH_MAX_TOKENS", "24000")
     monkeypatch.setenv("CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS", "48")
+    monkeypatch.setenv("CLAIMS_SILVER_CONSOLIDATION_TOP_K", "7")
     config = SimpleNamespace(
         netuid=530,
         subtensor=SimpleNamespace(network="test"),
@@ -77,6 +78,7 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_silver_persist_vote_chunk_size"] == 120
     assert snapshot["claims_silver_adjudication_batch_max_tokens"] == 24000
     assert snapshot["claims_silver_pairing_max_dense_pairs"] == 48
+    assert snapshot["claims_silver_consolidation_top_k"] == 7
     assert snapshot["claims_run_heartbeat_interval"] == 60.0
     assert "api_key" not in json.dumps(snapshot).lower()
     assert "must-not-be-persisted" not in json.dumps(snapshot)

@@ -452,13 +452,13 @@ class ClaimsValidator:
             "--claims.silver-adjudication-cli-command-a",
             dest="claims_silver_adjudication_cli_command_a",
             default=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_COMMAND_A", ""),
-            help="CLI command for Silver adjudication pass A. The adjudication prompt is appended unless prompt mode is stdin.",
+            help="CLI command for Silver adjudication pass A. Prompt transport follows the configured CLI prompt mode.",
         )
         parser.add_argument(
             "--claims.silver-adjudication-cli-command-b",
             dest="claims_silver_adjudication_cli_command_b",
             default=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_COMMAND_B", ""),
-            help="CLI command for Silver adjudication pass B. The adjudication prompt is appended unless prompt mode is stdin.",
+            help="CLI command for Silver adjudication pass B. Prompt transport follows the configured CLI prompt mode.",
         )
         parser.add_argument(
             "--claims.silver-adjudication-cli-tiebreak-command",
@@ -475,9 +475,9 @@ class ClaimsValidator:
         parser.add_argument(
             "--claims.silver-adjudication-cli-prompt-mode",
             dest="claims_silver_adjudication_cli_prompt_mode",
-            choices=("append", "stdin"),
-            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE", "append"),
-            help="Pass Silver adjudication prompt as final argv item or stdin for CLI modes.",
+            choices=("auto", "file", "append", "stdin"),
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE", "auto"),
+            help="Transport Silver CLI prompts safely; auto uses temporary task files for Hermes.",
         )
         parser.add_argument(
             "--claims.silver-adjudication-cli-timeout",
@@ -1651,7 +1651,7 @@ class ClaimsValidator:
             cli_command_b=str(getattr(self.config, "claims_silver_adjudication_cli_command_b", "")),
             cli_tiebreak_command=str(getattr(self.config, "claims_silver_adjudication_cli_tiebreak_command", "")),
             cli_command_template=str(getattr(self.config, "claims_silver_adjudication_cli_command_template", "")),
-            cli_prompt_mode=str(getattr(self.config, "claims_silver_adjudication_cli_prompt_mode", "append")),
+            cli_prompt_mode=str(getattr(self.config, "claims_silver_adjudication_cli_prompt_mode", "auto")),
             cli_timeout_seconds=float(getattr(self.config, "claims_silver_adjudication_cli_timeout", 900)),
             cli_provider=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "openrouter"),
             cli_max_turns=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_MAX_TURNS", "10")),
@@ -3971,7 +3971,7 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
             getattr(config, "claims_silver_adjudication_tiebreak_model", "") or ""
         ),
         "claims_silver_adjudication_cli_prompt_mode": str(
-            getattr(config, "claims_silver_adjudication_cli_prompt_mode", "append") or "append"
+            getattr(config, "claims_silver_adjudication_cli_prompt_mode", "auto") or "auto"
         ),
         "claims_silver_adjudication_cli_timeout": float(
             getattr(config, "claims_silver_adjudication_cli_timeout", 900.0)
@@ -4009,6 +4009,9 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
             os.getenv("CLAIMS_SILVER_PAIRING_EMBEDDING_MODEL", "nvidia/nemotron-3-embed-1b:free") or ""
         ),
         "claims_silver_pairing_top_k": int(os.getenv("CLAIMS_SILVER_PAIRING_TOP_K", "4") or 4),
+        "claims_silver_consolidation_top_k": int(
+            os.getenv("CLAIMS_SILVER_CONSOLIDATION_TOP_K", "4") or 4
+        ),
         "claims_silver_pairing_max_dense_pairs": int(
             os.getenv("CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS", "0") or 0
         ),

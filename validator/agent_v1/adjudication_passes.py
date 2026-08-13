@@ -5,7 +5,9 @@ import hashlib
 import os
 import re
 import shlex
+import shutil
 import subprocess
+import tempfile
 import threading
 import time
 import urllib.error
@@ -42,6 +44,8 @@ PROMPT_DISPOSITIONS: set[str] = {
     "both_invalid",
     "insufficient_information",
 }
+HERMES_ADJUDICATION_SKILL_NAME = "claims-silver-adjudicator"
+_HERMES_SKILL_INSTALL_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -252,16 +256,18 @@ class CLIAdjudicationPass:
         usage = empty_usage("cli_not_started")
         status = "success"
         error = None
+        prompt_path: Path | None = None
         try:
             prompt = _adjudication_cli_prompt(context)
             command = shlex.split(self.command) if isinstance(self.command, str) else list(self.command)
             if not command:
                 raise ValueError("CLI adjudication command is empty")
-            stdin = None
-            if self.prompt_mode == "stdin":
-                stdin = prompt
-            else:
-                command.append(prompt)
+            command, stdin, prompt_path = _prepare_cli_prompt_transport(
+                command,
+                prompt,
+                prompt_mode=self.prompt_mode,
+                model_runtime_id=self.model_runtime_id,
+            )
             with _request_slot(self.request_gate):
                 completed = subprocess.run(
                     command,
@@ -316,6 +322,7 @@ class CLIAdjudicationPass:
                 insufficient_information=True,
             )
         finally:
+            _remove_prompt_file(prompt_path)
             model = self.model or _model_from_profile_id(self.adjudication_profile_id)
             _emit_adjudication_usage(
                 self.usage_sink,
@@ -343,16 +350,18 @@ class CLIAdjudicationPass:
         usage = empty_usage("cli_not_started")
         status = "success"
         error = None
+        prompt_path: Path | None = None
         try:
             prompt = _adjudication_batch_cli_prompt(contexts)
             command = shlex.split(self.command) if isinstance(self.command, str) else list(self.command)
             if not command:
                 raise ValueError("CLI adjudication command is empty")
-            stdin = None
-            if self.prompt_mode == "stdin":
-                stdin = prompt
-            else:
-                command.append(prompt)
+            command, stdin, prompt_path = _prepare_cli_prompt_transport(
+                command,
+                prompt,
+                prompt_mode=self.prompt_mode,
+                model_runtime_id=self.model_runtime_id,
+            )
             with _request_slot(self.request_gate):
                 completed = subprocess.run(
                     command,
@@ -398,6 +407,7 @@ class CLIAdjudicationPass:
             )
             return [_failed_adjudication_vote(context, self, error) for context in contexts]
         finally:
+            _remove_prompt_file(prompt_path)
             model = self.model or _model_from_profile_id(self.adjudication_profile_id)
             _emit_adjudication_batch_usage(
                 self.usage_sink,
@@ -413,6 +423,108 @@ class CLIAdjudicationPass:
                 started_at=started_at,
                 duration_seconds=time.perf_counter() - started,
             )
+
+
+def _prepare_cli_prompt_transport(
+    command: list[str],
+    prompt: str,
+    *,
+    prompt_mode: str,
+    model_runtime_id: str,
+) -> tuple[list[str], str | None, Path | None]:
+    mode = prompt_mode.strip().lower()
+    if mode == "auto":
+        mode = "file" if model_runtime_id == "hermes-cli" else "append"
+    if mode == "stdin":
+        return command, prompt, None
+    if mode == "append":
+        return [*command, prompt], None, None
+    if mode != "file":
+        raise ValueError(f"Unsupported CLI adjudication prompt mode: {prompt_mode}")
+
+    prompt_path = _write_prompt_file(prompt)
+    prepared_command = list(command)
+    skill_loaded = False
+    if model_runtime_id == "hermes-cli":
+        skill_loaded = _install_hermes_adjudication_skill()
+        if skill_loaded:
+            prepared_command = _with_preloaded_hermes_skill(prepared_command)
+    query = (
+        f"Read the complete anonymous Claims Silver adjudication task from {prompt_path}. "
+        "Follow the preloaded claims-silver-adjudicator skill and return only the required JSON."
+        if skill_loaded
+        else f"Read and follow the complete adjudication task in {prompt_path}. Return only the required JSON."
+    )
+    prepared_command.append(query)
+    return prepared_command, None, prompt_path
+
+
+def _write_prompt_file(prompt: str) -> Path:
+    prompt_dir_value = os.getenv("CLAIMS_SILVER_ADJUDICATION_PROMPT_DIR", "").strip()
+    prompt_dir = Path(prompt_dir_value).expanduser() if prompt_dir_value else None
+    if prompt_dir is not None:
+        prompt_dir.mkdir(parents=True, exist_ok=True)
+    file_descriptor, path_value = tempfile.mkstemp(
+        prefix="claims-silver-adjudication-",
+        suffix=".txt",
+        dir=str(prompt_dir) if prompt_dir is not None else None,
+        text=True,
+    )
+    try:
+        os.fchmod(file_descriptor, 0o600)
+        handle = os.fdopen(file_descriptor, "w", encoding="utf-8")
+    except Exception:
+        os.close(file_descriptor)
+        Path(path_value).unlink(missing_ok=True)
+        raise
+    try:
+        with handle:
+            handle.write(prompt)
+            handle.write("\n")
+    except Exception:
+        Path(path_value).unlink(missing_ok=True)
+        raise
+    return Path(path_value)
+
+
+def _remove_prompt_file(prompt_path: Path | None) -> None:
+    if prompt_path is not None:
+        prompt_path.unlink(missing_ok=True)
+
+
+def _install_hermes_adjudication_skill() -> bool:
+    source = Path(__file__).resolve().parent / "skills" / HERMES_ADJUDICATION_SKILL_NAME
+    if not (source / "SKILL.md").is_file():
+        return False
+    hermes_home = Path(os.getenv("HERMES_HOME", "~/.hermes")).expanduser()
+    destination = hermes_home / "skills" / HERMES_ADJUDICATION_SKILL_NAME
+    try:
+        with _HERMES_SKILL_INSTALL_LOCK:
+            destination.mkdir(parents=True, exist_ok=True)
+            for source_file in source.rglob("*"):
+                if not source_file.is_file():
+                    continue
+                relative_path = source_file.relative_to(source)
+                destination_file = destination / relative_path
+                destination_file.parent.mkdir(parents=True, exist_ok=True)
+                if destination_file.exists() and destination_file.read_bytes() == source_file.read_bytes():
+                    continue
+                shutil.copy2(source_file, destination_file)
+    except OSError:
+        return False
+    return (destination / "SKILL.md").is_file()
+
+
+def _with_preloaded_hermes_skill(command: list[str]) -> list[str]:
+    if HERMES_ADJUDICATION_SKILL_NAME in command:
+        return command
+    prepared = list(command)
+    for index, argument in enumerate(prepared):
+        if argument in {"-q", "--query"}:
+            prepared[index:index] = ["--skills", HERMES_ADJUDICATION_SKILL_NAME]
+            return prepared
+    prepared.extend(["--skills", HERMES_ADJUDICATION_SKILL_NAME])
+    return prepared
 
 
 @dataclass

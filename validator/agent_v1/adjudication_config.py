@@ -44,7 +44,7 @@ class SilverAdjudicationConfig:
     cli_command_b: str = ""
     cli_tiebreak_command: str = ""
     cli_command_template: str = ""
-    cli_prompt_mode: str = "append"
+    cli_prompt_mode: str = "auto"
     cli_timeout_seconds: float = 900.0
     cli_provider: str = "openrouter"
     cli_max_turns: int = 10
@@ -72,7 +72,7 @@ class SilverAdjudicationConfig:
             cli_command_b=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_COMMAND_B", ""),
             cli_tiebreak_command=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_TIEBREAK_COMMAND", ""),
             cli_command_template=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_COMMAND_TEMPLATE", ""),
-            cli_prompt_mode=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE", "append"),
+            cli_prompt_mode=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE", "auto"),
             cli_timeout_seconds=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_TIMEOUT", "900")),
             cli_provider=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "openrouter"),
             cli_max_turns=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_MAX_TURNS", "10")),

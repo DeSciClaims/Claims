@@ -4,6 +4,7 @@ import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -48,7 +49,11 @@ from validator.agent_v1.orchestrator import (
     run_batch_silver_scoring,
     run_paper_silver_pipeline,
 )
-from validator.agent_v1.pairing import build_candidate_pairs, filter_candidate_pairs
+from validator.agent_v1.pairing import (
+    bound_consolidation_pair_hits,
+    build_candidate_pairs,
+    filter_candidate_pairs,
+)
 from validator.agent_v1.relation_classifier import DSPyRelationClassifier
 from validator.agent_v1.silver_builder import build_silver_record
 from validator.agent_v1.silver_importance import OpenAICompatibleSilverImportanceClassifier, apply_silver_importance
@@ -606,6 +611,66 @@ def test_cli_adjudication_pass_runs_one_process_for_case_batch(monkeypatch) -> N
         "accepted_improvement",
         "accepted_improvement",
     ]
+
+
+def test_cli_hermes_auto_transport_uses_managed_skill_and_temporary_file(monkeypatch, tmp_path) -> None:
+    candidate_id = "miner:uid_9:C01"
+    context = AdjudicationContextBundle(
+        case=BronzeDiffCase(
+            case_id="case_cli_file",
+            paper_id="paper",
+            miner_id="uid_9",
+            mismatch_type="EXTRA_FROM_MINER",
+            candidate_ids=[candidate_id],
+            question="Should this candidate be included?",
+        ),
+        candidates=[_candidate(candidate_id, "miner", "uid_9", "Treatment A reduced mortality.")],
+    )
+    captured_path: Path | None = None
+
+    def fake_run(command, **kwargs):
+        nonlocal captured_path
+        assert kwargs["input"] is None
+        assert "--skills" in command
+        assert "claims-silver-adjudicator" in command
+        assert all("# Claims Silver adjudication task" not in argument for argument in command)
+        query = command[-1]
+        path_value = query.split(" from ", 1)[1].split(". Follow", 1)[0]
+        captured_path = Path(path_value)
+        assert captured_path.is_file()
+        assert captured_path.stat().st_mode & 0o777 == 0o600
+        assert "# Claims Silver adjudication task" in captured_path.read_text(encoding="utf-8")
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "disposition": "include_candidate",
+                    "material_findings": ["supported"],
+                    "cited_span_ids": [],
+                    "confidence": 0.95,
+                    "rationale": "Supported by the supplied context.",
+                    "insufficient_information": False,
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_PROMPT_DIR", str(tmp_path / "prompts"))
+    monkeypatch.setattr("validator.agent_v1.adjudication_passes.subprocess.run", fake_run)
+    adjudication_pass = CLIAdjudicationPass(
+        pass_id="pass_a",
+        adjudication_profile_id="hermes-cli:test-model",
+        model_runtime_id="hermes-cli",
+        command=["hermes", "chat", "-q"],
+        prompt_mode="auto",
+    )
+
+    vote = adjudication_pass.run(context)
+
+    assert vote.disposition == "accepted_improvement"
+    assert captured_path is not None and not captured_path.exists()
+    assert (tmp_path / "hermes" / "skills" / "claims-silver-adjudicator" / "SKILL.md").is_file()
 
 
 def test_dspy_adjudication_pass_uses_anonymous_structured_payload() -> None:
@@ -1325,6 +1390,75 @@ def test_pairing_precise_span_overlap_still_opens_pair() -> None:
 
     assert [edge.filter_sources for edge in result.candidate_graph_edges] == [["source_span_overlap"]]
     assert [case.mismatch_type for case in result.cases] == ["COMPATIBLE_REFINEMENT"]
+
+
+def test_consolidation_pair_filter_bounds_shared_span_clique() -> None:
+    candidates = [
+        _candidate(
+            f"miner:uid_9:C{index:02d}",
+            "miner",
+            "uid_9",
+            f"Distinct supported finding number {index}.",
+            source_span_ids=["paper-span-0007"],
+        )
+        for index in range(12)
+    ]
+
+    hits = filter_candidate_pairs(candidates, candidates, embedding_provider=lambda _candidates: {})
+    bounded = bound_consolidation_pair_hits(hits, top_k=2)
+
+    assert len({tuple(sorted((hit.left.candidate_id, hit.right.candidate_id))) for hit in hits}) == 66
+    assert len(bounded) <= 24
+    bounded_pairs = {
+        tuple(sorted((hit.left.candidate_id, hit.right.candidate_id)))
+        for hit in bounded
+    }
+    assert len(bounded_pairs) == len(bounded)
+
+
+def test_consolidation_embedding_request_deduplicates_candidate_ids() -> None:
+    candidates = [
+        _candidate(f"miner:uid_9:C{index:02d}", "miner", "uid_9", f"Finding {index}.")
+        for index in range(3)
+    ]
+    embedded_candidate_ids: list[str] = []
+
+    def embedding_provider(requested: list[ComparisonCandidate]) -> dict[str, list[float]]:
+        embedded_candidate_ids.extend(candidate.candidate_id for candidate in requested)
+        return {}
+
+    filter_candidate_pairs(candidates, candidates, embedding_provider=embedding_provider)
+
+    assert embedded_candidate_ids == [candidate.candidate_id for candidate in candidates]
+
+
+def test_consolidation_pair_filter_keeps_exact_restatements_connected() -> None:
+    candidates = [
+        _candidate(
+            f"miner:uid_{index}:C01",
+            "miner",
+            f"uid_{index}",
+            "Treatment A reduced mortality.",
+        )
+        for index in range(4)
+    ]
+
+    bounded = bound_consolidation_pair_hits(
+        filter_candidate_pairs(
+            candidates,
+            candidates,
+            include_exact_statement_matches=True,
+            embedding_provider=lambda _candidates: {},
+        ),
+        top_k=1,
+    )
+    pairs = {
+        tuple(sorted((hit.left.candidate_id, hit.right.candidate_id)))
+        for hit in bounded
+    }
+    anchor = candidates[0].candidate_id
+
+    assert {(anchor, candidate.candidate_id) for candidate in candidates[1:]}.issubset(pairs)
 
 
 def test_partial_overlap_both_valid_stays_two_silver_units() -> None:
