@@ -184,6 +184,60 @@ class ClaimsBackendClient:
     def post_silver_score_report(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/silver-score-reports", payload)
 
+    def post_silver_pipeline_chunks(
+        self,
+        *,
+        cases: list[dict[str, Any]],
+        votes: list[dict[str, Any]],
+        consensus: list[dict[str, Any]],
+        decisions: list[dict[str, Any]],
+        silver_records: list[dict[str, Any]],
+        score_reports: list[dict[str, Any]],
+        case_chunk_size: int = 50,
+        vote_chunk_size: int = 150,
+    ) -> dict[str, Any]:
+        section_rows = {
+            "cases": cases,
+            "votes": votes,
+            "consensus": consensus,
+            "decisions": decisions,
+            "silver_records": silver_records,
+            "score_reports": score_reports,
+        }
+        section_sizes = {
+            "cases": max(1, min(int(case_chunk_size), 100)),
+            "votes": max(1, min(int(vote_chunk_size), 300)),
+            "consensus": max(1, min(int(case_chunk_size), 100)),
+            "decisions": max(1, min(int(case_chunk_size), 100)),
+            "silver_records": 20,
+            "score_reports": max(1, min(int(case_chunk_size), 200)),
+        }
+        offsets = {name: 0 for name in section_rows}
+        accepted = 0
+        chunk_count = 0
+        while any(offsets[name] < len(rows) for name, rows in section_rows.items()):
+            payload: dict[str, list[dict[str, Any]]] = {}
+            expected = 0
+            for name, rows in section_rows.items():
+                offset = offsets[name]
+                chunk = rows[offset : offset + section_sizes[name]]
+                payload[name] = chunk
+                offsets[name] += len(chunk)
+                expected += len(chunk)
+            result = self.post("/validator/silver-pipeline-chunks", payload)
+            stored = int(result.get("accepted", 0) or 0)
+            if stored != expected:
+                raise BackendClientError(
+                    f"Backend accepted {stored} of {expected} Silver pipeline rows in chunk {chunk_count}."
+                )
+            accepted += stored
+            chunk_count += 1
+        return {
+            "accepted": accepted,
+            "chunks": chunk_count,
+            "counts": {name: len(rows) for name, rows in section_rows.items()},
+        }
+
     def get_model_usage_event_status(self, *, run_id: str, expected_event_count: int) -> dict[str, Any]:
         result = self.get(
             "/validator/model-usage-events/status",

@@ -1707,105 +1707,97 @@ class ClaimsValidator:
             **{f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata, _source_payload, _findings in miner_rows},
         }
         backend_case_ids = {case.case_id: f"{run_id}_{case.case_id}" for case in result.diff_cases}
+        case_payloads: list[dict[str, Any]] = []
         for case in result.diff_cases:
             case_uid, case_metadata = metadata_by_miner_id.get(case.miner_id, (None, {}))
             backend_case_id = backend_case_ids[case.case_id]
             case_payload = case.model_dump(mode="json")
             case_payload["original_case_id"] = case.case_id
             case_payload["case_id"] = backend_case_id
-            try:
-                self.backend_client.post_adjudication_case(
-                    {
-                        "case_id": backend_case_id,
-                        "network": network,
-                        "run_id": run_id,
-                        "batch_id": batch_id,
-                        "paper_id": paper_id,
-                        "bronze_record_id": result.silver_record.bronze_record_id,
-                        "miner_hotkey": case_metadata.get("hotkey") or None,
-                        "uid": case_uid,
-                        "mismatch_type": case.mismatch_type,
-                        "candidate_ids": case.candidate_ids,
-                        "status": "pending",
-                        "context_uri": str(output_dir / "adjudication_consensus.json"),
-                        "findings": [],
-                        "decision": {"case": case_payload},
-                    }
-                )
-            except BackendClientError as exc:
-                self.bt_logging.warning(f"Could not post adjudication case to backend: {exc}")
+            case_payloads.append(
+                {
+                    "case_id": backend_case_id,
+                    "network": network,
+                    "run_id": run_id,
+                    "batch_id": batch_id,
+                    "paper_id": paper_id,
+                    "bronze_record_id": result.silver_record.bronze_record_id,
+                    "miner_hotkey": case_metadata.get("hotkey") or None,
+                    "uid": case_uid,
+                    "mismatch_type": case.mismatch_type,
+                    "candidate_ids": case.candidate_ids,
+                    "status": "pending",
+                    "context_uri": str(output_dir / "adjudication_consensus.json"),
+                    "findings": [],
+                    "decision": {"case": case_payload},
+                }
+            )
+        vote_payloads: list[dict[str, Any]] = []
+        consensus_payloads: list[dict[str, Any]] = []
         for consensus in result.adjudication_consensus:
             for vote in consensus.votes:
                 backend_case_id = backend_case_ids.get(vote.case_id, f"{run_id}_{vote.case_id}")
-                try:
-                    self.backend_client.post_adjudication_vote(
-                        {
-                            "vote_id": f"{backend_case_id}_{vote.pass_id}",
-                            "network": network,
-                            "case_id": backend_case_id,
-                            "run_id": run_id,
-                            "batch_id": batch_id,
-                            "paper_id": paper_id,
-                            "pass_id": vote.pass_id,
-                            "adjudication_profile_id": vote.adjudication_profile_id,
-                            "model_runtime_id": vote.model_runtime_id,
-                            "candidate_order_seed": vote.case_id,
-                            "disposition": vote.disposition,
-                            "material_findings": vote.material_findings,
-                            "cited_span_ids": vote.cited_span_ids,
-                            "confidence": vote.confidence,
-                            "rationale": vote.rationale,
-                        }
-                    )
-                except BackendClientError as exc:
-                    self.bt_logging.warning(f"Could not post adjudication vote to backend: {exc}")
-            try:
-                backend_case_id = backend_case_ids.get(consensus.case_id, f"{run_id}_{consensus.case_id}")
-                self.backend_client.post_adjudication_consensus(
+                vote_payloads.append(
                     {
-                        "consensus_id": f"{backend_case_id}_consensus",
+                        "vote_id": f"{backend_case_id}_{vote.pass_id}",
                         "network": network,
                         "case_id": backend_case_id,
                         "run_id": run_id,
                         "batch_id": batch_id,
                         "paper_id": paper_id,
-                        "final_disposition": consensus.final_disposition,
-                        "final_confidence": consensus.final_confidence,
-                        "agreement_rate": consensus.agreement_rate,
-                        "route": consensus.route,
-                        "score_effects": [effect.model_dump(mode="json") for effect in consensus.score_effects],
+                        "pass_id": vote.pass_id,
+                        "adjudication_profile_id": vote.adjudication_profile_id,
+                        "model_runtime_id": vote.model_runtime_id,
+                        "candidate_order_seed": vote.case_id,
+                        "disposition": vote.disposition,
+                        "material_findings": vote.material_findings,
+                        "cited_span_ids": vote.cited_span_ids,
+                        "confidence": vote.confidence,
+                        "rationale": vote.rationale,
                     }
                 )
-            except BackendClientError as exc:
-                self.bt_logging.warning(f"Could not post adjudication consensus to backend: {exc}")
+            backend_case_id = backend_case_ids.get(consensus.case_id, f"{run_id}_{consensus.case_id}")
+            consensus_payloads.append(
+                {
+                    "consensus_id": f"{backend_case_id}_consensus",
+                    "network": network,
+                    "case_id": backend_case_id,
+                    "run_id": run_id,
+                    "batch_id": batch_id,
+                    "paper_id": paper_id,
+                    "final_disposition": consensus.final_disposition,
+                    "final_confidence": consensus.final_confidence,
+                    "agreement_rate": consensus.agreement_rate,
+                    "route": consensus.route,
+                    "score_effects": [effect.model_dump(mode="json") for effect in consensus.score_effects],
+                }
+            )
+        decision_payloads: list[dict[str, Any]] = []
         for decision in result.adjudication_decisions:
             backend_case_id = backend_case_ids.get(decision.case_id, f"{run_id}_{decision.case_id}")
             decision_payload = decision.model_dump(mode="json")
             decision_payload["original_case_id"] = decision.case_id
             decision_payload["case_id"] = backend_case_id
-            try:
-                self.backend_client.post_adjudication_decision(
-                    {
-                        "decision_id": f"{backend_case_id}_decision",
-                        "network": network,
-                        "case_id": backend_case_id,
-                        "run_id": run_id,
-                        "batch_id": batch_id,
-                        "paper_id": paper_id,
-                        "disposition": decision.disposition,
-                        "accepted_candidate_ids": decision.accepted_candidate_ids,
-                        "rejected_candidate_ids": decision.rejected_candidate_ids,
-                        "valid_alternative_candidate_ids": decision.valid_alternative_candidate_ids,
-                        "silver_unit_id": decision.silver_unit_id,
-                        "creates_required_silver_unit": decision.creates_required_silver_unit,
-                        "creates_optional_improvement_unit": decision.creates_optional_improvement_unit,
-                        "importance": decision.importance,
-                        "rationale": decision.rationale,
-                        "decision": decision_payload,
-                    }
-                )
-            except BackendClientError as exc:
-                self.bt_logging.warning(f"Could not post adjudication decision to backend: {exc}")
+            decision_payloads.append(
+                {
+                    "decision_id": f"{backend_case_id}_decision",
+                    "network": network,
+                    "case_id": backend_case_id,
+                    "run_id": run_id,
+                    "batch_id": batch_id,
+                    "paper_id": paper_id,
+                    "disposition": decision.disposition,
+                    "accepted_candidate_ids": decision.accepted_candidate_ids,
+                    "rejected_candidate_ids": decision.rejected_candidate_ids,
+                    "valid_alternative_candidate_ids": decision.valid_alternative_candidate_ids,
+                    "silver_unit_id": decision.silver_unit_id,
+                    "creates_required_silver_unit": decision.creates_required_silver_unit,
+                    "creates_optional_improvement_unit": decision.creates_optional_improvement_unit,
+                    "importance": decision.importance,
+                    "rationale": decision.rationale,
+                    "decision": decision_payload,
+                }
+            )
         silver_units = []
         for unit in result.silver_record.silver_units:
             unit_payload = unit.model_dump(mode="json")
@@ -1821,24 +1813,22 @@ class ClaimsValidator:
             if isinstance(original_case_id, str):
                 item_payload["adjudication_case_id"] = backend_case_ids.get(original_case_id, original_case_id)
             invalid_candidates.append(item_payload)
-        try:
-            self.backend_client.post_silver_record(
-                {
-                    "silver_record_id": result.silver_record.silver_record_id,
-                    "network": network,
-                    "run_id": run_id,
-                    "batch_id": batch_id,
-                    "paper_id": paper_id,
-                    "bronze_record_id": result.silver_record.bronze_record_id,
-                    "silver_units": silver_units,
-                    "invalid_candidates": invalid_candidates,
-                    "reference_errors": [item.model_dump(mode="json") for item in result.silver_record.reference_errors],
-                    "metadata": result.silver_record.metadata,
-                    "audit_uri": str(output_dir / "silver_record.json"),
-                }
-            )
-        except BackendClientError as exc:
-            self.bt_logging.warning(f"Could not post Silver record to backend: {exc}")
+        silver_record_payloads = [
+            {
+                "silver_record_id": result.silver_record.silver_record_id,
+                "network": network,
+                "run_id": run_id,
+                "batch_id": batch_id,
+                "paper_id": paper_id,
+                "bronze_record_id": result.silver_record.bronze_record_id,
+                "silver_units": silver_units,
+                "invalid_candidates": invalid_candidates,
+                "reference_errors": [item.model_dump(mode="json") for item in result.silver_record.reference_errors],
+                "metadata": result.silver_record.metadata,
+                "audit_uri": str(output_dir / "silver_record.json"),
+            }
+        ]
+        score_payloads: list[dict[str, Any]] = []
         for score in result.scores:
             uid, metadata = metadata_by_miner_id.get(score.miner_id, (0, {}))
             breakdown = score.model_dump(mode="json")
@@ -1853,27 +1843,63 @@ class ClaimsValidator:
                 ],
                 include_active_run_stages=False,
             )
+            score_payloads.append(
+                {
+                    "score_report_id": f"silver_score_{run_id}_{safe_task_id(paper_id)}_uid_{uid}",
+                    "network": network,
+                    "run_id": run_id,
+                    "batch_id": batch_id,
+                    "paper_id": paper_id,
+                    "response_id": f"{run_id}:uid_{uid}",
+                    "uid": uid,
+                    "hotkey": metadata.get("hotkey", ""),
+                    "silver_record_id": score.silver_record_id,
+                    "coverage": score.coverage,
+                    "quality": score.quality,
+                    "score": score.score,
+                    "findings": [finding.model_dump(mode="json") for finding in score.findings],
+                    "breakdown": breakdown,
+                }
+            )
+
+        bulk_post = getattr(self.backend_client, "post_silver_pipeline_chunks", None)
+        if callable(bulk_post):
             try:
-                self.backend_client.post_silver_score_report(
-                    {
-                        "score_report_id": f"silver_score_{run_id}_{safe_task_id(paper_id)}_uid_{uid}",
-                        "network": network,
-                        "run_id": run_id,
-                        "batch_id": batch_id,
-                        "paper_id": paper_id,
-                        "response_id": f"{run_id}:uid_{uid}",
-                        "uid": uid,
-                        "hotkey": metadata.get("hotkey", ""),
-                        "silver_record_id": score.silver_record_id,
-                        "coverage": score.coverage,
-                        "quality": score.quality,
-                        "score": score.score,
-                        "findings": [finding.model_dump(mode="json") for finding in score.findings],
-                        "breakdown": breakdown,
-                    }
+                persisted = bulk_post(
+                    cases=case_payloads,
+                    votes=vote_payloads,
+                    consensus=consensus_payloads,
+                    decisions=decision_payloads,
+                    silver_records=silver_record_payloads,
+                    score_reports=score_payloads,
+                    case_chunk_size=int(os.getenv("CLAIMS_SILVER_PERSIST_CHUNK_SIZE", "50") or 50),
+                    vote_chunk_size=int(os.getenv("CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE", "150") or 150),
                 )
+                self.bt_logging.info(
+                    "Persisted Silver pipeline in "
+                    f"{int(persisted.get('chunks', 0) or 0)} bounded chunk(s); "
+                    f"rows={int(persisted.get('accepted', 0) or 0)} paper={paper_id}."
+                )
+                return
             except BackendClientError as exc:
-                self.bt_logging.warning(f"Could not post Silver score report to backend: {exc}")
+                self.bt_logging.warning(
+                    f"Bulk Silver persistence failed; retrying through legacy endpoints: {exc}"
+                )
+
+        legacy_sections = (
+            ("adjudication case", self.backend_client.post_adjudication_case, case_payloads),
+            ("adjudication vote", self.backend_client.post_adjudication_vote, vote_payloads),
+            ("adjudication consensus", self.backend_client.post_adjudication_consensus, consensus_payloads),
+            ("adjudication decision", self.backend_client.post_adjudication_decision, decision_payloads),
+            ("Silver record", self.backend_client.post_silver_record, silver_record_payloads),
+            ("Silver score report", self.backend_client.post_silver_score_report, score_payloads),
+        )
+        for label, post_row, payloads in legacy_sections:
+            for payload in payloads:
+                try:
+                    post_row(payload)
+                except BackendClientError as exc:
+                    self.bt_logging.warning(f"Could not post {label} to backend: {exc}")
 
     def _score_extraction(
         self,
@@ -3968,8 +3994,13 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_silver_relation_mode": str(getattr(config, "claims_silver_relation_mode", "dspy") or ""),
         "claims_silver_relation_model": str(getattr(config, "claims_silver_relation_model", "") or ""),
         "claims_silver_relation_batch_size": int(os.getenv("CLAIMS_SILVER_RELATION_BATCH_SIZE", "16") or 16),
+        "claims_silver_relation_max_workers": int(os.getenv("CLAIMS_SILVER_RELATION_MAX_WORKERS", "4") or 4),
         "claims_silver_relation_batch_max_tokens": int(
             os.getenv("CLAIMS_SILVER_RELATION_BATCH_MAX_TOKENS", "8192") or 8192
+        ),
+        "claims_silver_persist_chunk_size": int(os.getenv("CLAIMS_SILVER_PERSIST_CHUNK_SIZE", "50") or 50),
+        "claims_silver_persist_vote_chunk_size": int(
+            os.getenv("CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE", "150") or 150
         ),
         "claims_silver_relation_timeout": float(os.getenv("CLAIMS_SILVER_RELATION_TIMEOUT", "120") or 120),
         "claims_silver_pairing_embedding_mode": str(os.getenv("CLAIMS_SILVER_PAIRING_EMBEDDING_MODE", "") or ""),

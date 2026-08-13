@@ -277,6 +277,9 @@ Optional Silver graph-pairing envs:
 - `CLAIMS_SILVER_PAIRING_TOP_K=4`: candidate edges retained per retrieval direction.
 - `CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS=64`: small candidate sets at or below this size also run dense pairing.
 - `CLAIMS_SILVER_RELATION_BATCH_SIZE=16`: relation pairs classified per DSPy request in comparison and consolidation; use `1` to disable batching.
+- `CLAIMS_SILVER_RELATION_MAX_WORKERS=4`: relation-classification batches run concurrently up to this bounded worker count.
+- `CLAIMS_SILVER_PERSIST_CHUNK_SIZE=50`: cases, consensus, decisions, and score rows sent per persistence chunk.
+- `CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE=150`: adjudication votes sent per persistence chunk.
 
 Each backend run record stores the effective non-secret validator configuration, Git revision, timing, and process-tree memory telemetry for reproducible capacity comparisons.
 

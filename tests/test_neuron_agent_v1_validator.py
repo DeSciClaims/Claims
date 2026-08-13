@@ -41,6 +41,9 @@ def test_protocol_can_carry_source_payload() -> None:
 def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "must-not-be-persisted")
     monkeypatch.setenv("CLAIMS_SILVER_RELATION_BATCH_SIZE", "12")
+    monkeypatch.setenv("CLAIMS_SILVER_RELATION_MAX_WORKERS", "6")
+    monkeypatch.setenv("CLAIMS_SILVER_PERSIST_CHUNK_SIZE", "40")
+    monkeypatch.setenv("CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE", "120")
     monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_BATCH_MAX_TOKENS", "24000")
     monkeypatch.setenv("CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS", "48")
     config = SimpleNamespace(
@@ -69,6 +72,9 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_silver_adjudication_max_in_flight"] == 0
     assert snapshot["claims_silver_adjudication_batch_size"] == 8
     assert snapshot["claims_silver_relation_batch_size"] == 12
+    assert snapshot["claims_silver_relation_max_workers"] == 6
+    assert snapshot["claims_silver_persist_chunk_size"] == 40
+    assert snapshot["claims_silver_persist_vote_chunk_size"] == 120
     assert snapshot["claims_silver_adjudication_batch_max_tokens"] == 24000
     assert snapshot["claims_silver_pairing_max_dense_pairs"] == 48
     assert snapshot["claims_run_heartbeat_interval"] == 60.0
@@ -401,6 +407,7 @@ def test_neuron_silver_post_pass_persists_backend_records(tmp_path) -> None:
     assert scores == {7: 1.0}
     assert backend.consensus[0]["route"] == "direct"
     assert backend.decisions[0]["disposition"] == "reference_error"
+    assert backend.silver_chunk_calls == [{"case_chunk_size": 50, "vote_chunk_size": 150}]
 
 
 def test_neuron_silver_post_pass_counts_unscored_batch_paper_as_zero(tmp_path) -> None:
@@ -1038,6 +1045,7 @@ class _CapturingBackend:
         self.decisions = []
         self.silver_records = []
         self.silver_scores = []
+        self.silver_chunk_calls = []
 
     def get_bronze_record(self, *, paper_id, reference_release_id):
         raise RuntimeError("Bronze not found")
@@ -1069,3 +1077,33 @@ class _CapturingBackend:
     def post_silver_score_report(self, payload):
         self.silver_scores.append(payload)
         return payload
+
+    def post_silver_pipeline_chunks(
+        self,
+        *,
+        cases,
+        votes,
+        consensus,
+        decisions,
+        silver_records,
+        score_reports,
+        case_chunk_size,
+        vote_chunk_size,
+    ):
+        self.silver_chunk_calls.append(
+            {
+                "case_chunk_size": case_chunk_size,
+                "vote_chunk_size": vote_chunk_size,
+            }
+        )
+        self.cases.extend(cases)
+        self.votes.extend(votes)
+        self.consensus.extend(consensus)
+        self.decisions.extend(decisions)
+        self.silver_records.extend(silver_records)
+        self.silver_scores.extend(score_reports)
+        accepted = sum(
+            len(rows)
+            for rows in (cases, votes, consensus, decisions, silver_records, score_reports)
+        )
+        return {"accepted": accepted, "chunks": 1}

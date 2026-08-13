@@ -94,6 +94,46 @@ def test_model_usage_upload_chunks_and_verifies_stored_count(monkeypatch) -> Non
     assert result["complete"] is True
 
 
+def test_silver_pipeline_upload_uses_bounded_chunks(monkeypatch) -> None:
+    posted: list[dict] = []
+
+    def fake_post(self, path, payload):
+        assert path == "/validator/silver-pipeline-chunks"
+        posted.append(payload)
+        return {"accepted": sum(len(rows) for rows in payload.values())}
+
+    monkeypatch.setattr(ClaimsBackendClient, "post", fake_post)
+    client = ClaimsBackendClient("https://api.example.test", wallet=SimpleNamespace(hotkey=_FakeHotkey()))
+
+    result = client.post_silver_pipeline_chunks(
+        cases=[{"case_id": f"case_{index}"} for index in range(5)],
+        votes=[{"vote_id": f"vote_{index}"} for index in range(11)],
+        consensus=[{"consensus_id": f"consensus_{index}"} for index in range(5)],
+        decisions=[{"decision_id": f"decision_{index}"} for index in range(5)],
+        silver_records=[{"silver_record_id": "silver_1"}],
+        score_reports=[{"score_report_id": f"score_{index}"} for index in range(5)],
+        case_chunk_size=2,
+        vote_chunk_size=4,
+    )
+
+    assert len(posted) == 3
+    assert [len(payload["cases"]) for payload in posted] == [2, 2, 1]
+    assert [len(payload["votes"]) for payload in posted] == [4, 4, 3]
+    assert sum(len(payload["silver_records"]) for payload in posted) == 1
+    assert result == {
+        "accepted": 32,
+        "chunks": 3,
+        "counts": {
+            "cases": 5,
+            "votes": 11,
+            "consensus": 5,
+            "decisions": 5,
+            "silver_records": 1,
+            "score_reports": 5,
+        },
+    }
+
+
 def test_agent_v1_backend_client_posts_silver_record_metadata(monkeypatch) -> None:
     captured = {}
 

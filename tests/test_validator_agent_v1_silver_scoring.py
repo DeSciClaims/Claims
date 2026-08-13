@@ -1703,6 +1703,57 @@ def test_dspy_relation_classifier_batches_filtered_pairs() -> None:
     assert len(edges) == 4
 
 
+def test_dspy_relation_classifier_runs_batches_concurrently_in_input_order() -> None:
+    active = 0
+    peak_active = 0
+    active_lock = threading.Lock()
+
+    def batch_program(**kwargs):
+        nonlocal active, peak_active
+        pairs = json.loads(kwargs["candidate_pairs_json"])
+        with active_lock:
+            active += 1
+            peak_active = max(peak_active, active)
+        time.sleep(0.05)
+        with active_lock:
+            active -= 1
+        return SimpleNamespace(
+            relations_json=json.dumps(
+                {
+                    "results": [
+                        {
+                            "left_candidate_id": pair["left_candidate_id"],
+                            "right_candidate_id": pair["right_candidate_id"],
+                            "relation": "semantic_equivalent",
+                            "confidence": 0.95,
+                            "rationale": "Same supported claim.",
+                        }
+                        for pair in pairs
+                    ]
+                }
+            )
+        )
+
+    classifier = DSPyRelationClassifier(
+        batch_program=batch_program,
+        fallback_to_heuristic=False,
+        batch_size=2,
+        max_workers=4,
+    )
+    pairs = [
+        (
+            _candidate(f"bronze:C{index:02d}", "bronze", None, f"Claim {index}."),
+            _candidate(f"miner:uid_9:C{index:02d}", "miner", "uid_9", f"Claim {index}."),
+        )
+        for index in range(8)
+    ]
+
+    edges = classifier.classify_many(pairs)
+
+    assert peak_active > 1
+    assert [edge.left_candidate_id for edge in edges] == [left.candidate_id for left, _right in pairs]
+
+
 def test_adjudication_prompt_is_anonymous_and_includes_evidence() -> None:
     case = BronzeDiffCase(
         case_id="case_1",

@@ -5,6 +5,7 @@ import json
 import os
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
@@ -76,6 +77,7 @@ class DSPyRelationClassifier:
         stage_key: str = "silver_comparison",
         stage_label: str = "Comparison graph",
         batch_size: int | None = None,
+        max_workers: int | None = None,
     ) -> None:
         self.model = model or os.getenv("CLAIMS_SILVER_RELATION_MODEL") or os.getenv("OPENROUTER_MODEL", "openrouter/openai/gpt-4o-mini")
         self.api_key = api_key if api_key is not None else os.getenv("OPENROUTER_API_KEY", "")
@@ -97,6 +99,10 @@ class DSPyRelationClassifier:
         self.batch_size = max(
             1,
             batch_size if batch_size is not None else _env_int("CLAIMS_SILVER_RELATION_BATCH_SIZE", 16),
+        )
+        self.max_workers = max(
+            1,
+            max_workers if max_workers is not None else _env_int("CLAIMS_SILVER_RELATION_MAX_WORKERS", 4),
         )
 
     @classmethod
@@ -127,42 +133,52 @@ class DSPyRelationClassifier:
         self,
         pairs: list[tuple[ComparisonCandidate, ComparisonCandidate]],
     ) -> list[CandidatePairEdge]:
-        edges: list[CandidatePairEdge] = []
-        for start in range(0, len(pairs), self.batch_size):
-            batch = pairs[start : start + self.batch_size]
-            if len(batch) == 1:
-                left, right = batch[0]
-                edges.append(self(left, right))
-                continue
-            try:
-                payload = self._classify_batch_with_dspy(batch)
-                results = payload.get("results") if isinstance(payload.get("results"), list) else []
-                results_by_pair = {
-                    (str(item.get("left_candidate_id") or ""), str(item.get("right_candidate_id") or "")): item
-                    for item in results
-                    if isinstance(item, dict)
-                }
-                for left, right in batch:
-                    result = results_by_pair.get((left.candidate_id, right.candidate_id))
-                    if result is None:
-                        edges.append(self._batch_fallback(left, right, "missing batch result"))
-                        continue
-                    edges.append(
-                        CandidatePairEdge(
-                            edge_id=f"{left.candidate_id}::{right.candidate_id}",
-                            left_candidate_id=left.candidate_id,
-                            right_candidate_id=right.candidate_id,
-                            relation=_coerce_relation(result.get("relation")),
-                            confidence=_clamp_float(result.get("confidence"), default=0.0),
-                            rationale=str(result.get("rationale") or ""),
-                        )
+        batches = [pairs[start : start + self.batch_size] for start in range(0, len(pairs), self.batch_size)]
+        if len(batches) <= 1 or self.max_workers == 1:
+            return [edge for batch in batches for edge in self._classify_batch(batch)]
+        with ThreadPoolExecutor(
+            max_workers=min(self.max_workers, len(batches)),
+            thread_name_prefix="claims-relation",
+        ) as executor:
+            return [edge for batch_edges in executor.map(self._classify_batch, batches) for edge in batch_edges]
+
+    def _classify_batch(
+        self,
+        batch: list[tuple[ComparisonCandidate, ComparisonCandidate]],
+    ) -> list[CandidatePairEdge]:
+        if len(batch) == 1:
+            left, right = batch[0]
+            return [self(left, right)]
+        try:
+            payload = self._classify_batch_with_dspy(batch)
+            results = payload.get("results") if isinstance(payload.get("results"), list) else []
+            results_by_pair = {
+                (str(item.get("left_candidate_id") or ""), str(item.get("right_candidate_id") or "")): item
+                for item in results
+                if isinstance(item, dict)
+            }
+            edges: list[CandidatePairEdge] = []
+            for left, right in batch:
+                result = results_by_pair.get((left.candidate_id, right.candidate_id))
+                if result is None:
+                    edges.append(self._batch_fallback(left, right, "missing batch result"))
+                    continue
+                edges.append(
+                    CandidatePairEdge(
+                        edge_id=f"{left.candidate_id}::{right.candidate_id}",
+                        left_candidate_id=left.candidate_id,
+                        right_candidate_id=right.candidate_id,
+                        relation=_coerce_relation(result.get("relation")),
+                        confidence=_clamp_float(result.get("confidence"), default=0.0),
+                        rationale=str(result.get("rationale") or ""),
                     )
-            except Exception as exc:
-                if not self.fallback_to_heuristic:
-                    raise
-                reason = f"{type(exc).__name__}: {exc}"
-                edges.extend(self._batch_fallback(left, right, reason) for left, right in batch)
-        return edges
+                )
+            return edges
+        except Exception as exc:
+            if not self.fallback_to_heuristic:
+                raise
+            reason = f"{type(exc).__name__}: {exc}"
+            return [self._batch_fallback(left, right, reason) for left, right in batch]
 
     def _batch_fallback(
         self,
