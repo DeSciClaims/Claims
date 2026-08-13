@@ -24,8 +24,8 @@ class SilverImportanceClassifier(Protocol):
         *,
         paper_context: dict[str, Any],
         source_context: str,
-    ) -> dict[str, dict[str, str]]:
-        """Return silver_unit_id -> {"importance": tag, "rationale": text}."""
+    ) -> dict[str, dict[str, Any]]:
+        """Return importance and relevance decisions keyed by Silver unit ID."""
 
 
 @dataclass(frozen=True)
@@ -34,8 +34,9 @@ class OpenAICompatibleSilverImportanceClassifier:
     api_key: str
     api_base: str = "https://openrouter.ai/api/v1"
     temperature: float = 0.0
-    max_tokens: int = 2048
+    max_tokens: int = 8192
     timeout_seconds: float = 120.0
+    batch_size: int = 8
     completion_fn: Callable[[list[dict[str, str]]], str] | None = field(default=None, compare=False, repr=False)
     usage_sink: UsageSink | None = field(default=None, compare=False, repr=False)
 
@@ -45,25 +46,41 @@ class OpenAICompatibleSilverImportanceClassifier:
         *,
         paper_context: dict[str, Any],
         source_context: str,
-    ) -> dict[str, dict[str, str]]:
+    ) -> dict[str, dict[str, Any]]:
         if not silver_record.silver_units:
             return {}
-        messages = _importance_messages(
-            silver_record=silver_record,
-            paper_context=paper_context,
-            source_context=source_context,
-        )
         started_at = datetime.now(timezone.utc)
         started = time.perf_counter()
         usage = _empty_usage("completion_fn_unavailable")
         status = "success"
         error = None
+        assignments: dict[str, dict[str, Any]] = {}
+        batches = [
+            silver_record.silver_units[index : index + max(1, self.batch_size)]
+            for index in range(0, len(silver_record.silver_units), max(1, self.batch_size))
+        ]
         try:
-            if self.completion_fn is not None:
-                content = self.completion_fn(messages)
-            else:
-                content, usage = self._complete(messages)
-            return _parse_importance_response(content)
+            for units in batches:
+                batch_record = silver_record.model_copy(update={"silver_units": units})
+                messages = _importance_messages(
+                    silver_record=batch_record,
+                    paper_context=paper_context,
+                    source_context=source_context,
+                )
+                if self.completion_fn is not None:
+                    content = self.completion_fn(messages)
+                else:
+                    content, batch_usage = self._complete(messages)
+                    usage = _merge_usage(usage, batch_usage)
+                batch_assignments = _parse_importance_response(content)
+                expected_ids = {unit.silver_unit_id for unit in units}
+                missing_ids = expected_ids - set(batch_assignments)
+                if missing_ids:
+                    raise ValueError(
+                        "importance response omitted Silver units: " + ", ".join(sorted(missing_ids))
+                    )
+                assignments.update(batch_assignments)
+            return assignments
         except Exception as exc:
             status = "failed"
             error = f"{type(exc).__name__}: {exc}"
@@ -87,7 +104,11 @@ class OpenAICompatibleSilverImportanceClassifier:
                         "started_at": started_at,
                         "ended_at": datetime.now(timezone.utc),
                         "duration_seconds": time.perf_counter() - started,
-                        "metadata": {"silver_unit_count": len(silver_record.silver_units)},
+                        "metadata": {
+                            "silver_unit_count": len(silver_record.silver_units),
+                            "batch_count": len(batches),
+                            "batch_size": max(1, self.batch_size),
+                        },
                     }
                 )
 
@@ -155,28 +176,55 @@ def apply_silver_importance(
         silver_record.metadata["importance_assignment"] = {
             "mode": "failed",
             "error": f"{type(exc).__name__}: {exc}",
-            "note": "Silver unit tags retain their default values.",
+            "note": "Silver scoring was stopped because relevance and importance classification was incomplete.",
         }
-        return silver_record
+        raise RuntimeError("Silver relevance and importance classification failed") from exc
 
-    applied: dict[str, dict[str, str]] = {}
+    applied: dict[str, dict[str, Any]] = {}
+    retained_units = []
+    excluded_units: list[dict[str, Any]] = []
     for unit in silver_record.silver_units:
         assignment = assignments.get(unit.silver_unit_id) or {}
         importance = str(assignment.get("importance") or "").strip().lower()
         if importance not in IMPORTANCE_TAGS:
+            raise ValueError(f"Missing valid importance tag for Silver unit {unit.silver_unit_id}")
+        include_in_silver = assignment.get("include_in_silver")
+        if not isinstance(include_in_silver, bool):
+            raise ValueError(f"Missing relevance decision for Silver unit {unit.silver_unit_id}")
+        rationale = str(assignment.get("rationale") or "").strip()
+        has_bronze_anchor = any(candidate_id.startswith("bronze:") for candidate_id in unit.equivalent_candidate_ids)
+        if not include_in_silver and not has_bronze_anchor:
+            excluded_units.append(
+                {
+                    "silver_unit_id": unit.silver_unit_id,
+                    "statement": unit.statement,
+                    "equivalent_candidate_ids": unit.equivalent_candidate_ids,
+                    "rationale": rationale,
+                }
+            )
             continue
         unit.importance = importance  # type: ignore[assignment]
-        rationale = str(assignment.get("rationale") or "").strip()
         unit.metadata["importance_assignment"] = {
             "importance": importance,
             "rationale": rationale,
+            "include_in_silver": True,
+            "bronze_anchor_override": bool(has_bronze_anchor and not include_in_silver),
             "source": "validator_silver_importance_classifier",
         }
-        applied[unit.silver_unit_id] = {"importance": importance, "rationale": rationale}
+        retained_units.append(unit)
+        applied[unit.silver_unit_id] = {
+            "importance": importance,
+            "rationale": rationale,
+            "include_in_silver": True,
+        }
+    silver_record.silver_units = retained_units
     silver_record.metadata["importance_assignment"] = {
         "mode": "classifier",
         "applied_count": len(applied),
-        "unit_count": len(silver_record.silver_units),
+        "input_unit_count": len(assignments),
+        "unit_count": len(retained_units),
+        "excluded_count": len(excluded_units),
+        "excluded_units": excluded_units,
         "assignments": applied,
     }
     return silver_record
@@ -215,6 +263,7 @@ def _importance_messages(
                 {
                     "silver_unit_id": "id from input",
                     "importance": "central | supporting | minor",
+                    "include_in_silver": True,
                     "rationale": "short reason grounded in the paper's main argument",
                 }
             ]
@@ -228,6 +277,9 @@ def _importance_messages(
                 "Use the paper title, abstract/summary, claim statements, evidence, and source context. "
                 "central = core result or main argument; supporting = important supporting result, method, or qualification; "
                 "minor = valid but peripheral, background, or low-value detail. "
+                "Set include_in_silver=false for bibliographic, licensing, byline, document-structure, supplementary-inventory, "
+                "or other trivial metadata statements that are not substantive scientific claims. Keep valid peripheral "
+                "scientific findings with include_in_silver=true and importance=minor. "
                 "Do not infer importance from miner/reference provenance. Return strict JSON only."
             ),
         },
@@ -235,21 +287,23 @@ def _importance_messages(
     ]
 
 
-def _parse_importance_response(content: str) -> dict[str, dict[str, str]]:
+def _parse_importance_response(content: str) -> dict[str, dict[str, Any]]:
     parsed = json.loads(_json_object_text(content))
     units = parsed.get("units") if isinstance(parsed, dict) else None
     if not isinstance(units, list):
         raise ValueError("importance response must include a units list")
-    assignments: dict[str, dict[str, str]] = {}
+    assignments: dict[str, dict[str, Any]] = {}
     for item in units:
         if not isinstance(item, dict):
             continue
         silver_unit_id = str(item.get("silver_unit_id") or "").strip()
         importance = str(item.get("importance") or "").strip().lower()
-        if not silver_unit_id or importance not in IMPORTANCE_TAGS:
+        include_in_silver = item.get("include_in_silver")
+        if not silver_unit_id or importance not in IMPORTANCE_TAGS or not isinstance(include_in_silver, bool):
             continue
         assignments[silver_unit_id] = {
             "importance": importance,
+            "include_in_silver": include_in_silver,
             "rationale": str(item.get("rationale") or "").strip(),
         }
     return assignments
@@ -290,8 +344,9 @@ def silver_importance_classifier_from_env() -> OpenAICompatibleSilverImportanceC
         api_key=os.getenv(api_key_env, ""),
         api_base=api_base,
         temperature=float(os.getenv("CLAIMS_SILVER_IMPORTANCE_TEMPERATURE", "0")),
-        max_tokens=int(os.getenv("CLAIMS_SILVER_IMPORTANCE_MAX_TOKENS", "2048")),
+        max_tokens=int(os.getenv("CLAIMS_SILVER_IMPORTANCE_MAX_TOKENS", "8192")),
         timeout_seconds=float(os.getenv("CLAIMS_SILVER_IMPORTANCE_TIMEOUT", "120")),
+        batch_size=max(1, int(os.getenv("CLAIMS_SILVER_IMPORTANCE_BATCH_SIZE", "8"))),
     )
 
 
@@ -325,6 +380,25 @@ def _empty_usage(source: str) -> dict[str, Any]:
         "cost_kind": "unavailable",
         "source": source,
     }
+
+
+def _merge_usage(total: dict[str, Any], addition: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(total)
+    for key in (
+        "prompt_tokens",
+        "completion_tokens",
+        "reasoning_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "total_tokens",
+    ):
+        values = [value for value in (total.get(key), addition.get(key)) if isinstance(value, int | float)]
+        merged[key] = int(sum(values)) if values else None
+    costs = [value for value in (total.get("cost_usd"), addition.get("cost_usd")) if isinstance(value, int | float)]
+    merged["cost_usd"] = float(sum(costs)) if costs else None
+    merged["cost_kind"] = "actual" if costs else "unavailable"
+    merged["source"] = "aggregated_openai_compatible_responses"
+    return merged
 
 
 def _optional_int(value: Any) -> int | None:

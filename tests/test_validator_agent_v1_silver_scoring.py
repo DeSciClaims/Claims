@@ -12,7 +12,12 @@ from validator.agent_v1.bronze_diff import compare_miner_to_bronze, compare_mine
 from validator.agent_v1.comparison_models import CandidatePairEdge
 from validator.agent_v1.adjudication_consensus import aggregate_adjudication_votes
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, build_silver_adjudication_passes
-from validator.agent_v1.adjudication_models import AdjudicationContextBundle, AdjudicationDecision, AdjudicationVote
+from validator.agent_v1.adjudication_models import (
+    AdjudicationConsensus,
+    AdjudicationContextBundle,
+    AdjudicationDecision,
+    AdjudicationVote,
+)
 from validator.agent_v1.adjudication_passes import (
     CLIAdjudicationPass,
     DSPyAdjudicationPass,
@@ -37,6 +42,8 @@ from validator.agent_v1.orchestrator import (
     MinerArtifactSubmission,
     MinerPaperSubmission,
     SilverScoringJob,
+    _dedupe_equivalent_candidate_groups,
+    _raise_for_operational_adjudication_failures,
     _source_context_for_candidates,
     run_batch_silver_scoring,
     run_paper_silver_pipeline,
@@ -574,7 +581,14 @@ def test_cli_adjudication_pass_runs_one_process_for_case_batch(monkeypatch) -> N
                 ]
             }
         )
-        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+        # Hermes echoes the complete prompt before rendering the assistant response.
+        # The echoed required_json_schema also contains a `results` array and must
+        # never be mistaken for the model's actual batch result.
+        return SimpleNamespace(
+            returncode=0,
+            stdout=f"Query: {prompt}\nInitializing agent...\n{stdout}",
+            stderr="",
+        )
 
     monkeypatch.setattr("validator.agent_v1.adjudication_passes.subprocess.run", fake_run)
     adjudication_pass = CLIAdjudicationPass(
@@ -969,6 +983,44 @@ def test_silver_pipeline_rejects_operational_adjudication_outage() -> None:
             silver_record_id="silver_run_paper",
             adjudication_passes=[FailedPass()],
         )
+
+
+def test_silver_pipeline_rejects_unresolved_partial_adjudication_outage() -> None:
+    valid_vote = AdjudicationVote(
+        case_id="case_partial",
+        pass_id="pass_a",
+        adjudication_profile_id="valid",
+        model_runtime_id="valid",
+        disposition="accepted_improvement",
+        confidence=0.9,
+    )
+    failed_vote = AdjudicationVote(
+        case_id="case_partial",
+        pass_id="pass_b",
+        adjudication_profile_id="failed",
+        model_runtime_id="failed",
+        disposition="insufficient_information",
+        material_findings=["adjudication_batch_failed"],
+        confidence=0.0,
+        insufficient_information=True,
+    )
+
+    with pytest.raises(RuntimeError, match="failed operationally"):
+        _raise_for_operational_adjudication_failures(
+            [AdjudicationConsensus(case_id="case_partial", votes=[valid_vote, failed_vote])],
+            stage="primary",
+        )
+
+    _raise_for_operational_adjudication_failures(
+        [
+            AdjudicationConsensus(
+                case_id="case_resolved",
+                votes=[valid_vote, failed_vote],
+                final_disposition="accepted_improvement",
+            )
+        ],
+        stage="primary",
+    )
 
 
 def test_queued_adjudication_worker_posts_consensus_and_completes_job() -> None:
@@ -1476,6 +1528,60 @@ def test_equivalent_candidate_groups_are_transitive_components() -> None:
     ]
 
 
+def test_equivalent_candidate_groups_do_not_bridge_distinct_bronze_claims() -> None:
+    candidates = [
+        _candidate("bronze:C01", "bronze", None, "Replicated variants have small individual effects."),
+        _candidate("bronze:C02", "bronze", None, "Aggregate polygenic scores capture diffuse signal."),
+        _candidate("miner:uid_9:C01", "miner", "uid_9", "Many variants jointly have small effects."),
+    ]
+    silver = build_silver_record(
+        paper_id="paper",
+        silver_record_id="silver_bronze_anchors",
+        candidates=candidates,
+        decisions=[
+            AdjudicationDecision(
+                case_id="case_bronze_1",
+                disposition="benign_difference",
+                accepted_candidate_ids=["bronze:C01", "miner:uid_9:C01"],
+                same_silver_unit=True,
+            ),
+            AdjudicationDecision(
+                case_id="case_bronze_2",
+                disposition="benign_difference",
+                accepted_candidate_ids=["bronze:C02", "miner:uid_9:C01"],
+                same_silver_unit=True,
+            ),
+        ],
+        equivalent_candidate_groups=[
+            ["bronze:C01", "miner:uid_9:C01"],
+            ["bronze:C02", "miner:uid_9:C01"],
+        ],
+    )
+
+    assert len(silver.silver_units) == 2
+    assert sorted(
+        candidate_id
+        for unit in silver.silver_units
+        for candidate_id in unit.equivalent_candidate_ids
+        if candidate_id.startswith("bronze:")
+    ) == ["bronze:C01", "bronze:C02"]
+    assert all(
+        len([candidate_id for candidate_id in unit.equivalent_candidate_ids if candidate_id.startswith("bronze:")]) == 1
+        for unit in silver.silver_units
+    )
+
+
+def test_canonical_components_reject_transitive_bronze_bridge() -> None:
+    groups = _dedupe_equivalent_candidate_groups(
+        [
+            ["bronze:C01", "miner:uid_9:C01"],
+            ["miner:uid_9:C01", "bronze:C02"],
+        ]
+    )
+
+    assert groups == [["bronze:C01", "miner:uid_9:C01"]]
+
+
 def test_silver_record_dedupes_required_bronze_units_across_miners() -> None:
     bronze = _candidate("bronze:C01", "bronze", None, "Treatment A reduced mortality.")
 
@@ -1839,8 +1945,8 @@ def test_silver_importance_classifier_tags_final_units() -> None:
         api_key="test",
         completion_fn=lambda _messages: (
             '{"units":['
-            '{"silver_unit_id":"u1","importance":"central","rationale":"main outcome"},'
-            '{"silver_unit_id":"u2","importance":"minor","rationale":"peripheral detail"}'
+            '{"silver_unit_id":"u1","importance":"central","include_in_silver":true,"rationale":"main outcome"},'
+            '{"silver_unit_id":"u2","importance":"minor","include_in_silver":false,"rationale":"document metadata"}'
             ']}'
         ),
     )
@@ -1852,11 +1958,123 @@ def test_silver_importance_classifier_tags_final_units() -> None:
         source_context="",
     )
 
-    assert [(unit.silver_unit_id, unit.importance) for unit in tagged.silver_units] == [
-        ("u1", "central"),
-        ("u2", "minor"),
-    ]
-    assert tagged.metadata["importance_assignment"]["applied_count"] == 2
+    assert [(unit.silver_unit_id, unit.importance) for unit in tagged.silver_units] == [("u1", "central")]
+    assert tagged.metadata["importance_assignment"]["applied_count"] == 1
+    assert tagged.metadata["importance_assignment"]["excluded_count"] == 1
+    assert tagged.metadata["importance_assignment"]["excluded_units"][0]["silver_unit_id"] == "u2"
+
+
+def test_silver_importance_relevance_cannot_remove_bronze_anchor() -> None:
+    silver = SilverRecord(
+        silver_record_id="silver",
+        paper_id="paper",
+        silver_units=[
+            {
+                "silver_unit_id": "u1",
+                "paper_id": "paper",
+                "statement": "Reference claim.",
+                "equivalent_candidate_ids": ["bronze:C01"],
+            }
+        ],
+    )
+    classifier = OpenAICompatibleSilverImportanceClassifier(
+        model="deepseek/deepseek-v4-flash",
+        api_key="test",
+        completion_fn=lambda _messages: (
+            '{"units":[{"silver_unit_id":"u1","importance":"minor",'
+            '"include_in_silver":false,"rationale":"peripheral"}]}'
+        ),
+    )
+
+    tagged = apply_silver_importance(
+        silver,
+        classifier=classifier,
+        paper_context={"title": "Paper title"},
+        source_context="",
+    )
+
+    assert [unit.silver_unit_id for unit in tagged.silver_units] == ["u1"]
+    assert tagged.silver_units[0].metadata["importance_assignment"]["bronze_anchor_override"] is True
+
+
+def test_silver_importance_batches_large_canonical_records() -> None:
+    calls: list[list[str]] = []
+
+    def complete(messages: list[dict[str, str]]) -> str:
+        payload = json.loads(messages[-1]["content"])
+        unit_ids = [unit["silver_unit_id"] for unit in payload["silver_units"]]
+        calls.append(unit_ids)
+        return json.dumps(
+            {
+                "units": [
+                    {
+                        "silver_unit_id": unit_id,
+                        "importance": "supporting",
+                        "include_in_silver": True,
+                        "rationale": "substantive result",
+                    }
+                    for unit_id in unit_ids
+                ]
+            }
+        )
+
+    silver = SilverRecord(
+        silver_record_id="silver",
+        paper_id="paper",
+        silver_units=[
+            {
+                "silver_unit_id": f"u{index}",
+                "paper_id": "paper",
+                "statement": f"Scientific claim {index}.",
+                "equivalent_candidate_ids": [f"miner:uid_9:C{index}"],
+            }
+            for index in range(17)
+        ],
+    )
+    classifier = OpenAICompatibleSilverImportanceClassifier(
+        model="deepseek/deepseek-v4-flash",
+        api_key="test",
+        batch_size=8,
+        completion_fn=complete,
+    )
+
+    tagged = apply_silver_importance(
+        silver,
+        classifier=classifier,
+        paper_context={"title": "Paper title"},
+        source_context="",
+    )
+
+    assert [len(batch) for batch in calls] == [8, 8, 1]
+    assert len(tagged.silver_units) == 17
+
+
+def test_silver_importance_failure_stops_scoring() -> None:
+    silver = SilverRecord(
+        silver_record_id="silver",
+        paper_id="paper",
+        silver_units=[
+            {
+                "silver_unit_id": "u1",
+                "paper_id": "paper",
+                "statement": "Scientific claim.",
+                "equivalent_candidate_ids": ["miner:uid_9:C01"],
+            }
+        ],
+    )
+    classifier = OpenAICompatibleSilverImportanceClassifier(
+        model="deepseek/deepseek-v4-flash",
+        api_key="test",
+        completion_fn=lambda _messages: '{"units":[',
+    )
+
+    with pytest.raises(RuntimeError, match="relevance and importance classification failed"):
+        apply_silver_importance(
+            silver,
+            classifier=classifier,
+            paper_context={"title": "Paper title"},
+            source_context="",
+        )
 
 
 def test_miner_consensus_aggregates_excluding_evaluated_miner() -> None:

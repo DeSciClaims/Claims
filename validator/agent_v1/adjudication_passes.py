@@ -10,7 +10,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -150,7 +150,10 @@ class OpenAICompatibleAdjudicationPass:
                     content = self.completion_fn(messages)
                 else:
                     content, usage = self._complete(messages)
-            payload = _parse_batch_json_object(content)
+            payload = _parse_batch_json_object(
+                content,
+                expected_tracking_ids=_tracking_ids(contexts),
+            )
             return _votes_from_batch_payload(
                 contexts,
                 payload,
@@ -362,7 +365,10 @@ class CLIAdjudicationPass:
             if completed.returncode != 0:
                 raise RuntimeError(f"CLI exited {completed.returncode}: {completed.stderr[-1000:]}")
             usage = usage_from_cli_process(command, completed.stdout, completed.stderr)
-            payload = _parse_batch_json_object(completed.stdout)
+            payload = _parse_batch_json_object(
+                completed.stdout,
+                expected_tracking_ids=_tracking_ids(contexts),
+            )
             _write_cli_batch_debug_artifact(
                 contexts=contexts,
                 pass_id=self.pass_id,
@@ -505,7 +511,10 @@ class DSPyAdjudicationPass:
                     dspy_module.configure(lm=lm)
                     prediction = program(**kwargs)
             raw = str(getattr(prediction, "adjudications_json", prediction if isinstance(prediction, str) else ""))
-            return _parse_batch_json_object(raw)
+            return _parse_batch_json_object(
+                raw,
+                expected_tracking_ids=_tracking_ids(contexts),
+            )
         except Exception as exc:
             status = "failed"
             error = f"{type(exc).__name__}: {exc}"
@@ -855,6 +864,10 @@ def _case_tracking_id(context: AdjudicationContextBundle) -> str:
     return hashlib.sha256(context.case.case_id.encode("utf-8")).hexdigest()[:16]
 
 
+def _tracking_ids(contexts: Iterable[AdjudicationContextBundle]) -> list[str]:
+    return [_case_tracking_id(context) for context in contexts]
+
+
 def _adjudication_payload(context: AdjudicationContextBundle) -> dict[str, Any]:
     return {
         "case": {
@@ -1180,13 +1193,21 @@ def _parse_json_object(content: str) -> dict[str, Any]:
     raise ValueError("adjudication pass did not return a JSON object")
 
 
-def _parse_batch_json_object(content: str) -> dict[str, Any]:
+def _parse_batch_json_object(
+    content: str,
+    *,
+    expected_tracking_ids: Iterable[str] | None = None,
+) -> dict[str, Any]:
     stripped = content.strip()
     candidates = [stripped]
     candidates.extend(match.group(1) for match in re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", stripped, flags=re.DOTALL))
     candidates.extend(_json_object_candidates(stripped))
+    expected_ids = {str(tracking_id) for tracking_id in expected_tracking_ids or [] if str(tracking_id)}
+    best_match: dict[str, Any] | None = None
+    best_score: tuple[int, int, int] | None = None
+    parsed_batch_object = False
     last_error: Exception | None = None
-    for candidate in candidates:
+    for candidate_index, candidate in enumerate(candidates):
         try:
             parsed = json.loads(candidate)
         except json.JSONDecodeError as exc:
@@ -1197,7 +1218,25 @@ def _parse_batch_json_object(content: str) -> dict[str, Any]:
                 last_error = repaired_exc
                 continue
         if isinstance(parsed, dict) and isinstance(parsed.get("results"), list):
-            return parsed
+            parsed_batch_object = True
+            if not expected_ids:
+                return parsed
+            returned_ids = {
+                str(result.get("case_tracking_id") or "")
+                for result in parsed["results"]
+                if isinstance(result, dict) and str(result.get("case_tracking_id") or "")
+            }
+            matching_ids = returned_ids & expected_ids
+            if not matching_ids:
+                continue
+            score = (len(matching_ids), -len(returned_ids - expected_ids), candidate_index)
+            if best_score is None or score > best_score:
+                best_match = parsed
+                best_score = score
+    if best_match is not None:
+        return best_match
+    if parsed_batch_object and expected_ids:
+        raise ValueError("adjudication batch JSON did not contain any expected case_tracking_id values")
     if last_error is not None:
         raise last_error
     raise ValueError("adjudication batch did not return a JSON object with results")

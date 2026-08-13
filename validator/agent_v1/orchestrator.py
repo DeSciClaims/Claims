@@ -504,9 +504,12 @@ def _graph_case_id(paper_id: str, mismatch_type: str, candidate_ids: list[str]) 
 
 def _dedupe_equivalent_candidate_groups(groups: Iterable[list[str]]) -> list[list[str]]:
     parent: dict[str, str] = {}
+    bronze_ids_by_root: dict[str, set[str]] = {}
 
     def find(item: str) -> str:
-        parent.setdefault(item, item)
+        if item not in parent:
+            parent[item] = item
+            bronze_ids_by_root[item] = {item} if item.startswith("bronze:") else set()
         while parent[item] != item:
             parent[item] = parent[parent[item]]
             item = parent[item]
@@ -515,8 +518,18 @@ def _dedupe_equivalent_candidate_groups(groups: Iterable[list[str]]) -> list[lis
     def union(left: str, right: str) -> None:
         left_root = find(left)
         right_root = find(right)
-        if left_root != right_root:
-            parent[right_root] = left_root
+        if left_root == right_root:
+            return
+        left_bronze_ids = bronze_ids_by_root.get(left_root, set())
+        right_bronze_ids = bronze_ids_by_root.get(right_root, set())
+        # A noisy miner candidate may be judged equivalent to more than one
+        # Bronze claim. It must not become a transitive bridge that collapses
+        # distinct reference anchors into one scored unit.
+        if left_bronze_ids and right_bronze_ids and left_bronze_ids != right_bronze_ids:
+            return
+        parent[right_root] = left_root
+        bronze_ids_by_root[left_root] = left_bronze_ids | right_bronze_ids
+        bronze_ids_by_root.pop(right_root, None)
 
     for group in groups:
         ids = [candidate_id for candidate_id in group if candidate_id]
@@ -537,13 +550,23 @@ def _equivalent_candidate_groups_from_decisions(
     cases_by_id: dict[str, BronzeDiffCase] | None = None,
 ) -> list[list[str]]:
     groups: list[list[str]] = []
-    for decision in decisions:
+    ordered_decisions = sorted(
+        decisions,
+        key=lambda decision: (-_decision_equivalence_confidence(decision), decision.case_id),
+    )
+    for decision in ordered_decisions:
         if not _decision_creates_equivalence_group(decision, cases_by_id or {}):
             continue
         candidate_ids = [*decision.accepted_candidate_ids, *decision.valid_alternative_candidate_ids]
         if len(candidate_ids) >= 2:
             groups.append(candidate_ids)
     return groups
+
+
+def _decision_equivalence_confidence(decision: AdjudicationDecision) -> float:
+    if decision.consensus is None:
+        return 0.0
+    return float(decision.consensus.final_confidence or 0.0)
 
 
 def _decision_creates_equivalence_group(
@@ -755,7 +778,8 @@ def _raise_for_operational_adjudication_failures(
     failed_case_ids = [
         consensus.case_id
         for consensus in consensus_records
-        if consensus.votes and all(_is_operational_adjudication_failure(vote) for vote in consensus.votes)
+        if consensus.final_disposition is None
+        and any(_is_operational_adjudication_failure(vote) for vote in consensus.votes)
     ]
     if not failed_case_ids:
         return

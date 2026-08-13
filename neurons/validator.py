@@ -1632,8 +1632,9 @@ class ClaimsValidator:
             api_key=api_key,
             api_base=api_base,
             temperature=float(os.getenv("CLAIMS_SILVER_IMPORTANCE_TEMPERATURE", "0")),
-            max_tokens=int(os.getenv("CLAIMS_SILVER_IMPORTANCE_MAX_TOKENS", "2048")),
+            max_tokens=int(os.getenv("CLAIMS_SILVER_IMPORTANCE_MAX_TOKENS", "8192")),
             timeout_seconds=float(os.getenv("CLAIMS_SILVER_IMPORTANCE_TIMEOUT", "120")),
+            batch_size=max(1, int(os.getenv("CLAIMS_SILVER_IMPORTANCE_BATCH_SIZE", "8"))),
             usage_sink=usage_collector.record if usage_collector is not None else None,
         )
 

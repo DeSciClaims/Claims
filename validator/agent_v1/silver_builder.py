@@ -181,12 +181,19 @@ def _add_or_merge_unit(
 ) -> None:
     if not accepted:
         return
-    primary = _primary_candidate(accepted)
     candidate_ids = sorted(set(_expanded_candidate_ids(accepted, equivalence_group_by_candidate_id)))
+    effective_accepted = [candidate for candidate in accepted if candidate.candidate_id in candidate_ids]
+    if not effective_accepted:
+        return
+    primary = _primary_candidate(effective_accepted)
     if any(candidate_id.startswith("bronze:") for candidate_id in candidate_ids):
         scoring_mode = "required"
         required_for_completeness = True
-    key = _unit_key(accepted, scoring_mode=scoring_mode, equivalence_group_by_candidate_id=equivalence_group_by_candidate_id)
+    key = _unit_key(
+        effective_accepted,
+        scoring_mode=scoring_mode,
+        equivalence_group_by_candidate_id=equivalence_group_by_candidate_id,
+    )
     unit = units_by_key.get(key)
     if unit is None:
         unit = SilverUnit(
@@ -389,17 +396,31 @@ def _expanded_candidate_ids(
     candidates: list[ComparisonCandidate],
     equivalence_group_by_candidate_id: dict[str, tuple[str, ...]],
 ) -> list[str]:
+    explicit_bronze_ids = {
+        candidate.candidate_id
+        for candidate in candidates
+        if candidate.origin == "bronze"
+    }
     candidate_ids: list[str] = []
     for candidate in candidates:
-        candidate_ids.extend(equivalence_group_by_candidate_id.get(candidate.candidate_id, (candidate.candidate_id,)))
+        group = equivalence_group_by_candidate_id.get(candidate.candidate_id, (candidate.candidate_id,))
+        group_bronze_ids = {candidate_id for candidate_id in group if candidate_id.startswith("bronze:")}
+        if explicit_bronze_ids and group_bronze_ids and not group_bronze_ids.issubset(explicit_bronze_ids):
+            if candidate.origin == "bronze":
+                candidate_ids.append(candidate.candidate_id)
+            continue
+        candidate_ids.extend(group)
     return candidate_ids
 
 
 def _equivalence_group_by_candidate_id(groups: list[list[str]]) -> dict[str, tuple[str, ...]]:
     parent: dict[str, str] = {}
+    bronze_ids_by_root: dict[str, set[str]] = {}
 
     def find(candidate_id: str) -> str:
-        parent.setdefault(candidate_id, candidate_id)
+        if candidate_id not in parent:
+            parent[candidate_id] = candidate_id
+            bronze_ids_by_root[candidate_id] = {candidate_id} if candidate_id.startswith("bronze:") else set()
         if parent[candidate_id] != candidate_id:
             parent[candidate_id] = find(parent[candidate_id])
         return parent[candidate_id]
@@ -407,8 +428,15 @@ def _equivalence_group_by_candidate_id(groups: list[list[str]]) -> dict[str, tup
     def union(left: str, right: str) -> None:
         left_root = find(left)
         right_root = find(right)
-        if left_root != right_root:
-            parent[right_root] = left_root
+        if left_root == right_root:
+            return
+        left_bronze_ids = bronze_ids_by_root.get(left_root, set())
+        right_bronze_ids = bronze_ids_by_root.get(right_root, set())
+        if left_bronze_ids and right_bronze_ids and left_bronze_ids != right_bronze_ids:
+            return
+        parent[right_root] = left_root
+        bronze_ids_by_root[left_root] = left_bronze_ids | right_bronze_ids
+        bronze_ids_by_root.pop(right_root, None)
 
     for group in groups:
         candidate_ids = [candidate_id for candidate_id in group if candidate_id]
