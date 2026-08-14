@@ -20,7 +20,12 @@ from miner.agent_v1.runner import AgentV1Runner
 from miner.agent_v1.runtime.base import AgentRequest, AgentResult
 from miner.agent_v1.runtime.langchain_agent import _structured_payload, _validation_status
 from miner.agent_v1.runtime.subprocess_cli import SubprocessAgentRuntime
-from miner.agent_v1.runtime.usage import usage_from_codex_jsonl, usage_from_dspy_lm, usage_from_hermes_sessions_jsonl
+from miner.agent_v1.runtime.usage import (
+    usage_from_codex_jsonl,
+    usage_from_dspy_lm,
+    usage_from_hermes_machine_output,
+    usage_from_hermes_sessions_jsonl,
+)
 from miner.agent_v1.schema import agent_json_schema
 from miner.agent_v1.skillpack import load_skill_pack
 from miner.agent_v1.tools import AgentToolbox
@@ -413,6 +418,38 @@ def test_agent_v1_parses_hermes_jsonl_usage() -> None:
     assert usage["cache_read_tokens"] == 40
     assert usage["reasoning_tokens"] == 5
     assert usage["source"] == "hermes_sessions_export"
+
+
+def test_agent_v1_parses_hermes_oneshot_usage() -> None:
+    usage = usage_from_hermes_machine_output(
+        "CLAIMS_HERMES_USAGE_JSON="
+        + json.dumps(
+            {
+                "input_tokens": 100,
+                "output_tokens": 25,
+                "reasoning_tokens": 5,
+                "cache_read_tokens": 40,
+                "total_tokens": 130,
+                "estimated_cost_usd": 0.123,
+            }
+        )
+    )
+
+    assert usage["prompt_tokens"] == 100
+    assert usage["completion_tokens"] == 25
+    assert usage["reasoning_tokens"] == 5
+    assert usage["cache_read_tokens"] == 40
+    assert usage["total_tokens"] == 130
+    assert usage["cost_usd"] == 0.123
+    assert usage["cost_kind"] == "estimated"
+    assert usage["source"] == "hermes_oneshot"
+
+    exported_usage = usage_from_hermes_machine_output(
+        'CLAIMS_HERMES_USAGE_JSON={"prompt_tokens":50,"completion_tokens":10,'
+        '"total_tokens":60,"cost_usd":0.02,"cost_kind":"estimated"}'
+    )
+    assert exported_usage["cost_usd"] == 0.02
+    assert exported_usage["cost_kind"] == "estimated"
 
 
 def test_agent_v1_parses_dspy_history_cost_and_cache_tokens() -> None:

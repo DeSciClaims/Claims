@@ -37,7 +37,11 @@ from validator.agent_v1.reference_client import (
     LocalReferenceMinerClient,
     ReferenceMinerInput,
 )
-from validator.agent_v1.relation_classifier import DSPyRelationClassifier
+from validator.agent_v1.relation_classifier import (
+    CLIRelationClassifier,
+    DSPyRelationClassifier,
+    OpenAICompatibleRelationClassifier,
+)
 from validator.agent_v1.runner import AgentV1ValidatorRunner
 from validator.agent_v1.silver_importance import OpenAICompatibleSilverImportanceClassifier
 from validator.judge_v1.config import JudgeV1Config
@@ -119,6 +123,10 @@ class ClaimsValidator:
         self._memory_sampler: ValidatorMemorySampler | None = None
         self._active_model_usage: ModelUsageCollector | None = None
         self._model_usage_upload_summary: dict[str, Any] = {}
+        self._model_usage_checkpoint_lock = threading.Lock()
+        self._adjudication_progress_lock = threading.Lock()
+        self._adjudication_progress_seen_cases: set[str] = set()
+        self._adjudication_progress_seen_votes: set[str] = set()
         self._run_heartbeat_stop: threading.Event | None = None
         self._run_heartbeat_thread: threading.Thread | None = None
         if self.config.claims_dry_run:
@@ -480,6 +488,13 @@ class ClaimsValidator:
             help="Transport Silver CLI prompts safely; auto uses temporary task files for Hermes.",
         )
         parser.add_argument(
+            "--claims.silver-adjudication-hermes-execution-mode",
+            dest="claims_silver_adjudication_hermes_execution_mode",
+            choices=("agent", "oneshot"),
+            default=os.getenv("CLAIMS_SILVER_ADJUDICATION_HERMES_EXECUTION_MODE", "agent"),
+            help="Run Hermes as a skill-based artifact agent (default) or a lightweight tool-free one-shot.",
+        )
+        parser.add_argument(
             "--claims.silver-adjudication-cli-timeout",
             dest="claims_silver_adjudication_cli_timeout",
             type=float,
@@ -524,9 +539,18 @@ class ClaimsValidator:
         parser.add_argument(
             "--claims.silver-relation-mode",
             dest="claims_silver_relation_mode",
-            choices=("heuristic", "dspy", "model", "openrouter", "disabled"),
+            choices=(
+                "heuristic",
+                "dspy",
+                "model",
+                "openrouter",
+                "openai-compatible",
+                "direct",
+                "cli",
+                "disabled",
+            ),
             default=os.getenv("CLAIMS_SILVER_RELATION_MODE", "dspy"),
-            help="Relation classifier used to align Bronze and miner claims before Silver adjudication.",
+            help="Relation classifier used for comparison and consolidation before Silver scoring.",
         )
         parser.add_argument(
             "--claims.silver-relation-model",
@@ -686,6 +710,9 @@ class ClaimsValidator:
         config.claims_silver_adjudication_cli_tiebreak_command = parsed_args.claims_silver_adjudication_cli_tiebreak_command
         config.claims_silver_adjudication_cli_command_template = parsed_args.claims_silver_adjudication_cli_command_template
         config.claims_silver_adjudication_cli_prompt_mode = parsed_args.claims_silver_adjudication_cli_prompt_mode
+        config.claims_silver_adjudication_hermes_execution_mode = (
+            parsed_args.claims_silver_adjudication_hermes_execution_mode
+        )
         config.claims_silver_adjudication_cli_timeout = parsed_args.claims_silver_adjudication_cli_timeout
         config.claims_silver_adjudication_max_in_flight = parsed_args.claims_silver_adjudication_max_in_flight
         config.claims_silver_adjudication_max_workers = parsed_args.claims_silver_adjudication_max_workers
@@ -800,6 +827,8 @@ class ClaimsValidator:
                 run_id = _make_run_id()
                 run_started_at = datetime.now(timezone.utc)
                 self._model_usage_upload_summary = {}
+                self._adjudication_progress_seen_cases = set()
+                self._adjudication_progress_seen_votes = set()
                 self._active_run_timing = _new_pipeline_timing(run_id=run_id, started_at=run_started_at)
                 self._start_memory_sampler()
                 task_timer = _timing_start("task_selection", "Task selection")
@@ -808,6 +837,13 @@ class ClaimsValidator:
                     network=task.network or str(getattr(self.config, "claims_network", "testnet")),
                     run_id=run_id,
                     batch_id=task.batch_id or task.task_id,
+                    checkpoint_sink=lambda events: self._checkpoint_model_usage_events(
+                        events,
+                        network=task.network or str(getattr(self.config, "claims_network", "testnet")),
+                        run_id=run_id,
+                        batch_id=task.batch_id or task.task_id,
+                    ),
+                    checkpoint_every=int(os.getenv("CLAIMS_MODEL_USAGE_CHECKPOINT_EVERY", "25") or 25),
                 )
                 self._record_timing_stage(
                     task_timer,
@@ -881,7 +917,7 @@ class ClaimsValidator:
                     )
                 self.bt_logging.success("Validator stopped.")
                 return
-            except Exception:
+            except Exception as exc:
                 self._stop_memory_sampler()
                 self._stop_run_heartbeat()
                 self._flush_model_usage_events()
@@ -894,8 +930,13 @@ class ClaimsValidator:
                         status="failed",
                         started_at=run_started_at,
                         ended_at=datetime.now(timezone.utc),
+                        error_summary=f"{type(exc).__name__}: {exc}"[-2000:],
                     )
                     self._flush_model_usage_events()
+                step += 1
+                if self.config.claims_max_steps and step >= self.config.claims_max_steps:
+                    self.bt_logging.info("Reached configured max steps after failed cycle; exiting.")
+                    return
                 time.sleep(float(self.config.claims_query_interval))
 
     def _load_tasks(self) -> list[ClaimsTask]:
@@ -1322,6 +1363,18 @@ class ClaimsValidator:
                     source_context_by_span_id=source_context_by_span_id,
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
                     adjudication_batch_size=int(getattr(self.config, "claims_silver_adjudication_batch_size", 8)),
+                    adjudication_progress_sink=lambda contexts, votes: self._persist_adjudication_progress(
+                        run_id=run_id,
+                        task=task,
+                        paper_id=paper_id,
+                        bronze_record_id=bronze.bronze_record_id,
+                        contexts=contexts,
+                        votes=votes,
+                        metadata_by_miner_id={
+                            f"uid_{uid}": (uid, metadata)
+                            for uid, metadata in metadata_by_uid.items()
+                        },
+                    ),
                     relation_classifier=relation_classifier,
                     consolidation_relation_classifier=consolidation_relation_classifier,
                     importance_classifier=importance_classifier,
@@ -1378,6 +1431,7 @@ class ClaimsValidator:
                 model_rows=[*reference_models, *adjudication_models, *importance_models],
                 score_metadata_by_miner_id={f"uid_{uid}": (uid, metadata) for uid, metadata in metadata_by_uid.items()},
             )
+            self._upload_active_model_usage_checkpoint()
             persist_stage = _timing_finish(persist_timer, metadata={"paper_id": paper_id})
             timing_stages.append(persist_stage)
             paper_stage_seconds["silver_persist"] = float(persist_stage["duration_seconds"])
@@ -1588,24 +1642,44 @@ class ClaimsValidator:
         mode = str(getattr(self.config, "claims_silver_relation_mode", "heuristic") or "heuristic").strip().lower()
         if mode in {"", "heuristic", "disabled"}:
             return None
-        if mode not in {"dspy", "model", "openrouter"}:
+        if mode not in {"dspy", "model", "openrouter", "openai-compatible", "direct", "cli"}:
             self.bt_logging.warning(f"Unknown Silver relation mode {mode!r}; using heuristic relation matching.")
             return None
         api_base = str(getattr(self.config, "claims_silver_relation_api_base", "") or os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"))
         api_key_env = str(getattr(self.config, "claims_silver_relation_api_key_env", "") or "OPENROUTER_API_KEY")
         model = str(getattr(self.config, "claims_silver_relation_model", "") or os.getenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", "openrouter/openai/gpt-5-mini"))
         usage_collector = getattr(self, "_active_model_usage", None)
-        classifier = DSPyRelationClassifier(
-            model=_dspy_relation_model(model, api_base=api_base),
-            api_key=os.getenv(api_key_env, ""),
-            api_base=api_base,
-            fallback_to_heuristic=True,
-            request_gate=request_gate,
-            usage_sink=usage_collector.record if usage_collector is not None else None,
-            stage_key=stage_key,
-            stage_label=stage_label,
+        common_options = {
+            "api_base": api_base,
+            "fallback_to_heuristic": True,
+            "request_gate": request_gate,
+            "usage_sink": usage_collector.record if usage_collector is not None else None,
+            "stage_key": stage_key,
+            "stage_label": stage_label,
+        }
+        if mode == "cli":
+            command = os.getenv("CLAIMS_SILVER_RELATION_CLI_COMMAND", "").strip()
+            if not command:
+                self.bt_logging.warning(
+                    "CLAIMS_SILVER_RELATION_CLI_COMMAND is not set; using heuristic relation matching."
+                )
+                return None
+            return CLIRelationClassifier(command=command, model=model, api_key="", **common_options)
+        api_key = os.getenv(api_key_env, "")
+        classifier = (
+            OpenAICompatibleRelationClassifier(
+                model=model.removeprefix("openrouter/"),
+                api_key=api_key,
+                **common_options,
+            )
+            if mode in {"openai-compatible", "direct"}
+            else DSPyRelationClassifier(
+                model=_dspy_relation_model(model, api_base=api_base),
+                api_key=api_key,
+                **common_options,
+            )
         )
-        if not os.getenv(api_key_env, ""):
+        if not api_key:
             self.bt_logging.warning(
                 f"{api_key_env} is not set; Silver relation classifier will fall back to deterministic heuristic matching."
             )
@@ -1652,6 +1726,9 @@ class ClaimsValidator:
             cli_tiebreak_command=str(getattr(self.config, "claims_silver_adjudication_cli_tiebreak_command", "")),
             cli_command_template=str(getattr(self.config, "claims_silver_adjudication_cli_command_template", "")),
             cli_prompt_mode=str(getattr(self.config, "claims_silver_adjudication_cli_prompt_mode", "auto")),
+            hermes_execution_mode=str(
+                getattr(self.config, "claims_silver_adjudication_hermes_execution_mode", "agent")
+            ),
             cli_timeout_seconds=float(getattr(self.config, "claims_silver_adjudication_cli_timeout", 900)),
             cli_provider=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "openrouter"),
             cli_max_turns=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_MAX_TURNS", "10")),
@@ -1666,6 +1743,123 @@ class ClaimsValidator:
             ),
         )
 
+    def _persist_adjudication_progress(
+        self,
+        *,
+        run_id: str,
+        task: ClaimsTask,
+        paper_id: str,
+        bronze_record_id: str | None,
+        contexts: list[Any],
+        votes: list[Any],
+        metadata_by_miner_id: dict[str, tuple[int, dict[str, Any]]],
+    ) -> None:
+        if not contexts or not votes:
+            return
+        if not hasattr(self, "_adjudication_progress_lock"):
+            self._adjudication_progress_lock = threading.Lock()
+        if not hasattr(self, "_adjudication_progress_seen_cases"):
+            self._adjudication_progress_seen_cases = set()
+        if not hasattr(self, "_adjudication_progress_seen_votes"):
+            self._adjudication_progress_seen_votes = set()
+        batch_id = task.batch_id or task.task_id
+        network = str(getattr(self.config, "claims_network", "testnet"))
+        cases_by_id = {context.case.case_id: context.case for context in contexts}
+        case_payloads: list[dict[str, Any]] = []
+        vote_payloads: list[dict[str, Any]] = []
+        with self._adjudication_progress_lock:
+            for case in cases_by_id.values():
+                backend_case_id = f"{run_id}_{case.case_id}"
+                if backend_case_id in self._adjudication_progress_seen_cases:
+                    continue
+                case_uid, case_metadata = metadata_by_miner_id.get(case.miner_id, (None, {}))
+                case_payload = case.model_dump(mode="json")
+                case_payload["original_case_id"] = case.case_id
+                case_payload["case_id"] = backend_case_id
+                case_payloads.append(
+                    {
+                        "case_id": backend_case_id,
+                        "network": network,
+                        "run_id": run_id,
+                        "batch_id": batch_id,
+                        "paper_id": paper_id,
+                        "bronze_record_id": bronze_record_id,
+                        "miner_hotkey": case_metadata.get("hotkey") or None,
+                        "uid": case_uid,
+                        "mismatch_type": case.mismatch_type,
+                        "candidate_ids": case.candidate_ids,
+                        "status": "pending",
+                        "context_uri": f"claims-api:/runs/{run_id}/papers/{safe_task_id(paper_id)}/adjudication-progress",
+                        "findings": [],
+                        "decision": {"case": case_payload},
+                    }
+                )
+            for vote in votes:
+                backend_case_id = f"{run_id}_{vote.case_id}"
+                vote_id = f"{backend_case_id}_{vote.pass_id}"
+                if vote_id in self._adjudication_progress_seen_votes:
+                    continue
+                vote_payloads.append(
+                    {
+                        "vote_id": vote_id,
+                        "network": network,
+                        "case_id": backend_case_id,
+                        "run_id": run_id,
+                        "batch_id": batch_id,
+                        "paper_id": paper_id,
+                        "pass_id": vote.pass_id,
+                        "adjudication_profile_id": vote.adjudication_profile_id,
+                        "model_runtime_id": vote.model_runtime_id,
+                        "candidate_order_seed": vote.case_id,
+                        "disposition": vote.disposition,
+                        "material_findings": vote.material_findings,
+                        "cited_span_ids": vote.cited_span_ids,
+                        "confidence": vote.confidence,
+                        "rationale": vote.rationale,
+                    }
+                )
+
+            checkpoint_dir = (
+                Path(self.config.claims_output_dir)
+                / task.task_id
+                / run_id
+                / "silver"
+                / safe_task_id(paper_id)
+            )
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint_path = checkpoint_dir / "adjudication_progress.jsonl"
+            with checkpoint_path.open("a", encoding="utf-8") as handle:
+                handle.write(
+                    json.dumps(
+                        {
+                            "recorded_at": datetime.now(timezone.utc).isoformat(),
+                            "cases": case_payloads,
+                            "votes": vote_payloads,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+            bulk_post = getattr(self.backend_client, "post_silver_pipeline_chunks", None)
+            if not callable(bulk_post):
+                return
+            try:
+                bulk_post(
+                    cases=case_payloads,
+                    votes=vote_payloads,
+                    consensus=[],
+                    decisions=[],
+                    silver_records=[],
+                    score_reports=[],
+                    case_chunk_size=int(os.getenv("CLAIMS_SILVER_PERSIST_CHUNK_SIZE", "50") or 50),
+                    vote_chunk_size=int(os.getenv("CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE", "150") or 150),
+                )
+            except BackendClientError as exc:
+                self.bt_logging.warning(f"Could not persist adjudication batch progress: {exc}")
+                return
+            self._adjudication_progress_seen_cases.update(payload["case_id"] for payload in case_payloads)
+            self._adjudication_progress_seen_votes.update(payload["vote_id"] for payload in vote_payloads)
+
     def _persist_silver_pipeline_result(
         self,
         *,
@@ -1679,6 +1873,12 @@ class ClaimsValidator:
         model_rows: list[dict[str, Any]] | None = None,
         score_metadata_by_miner_id: dict[str, tuple[int, dict[str, Any]]] | None = None,
     ) -> None:
+        if not hasattr(self, "_adjudication_progress_lock"):
+            self._adjudication_progress_lock = threading.Lock()
+        if not hasattr(self, "_adjudication_progress_seen_cases"):
+            self._adjudication_progress_seen_cases = set()
+        if not hasattr(self, "_adjudication_progress_seen_votes"):
+            self._adjudication_progress_seen_votes = set()
         output_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / "silver" / safe_task_id(paper_id)
         _write_json(output_dir / "silver_record.json", result.silver_record.model_dump(mode="json"))
         _write_json(
@@ -1728,7 +1928,7 @@ class ClaimsValidator:
                     "mismatch_type": case.mismatch_type,
                     "candidate_ids": case.candidate_ids,
                     "status": "pending",
-                    "context_uri": str(output_dir / "adjudication_consensus.json"),
+                    "context_uri": f"claims-api:/runs/{run_id}/papers/{safe_task_id(paper_id)}/adjudication-consensus",
                     "findings": [],
                     "decision": {"case": case_payload},
                 }
@@ -1773,6 +1973,17 @@ class ClaimsValidator:
                     "score_effects": [effect.model_dump(mode="json") for effect in consensus.score_effects],
                 }
             )
+        with self._adjudication_progress_lock:
+            case_payloads = [
+                payload
+                for payload in case_payloads
+                if payload["case_id"] not in self._adjudication_progress_seen_cases
+            ]
+            vote_payloads = [
+                payload
+                for payload in vote_payloads
+                if payload["vote_id"] not in self._adjudication_progress_seen_votes
+            ]
         decision_payloads: list[dict[str, Any]] = []
         for decision in result.adjudication_decisions:
             backend_case_id = backend_case_ids.get(decision.case_id, f"{run_id}_{decision.case_id}")
@@ -1826,7 +2037,7 @@ class ClaimsValidator:
                 "invalid_candidates": invalid_candidates,
                 "reference_errors": [item.model_dump(mode="json") for item in result.silver_record.reference_errors],
                 "metadata": result.silver_record.metadata,
-                "audit_uri": str(output_dir / "silver_record.json"),
+                "audit_uri": f"claims-api:/runs/{run_id}/papers/{safe_task_id(paper_id)}/silver-record",
             }
         ]
         score_payloads: list[dict[str, Any]] = []
@@ -2309,6 +2520,55 @@ class ClaimsValidator:
             f"status={summary.get('status')}"
         )
         self._active_model_usage = None
+
+    def _checkpoint_model_usage_events(
+        self,
+        events: list[dict[str, Any]],
+        *,
+        network: str,
+        run_id: str,
+        batch_id: str,
+    ) -> None:
+        if not events:
+            return
+        backup_path = Path(self.config.claims_output_dir) / "model_usage" / f"{run_id}.json"
+        with self._model_usage_checkpoint_lock:
+            prepare_model_usage_backup(
+                backup_path,
+                events=events,
+                network=network,
+                run_id=run_id,
+                batch_id=batch_id,
+            )
+
+    def _upload_active_model_usage_checkpoint(self) -> None:
+        collector = getattr(self, "_active_model_usage", None)
+        if collector is None:
+            return
+        events = collector.snapshot()
+        if not events:
+            return
+        backup_path = Path(self.config.claims_output_dir) / "model_usage" / f"{collector.run_id}.json"
+        with self._model_usage_checkpoint_lock:
+            prepare_model_usage_backup(
+                backup_path,
+                events=events,
+                network=collector.network,
+                run_id=collector.run_id,
+                batch_id=collector.batch_id,
+            )
+            if self.backend_client is None:
+                return
+            try:
+                summary = upload_model_usage_backup(
+                    backup_path,
+                    backend_client=self.backend_client,
+                    chunk_size=int(os.getenv("CLAIMS_MODEL_USAGE_UPLOAD_CHUNK_SIZE", "1000") or 1000),
+                )
+            except Exception as exc:
+                self.bt_logging.warning(f"Could not checkpoint validator model usage events: {exc}")
+                return
+        self._model_usage_upload_summary = {"run_id": collector.run_id, **summary}
 
     def _resume_pending_model_usage_uploads(self) -> None:
         if self.backend_client is None:
@@ -3973,6 +4233,9 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_silver_adjudication_cli_prompt_mode": str(
             getattr(config, "claims_silver_adjudication_cli_prompt_mode", "auto") or "auto"
         ),
+        "claims_silver_adjudication_hermes_execution_mode": str(
+            getattr(config, "claims_silver_adjudication_hermes_execution_mode", "agent") or "agent"
+        ),
         "claims_silver_adjudication_cli_timeout": float(
             getattr(config, "claims_silver_adjudication_cli_timeout", 900.0)
         ),
@@ -3991,6 +4254,18 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_silver_adjudication_batch_max_tokens": int(
             os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_MAX_TOKENS", "16384") or 16384
         ),
+        "claims_silver_adjudication_batch_input_tokens": int(
+            os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_INPUT_TOKENS", "120000") or 120000
+        ),
+        "claims_silver_adjudication_batch_retries": int(
+            os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_RETRIES", "1") or 0
+        ),
+        "claims_silver_adjudication_fallback_max_calls": int(
+            os.getenv("CLAIMS_SILVER_ADJUDICATION_FALLBACK_MAX_CALLS", "256") or 0
+        ),
+        "claims_silver_adjudication_wall_timeout": float(
+            os.getenv("CLAIMS_SILVER_ADJUDICATION_WALL_TIMEOUT", "1800") or 0
+        ),
         "claims_silver_direct_confidence": float(getattr(config, "claims_silver_direct_confidence", 0.9)),
         "claims_silver_relation_mode": str(getattr(config, "claims_silver_relation_mode", "dspy") or ""),
         "claims_silver_relation_model": str(getattr(config, "claims_silver_relation_model", "") or ""),
@@ -3999,11 +4274,26 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_silver_relation_batch_max_tokens": int(
             os.getenv("CLAIMS_SILVER_RELATION_BATCH_MAX_TOKENS", "8192") or 8192
         ),
+        "claims_silver_relation_batch_input_tokens": int(
+            os.getenv("CLAIMS_SILVER_RELATION_BATCH_INPUT_TOKENS", "100000") or 100000
+        ),
+        "claims_silver_relation_batch_retries": int(
+            os.getenv("CLAIMS_SILVER_RELATION_BATCH_RETRIES", "1") or 0
+        ),
+        "claims_silver_relation_fallback_max_calls": int(
+            os.getenv("CLAIMS_SILVER_RELATION_FALLBACK_MAX_CALLS", "256") or 0
+        ),
+        "claims_silver_relation_wall_timeout": float(
+            os.getenv("CLAIMS_SILVER_RELATION_WALL_TIMEOUT", "900") or 0
+        ),
         "claims_silver_persist_chunk_size": int(os.getenv("CLAIMS_SILVER_PERSIST_CHUNK_SIZE", "50") or 50),
         "claims_silver_persist_vote_chunk_size": int(
             os.getenv("CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE", "150") or 150
         ),
         "claims_silver_relation_timeout": float(os.getenv("CLAIMS_SILVER_RELATION_TIMEOUT", "120") or 120),
+        "claims_model_usage_checkpoint_every": int(
+            os.getenv("CLAIMS_MODEL_USAGE_CHECKPOINT_EVERY", "25") or 25
+        ),
         "claims_silver_pairing_embedding_mode": str(os.getenv("CLAIMS_SILVER_PAIRING_EMBEDDING_MODE", "") or ""),
         "claims_silver_pairing_embedding_model": str(
             os.getenv("CLAIMS_SILVER_PAIRING_EMBEDDING_MODEL", "nvidia/nemotron-3-embed-1b:free") or ""

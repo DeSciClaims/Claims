@@ -7,7 +7,7 @@ description: Adjudicate anonymous Claims Silver candidate cases from a validator
 
 Use this skill only for validator-generated Claims Silver adjudication tasks.
 
-1. Read the complete task file named in the user query.
+1. Read the complete task supplied in the prompt or in the named task file.
 2. Treat candidate labels and order as anonymous. Never infer whether a candidate came from Bronze, a miner, or a particular miner.
 3. Resolve every case independently from its claims, linked evidence, source quotes, and supplied source spans.
 4. Do not treat shared wording as proof of equivalence. Distinguish equivalent claims, refinements, separate valid units, contradictions, and unsupported candidates.

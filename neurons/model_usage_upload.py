@@ -27,6 +27,15 @@ def prepare_model_usage_backup(
         and existing.get("event_ids_sha256") == event_ids_hash
     ):
         return existing
+    existing_events = existing.get("events") if isinstance(existing.get("events"), list) else []
+    existing_ids = [str(event.get("usage_event_id") or "") for event in existing_events if isinstance(event, dict)]
+    current_ids = [str(event.get("usage_event_id") or "") for event in events]
+    append_only = bool(existing_ids) and current_ids[: len(existing_ids)] == existing_ids
+    existing_upload = existing.get("upload") if isinstance(existing.get("upload"), dict) else {}
+    uploaded_prefix = min(
+        len(existing_ids),
+        int(existing_upload.get("next_offset") or existing_upload.get("uploaded_event_count") or 0),
+    ) if append_only else 0
     payload = {
         "schema": BACKUP_SCHEMA,
         "network": network,
@@ -36,10 +45,10 @@ def prepare_model_usage_backup(
         "event_ids_sha256": event_ids_hash,
         "upload": {
             "status": "pending",
-            "next_offset": 0,
-            "uploaded_event_count": 0,
-            "inserted_event_count": 0,
-            "stored_event_count": 0,
+            "next_offset": uploaded_prefix,
+            "uploaded_event_count": uploaded_prefix,
+            "inserted_event_count": int(existing_upload.get("inserted_event_count") or 0) if append_only else 0,
+            "stored_event_count": int(existing_upload.get("stored_event_count") or 0) if append_only else 0,
             "verified": False,
             "error": None,
             "updated_at": _now(),

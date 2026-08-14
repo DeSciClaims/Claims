@@ -78,6 +78,10 @@ def usage_from_langchain_result(result: Any) -> dict[str, Any]:
 
 
 def usage_from_cli_process(command: list[str], stdout: str, stderr: str) -> dict[str, Any]:
+    hermes_machine_usage = usage_from_hermes_machine_output(stderr)
+    if _has_usage(hermes_machine_usage):
+        return hermes_machine_usage
+
     codex_usage = usage_from_codex_jsonl(stdout)
     if _has_usage(codex_usage):
         return codex_usage
@@ -98,6 +102,35 @@ def usage_from_cli_process(command: list[str], stdout: str, stderr: str) -> dict
         if name == "hermes":
             return hermes_usage
     return empty_usage("cli_unavailable")
+
+
+def usage_from_hermes_machine_output(stderr: str) -> dict[str, Any]:
+    prefix = "CLAIMS_HERMES_USAGE_JSON="
+    for line in reversed(stderr.splitlines()):
+        if not line.startswith(prefix):
+            continue
+        try:
+            payload = json.loads(line[len(prefix) :])
+        except Exception:
+            return empty_usage("hermes_machine_usage_invalid")
+        if not isinstance(payload, dict):
+            return empty_usage("hermes_machine_usage_invalid")
+        usage = _normalize_usage_dict(payload, source="hermes_oneshot")
+        actual_cost = _float_value(payload, "actual_cost_usd")
+        estimated_cost = _float_value(payload, "estimated_cost_usd")
+        reported_cost = _float_value(payload, "cost_usd")
+        reported_cost_kind = str(payload.get("cost_kind") or "").strip().lower()
+        if actual_cost is not None:
+            usage["cost_usd"] = actual_cost
+            usage["cost_kind"] = "actual"
+        elif estimated_cost is not None:
+            usage["cost_usd"] = estimated_cost
+            usage["cost_kind"] = "estimated"
+        elif reported_cost is not None and reported_cost_kind in {"actual", "estimated"}:
+            usage["cost_usd"] = reported_cost
+            usage["cost_kind"] = reported_cost_kind
+        return usage
+    return empty_usage("hermes_machine_usage_not_found")
 
 
 def usage_from_codex_jsonl(stdout: str) -> dict[str, Any]:

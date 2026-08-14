@@ -5,9 +5,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Iterable
+from typing import Callable, Iterable
 
-from .adjudication_models import AdjudicationConsensus, AdjudicationContextBundle, AdjudicationDecision
+from .adjudication_models import AdjudicationConsensus, AdjudicationContextBundle, AdjudicationDecision, AdjudicationVote
 from .adjudication_runner import AdjudicationPass, run_adjudication_cases
 from .batch_scoring import BatchScoreResult, score_batch
 from .bronze_diff import compare_miner_to_bronze_result
@@ -84,6 +84,11 @@ def run_paper_silver_pipeline(
     source_context_by_span_id: dict[str, str] | None = None,
     adjudication_max_workers: int = 4,
     adjudication_batch_size: int = 8,
+    adjudication_progress_sink: Callable[
+        [list[AdjudicationContextBundle], list[AdjudicationVote]],
+        None,
+    ]
+    | None = None,
 ) -> PaperSilverPipelineResult:
     stage_timings: list[dict] = []
 
@@ -179,6 +184,7 @@ def run_paper_silver_pipeline(
             direct_judge_confidence=direct_judge_confidence,
             batch_size=max(1, int(adjudication_batch_size or 1)),
             max_workers=max(1, int(adjudication_max_workers or 1)),
+            progress_sink=adjudication_progress_sink,
         )
         return [
             (consensus, _decision_from_consensus(context.case, consensus, context.candidates))

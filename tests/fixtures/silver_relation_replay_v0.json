@@ -1,0 +1,73 @@
+{
+  "schema": "claims_silver_relation_replay_v0",
+  "pairs": [
+    {
+      "left": {
+        "candidate_id": "bronze:C01",
+        "paper_id": "fixture-paper",
+        "origin": "bronze",
+        "record_id": "C01",
+        "statement": "Treatment A reduced 30-day mortality in adults.",
+        "normalized_statement": "treatment a reduced 30 day mortality in adults",
+        "source_span_ids": ["fixture-span-001"],
+        "source_quotes": ["Treatment A reduced 30-day mortality in adults."]
+      },
+      "right": {
+        "candidate_id": "miner:uid_9:C01",
+        "paper_id": "fixture-paper",
+        "origin": "miner",
+        "miner_id": "uid_9",
+        "record_id": "C01",
+        "statement": "Treatment A reduced mortality within 30 days among adults.",
+        "normalized_statement": "treatment a reduced mortality within 30 days among adults",
+        "source_span_ids": ["fixture-span-001"],
+        "source_quotes": ["Treatment A reduced 30-day mortality in adults."]
+      },
+      "expected_relation": "semantic_equivalent"
+    },
+    {
+      "left": {
+        "candidate_id": "bronze:C02",
+        "paper_id": "fixture-paper",
+        "origin": "bronze",
+        "record_id": "C02",
+        "statement": "Treatment A reduced mortality.",
+        "normalized_statement": "treatment a reduced mortality",
+        "source_span_ids": ["fixture-span-002"]
+      },
+      "right": {
+        "candidate_id": "miner:uid_9:C02",
+        "paper_id": "fixture-paper",
+        "origin": "miner",
+        "miner_id": "uid_9",
+        "record_id": "C02",
+        "statement": "Treatment A reduced mortality in adults aged 65 years or older.",
+        "normalized_statement": "treatment a reduced mortality in adults aged 65 years or older",
+        "source_span_ids": ["fixture-span-002"]
+      },
+      "expected_relation": "compatible_refinement"
+    },
+    {
+      "left": {
+        "candidate_id": "bronze:C03",
+        "paper_id": "fixture-paper",
+        "origin": "bronze",
+        "record_id": "C03",
+        "statement": "Treatment A reduced mortality.",
+        "normalized_statement": "treatment a reduced mortality",
+        "source_span_ids": ["fixture-span-003"]
+      },
+      "right": {
+        "candidate_id": "miner:uid_9:C03",
+        "paper_id": "fixture-paper",
+        "origin": "miner",
+        "miner_id": "uid_9",
+        "record_id": "C03",
+        "statement": "Treatment A increased mortality.",
+        "normalized_statement": "treatment a increased mortality",
+        "source_span_ids": ["fixture-span-003"]
+      },
+      "expected_relation": "contradiction"
+    }
+  ]
+}

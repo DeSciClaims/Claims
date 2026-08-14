@@ -29,6 +29,7 @@ from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
 from validator.agent_v1.comparison_models import SilverRecord, SilverScoreBreakdown, SilverUnit
 from validator.agent_v1.orchestrator import PaperSilverPipelineResult
+from validator.agent_v1.relation_classifier import CLIRelationClassifier, OpenAICompatibleRelationClassifier
 from validator.agent_v1.structural import run_structural_checks
 
 
@@ -45,6 +46,10 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     monkeypatch.setenv("CLAIMS_SILVER_PERSIST_CHUNK_SIZE", "40")
     monkeypatch.setenv("CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE", "120")
     monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_BATCH_MAX_TOKENS", "24000")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_BATCH_INPUT_TOKENS", "90000")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_BATCH_RETRIES", "2")
+    monkeypatch.setenv("CLAIMS_SILVER_RELATION_BATCH_INPUT_TOKENS", "80000")
+    monkeypatch.setenv("CLAIMS_SILVER_RELATION_WALL_TIMEOUT", "600")
     monkeypatch.setenv("CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS", "48")
     monkeypatch.setenv("CLAIMS_SILVER_CONSOLIDATION_TOP_K", "7")
     config = SimpleNamespace(
@@ -72,11 +77,16 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["subtensor_network"] == "test"
     assert snapshot["claims_silver_adjudication_max_in_flight"] == 0
     assert snapshot["claims_silver_adjudication_batch_size"] == 8
+    assert snapshot["claims_silver_adjudication_hermes_execution_mode"] == "agent"
     assert snapshot["claims_silver_relation_batch_size"] == 12
     assert snapshot["claims_silver_relation_max_workers"] == 6
     assert snapshot["claims_silver_persist_chunk_size"] == 40
     assert snapshot["claims_silver_persist_vote_chunk_size"] == 120
     assert snapshot["claims_silver_adjudication_batch_max_tokens"] == 24000
+    assert snapshot["claims_silver_adjudication_batch_input_tokens"] == 90000
+    assert snapshot["claims_silver_adjudication_batch_retries"] == 2
+    assert snapshot["claims_silver_relation_batch_input_tokens"] == 80000
+    assert snapshot["claims_silver_relation_wall_timeout"] == 600.0
     assert snapshot["claims_silver_pairing_max_dense_pairs"] == 48
     assert snapshot["claims_silver_consolidation_top_k"] == 7
     assert snapshot["claims_run_heartbeat_interval"] == 60.0
@@ -409,7 +419,13 @@ def test_neuron_silver_post_pass_persists_backend_records(tmp_path) -> None:
     assert scores == {7: 1.0}
     assert backend.consensus[0]["route"] == "direct"
     assert backend.decisions[0]["disposition"] == "reference_error"
-    assert backend.silver_chunk_calls == [{"case_chunk_size": 50, "vote_chunk_size": 150}]
+    assert len(backend.silver_chunk_calls) >= 2
+    assert all(
+        call == {"case_chunk_size": 50, "vote_chunk_size": 150}
+        for call in backend.silver_chunk_calls
+    )
+    assert len(backend.cases) == 1
+    assert len(backend.votes) == 2
 
 
 def test_neuron_silver_post_pass_counts_unscored_batch_paper_as_zero(tmp_path) -> None:
@@ -859,6 +875,32 @@ def test_validator_can_disable_silver_relation_classifier() -> None:
     assert validator._build_silver_relation_classifier() is None
 
 
+def test_validator_builds_direct_silver_relation_classifier(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_TEST_RELATION_KEY", "test-key")
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.bt_logging = SimpleNamespace(warning=lambda *_args, **_kwargs: None)
+    validator.config = SimpleNamespace(
+        claims_silver_relation_mode="openai-compatible",
+        claims_silver_relation_model="openai/gpt-4o-mini",
+        claims_silver_relation_api_base="https://openrouter.ai/api/v1",
+        claims_silver_relation_api_key_env="CLAIMS_TEST_RELATION_KEY",
+    )
+
+    assert isinstance(validator._build_silver_relation_classifier(), OpenAICompatibleRelationClassifier)
+
+
+def test_validator_builds_cli_silver_relation_classifier(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_SILVER_RELATION_CLI_COMMAND", "relation-wrapper {prompt_file}")
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.bt_logging = SimpleNamespace(warning=lambda *_args, **_kwargs: None)
+    validator.config = SimpleNamespace(
+        claims_silver_relation_mode="cli",
+        claims_silver_relation_model="test-model",
+    )
+
+    assert isinstance(validator._build_silver_relation_classifier(), CLIRelationClassifier)
+
+
 def test_validator_builds_silver_importance_classifier(monkeypatch) -> None:
     monkeypatch.setenv("CLAIMS_TEST_IMPORTANCE_KEY", "test-key")
     validator = ClaimsValidator.__new__(ClaimsValidator)
@@ -914,6 +956,41 @@ def test_validator_backend_client_uses_configured_timeout_and_retries() -> None:
     assert client.timeout_seconds == 120
     assert client.max_retries == 4
     assert client.retry_backoff_seconds == 0.5
+
+
+def test_validator_failed_cycle_counts_toward_max_steps_and_records_error() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_dry_run=False,
+        claims_max_steps=1,
+        claims_query_interval=0.0,
+        claims_network="testnet",
+    )
+    validator.bt_logging = SimpleNamespace(error=lambda *_args: None, info=lambda *_args: None)
+    validator.target_neurons = []
+    validator._active_run_timing = None
+    validator._resume_pending_model_usage_uploads = lambda: None
+    validator._start_memory_sampler = lambda: None
+    validator._stop_memory_sampler = lambda: None
+    validator._start_run_heartbeat = lambda _run_id: None
+    validator._stop_run_heartbeat = lambda: None
+    validator._flush_model_usage_events = lambda: None
+    validator._record_timing_stage = lambda *_args, **_kwargs: None
+    validator._next_task = lambda _step: SimpleNamespace(
+        network="testnet",
+        task_id="task_test",
+        batch_id="batch_test",
+        paper_tasks=lambda: [],
+    )
+    validator._load_target_neurons = lambda: (_ for _ in ()).throw(RuntimeError("target refresh failed"))
+    posted: list[dict] = []
+    validator._post_validator_run = lambda *_args, **kwargs: posted.append(kwargs)
+
+    validator.run()
+
+    assert len(posted) == 1
+    assert posted[0]["status"] == "failed"
+    assert posted[0]["error_summary"] == "RuntimeError: target refresh failed"
 
 
 def test_trace_refs_may_point_to_claims_evidence_experiments_or_concepts(tmp_path) -> None:

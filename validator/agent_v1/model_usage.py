@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 import uuid
 from collections.abc import Callable
@@ -8,15 +9,27 @@ from typing import Any
 
 
 UsageSink = Callable[[dict[str, Any]], None]
+LOGGER = logging.getLogger(__name__)
 
 
 class ModelUsageCollector:
-    def __init__(self, *, network: str, run_id: str, batch_id: str) -> None:
+    def __init__(
+        self,
+        *,
+        network: str,
+        run_id: str,
+        batch_id: str,
+        checkpoint_sink: Callable[[list[dict[str, Any]]], None] | None = None,
+        checkpoint_every: int = 25,
+    ) -> None:
         self.network = network
         self.run_id = run_id
         self.batch_id = batch_id
         self._events: list[dict[str, Any]] = []
         self._lock = threading.Lock()
+        self._checkpoint_sink = checkpoint_sink
+        self._checkpoint_every = max(1, int(checkpoint_every or 1))
+        self._last_checkpoint_count = 0
 
     def record(self, event: dict[str, Any]) -> None:
         usage = event.get("usage") if isinstance(event.get("usage"), dict) else {}
@@ -57,8 +70,24 @@ class ModelUsageCollector:
             "duration_seconds": _optional_float(event.get("duration_seconds")),
             "metadata": event.get("metadata") if isinstance(event.get("metadata"), dict) else {},
         }
+        checkpoint_events: list[dict[str, Any]] | None = None
         with self._lock:
             self._events.append(row)
+            if (
+                self._checkpoint_sink is not None
+                and len(self._events) - self._last_checkpoint_count >= self._checkpoint_every
+            ):
+                self._last_checkpoint_count = len(self._events)
+                checkpoint_events = [dict(event) for event in self._events]
+        if checkpoint_events is not None:
+            try:
+                self._checkpoint_sink(checkpoint_events)
+            except Exception as exc:
+                LOGGER.warning(
+                    "Could not checkpoint %d model usage events: %s",
+                    len(checkpoint_events),
+                    exc,
+                )
 
     def snapshot(self) -> list[dict[str, Any]]:
         with self._lock:

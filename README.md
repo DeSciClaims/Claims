@@ -257,12 +257,12 @@ Useful validator flags:
 - `--claims.adjudication-model-a/b/tiebreak-model <MODEL>`: choose the Silver adjudicator models.
 - `--claims.silver-adjudication-batch-size 8`: adjudicate several anonymous cases per model call; use `1` to disable batching.
 - `--claims.silver-adjudication-max-in-flight 32`: cap Silver model calls globally across papers and passes; use `0` for unlimited.
-- Hermes adjudication uses the bundled `claims-silver-adjudicator` skill and mode-`0600` temporary task files by default, avoiding large command-line arguments. Set `CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE=append` only for legacy CLI behavior.
+- Hermes adjudication defaults to a skill-based agent workflow with mode-`0600` task/schema files and validated JSON output. Set `CLAIMS_SILVER_ADJUDICATION_HERMES_EXECUTION_MODE=oneshot` for the optional tool-free path; use `CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE=append` only for legacy CLI behavior.
 - `--claims.diagnostic-miner-max-workers 2`: run diagnostic validation for multiple miner responses concurrently.
 - `--claims.diagnostic-max-workers 10`: run diagnostic validation for multiple papers concurrently per miner.
 - `--claims.skip-diagnostic-validation`: skip diagnostic reports when Silver is the only scoring path for a large run.
 - `--claims.silver-paper-max-workers 10`: run Silver post-pass work for multiple batch papers concurrently.
-- `--claims.silver-relation-mode dspy --claims.silver-relation-model <MODEL>`: classify filtered Bronze/miner graph edges before adjudication.
+- `--claims.silver-relation-mode dspy --claims.silver-relation-model <MODEL>`: classify comparison and consolidation edges with DSPy. `openai-compatible` and `cli` use the same batch contract; CLI requires `CLAIMS_SILVER_RELATION_CLI_COMMAND` and accepts prompts on stdin or through `{prompt_file}`.
 - `--claims.allow-paper-reuse`: allow already assigned backend papers to be selected again for local smoke tests.
 - `--claims.task-manifest /path/to/tasks.jsonl`: run a list of tasks.
 - `--claims.audit-only`: score miners and write audit files without setting weights.
@@ -278,12 +278,15 @@ Optional Silver graph-pairing envs:
 - `CLAIMS_SILVER_PAIRING_TOP_K=4`: candidate edges retained per retrieval direction.
 - `CLAIMS_SILVER_CONSOLIDATION_TOP_K=4`: strongest post-adjudication consolidation neighbors retained per candidate; use `0` for the unbounded graph.
 - `CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS=64`: small candidate sets at or below this size also run dense pairing.
-- `CLAIMS_SILVER_RELATION_BATCH_SIZE=16`: relation pairs classified per DSPy request in comparison and consolidation; use `1` to disable batching.
+- `CLAIMS_SILVER_RELATION_BATCH_SIZE=16`: relation pairs per model request in comparison and consolidation; use `1` to disable batching.
 - `CLAIMS_SILVER_RELATION_MAX_WORKERS=4`: relation-classification batches run concurrently up to this bounded worker count.
+- `CLAIMS_SILVER_RELATION_BATCH_INPUT_TOKENS=100000`: split relation batches before their estimated input exceeds this budget.
+- `CLAIMS_SILVER_ADJUDICATION_BATCH_INPUT_TOKENS=120000`: equivalent input budget for adjudication batches.
+- `CLAIMS_SILVER_RELATION_BATCH_RETRIES=1` / `CLAIMS_SILVER_ADJUDICATION_BATCH_RETRIES=1`: retry a failed batch before recursively splitting it.
+- `CLAIMS_SILVER_RELATION_WALL_TIMEOUT=900` / `CLAIMS_SILVER_ADJUDICATION_WALL_TIMEOUT=1800`: absolute stage deadlines in seconds; `0` disables the deadline.
+- `CLAIMS_SILVER_RELATION_FALLBACK_MAX_CALLS=256` / `CLAIMS_SILVER_ADJUDICATION_FALLBACK_MAX_CALLS=256`: cap split fallback calls; `0` is unlimited.
 - `CLAIMS_SILVER_PERSIST_CHUNK_SIZE=50`: cases, consensus, decisions, and score rows sent per persistence chunk.
 - `CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE=150`: adjudication votes sent per persistence chunk.
-
-Each backend run record stores the effective non-secret validator configuration, Git revision, timing, and process-tree memory telemetry for reproducible capacity comparisons.
 
 For local smoke tests without the backend, pass exactly one of
 `--claims.paper-url`, `--claims.task-artifact`, or `--claims.task-manifest`.

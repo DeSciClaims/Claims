@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +27,7 @@ from validator.agent_v1.adjudication_passes import (
     StaticAdjudicationPass,
     _adjudication_cli_prompt,
     _adjudication_messages,
+    _parse_batch_json_object,
     _parse_json_object,
 )
 from validator.agent_v1.adjudication_runner import run_adjudication_case, run_adjudication_cases
@@ -54,11 +56,21 @@ from validator.agent_v1.pairing import (
     build_candidate_pairs,
     filter_candidate_pairs,
 )
-from validator.agent_v1.relation_classifier import DSPyRelationClassifier
+from validator.agent_v1.relation_classifier import (
+    CLIRelationClassifier,
+    DSPyRelationClassifier,
+    OpenAICompatibleRelationClassifier,
+)
 from validator.agent_v1.silver_builder import build_silver_record
 from validator.agent_v1.silver_importance import OpenAICompatibleSilverImportanceClassifier, apply_silver_importance
 from validator.agent_v1.silver_scoring import score_miner_against_silver
 from validator.agent_v1.models import AgentV1ValidationFinding
+from validator.agent_v1.wrappers.hermes_adjudication_agent import (
+    _is_valid_payload as is_valid_hermes_adjudication_payload,
+    _run_inner_agent as run_inner_hermes_adjudication_agent,
+    run_agent_task as run_hermes_adjudication_agent_task,
+)
+from validator.agent_v1.wrappers.hermes_oneshot_file import run_prompt_file
 
 
 def test_silver_scoring_matches_end_to_end_toy_example() -> None:
@@ -547,6 +559,7 @@ def test_silver_adjudication_factory_builds_cli_passes() -> None:
     assert passes[0].command == ["fake-hermes", "chat", "-m", "openai/gpt-5", "-q"]
     assert passes[1].command == ["fake-hermes", "chat", "-m", "anthropic/claude-sonnet-4", "-q"]
     assert tiebreak.command == ["fake-hermes", "chat", "-m", "google/gemini-2.5-pro", "-q"]
+    assert passes[0].hermes_execution_mode == "agent"
 
 
 def test_cli_adjudication_pass_runs_one_process_for_case_batch(monkeypatch) -> None:
@@ -613,7 +626,7 @@ def test_cli_adjudication_pass_runs_one_process_for_case_batch(monkeypatch) -> N
     ]
 
 
-def test_cli_hermes_auto_transport_uses_managed_skill_and_temporary_file(monkeypatch, tmp_path) -> None:
+def test_cli_hermes_auto_transport_uses_skill_agent_artifact_workflow(monkeypatch, tmp_path) -> None:
     candidate_id = "miner:uid_9:C01"
     context = AdjudicationContextBundle(
         case=BronzeDiffCase(
@@ -631,15 +644,17 @@ def test_cli_hermes_auto_transport_uses_managed_skill_and_temporary_file(monkeyp
     def fake_run(command, **kwargs):
         nonlocal captured_path
         assert kwargs["input"] is None
-        assert "--skills" in command
-        assert "claims-silver-adjudicator" in command
+        assert command[0] == sys.executable
+        assert Path(command[1]).name == "hermes_adjudication_agent.py"
         assert all("# Claims Silver adjudication task" not in argument for argument in command)
-        query = command[-1]
-        path_value = query.split(" from ", 1)[1].split(". Follow", 1)[0]
-        captured_path = Path(path_value)
+        captured_path = Path(command[command.index("--task-file") + 1])
         assert captured_path.is_file()
         assert captured_path.stat().st_mode & 0o777 == 0o600
         assert "# Claims Silver adjudication task" in captured_path.read_text(encoding="utf-8")
+        assert Path(command[command.index("--skill-file") + 1]).name == "SKILL.md"
+        inner_command = json.loads(command[command.index("--inner-command-json") + 1])
+        assert "--skills" in inner_command
+        assert "claims-silver-adjudicator" in inner_command
         return SimpleNamespace(
             returncode=0,
             stdout=json.dumps(
@@ -655,8 +670,8 @@ def test_cli_hermes_auto_transport_uses_managed_skill_and_temporary_file(monkeyp
             stderr="",
         )
 
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_PROMPT_DIR", str(tmp_path / "prompts"))
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     monkeypatch.setattr("validator.agent_v1.adjudication_passes.subprocess.run", fake_run)
     adjudication_pass = CLIAdjudicationPass(
         pass_id="pass_a",
@@ -670,7 +685,159 @@ def test_cli_hermes_auto_transport_uses_managed_skill_and_temporary_file(monkeyp
 
     assert vote.disposition == "accepted_improvement"
     assert captured_path is not None and not captured_path.exists()
-    assert (tmp_path / "hermes" / "skills" / "claims-silver-adjudicator" / "SKILL.md").is_file()
+
+
+def test_cli_hermes_oneshot_execution_mode_remains_available(monkeypatch, tmp_path) -> None:
+    candidate_id = "miner:uid_9:C01"
+    context = AdjudicationContextBundle(
+        case=BronzeDiffCase(
+            case_id="case_cli_oneshot",
+            paper_id="paper",
+            miner_id="uid_9",
+            mismatch_type="EXTRA_FROM_MINER",
+            candidate_ids=[candidate_id],
+            question="Should this candidate be included?",
+        ),
+        candidates=[_candidate(candidate_id, "miner", "uid_9", "Treatment A reduced mortality.")],
+    )
+
+    def fake_run(command, **kwargs):
+        assert Path(command[1]).name == "hermes_oneshot_file.py"
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "disposition": "include_candidate",
+                    "material_findings": ["supported"],
+                    "cited_span_ids": [],
+                    "confidence": 0.95,
+                    "rationale": "Supported.",
+                    "insufficient_information": False,
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_PROMPT_DIR", str(tmp_path / "prompts"))
+    monkeypatch.setattr("validator.agent_v1.adjudication_passes._hermes_python", lambda: Path(sys.executable))
+    monkeypatch.setattr("validator.agent_v1.adjudication_passes.subprocess.run", fake_run)
+    adjudication_pass = CLIAdjudicationPass(
+        pass_id="pass_a",
+        adjudication_profile_id="hermes-cli:test-model",
+        model_runtime_id="hermes-cli",
+        command=["hermes", "chat", "-q"],
+        prompt_mode="auto",
+        hermes_execution_mode="oneshot",
+    )
+
+    assert adjudication_pass.run(context).disposition == "accepted_improvement"
+
+
+def test_hermes_agent_task_requires_complete_batch_and_prints_valid_artifact(tmp_path, capsys) -> None:
+    task_file = tmp_path / "task.txt"
+    skill_file = tmp_path / "SKILL.md"
+    task_file.write_text("Adjudicate the batch.", encoding="utf-8")
+    skill_file.write_text("Resolve every case.", encoding="utf-8")
+    expected_ids = ["case-a", "case-b"]
+    payload = {
+        "results": [
+            {
+                "case_tracking_id": tracking_id,
+                "disposition": "same_unit",
+                "material_findings": [],
+                "cited_span_ids": [],
+                "confidence": 0.9,
+                "rationale": "Equivalent.",
+                "insufficient_information": False,
+            }
+            for tracking_id in expected_ids
+        ]
+    }
+
+    def fake_runner(**kwargs):
+        kwargs["output_file"].write_text(json.dumps(payload), encoding="utf-8")
+        assert "claims-silver-adjudicator" in kwargs["command"][-1]
+        assert "adjudication_output_schema.json" in kwargs["command"][-1]
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    result = run_hermes_adjudication_agent_task(
+        task_file=task_file,
+        skill_file=skill_file,
+        inner_command=["hermes", "chat", "-q"],
+        expected_tracking_ids=expected_ids,
+        timeout_seconds=30,
+        process_runner=fake_runner,
+    )
+
+    assert result == 0
+    assert json.loads(capsys.readouterr().out) == payload
+    assert is_valid_hermes_adjudication_payload(payload, expected_ids)
+    assert not is_valid_hermes_adjudication_payload({"results": payload["results"][:1]}, expected_ids)
+
+
+def test_hermes_agent_output_watcher_stops_after_valid_json(monkeypatch, tmp_path) -> None:
+    output_file = tmp_path / "adjudication_output.json"
+    payload = {
+        "disposition": "include_candidate",
+        "material_findings": [],
+        "cited_span_ids": [],
+        "confidence": 0.9,
+        "rationale": "Supported.",
+        "insufficient_information": False,
+    }
+    script = (
+        "import json,time; "
+        f"open({str(output_file)!r},'w').write(json.dumps({payload!r})); "
+        "time.sleep(10)"
+    )
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_OUTPUT_POLL_SECONDS", "0.01")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_OUTPUT_STABLE_SECONDS", "0.02")
+
+    started = time.monotonic()
+    completed = run_inner_hermes_adjudication_agent(
+        command=[sys.executable, "-c", script],
+        cwd=tmp_path,
+        output_file=output_file,
+        expected_tracking_ids=[],
+        timeout_seconds=2,
+    )
+
+    assert completed.returncode == 0
+    assert time.monotonic() - started < 2
+
+
+def test_hermes_oneshot_file_loads_skill_and_disables_tools(tmp_path, capsys) -> None:
+    prompt_file = tmp_path / "task.txt"
+    skill_file = tmp_path / "SKILL.md"
+    prompt_file.write_text("Return strict JSON for case_1.", encoding="utf-8")
+    skill_file.write_text("---\nname: test\ndescription: test\n---\n\nKeep candidate identities anonymous.", encoding="utf-8")
+
+    def fake_agent(prompt, **kwargs):
+        assert "Keep candidate identities anonymous." in prompt
+        assert "Return strict JSON for case_1." in prompt
+        assert kwargs["toolsets"] == []
+        assert kwargs["use_config_toolsets"] is False
+        return '{"ok":true}', {
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "total_tokens": 120,
+            "estimated_cost_usd": 0.01,
+            "model": "test-model",
+            "provider": "openrouter",
+        }
+
+    result = run_prompt_file(
+        prompt_file=prompt_file,
+        skill_file=skill_file,
+        model="test-model",
+        provider="openrouter",
+        run_agent=fake_agent,
+    )
+    captured = capsys.readouterr()
+
+    assert result == 0
+    assert captured.out.strip() == '{"ok":true}'
+    assert "CLAIMS_HERMES_USAGE_JSON=" in captured.err
 
 
 def test_dspy_adjudication_pass_uses_anonymous_structured_payload() -> None:
@@ -1016,6 +1183,104 @@ def test_adjudication_runner_retries_cases_omitted_from_batch_response() -> None
 
     assert single_case_calls == ["case_retry_1"]
     assert [consensus.route for consensus in consensuses] == ["direct", "direct"]
+
+
+def test_adjudication_runner_recursively_splits_failed_batches_concurrently(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_BATCH_RETRIES", "0")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_WALL_TIMEOUT", "5")
+    calls: list[int] = []
+    active = 0
+    peak_active = 0
+    lock = threading.Lock()
+
+    class SplittingPass:
+        pass_id = "pass_a"
+        adjudication_profile_id = "split"
+        model_runtime_id = "split"
+
+        def run(self, context: AdjudicationContextBundle) -> AdjudicationVote:
+            return _vote(self.pass_id, "accepted_improvement", 0.95, ["valid"]).model_copy(
+                update={"case_id": context.case.case_id}
+            )
+
+        def run_many(self, contexts: list[AdjudicationContextBundle]) -> list[AdjudicationVote]:
+            nonlocal active, peak_active
+            calls.append(len(contexts))
+            with lock:
+                active += 1
+                peak_active = max(peak_active, active)
+            time.sleep(0.02)
+            with lock:
+                active -= 1
+            if len(contexts) > 2:
+                return [
+                    AdjudicationVote(
+                        case_id=context.case.case_id,
+                        pass_id=self.pass_id,
+                        adjudication_profile_id=self.adjudication_profile_id,
+                        model_runtime_id=self.model_runtime_id,
+                        disposition="insufficient_information",
+                        material_findings=["adjudication_batch_failed"],
+                        confidence=0.0,
+                        rationale="batch too large",
+                        insufficient_information=True,
+                    )
+                    for context in contexts
+                ]
+            return [self.run(context) for context in contexts]
+
+    contexts = [
+        AdjudicationContextBundle(
+            case=BronzeDiffCase(
+                case_id=f"case_split_{index}",
+                paper_id="paper",
+                miner_id="uid_9",
+                mismatch_type="EXTRA_FROM_MINER",
+                candidate_ids=[f"miner:uid_9:C{index:02d}"],
+                question="Should this candidate be included?",
+            ),
+            candidates=[_candidate(f"miner:uid_9:C{index:02d}", "miner", "uid_9", f"Claim {index}.")],
+        )
+        for index in range(8)
+    ]
+    progress: list[str] = []
+
+    consensuses = run_adjudication_cases(
+        contexts,
+        passes=[SplittingPass()],
+        batch_size=8,
+        max_workers=4,
+        progress_sink=lambda _contexts, votes: progress.extend(vote.case_id for vote in votes),
+    )
+
+    assert calls.count(8) == 1
+    assert calls.count(4) == 2
+    assert calls.count(2) == 4
+    assert peak_active > 1
+    assert len(progress) == 8
+    assert all(consensus.route == "direct" for consensus in consensuses)
+
+
+def test_adjudication_batch_parser_recovers_json_from_harness_envelope() -> None:
+    content = json.dumps(
+        {
+            "type": "assistant_message",
+            "content": json.dumps(
+                {
+                    "results": [
+                        {
+                            "case_tracking_id": "tracking-1",
+                            "disposition": "include_candidate",
+                        }
+                    ]
+                }
+            ),
+        }
+    )
+
+    payload = _parse_batch_json_object(content, expected_tracking_ids=["tracking-1"])
+
+    assert payload["results"][0]["case_tracking_id"] == "tracking-1"
 
 
 def test_silver_pipeline_rejects_operational_adjudication_outage() -> None:
@@ -1992,6 +2257,114 @@ def test_dspy_relation_classifier_runs_batches_concurrently_in_input_order() -> 
 
     assert peak_active > 1
     assert [edge.left_candidate_id for edge in edges] == [left.candidate_id for left, _right in pairs]
+
+
+def test_relation_classifier_recursively_splits_failed_batches(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_SILVER_RELATION_BATCH_RETRIES", "0")
+    calls: list[int] = []
+
+    def batch_program(**kwargs):
+        pairs = json.loads(kwargs["candidate_pairs_json"])
+        calls.append(len(pairs))
+        if len(pairs) > 2:
+            raise ValueError("batch too large")
+        return SimpleNamespace(
+            relations_json=json.dumps(
+                {
+                    "results": [
+                        {
+                            "left_candidate_id": pair["left_candidate_id"],
+                            "right_candidate_id": pair["right_candidate_id"],
+                            "relation": "semantic_equivalent",
+                            "confidence": 0.95,
+                            "rationale": "Same claim.",
+                        }
+                        for pair in pairs
+                    ]
+                }
+            )
+        )
+
+    classifier = DSPyRelationClassifier(
+        batch_program=batch_program,
+        fallback_to_heuristic=False,
+        batch_size=8,
+        max_workers=4,
+    )
+    pairs = [
+        (
+            _candidate(f"bronze:C{index:02d}", "bronze", None, f"Claim {index}."),
+            _candidate(f"miner:uid_9:C{index:02d}", "miner", "uid_9", f"Claim {index}."),
+        )
+        for index in range(8)
+    ]
+
+    edges = classifier.classify_many(pairs)
+
+    assert calls.count(8) == 1
+    assert calls.count(4) == 2
+    assert calls.count(2) == 4
+    assert all(edge.relation == "semantic_equivalent" for edge in edges)
+
+
+def test_openai_compatible_relation_classifier_uses_common_batch_contract() -> None:
+    def completion(messages: list[dict[str, str]]) -> str:
+        payload = json.loads(messages[-1]["content"])
+        return json.dumps(
+            {
+                "results": [
+                    {
+                        "left_candidate_id": pair["left_candidate_id"],
+                        "right_candidate_id": pair["right_candidate_id"],
+                        "relation": "compatible_refinement",
+                        "confidence": 0.9,
+                        "rationale": "Same unit with added detail.",
+                    }
+                    for pair in payload["candidate_pairs"]
+                ]
+            }
+        )
+
+    classifier = OpenAICompatibleRelationClassifier(
+        completion_fn=completion,
+        model="openai/gpt-4o-mini",
+        batch_size=4,
+    )
+    pairs = [
+        (
+            _candidate("bronze:C01", "bronze", None, "Claim one."),
+            _candidate("miner:uid_9:C01", "miner", "uid_9", "Claim one with detail."),
+        ),
+        (
+            _candidate("bronze:C02", "bronze", None, "Claim two."),
+            _candidate("miner:uid_9:C02", "miner", "uid_9", "Claim two with detail."),
+        ),
+    ]
+
+    assert [edge.relation for edge in classifier.classify_many(pairs)] == [
+        "compatible_refinement",
+        "compatible_refinement",
+    ]
+
+
+def test_cli_relation_classifier_reads_prompt_from_stdin() -> None:
+    script = (
+        "import json,sys; sys.stdin.read(); "
+        "print(json.dumps({'relation':'semantic_equivalent','confidence':0.93,'rationale':'same'}))"
+    )
+    classifier = CLIRelationClassifier(
+        command=[sys.executable, "-c", script],
+        model="test-model",
+        timeout_seconds=5,
+    )
+
+    edge = classifier(
+        _candidate("bronze:C01", "bronze", None, "Claim one."),
+        _candidate("miner:uid_9:C01", "miner", "uid_9", "Claim one."),
+    )
+
+    assert edge.relation == "semantic_equivalent"
+    assert edge.confidence == 0.93
 
 
 def test_adjudication_prompt_is_anonymous_and_includes_evidence() -> None:

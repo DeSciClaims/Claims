@@ -45,6 +45,7 @@ class SilverAdjudicationConfig:
     cli_tiebreak_command: str = ""
     cli_command_template: str = ""
     cli_prompt_mode: str = "auto"
+    hermes_execution_mode: str = "agent"
     cli_timeout_seconds: float = 900.0
     cli_provider: str = "openrouter"
     cli_max_turns: int = 10
@@ -73,6 +74,7 @@ class SilverAdjudicationConfig:
             cli_tiebreak_command=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_TIEBREAK_COMMAND", ""),
             cli_command_template=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_COMMAND_TEMPLATE", ""),
             cli_prompt_mode=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE", "auto"),
+            hermes_execution_mode=os.getenv("CLAIMS_SILVER_ADJUDICATION_HERMES_EXECUTION_MODE", "agent"),
             cli_timeout_seconds=float(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_TIMEOUT", "900")),
             cli_provider=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "openrouter"),
             cli_max_turns=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_MAX_TURNS", "10")),
@@ -261,6 +263,7 @@ def _cli_passes(
             model_runtime_id=mode,
             command=command_a,
             prompt_mode=config.cli_prompt_mode,
+            hermes_execution_mode=config.hermes_execution_mode,
             timeout_seconds=config.cli_timeout_seconds,
             request_gate=request_gate,
             model=config.model_a,
@@ -273,6 +276,7 @@ def _cli_passes(
             model_runtime_id=mode,
             command=command_b,
             prompt_mode=config.cli_prompt_mode,
+            hermes_execution_mode=config.hermes_execution_mode,
             timeout_seconds=config.cli_timeout_seconds,
             request_gate=request_gate,
             model=config.model_b,
@@ -288,6 +292,7 @@ def _cli_passes(
             model_runtime_id=mode,
             command=_cli_command(config, explicit=config.cli_tiebreak_command, model=config.tiebreak_model, mode=mode),
             prompt_mode=config.cli_prompt_mode,
+            hermes_execution_mode=config.hermes_execution_mode,
             timeout_seconds=config.cli_timeout_seconds,
             request_gate=request_gate,
             model=config.tiebreak_model,
