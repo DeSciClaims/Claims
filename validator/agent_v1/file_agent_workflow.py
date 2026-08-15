@@ -55,25 +55,25 @@ class ComparisonPairProposal(_StrictOutputModel):
     submission_candidate_id: str
     relation: RelationType
     confidence: float = Field(ge=0.0, le=1.0)
-    rationale: str = ""
+    rationale: str = Field(min_length=20)
 
 
-class ComparisonCounterpartReview(_StrictOutputModel):
-    counterpart_candidate_id: str
+class ComparisonReferenceRelation(_StrictOutputModel):
+    reference_candidate_id: str
     relation: RelationType
     confidence: float = Field(ge=0.0, le=1.0)
-    rationale: str = Field(min_length=1)
+    rationale: str = Field(min_length=20)
 
 
-class ComparisonCandidateReview(_StrictOutputModel):
-    candidate_id: str
-    counterpart_reviews: list[ComparisonCounterpartReview] = Field(default_factory=list)
-    no_actionable_match_reason: str = ""
+class ComparisonSubmissionReview(_StrictOutputModel):
+    submission_candidate_id: str
+    reference_relations: list[ComparisonReferenceRelation]
+    no_actionable_relation_reason: str = ""
 
 
 class ComparisonAgentOutput(_StrictOutputModel):
-    candidate_reviews: list[ComparisonCandidateReview]
-    pairs: list[ComparisonPairProposal] = Field(default_factory=list)
+    reviewed_reference_candidate_ids: list[str]
+    submission_reviews: list[ComparisonSubmissionReview]
 
 
 class JudgeResult(_StrictOutputModel):
@@ -155,6 +155,7 @@ class FileAgentWorkflowConfig:
     canonical_audit_model: str = ""
     command_template: str = ""
     max_turns: int = 30
+    max_tokens: int = 32768
     timeout_seconds: float = 1800.0
     output_poll_seconds: float = 0.5
     output_stable_seconds: float = 1.0
@@ -194,6 +195,10 @@ class FileAgentWorkflowConfig:
             ).strip(),
             command_template=os.getenv("CLAIMS_SILVER_FILE_AGENT_CLI_COMMAND_TEMPLATE", "").strip(),
             max_turns=max(1, int(os.getenv("CLAIMS_SILVER_FILE_AGENT_MAX_TURNS", "30") or 30)),
+            max_tokens=max(
+                1024,
+                int(os.getenv("CLAIMS_SILVER_FILE_AGENT_MAX_TOKENS", "32768") or 32768),
+            ),
             timeout_seconds=max(1.0, float(os.getenv("CLAIMS_SILVER_FILE_AGENT_TIMEOUT", "1800") or 1800)),
             output_poll_seconds=max(
                 0.1,
@@ -276,9 +281,12 @@ class FileAgentWorkflowSession:
                 for reference_alias, submission_alias in sorted(mandatory_pairs)
             ],
             "requirements": {
-                "emit_one_substantive_review_per_candidate": True,
-                "mirror_each_emitted_pair_in_both_candidate_reviews": True,
-                "emit_only_actionable_reference_submission_pairs": True,
+                "list_every_reference_once_in_reviewed_reference_candidate_ids": True,
+                "emit_one_review_row_per_submission_candidate": True,
+                "emit_each_actionable_reference_submission_relation_once_in_its_submission_review": True,
+                "give_each_submission_without_relations_a_substantive_reason": True,
+                "shared_topic_or_pathway_alone_is_not_actionable": True,
+                "omit_unrelated_pairs_from_relations": True,
                 "allowed_relations": sorted(ACTIONABLE_RELATIONS),
             },
         }
@@ -292,16 +300,76 @@ class FileAgentWorkflowSession:
         )
         output = result.payload
         assert isinstance(output, ComparisonAgentOutput)
-        expected_aliases = set(candidates_by_alias)
-        _validate_comparison_output(
-            output,
-            candidates_by_alias=candidates_by_alias,
-            mandatory_pairs=mandatory_pairs,
-        )
+        comparison_repair_error = ""
+        try:
+            _validate_comparison_output(
+                output,
+                candidates_by_alias=candidates_by_alias,
+                mandatory_pairs=mandatory_pairs,
+            )
+        except FileAgentWorkflowError as exc:
+            comparison_repair_error = str(exc)
+            expected_aliases = set(candidates_by_alias)
+            missing_aliases = expected_aliases.difference(
+                _comparison_reviewed_aliases(output)
+            )
+            targeted_repair = bool(missing_aliases) and "review set" in comparison_repair_error
+            repair_task = (
+                _targeted_comparison_repair_task(task, missing_aliases)
+                if targeted_repair
+                else task
+            )
+            repair_result = self._run_stage(
+                stage_key="comparison_repair",
+                stage_label="Comparison graph repair",
+                model=self.config.comparison_model,
+                task={
+                    **repair_task,
+                    "rejected_comparison_output": (
+                        {
+                            "preserved_by_validator": True,
+                            "relation_count": len(_comparison_proposals(output)),
+                            "reviewed_candidate_count": len(
+                                _comparison_reviewed_aliases(output)
+                            ),
+                        }
+                        if targeted_repair
+                        else output.model_dump(mode="json")
+                    ),
+                    "validator_rejection": comparison_repair_error,
+                    "repair_target_candidate_ids": sorted(missing_aliases) if targeted_repair else [],
+                    "repair_requirements": {
+                        "return_the_complete_corrected_output": not targeted_repair,
+                        "return_complete_decisions_for_repair_targets": targeted_repair,
+                        "fix_every_validator_rejection": True,
+                        "do_not_remove_valid_relations_to_hide_an_error": True,
+                        "targeted_repair": targeted_repair,
+                    },
+                },
+                output_model=ComparisonAgentOutput,
+                skill_path=_skill_path("claims-silver-comparator"),
+            )
+            repaired_output = repair_result.payload
+            assert isinstance(repaired_output, ComparisonAgentOutput)
+            output = (
+                _merge_targeted_comparison_repair(
+                    output,
+                    repaired_output,
+                    target_aliases=missing_aliases,
+                )
+                if targeted_repair
+                else repaired_output
+            )
+            _validate_comparison_output(
+                output,
+                candidates_by_alias=candidates_by_alias,
+                mandatory_pairs=mandatory_pairs,
+            )
 
         edges: list[CandidatePairEdge] = []
         seen_pairs: set[tuple[str, str]] = set()
-        for proposal in output.pairs:
+        proposals = _comparison_proposals(output)
+        for proposal in proposals:
             if proposal.relation not in ACTIONABLE_RELATIONS:
                 continue
             left = candidates_by_alias.get(proposal.reference_candidate_id)
@@ -329,7 +397,22 @@ class FileAgentWorkflowSession:
             )
         self._write_json(
             "comparison/comparison_pairs.json",
-            {"edges": [edge.model_dump(mode="json") for edge in edges]},
+            {
+                "edges": [edge.model_dump(mode="json") for edge in edges],
+                "reviewed_candidate_ids": sorted(candidates_by_alias),
+                "unmatched_candidate_ids": sorted(
+                    set(candidates_by_alias).difference(
+                        alias
+                        for relation in proposals
+                        for alias in (
+                            relation.reference_candidate_id,
+                            relation.submission_candidate_id,
+                        )
+                    )
+                ),
+                "comparison_repaired": bool(comparison_repair_error),
+                "comparison_initial_rejection": comparison_repair_error or None,
+            },
         )
         return sorted(edges, key=lambda edge: (-edge.confidence, edge.edge_id))
 
@@ -810,6 +893,14 @@ class FileAgentWorkflowSession:
                     poll_seconds=self.config.output_poll_seconds,
                     stable_seconds=self.config.output_stable_seconds,
                     usage_grace_seconds=self.config.usage_grace_seconds,
+                    env=(
+                        {
+                            **os.environ,
+                            "HERMES_MAX_TOKENS": str(self.config.max_tokens),
+                        }
+                        if resolved_harness == "hermes-cli"
+                        else None
+                    ),
                 )
             for path in (task_path, schema_path, skill_copy):
                 if _sha256(path) != input_hashes[path.name]:
@@ -1007,17 +1098,54 @@ def _validate_comparison_output(
     candidates_by_alias: dict[str, ComparisonCandidate],
     mandatory_pairs: set[tuple[str, str]],
 ) -> None:
-    expected_aliases = set(candidates_by_alias)
-    reviewed_aliases = [review.candidate_id for review in output.candidate_reviews]
-    if set(reviewed_aliases) != expected_aliases or len(reviewed_aliases) != len(expected_aliases):
-        missing = sorted(expected_aliases.difference(reviewed_aliases))
-        extra = sorted(set(reviewed_aliases).difference(expected_aliases))
+    expected_references = {
+        alias for alias, candidate in candidates_by_alias.items() if candidate.origin == "bronze"
+    }
+    expected_submissions = set(candidates_by_alias).difference(expected_references)
+    reviewed_references = output.reviewed_reference_candidate_ids
+    reviewed_submissions = [review.submission_candidate_id for review in output.submission_reviews]
+    missing_reviewed = sorted(
+        expected_references.difference(reviewed_references)
+        | expected_submissions.difference(reviewed_submissions)
+    )
+    unknown_reviewed = sorted(
+        set(reviewed_references).difference(expected_references)
+        | set(reviewed_submissions).difference(expected_submissions)
+    )
+    duplicate_reviewed = sorted(
+        {alias for alias in reviewed_references if reviewed_references.count(alias) > 1}
+        | {alias for alias in reviewed_submissions if reviewed_submissions.count(alias) > 1}
+    )
+    if missing_reviewed or unknown_reviewed or duplicate_reviewed:
         raise FileAgentWorkflowError(
-            f"Comparison agent completeness check failed; missing={missing[:8]} extra={extra[:8]}"
+            "Comparison agent review set is incomplete or invalid; "
+            f"missing={missing_reviewed[:8]} unknown={unknown_reviewed[:8]} "
+            f"duplicate={duplicate_reviewed[:8]}"
         )
+    generic_no_relation_reasons = {
+        "no actionable relationship found",
+        "no actionable relation found",
+        "no match",
+        "unmatched",
+    }
+    for review in output.submission_reviews:
+        reason = " ".join(
+            review.no_actionable_relation_reason.lower().replace("_", " ").split()
+        ).rstrip(".")
+        if review.reference_relations and reason:
+            raise FileAgentWorkflowError(
+                f"Comparison review {review.submission_candidate_id} has relations and a no-relation reason."
+            )
+        if not review.reference_relations and (
+            len(reason.split()) < 5
+            or any(reason.startswith(generic) for generic in generic_no_relation_reasons)
+        ):
+            raise FileAgentWorkflowError(
+                f"Comparison review {review.submission_candidate_id} has no substantive relation decision."
+            )
 
     proposals: dict[tuple[str, str], ComparisonPairProposal] = {}
-    for proposal in output.pairs:
+    for proposal in _comparison_proposals(output):
         left = candidates_by_alias.get(proposal.reference_candidate_id)
         right = candidates_by_alias.get(proposal.submission_candidate_id)
         if left is None or right is None:
@@ -1028,7 +1156,7 @@ def _validate_comparison_output(
             raise FileAgentWorkflowError("Comparison agent emitted a non-actionable relation as a pair.")
         key = (proposal.reference_candidate_id, proposal.submission_candidate_id)
         if key in proposals:
-            raise FileAgentWorkflowError(f"Comparison agent emitted duplicate pair {key}.")
+            raise FileAgentWorkflowError(f"Comparison agent emitted duplicate relation {key}.")
         proposals[key] = proposal
 
     missing_mandatory = sorted(
@@ -1041,49 +1169,127 @@ def _validate_comparison_output(
             f"Comparison agent missed exact-restatement pairs: {missing_mandatory[:8]}"
         )
 
-    review_relations: dict[tuple[str, str], RelationType] = {}
-    for review in output.candidate_reviews:
-        candidate = candidates_by_alias[review.candidate_id]
-        if not review.counterpart_reviews and not review.no_actionable_match_reason.strip():
-            raise FileAgentWorkflowError(
-                f"Comparison review for {review.candidate_id} has neither a counterpart nor a substantive no-match reason."
-            )
-        seen_counterparts: set[str] = set()
-        for counterpart_review in review.counterpart_reviews:
-            counterpart_alias = counterpart_review.counterpart_candidate_id
-            counterpart = candidates_by_alias.get(counterpart_alias)
-            if counterpart is None:
-                raise FileAgentWorkflowError("Comparison review referenced an unknown candidate alias.")
-            if counterpart.origin == candidate.origin:
-                raise FileAgentWorkflowError("Comparison review referenced a candidate on the same side.")
-            if counterpart_alias in seen_counterparts:
-                raise FileAgentWorkflowError(
-                    f"Comparison review for {review.candidate_id} repeated counterpart {counterpart_alias}."
-                )
-            seen_counterparts.add(counterpart_alias)
-            if counterpart_review.relation not in ACTIONABLE_RELATIONS:
-                raise FileAgentWorkflowError("Comparison review used a non-actionable counterpart relation.")
-            pair = (
-                (review.candidate_id, counterpart_alias)
-                if candidate.origin == "bronze"
-                else (counterpart_alias, review.candidate_id)
-            )
-            proposal = proposals.get(pair)
-            if proposal is None or proposal.relation != counterpart_review.relation:
-                raise FileAgentWorkflowError(
-                    f"Comparison review for {review.candidate_id} is not mirrored by pair {pair}."
-                )
-            review_relations[(review.candidate_id, counterpart_alias)] = counterpart_review.relation
 
-    for pair, proposal in proposals.items():
-        left_alias, right_alias = pair
-        if review_relations.get((left_alias, right_alias)) != proposal.relation:
-            raise FileAgentWorkflowError(f"Reference review does not substantiate pair {pair}.")
-        if review_relations.get((right_alias, left_alias)) != proposal.relation:
-            raise FileAgentWorkflowError(f"Submission review does not substantiate pair {pair}.")
+def _comparison_reviewed_aliases(output: ComparisonAgentOutput) -> set[str]:
+    return set(output.reviewed_reference_candidate_ids).union(
+        review.submission_candidate_id for review in output.submission_reviews
+    )
+
+
+def _comparison_proposals(output: ComparisonAgentOutput) -> list[ComparisonPairProposal]:
+    return [
+        ComparisonPairProposal(
+            reference_candidate_id=relation.reference_candidate_id,
+            submission_candidate_id=review.submission_candidate_id,
+            relation=relation.relation,
+            confidence=relation.confidence,
+            rationale=relation.rationale,
+        )
+        for review in output.submission_reviews
+        for relation in review.reference_relations
+    ]
+
+
+def _targeted_comparison_repair_task(
+    task: dict[str, Any],
+    target_aliases: set[str],
+) -> dict[str, Any]:
+    candidates = list(task.get("candidates") or [])
+    target_sides = {
+        "reference" if row.get("candidate_group") == "reference" else "submission"
+        for row in candidates
+        if row.get("candidate_id") in target_aliases
+    }
+    included = [
+        row
+        for row in candidates
+        if row.get("candidate_id") in target_aliases
+        or ("reference" in target_sides and row.get("candidate_group") != "reference")
+        or ("submission" in target_sides and row.get("candidate_group") == "reference")
+    ]
+    included_aliases = {str(row.get("candidate_id") or "") for row in included}
+    span_ids = {
+        str(span_id)
+        for row in included
+        for span_id in row.get("source_span_ids", [])
+        if str(span_id).strip()
+    }
+    return {
+        **task,
+        "candidates": included,
+        "source_spans": {
+            span_id: text
+            for span_id, text in (task.get("source_spans") or {}).items()
+            if span_id in span_ids
+        },
+        "mandatory_exact_restatement_pairs": [
+            row
+            for row in task.get("mandatory_exact_restatement_pairs", [])
+            if row.get("reference_candidate_id") in included_aliases
+            and row.get("submission_candidate_id") in included_aliases
+            and (
+                row.get("reference_candidate_id") in target_aliases
+                or row.get("submission_candidate_id") in target_aliases
+            )
+        ],
+    }
+
+
+def _merge_targeted_comparison_repair(
+    original: ComparisonAgentOutput,
+    repair: ComparisonAgentOutput,
+    *,
+    target_aliases: set[str],
+) -> ComparisonAgentOutput:
+    reviewed_references = list(original.reviewed_reference_candidate_ids)
+    reviewed_references.extend(
+        alias
+        for alias in repair.reviewed_reference_candidate_ids
+        if alias in target_aliases and alias not in reviewed_references
+    )
+    reviews_by_submission = {
+        review.submission_candidate_id: review for review in original.submission_reviews
+    }
+    for repair_review in repair.submission_reviews:
+        submission_id = repair_review.submission_candidate_id
+        if submission_id in target_aliases:
+            reviews_by_submission[submission_id] = repair_review
+            continue
+        target_relations = [
+            relation
+            for relation in repair_review.reference_relations
+            if relation.reference_candidate_id in target_aliases
+        ]
+        if not target_relations:
+            continue
+        existing = reviews_by_submission.get(submission_id)
+        existing_relations = {
+            relation.reference_candidate_id: relation
+            for relation in (existing.reference_relations if existing else [])
+        }
+        for relation in target_relations:
+            prior = existing_relations.get(relation.reference_candidate_id)
+            if prior is not None and prior.relation != relation.relation:
+                raise FileAgentWorkflowError(
+                    "Comparison repair contradicted an existing relation for "
+                    f"{submission_id} and {relation.reference_candidate_id}."
+                )
+            existing_relations.setdefault(relation.reference_candidate_id, relation)
+        reviews_by_submission[submission_id] = ComparisonSubmissionReview(
+            submission_candidate_id=submission_id,
+            reference_relations=list(existing_relations.values()),
+            no_actionable_relation_reason="",
+        )
+
+    return ComparisonAgentOutput(
+        reviewed_reference_candidate_ids=reviewed_references,
+        submission_reviews=list(reviews_by_submission.values()),
+    )
+
 
 
 def _comparison_candidate_payload(candidate: ComparisonCandidate, alias: str) -> dict[str, Any]:
+    evidence_records = candidate.metadata.get("evidence_records", [])
     return {
         "candidate_id": alias,
         "candidate_group": "reference" if candidate.origin == "bronze" else alias.rsplit("_candidate_", 1)[0],
@@ -1092,7 +1298,21 @@ def _comparison_candidate_payload(candidate: ComparisonCandidate, alias: str) ->
         "evidence_ids": candidate.evidence_ids,
         "source_span_ids": candidate.source_span_ids,
         "source_quotes": candidate.source_quotes,
-        "evidence_records": candidate.metadata.get("evidence_records", []),
+        "evidence_records": [
+            {
+                key: record.get(key)
+                for key in (
+                    "evidence_id",
+                    "title",
+                    "summary",
+                    "role",
+                    "outcome_type",
+                )
+                if record.get(key) not in (None, "", [])
+            }
+            for record in evidence_records
+            if isinstance(record, dict)
+        ],
     }
 
 
@@ -1395,6 +1615,7 @@ def _run_until_valid_output(
     poll_seconds: float,
     stable_seconds: float,
     usage_grace_seconds: float,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     started = time.monotonic()
     valid_since: float | None = None
@@ -1409,6 +1630,7 @@ def _run_until_valid_output(
             stderr=stderr_file,
             text=True,
             start_new_session=True,
+            env=env,
         )
         while True:
             returncode = process.poll()

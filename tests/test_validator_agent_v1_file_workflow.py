@@ -27,9 +27,8 @@ from validator.agent_v1.file_agent_workflow import (
     CanonicalUnitProposal,
     CanonicalizationAgentOutput,
     ComparisonAgentOutput,
-    ComparisonCandidateReview,
-    ComparisonCounterpartReview,
-    ComparisonPairProposal,
+    ComparisonReferenceRelation,
+    ComparisonSubmissionReview,
     FileAgentWorkflowError,
     FileAgentWorkflowConfig,
     FileAgentWorkflowSession,
@@ -55,37 +54,18 @@ def test_file_comparator_requires_complete_global_review_and_maps_anonymous_ids(
         }
         return SimpleNamespace(
             payload=ComparisonAgentOutput(
-                candidate_reviews=[
-                    ComparisonCandidateReview(
-                        candidate_id="reference_001",
-                        counterpart_reviews=[
-                            ComparisonCounterpartReview(
-                                counterpart_candidate_id="submission_001_candidate_001",
-                                relation="compatible_refinement",
-                                confidence=0.91,
-                                rationale="The submission adds a time qualifier.",
-                            )
-                        ],
-                    ),
-                    ComparisonCandidateReview(
-                        candidate_id="submission_001_candidate_001",
-                        counterpart_reviews=[
-                            ComparisonCounterpartReview(
-                                counterpart_candidate_id="reference_001",
-                                relation="compatible_refinement",
-                                confidence=0.91,
-                                rationale="The submission adds a time qualifier.",
-                            )
-                        ],
-                    ),
-                ],
-                pairs=[
-                    ComparisonPairProposal(
-                        reference_candidate_id="reference_001",
+                reviewed_reference_candidate_ids=["reference_001"],
+                submission_reviews=[
+                    ComparisonSubmissionReview(
                         submission_candidate_id="submission_001_candidate_001",
-                        relation="compatible_refinement",
-                        confidence=0.91,
-                        rationale="The submission adds a time qualifier.",
+                        reference_relations=[
+                            ComparisonReferenceRelation(
+                                reference_candidate_id="reference_001",
+                                relation="compatible_refinement",
+                                confidence=0.91,
+                                rationale="The submission adds a supported mortality time qualifier.",
+                            )
+                        ],
                     )
                 ],
             )
@@ -101,7 +81,29 @@ def test_file_comparator_requires_complete_global_review_and_maps_anonymous_ids(
     assert edges[0].metadata["workflow"] == "file_agent"
 
 
-def test_file_comparator_rejects_ceremonial_candidate_review(tmp_path) -> None:
+def test_file_comparator_requires_complete_review_set(tmp_path) -> None:
+    session = _session(
+        tmp_path,
+        [
+            _candidate("bronze:C01", "bronze", None, "Treatment reduced mortality."),
+            _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment reduced 30-day mortality."),
+        ],
+    )
+
+    def fake_stage(_self, **_kwargs):
+        return SimpleNamespace(
+            payload=ComparisonAgentOutput(
+                reviewed_reference_candidate_ids=["reference_001"],
+                submission_reviews=[],
+            )
+        )
+
+    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    with pytest.raises(FileAgentWorkflowError, match="review set"):
+        session.run_comparison()
+
+
+def test_file_comparator_requires_substantive_no_relation_reason(tmp_path) -> None:
     session = _session(
         tmp_path,
         [
@@ -113,19 +115,153 @@ def test_file_comparator_rejects_ceremonial_candidate_review(tmp_path) -> None:
     def fake_stage(_self, **_kwargs):
         return SimpleNamespace(
             payload=ComparisonAgentOutput(
-                candidate_reviews=[
-                    ComparisonCandidateReview(candidate_id="reference_001"),
-                    ComparisonCandidateReview(
-                        candidate_id="submission_001_candidate_001",
-                        no_actionable_match_reason="No related reference result.",
-                    ),
+                reviewed_reference_candidate_ids=["reference_001"],
+                submission_reviews=[
+                    ComparisonSubmissionReview(
+                        submission_candidate_id="submission_001_candidate_001",
+                        reference_relations=[],
+                        no_actionable_relation_reason="No match was found for this candidate.",
+                    )
                 ],
-                pairs=[],
             )
         )
 
     session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
-    with pytest.raises(FileAgentWorkflowError, match="neither a counterpart"):
+    with pytest.raises(FileAgentWorkflowError, match="no substantive relation decision"):
+        session.run_comparison()
+
+
+def test_file_comparator_repairs_incomplete_review_set(tmp_path) -> None:
+    session = _session(
+        tmp_path,
+        [
+            _candidate("bronze:C01", "bronze", None, "Treatment reduced mortality."),
+            _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment reduced 30-day mortality."),
+        ],
+    )
+
+    calls: list[str] = []
+
+    def fake_stage(_self, **kwargs):
+        calls.append(kwargs["stage_key"])
+        reviewed_references = ["reference_001"]
+        submission_reviews = []
+        if kwargs["stage_key"] == "comparison_repair":
+            assert kwargs["task"]["repair_target_candidate_ids"] == [
+                "submission_001_candidate_001"
+            ]
+            reviewed_references = []
+            submission_reviews = [
+                ComparisonSubmissionReview(
+                    submission_candidate_id="submission_001_candidate_001",
+                    reference_relations=[],
+                    no_actionable_relation_reason=(
+                        "The closest reference reports reduced mortality, while the submission "
+                        "reports a distinct qualified outcome."
+                    ),
+                )
+            ]
+        return SimpleNamespace(
+            payload=ComparisonAgentOutput(
+                reviewed_reference_candidate_ids=reviewed_references,
+                submission_reviews=submission_reviews,
+            )
+        )
+
+    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    assert session.run_comparison() == []
+    assert calls == ["comparison", "comparison_repair"]
+    projected = json.loads(
+        (session.root / "comparison" / "comparison_pairs.json").read_text()
+    )
+    assert projected["unmatched_candidate_ids"] == [
+        "reference_001",
+        "submission_001_candidate_001",
+    ]
+
+
+def test_file_comparator_targeted_repair_can_relate_an_unreviewed_candidate(tmp_path) -> None:
+    session = _session(
+        tmp_path,
+        [
+            _candidate("bronze:C01", "bronze", None, "Treatment reduced mortality."),
+            _candidate(
+                "miner:uid_9:C01",
+                "miner",
+                "uid_9",
+                "Treatment reduced 30-day mortality.",
+            ),
+        ],
+    )
+
+    def fake_stage(_self, **kwargs):
+        if kwargs["stage_key"] == "comparison":
+            return SimpleNamespace(
+                payload=ComparisonAgentOutput(
+                    reviewed_reference_candidate_ids=["reference_001"],
+                    submission_reviews=[],
+                )
+            )
+        return SimpleNamespace(
+            payload=ComparisonAgentOutput(
+                reviewed_reference_candidate_ids=[],
+                submission_reviews=[
+                    ComparisonSubmissionReview(
+                        submission_candidate_id="submission_001_candidate_001",
+                        reference_relations=[
+                            ComparisonReferenceRelation(
+                                reference_candidate_id="reference_001",
+                                relation="compatible_refinement",
+                                confidence=0.91,
+                                rationale="The submission narrows the mortality endpoint to 30 days.",
+                            )
+                        ],
+                    )
+                ],
+            )
+        )
+
+    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    edges = session.run_comparison()
+
+    assert len(edges) == 1
+    projected = json.loads(
+        (session.root / "comparison" / "comparison_pairs.json").read_text()
+    )
+    assert projected["unmatched_candidate_ids"] == []
+
+
+def test_file_comparator_rejects_unknown_relation_endpoint(tmp_path) -> None:
+    session = _session(
+        tmp_path,
+        [
+            _candidate("bronze:C01", "bronze", None, "Treatment reduced mortality."),
+            _candidate("miner:uid_9:C01", "miner", "uid_9", "No treatment effect was found."),
+        ],
+    )
+
+    def fake_stage(_self, **_kwargs):
+        return SimpleNamespace(
+            payload=ComparisonAgentOutput(
+                reviewed_reference_candidate_ids=["reference_001"],
+                submission_reviews=[
+                    ComparisonSubmissionReview(
+                        submission_candidate_id="submission_001_candidate_001",
+                        reference_relations=[
+                            ComparisonReferenceRelation(
+                                reference_candidate_id="reference_999",
+                                relation="contradiction",
+                                confidence=0.9,
+                                rationale="The candidates make opposing treatment-effect claims.",
+                            )
+                        ],
+                    )
+                ],
+            )
+        )
+
+    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    with pytest.raises(FileAgentWorkflowError, match="unknown candidate alias"):
         session.run_comparison()
 
 
@@ -141,17 +277,17 @@ def test_file_comparator_requires_exact_restatement_pair(tmp_path) -> None:
     def fake_stage(_self, **_kwargs):
         return SimpleNamespace(
             payload=ComparisonAgentOutput(
-                candidate_reviews=[
-                    ComparisonCandidateReview(
-                        candidate_id="reference_001",
-                        no_actionable_match_reason="No match.",
-                    ),
-                    ComparisonCandidateReview(
-                        candidate_id="submission_001_candidate_001",
-                        no_actionable_match_reason="No match.",
-                    ),
+                reviewed_reference_candidate_ids=["reference_001"],
+                submission_reviews=[
+                    ComparisonSubmissionReview(
+                        submission_candidate_id="submission_001_candidate_001",
+                        reference_relations=[],
+                        no_actionable_relation_reason=(
+                            "The closest reference was reviewed as scientifically distinct "
+                            "despite sharing surface wording."
+                        ),
+                    )
                 ],
-                pairs=[],
             )
         )
 
@@ -532,12 +668,8 @@ if match is None:
     raise SystemExit(2)
 Path(match.group(1)).write_text(
     json.dumps({
-        "candidate_reviews": [{
-            "candidate_id": "reference_001",
-            "counterpart_reviews": [],
-            "no_actionable_match_reason": "No submission candidates were supplied."
-        }],
-        "pairs": []
+        "reviewed_reference_candidate_ids": ["reference_001"],
+        "submission_reviews": [],
     }),
     encoding="utf-8",
 )
@@ -557,8 +689,15 @@ Path(match.group(1)).write_text(
     )
 
     assert isinstance(result.payload, ComparisonAgentOutput)
-    assert result.payload.candidate_reviews[0].candidate_id == "reference_001"
-    assert json.loads(result.output_path.read_text(encoding="utf-8"))["pairs"] == []
+    assert result.payload.reviewed_reference_candidate_ids == ["reference_001"]
+    assert json.loads(result.output_path.read_text(encoding="utf-8"))["submission_reviews"] == []
+
+
+def test_file_agent_config_reads_hermes_output_budget(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_HARNESS", "hermes-cli")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_MAX_TOKENS", "49152")
+
+    assert FileAgentWorkflowConfig.from_env().max_tokens == 49152
 
 
 def _session(tmp_path, candidates, *, workspace_id: str = "workspace") -> FileAgentWorkflowSession:

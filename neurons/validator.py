@@ -3183,6 +3183,12 @@ class ClaimsValidator:
                     config.comparison_model,
                 ),
                 (
+                    "silver_comparison_repair",
+                    "Comparison graph repair",
+                    "silver_file_comparator",
+                    config.comparison_model,
+                ),
+                (
                     "silver_canonicalization",
                     "Silver canonicalization draft",
                     "silver_file_canonicalizer",

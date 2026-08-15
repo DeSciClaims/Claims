@@ -298,6 +298,7 @@ File-workspace Silver controls:
 - `CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true`: require different models for direct judges A and B.
 - `--claims.silver-adjudication-max-in-flight`: global process/model-call cap shared by all file-agent stages.
 - `CLAIMS_SILVER_FILE_AGENT_TIMEOUT=1800`: absolute timeout for each file-agent execution.
+- `CLAIMS_SILVER_FILE_AGENT_MAX_TOKENS=32768`: per-turn Hermes output budget for large comparison and canonicalization artifacts.
 - `CLAIMS_SILVER_FILE_AGENT_USAGE_GRACE_SECONDS=15`: allow a completed CLI to emit its usage footer before forced cleanup.
 - `CLAIMS_SILVER_FILE_AGENT_FALLBACK=none`: fail the paper instead of falling back to the legacy stage.
 - `CLAIMS_MODEL_PRICING_JSON='{"model":{"input":1,"output":2}}'`: optional USD-per-million-token rates when a subscription CLI reports tokens but no dollar cost.

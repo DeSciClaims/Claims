@@ -31,44 +31,37 @@ def _comparison(task: dict[str, Any]) -> dict[str, Any]:
     candidates = task.get("candidates", [])
     references = [row for row in candidates if row.get("candidate_group") == "reference"]
     submissions = [row for row in candidates if row.get("candidate_group") != "reference"]
-    submissions_by_statement: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in submissions:
-        submissions_by_statement[_normalized(row.get("statement"))].append(row)
-    pairs = []
-    for reference in references:
-        matches = submissions_by_statement.get(_normalized(reference.get("statement")), [])
-        for submission in matches:
-            pairs.append(
-                {
-                    "reference_candidate_id": reference["candidate_id"],
-                    "submission_candidate_id": submission["candidate_id"],
-                    "relation": "semantic_equivalent",
-                    "confidence": 0.99,
-                    "rationale": "Deterministic fixture matched normalized statements exactly.",
-                }
+    references_by_statement: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in references:
+        references_by_statement[_normalized(row.get("statement"))].append(row)
+    reviews = []
+    for submission in submissions:
+        relations = [
+            {
+                "reference_candidate_id": reference["candidate_id"],
+                "relation": "semantic_equivalent",
+                "confidence": 0.99,
+                "rationale": "Deterministic fixture matched normalized statements exactly.",
+            }
+            for reference in references_by_statement.get(
+                _normalized(submission.get("statement")), []
             )
-    reviews_by_id = {
-        row["candidate_id"]: {
-            "candidate_id": row["candidate_id"],
-            "counterpart_reviews": [],
-            "no_actionable_match_reason": "No exact normalized counterpart in the fixture.",
-        }
-        for row in candidates
+        ]
+        reviews.append(
+            {
+                "submission_candidate_id": submission["candidate_id"],
+                "reference_relations": relations,
+                "no_actionable_relation_reason": (
+                    ""
+                    if relations
+                    else "No reference candidate expresses the same normalized scientific proposition."
+                ),
+            }
+        )
+    return {
+        "reviewed_reference_candidate_ids": [row["candidate_id"] for row in references],
+        "submission_reviews": reviews,
     }
-    for pair in pairs:
-        left = pair["reference_candidate_id"]
-        right = pair["submission_candidate_id"]
-        for candidate_id, counterpart_id in ((left, right), (right, left)):
-            reviews_by_id[candidate_id]["counterpart_reviews"].append(
-                {
-                    "counterpart_candidate_id": counterpart_id,
-                    "relation": pair["relation"],
-                    "confidence": pair["confidence"],
-                    "rationale": pair["rationale"],
-                }
-            )
-            reviews_by_id[candidate_id]["no_actionable_match_reason"] = ""
-    return {"candidate_reviews": list(reviews_by_id.values()), "pairs": pairs}
 
 
 def _adjudication(task: dict[str, Any]) -> dict[str, Any]:
