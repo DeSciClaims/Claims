@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 import re
 from typing import Any
 
@@ -25,11 +26,27 @@ def project_agent_artifact(
     }
     paper_id = _text(paper.get("paper_id")) or None
     projected: list[ComparisonCandidate] = []
+    record_ids_by_index = {
+        index: _text(claim.get("claim_id")) or f"claim_{index + 1}"
+        for index, claim in enumerate(claims)
+        if isinstance(claim, dict)
+    }
+    duplicate_record_ids = {
+        record_id
+        for record_id, count in Counter(record_ids_by_index.values()).items()
+        if count > 1
+    }
 
     for index, claim in enumerate(claims):
         if not isinstance(claim, dict):
             continue
-        record_id = _text(claim.get("claim_id")) or f"claim_{index + 1}"
+        record_id = record_ids_by_index[index]
+        if record_id in duplicate_record_ids:
+            # Duplicate source IDs have no unambiguous identity. Structural
+            # validation reports them as critical; Silver projection excludes
+            # every conflicting row so malformed artifacts cannot collapse or
+            # overwrite unrelated candidates downstream.
+            continue
         statement = _text(claim.get("statement"))
         if not statement:
             continue

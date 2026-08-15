@@ -14,6 +14,8 @@ Identify actionable scientific relationships between reference candidates and su
 ## Rules
 
 - Preserve every supplied candidate ID exactly in `reviewed_candidate_ids`.
+- Schema-valid JSON alone is not task completion. Do not list candidate IDs and leave `pairs` empty as a shortcut.
+- Build a compact index of every candidate, then compare each submission candidate with its best reference match and check each reference candidate for missed submission matches.
 - Compare reference candidates only with submission candidates. Never pair two submissions or two reference candidates.
 - Emit only actionable pairs: `semantic_equivalent`, `compatible_refinement`, `compatible_split_merge`, `partial_overlap`, or `contradiction`.
 - Do not emit unrelated pairs merely to demonstrate they were reviewed.
@@ -21,6 +23,7 @@ Identify actionable scientific relationships between reference candidates and su
 - Base relations on claim meaning, qualifiers, evidence, and cited source spans, not lexical similarity alone.
 - Treat numerical or methodological differences as material when they change the scientific claim.
 - Keep rationales short and specific.
+- Return an empty `pairs` array only when a complete semantic review finds no actionable reference-to-submission relationship.
 - Write one strict JSON object matching the supplied schema to the required output file.
 
 Do not modify input files and do not finish before the output file validates.
