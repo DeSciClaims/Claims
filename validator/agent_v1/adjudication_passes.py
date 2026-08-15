@@ -1205,6 +1205,11 @@ def _adjudication_batch_payload(contexts: list[AdjudicationContextBundle]) -> di
     }
 
 
+def adjudication_batch_payload(contexts: list[AdjudicationContextBundle]) -> dict[str, Any]:
+    """Public file-workflow contract for anonymous multi-case adjudication."""
+    return _adjudication_batch_payload(contexts)
+
+
 def _adjudication_batch_schema() -> dict[str, Any]:
     return {
         "results": [
@@ -1407,6 +1412,24 @@ def _votes_from_batch_payload(
             )
         )
     return votes
+
+
+def votes_from_adjudication_batch_payload(
+    contexts: list[AdjudicationContextBundle],
+    payload: dict[str, Any],
+    *,
+    pass_id: str,
+    adjudication_profile_id: str,
+    model_runtime_id: str,
+) -> list[AdjudicationVote]:
+    """Convert a validated anonymous judge file back into internal votes."""
+    return _votes_from_batch_payload(
+        contexts,
+        payload,
+        pass_id=pass_id,
+        adjudication_profile_id=adjudication_profile_id,
+        model_runtime_id=model_runtime_id,
+    )
 
 
 def _failed_adjudication_vote(

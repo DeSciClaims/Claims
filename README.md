@@ -258,6 +258,7 @@ Useful validator flags:
 - `--claims.silver-adjudication-batch-size 8`: adjudicate several anonymous cases per model call; use `1` to disable batching.
 - `--claims.silver-adjudication-max-in-flight 32`: cap Silver model calls globally across papers and passes; use `0` for unlimited.
 - Hermes adjudication defaults to a skill-based agent workflow with mode-`0600` task/schema files and validated JSON output. Set `CLAIMS_SILVER_ADJUDICATION_HERMES_EXECUTION_MODE=oneshot` for the optional tool-free path; use `CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE=append` only for legacy CLI behavior.
+- `CLAIMS_SILVER_WORKFLOW_MODE=file-agent`: use one file-workspace comparator, two anonymous judges plus a conditional tiebreaker, deterministic consensus, and one global Silver canonicalizer per paper. The legacy graph workflow remains the default.
 - `--claims.diagnostic-miner-max-workers 2`: run diagnostic validation for multiple miner responses concurrently.
 - `--claims.diagnostic-max-workers 10`: run diagnostic validation for multiple papers concurrently per miner.
 - `--claims.skip-diagnostic-validation`: skip diagnostic reports when Silver is the only scoring path for a large run.
@@ -287,6 +288,17 @@ Optional Silver graph-pairing envs:
 - `CLAIMS_SILVER_RELATION_FALLBACK_MAX_CALLS=256` / `CLAIMS_SILVER_ADJUDICATION_FALLBACK_MAX_CALLS=256`: cap split fallback calls; `0` is unlimited.
 - `CLAIMS_SILVER_PERSIST_CHUNK_SIZE=50`: cases, consensus, decisions, and score rows sent per persistence chunk.
 - `CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE=150`: adjudication votes sent per persistence chunk.
+
+File-workspace Silver controls:
+
+- `CLAIMS_SILVER_FILE_AGENT_HARNESS=hermes-cli`: comparator and canonicalizer harness; `codex-cli` and `claude-cli` are also supported.
+- `CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL=<MODEL>` / `CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL=<MODEL>`: stage models.
+- Existing adjudication harness and model settings control judge A, judge B, and the conditional tiebreaker.
+- `--claims.silver-adjudication-max-in-flight`: global process/model-call cap shared by all file-agent stages.
+- `CLAIMS_SILVER_FILE_AGENT_TIMEOUT=1800`: absolute timeout for each file-agent execution.
+- `CLAIMS_SILVER_FILE_AGENT_USAGE_GRACE_SECONDS=15`: allow a completed CLI to emit its usage footer before forced cleanup.
+- `CLAIMS_SILVER_FILE_AGENT_FALLBACK=none`: fail the paper instead of falling back to the legacy stage.
+- `CLAIMS_MODEL_PRICING_JSON='{"model":{"input":1,"output":2}}'`: optional USD-per-million-token rates when a subscription CLI reports tokens but no dollar cost.
 
 For local smoke tests without the backend, pass exactly one of
 `--claims.paper-url`, `--claims.task-artifact`, or `--claims.task-manifest`.

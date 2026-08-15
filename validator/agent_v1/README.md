@@ -95,6 +95,45 @@ That smoke starts a local backend, signs validator requests with a temporary
 hotkey, writes Bronze/Silver/score records, then reads the public miner Silver
 feedback endpoint.
 
+## File-Workspace Silver
+
+Set `CLAIMS_SILVER_WORKFLOW_MODE=file-agent` to run the experimental per-paper
+workspace pipeline: global comparison, anonymous parallel judges, conditional
+tiebreak, deterministic consensus, and global canonicalization. Comparator and
+canonicalizer agents read mode-`0600` task/schema files and write validated JSON
+artifacts. Only the logical workspace ID and manifest hash are persisted.
+
+```bash
+CLAIMS_SILVER_WORKFLOW_MODE=file-agent \
+CLAIMS_SILVER_FILE_AGENT_HARNESS=hermes-cli \
+CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL=deepseek/deepseek-v4-flash \
+CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL=deepseek/deepseek-v4-flash \
+python -m neurons.validator ...
+```
+
+### Local Live Benchmark
+
+Run Rietveld once through the `pdf-inspector` miner, reuse that artifact across
+Hermes, Codex, and Claude file-agent workflows, and persist each run to a local
+SQLite backend:
+
+```bash
+conda run -n claims_subnet python scripts/live_file_agent_benchmark.py \
+  --output-root outputs/file_agent_benchmark/live \
+  --harnesses hermes-cli,codex-cli,claude-cli
+```
+
+Add `--reuse-miner` to retry only the validator harnesses. Add `--local-stub`
+for an offline subprocess and backend-contract smoke test. Results, workspaces,
+the SQLite database, and `benchmark_summary.json` stay under `--output-root`.
+Live diagnostic validation runs once through Hermes/OpenRouter and is reused by
+all harness comparisons; use `--diagnostic-mode deterministic` only for smoke tests.
+The live mode sends the paper text, claims, and evidence to the configured model
+providers; run it only for material you are authorized to share.
+File-agent CLI usage is recovered from Hermes, Codex, and Claude session data
+when an early valid-output exit omits the normal footer. Set `CLAIMS_MODEL_PRICING_JSON`
+only when a subscription CLI exposes tokens but no per-run USD charge.
+
 ## Runtime Controls
 
 - `--max-agent-iters` or `SUBNET_CLAIMS_VALIDATOR_AGENT_MAX_ITERS`: native rigor

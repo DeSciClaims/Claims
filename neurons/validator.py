@@ -28,6 +28,7 @@ from validator.agent_v1.artifact_summary import summarize_agent_artifact
 from validator.agent_v1.batch_scoring import score_batch
 from validator.agent_v1.comparison_models import SilverScoreBreakdown
 from validator.agent_v1.config import AgentV1ValidatorConfig
+from validator.agent_v1.file_agent_workflow import FileAgentSilverWorkflow, file_agent_workflow_enabled
 from validator.agent_v1.models import AgentV1ValidationFinding
 from validator.agent_v1.model_usage import ModelUsageCollector
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline
@@ -1293,17 +1294,23 @@ class ClaimsValidator:
         if not adjudication_passes:
             raise RuntimeError("Silver scoring is enabled, but no adjudication passes are configured.")
         adjudication_models = self._adjudication_pass_model_rows(adjudication_passes, tiebreak_pass)
-        relation_classifier = self._build_silver_relation_classifier(
-            request_gate=getattr(adjudication_passes[0], "request_gate", None),
-            stage_key="silver_comparison",
-            stage_label="Comparison graph",
-        )
-        consolidation_relation_classifier = self._build_silver_relation_classifier(
-            request_gate=getattr(adjudication_passes[0], "request_gate", None),
-            stage_key="silver_consolidation",
-            stage_label="Consolidation",
-        )
-        importance_classifier = self._build_silver_importance_classifier()
+        file_agent_workflow = self._build_silver_file_agent_workflow(adjudication_passes)
+        file_agent_models = self._silver_file_agent_model_rows(file_agent_workflow)
+        relation_classifier = None
+        consolidation_relation_classifier = None
+        importance_classifier = None
+        if file_agent_workflow is None:
+            relation_classifier = self._build_silver_relation_classifier(
+                request_gate=getattr(adjudication_passes[0], "request_gate", None),
+                stage_key="silver_comparison",
+                stage_label="Comparison graph",
+            )
+            consolidation_relation_classifier = self._build_silver_relation_classifier(
+                request_gate=getattr(adjudication_passes[0], "request_gate", None),
+                stage_key="silver_consolidation",
+                stage_label="Consolidation",
+            )
+            importance_classifier = self._build_silver_importance_classifier()
         importance_models = self._silver_importance_model_rows() if importance_classifier is not None else []
 
         def process_paper(paper_index: int, paper: ClaimsPaperTask) -> _PaperSilverPostPassResult | None:
@@ -1383,6 +1390,7 @@ class ClaimsValidator:
                         f"uid_{uid}": findings
                         for uid, _extraction, _metadata, _source_payload, findings in miner_rows
                     },
+                    file_agent_workflow=file_agent_workflow,
                 )
                 score_rows = _scores_with_missing_miners(
                     paper_id=paper_id,
@@ -1401,6 +1409,7 @@ class ClaimsValidator:
                         paper_id=paper_id,
                         adjudication_models=adjudication_models,
                         importance_models=importance_models,
+                        file_agent_models=file_agent_models,
                     )
                     for stage in getattr(result, "stage_timings", [])
                     if isinstance(stage, dict)
@@ -1428,7 +1437,7 @@ class ClaimsValidator:
                 miner_rows=miner_rows,
                 paper_stage_seconds=paper_stage_seconds,
                 timing_stages=timing_stages,
-                model_rows=[*reference_models, *adjudication_models, *importance_models],
+                model_rows=[*reference_models, *adjudication_models, *importance_models, *file_agent_models],
                 score_metadata_by_miner_id={f"uid_{uid}": (uid, metadata) for uid, metadata in metadata_by_uid.items()},
             )
             self._upload_active_model_usage_checkpoint()
@@ -1631,6 +1640,32 @@ class ClaimsValidator:
             )
         except Exception as exc:
             raise RuntimeError(f"Silver adjudication pass configuration failed: {exc}") from exc
+
+    def _build_silver_file_agent_workflow(
+        self,
+        adjudication_passes: list[Any],
+    ) -> FileAgentSilverWorkflow | None:
+        if not file_agent_workflow_enabled():
+            return None
+        try:
+            usage_collector = getattr(self, "_active_model_usage", None)
+            workflow = FileAgentSilverWorkflow.from_env(
+                usage_sink=usage_collector.record if usage_collector is not None else None,
+                request_gate=(
+                    getattr(adjudication_passes[0], "request_gate", None)
+                    if adjudication_passes
+                    else None
+                ),
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Silver file-agent workflow configuration failed: {exc}") from exc
+        self.bt_logging.info(
+            "Silver file-agent workflow enabled: "
+            f"harness={workflow.config.harness} "
+            f"comparison_model={workflow.config.comparison_model} "
+            f"canonicalization_model={workflow.config.canonicalization_model}"
+        )
+        return workflow
 
     def _build_silver_relation_classifier(
         self,
@@ -3118,6 +3153,43 @@ class ClaimsValidator:
             )
         ]
 
+    def _silver_file_agent_model_rows(
+        self,
+        workflow: FileAgentSilverWorkflow | None,
+    ) -> list[dict[str, Any]]:
+        if workflow is None:
+            return []
+        config = workflow.config
+        return [
+            _drop_empty_model_fields(
+                {
+                    "stage_key": stage_key,
+                    "stage_label": stage_label,
+                    "role": role,
+                    "runtime": config.harness,
+                    "harness": config.harness,
+                    "provider": config.provider,
+                    "model": model,
+                    "models": [model] if model else [],
+                    "model_runtime_id": config.harness,
+                }
+            )
+            for stage_key, stage_label, role, model in (
+                (
+                    "silver_comparison",
+                    "Comparison graph",
+                    "silver_file_comparator",
+                    config.comparison_model,
+                ),
+                (
+                    "silver_canonicalization",
+                    "Silver canonicalization",
+                    "silver_file_canonicalizer",
+                    config.canonicalization_model,
+                ),
+            )
+        ]
+
     def _timing_payload(
         self,
         *,
@@ -3503,6 +3575,7 @@ def _silver_stage_with_models(
     paper_id: str,
     adjudication_models: list[dict[str, Any]],
     importance_models: list[dict[str, Any]],
+    file_agent_models: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     payload = _public_timing_stage(stage)
     metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
@@ -3513,6 +3586,10 @@ def _silver_stage_with_models(
         metadata["models"] = adjudication_models
     elif key == "silver_importance" and importance_models:
         metadata["models"] = importance_models
+    elif file_agent_models:
+        matching_models = [row for row in file_agent_models if row.get("stage_key") == key]
+        if matching_models:
+            metadata["models"] = matching_models
     payload["metadata"] = metadata
     return payload
 
@@ -4223,6 +4300,31 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_diagnostic_max_workers": int(getattr(config, "claims_diagnostic_max_workers", 1) or 1),
         "claims_diagnostic_miner_max_workers": int(getattr(config, "claims_diagnostic_miner_max_workers", 1) or 1),
         "claims_silver_enable": bool(getattr(config, "claims_silver_enable", False)),
+        "claims_silver_workflow_mode": str(os.getenv("CLAIMS_SILVER_WORKFLOW_MODE", "legacy") or "legacy"),
+        "claims_silver_file_agent_harness": str(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_HARNESS", "") or ""
+        ),
+        "claims_silver_file_agent_provider": str(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER", "openrouter") or "openrouter"
+        ),
+        "claims_silver_file_agent_comparison_model": str(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL", "") or ""
+        ),
+        "claims_silver_file_agent_canonicalization_model": str(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", "") or ""
+        ),
+        "claims_silver_file_agent_max_turns": int(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_MAX_TURNS", "30") or 30
+        ),
+        "claims_silver_file_agent_timeout": float(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_TIMEOUT", "1800") or 1800
+        ),
+        "claims_silver_file_agent_usage_grace_seconds": float(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_USAGE_GRACE_SECONDS", "15") or 15
+        ),
+        "claims_silver_file_agent_fallback": str(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_FALLBACK", "legacy") or "legacy"
+        ),
         "claims_silver_paper_max_workers": int(getattr(config, "claims_silver_paper_max_workers", 1) or 1),
         "claims_silver_adjudication_mode": str(getattr(config, "claims_silver_adjudication_mode", "static") or ""),
         "claims_silver_adjudication_model_a": str(getattr(config, "claims_silver_adjudication_model_a", "") or ""),

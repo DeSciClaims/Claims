@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -12,6 +13,7 @@ from .adjudication_runner import AdjudicationPass, run_adjudication_cases
 from .batch_scoring import BatchScoreResult, score_batch
 from .bronze_diff import compare_miner_to_bronze_result
 from .comparison_models import BronzeDiffCase, CandidatePairEdge, ComparisonCandidate, SilverRecord, SilverScoreBreakdown
+from .file_agent_workflow import FileAgentSilverWorkflow, FileAgentWorkflowSession
 from .models import AgentV1ValidationFinding
 from .pairing import (
     RelationClassifier,
@@ -29,6 +31,7 @@ from .silver_scoring import score_miner_against_silver
 CONSOLIDATION_SEMANTIC_CONFIDENCE = 0.88
 CONSOLIDATION_COMPATIBLE_CONFIDENCE = 0.72
 SAME_UNIT_RELATIONS = {"semantic_equivalent", "compatible_refinement", "compatible_split_merge"}
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -89,6 +92,7 @@ def run_paper_silver_pipeline(
         None,
     ]
     | None = None,
+    file_agent_workflow: FileAgentSilverWorkflow | None = None,
 ) -> PaperSilverPipelineResult:
     stage_timings: list[dict] = []
 
@@ -105,6 +109,16 @@ def run_paper_silver_pipeline(
     ]
     candidate_pool = [*bronze_candidates, *[candidate for submission in miner_submissions for candidate in submission.candidates]]
     candidates_by_id = {candidate.candidate_id: candidate for candidate in candidate_pool}
+    workflow_fallbacks: list[str] = []
+    file_session: FileAgentWorkflowSession | None = None
+    if file_agent_workflow is not None:
+        file_session = file_agent_workflow.start_session(
+            paper_id=paper_id,
+            workspace_id=silver_record_id,
+            candidates=candidate_pool,
+            paper_context=paper_context or _paper_context_from_artifact(bronze_artifact),
+            source_context_by_span_id=source_context_by_span_id or {},
+        )
     stage_timings.append(_stage_finish(
         projection_timer,
         paper_id=paper_id,
@@ -116,14 +130,29 @@ def run_paper_silver_pipeline(
     ))
 
     comparison_timer = _stage_start("silver_comparison", "Comparison graph")
-    comparison_hits = {
-        submission.miner_id: filter_candidate_pairs(bronze_candidates, submission.candidates)
-        for submission in miner_submissions
-    }
-    comparison_edges = classify_filtered_candidate_pairs(
-        [hit for hits in comparison_hits.values() for hit in hits],
-        relation_classifier=relation_classifier,
-    )
+    comparison_hits: dict[str, list] = {}
+    comparison_mode = "legacy"
+    if file_session is not None:
+        try:
+            comparison_edges = file_session.run_comparison()
+            comparison_mode = "file_agent"
+        except Exception as exc:
+            if not file_session.fallback_to_legacy:
+                raise
+            LOGGER.exception("File-agent comparison failed for paper=%s; using legacy comparison.", paper_id)
+            workflow_fallbacks.append(f"comparison:{type(exc).__name__}")
+            comparison_edges = []
+    else:
+        comparison_edges = []
+    if comparison_mode == "legacy":
+        comparison_hits = {
+            submission.miner_id: filter_candidate_pairs(bronze_candidates, submission.candidates)
+            for submission in miner_submissions
+        }
+        comparison_edges = classify_filtered_candidate_pairs(
+            [hit for hits in comparison_hits.values() for hit in hits],
+            relation_classifier=relation_classifier,
+        )
     edges_by_miner_id: dict[str, list[CandidatePairEdge]] = {
         submission.miner_id: [] for submission in miner_submissions
     }
@@ -152,6 +181,8 @@ def run_paper_silver_pipeline(
         for result in comparison_results
         for case in result.cases
     )
+    if file_session is not None:
+        file_session.record_comparison_cases(diff_cases)
     stage_timings.append(_stage_finish(
         comparison_timer,
         paper_id=paper_id,
@@ -159,6 +190,7 @@ def run_paper_silver_pipeline(
             "filtered_pair_count": sum(len(hits) for hits in comparison_hits.values()),
             "edge_count": len(candidate_graph_edges),
             "case_count": len(diff_cases),
+            "workflow": comparison_mode,
         },
     ))
 
@@ -177,15 +209,24 @@ def run_paper_silver_pipeline(
 
     def adjudicate_cases(cases: list[BronzeDiffCase]) -> list[tuple[AdjudicationConsensus, AdjudicationDecision | None]]:
         contexts = [adjudication_context(case) for case in cases]
-        consensus_records = run_adjudication_cases(
-            contexts,
-            passes=adjudication_passes,
-            tiebreak_pass=tiebreak_pass,
-            direct_judge_confidence=direct_judge_confidence,
-            batch_size=max(1, int(adjudication_batch_size or 1)),
-            max_workers=max(1, int(adjudication_max_workers or 1)),
-            progress_sink=adjudication_progress_sink,
-        )
+        if file_session is not None:
+            consensus_records = file_session.run_adjudication(
+                contexts,
+                passes=adjudication_passes,
+                tiebreak_pass=tiebreak_pass,
+                direct_judge_confidence=direct_judge_confidence,
+                progress_sink=adjudication_progress_sink,
+            )
+        else:
+            consensus_records = run_adjudication_cases(
+                contexts,
+                passes=adjudication_passes,
+                tiebreak_pass=tiebreak_pass,
+                direct_judge_confidence=direct_judge_confidence,
+                batch_size=max(1, int(adjudication_batch_size or 1)),
+                max_workers=max(1, int(adjudication_max_workers or 1)),
+                progress_sink=adjudication_progress_sink,
+            )
         return [
             (consensus, _decision_from_consensus(context.case, consensus, context.candidates))
             for context, consensus in zip(contexts, consensus_records, strict=True)
@@ -205,26 +246,32 @@ def run_paper_silver_pipeline(
             "decision_count": len(decisions),
             "worker_count": worker_count,
             "batch_size": max(1, int(adjudication_batch_size or 1)),
+            "workflow": "file_agent" if file_session is not None else "legacy",
         },
     ))
 
     consolidation_timer = _stage_start("silver_consolidation", "Consolidation")
-    consolidation_cases, consolidation_edges, consolidation_pairing = _build_consolidation_cases(
-        paper_id=paper_id,
-        candidates=candidate_pool,
-        decisions=decisions,
-        relation_classifier=consolidation_relation_classifier or relation_classifier,
-        existing_cases=diff_cases,
-    )
-    if consolidation_cases:
-        candidate_graph_edges = _dedupe_candidate_graph_edges([*candidate_graph_edges, *consolidation_edges])
-        diff_cases = _dedupe_cases([*diff_cases, *consolidation_cases])
-        worker_count = max(1, min(int(adjudication_max_workers or 1), len(consolidation_cases) or 1))
-        adjudicated_consolidation = adjudicate_cases(consolidation_cases)
-        consolidation_consensus = [consensus for consensus, _decision in adjudicated_consolidation]
-        _raise_for_operational_adjudication_failures(consolidation_consensus, stage="consolidation")
-        consensus_records.extend(consolidation_consensus)
-        decisions.extend(decision for _consensus, decision in adjudicated_consolidation if decision is not None)
+    if file_session is not None:
+        consolidation_cases: list[BronzeDiffCase] = []
+        consolidation_edges: list[CandidatePairEdge] = []
+        consolidation_pairing = {"workflow": "file_agent_canonicalizer"}
+    else:
+        consolidation_cases, consolidation_edges, consolidation_pairing = _build_consolidation_cases(
+            paper_id=paper_id,
+            candidates=candidate_pool,
+            decisions=decisions,
+            relation_classifier=consolidation_relation_classifier or relation_classifier,
+            existing_cases=diff_cases,
+        )
+        if consolidation_cases:
+            candidate_graph_edges = _dedupe_candidate_graph_edges([*candidate_graph_edges, *consolidation_edges])
+            diff_cases = _dedupe_cases([*diff_cases, *consolidation_cases])
+            worker_count = max(1, min(int(adjudication_max_workers or 1), len(consolidation_cases) or 1))
+            adjudicated_consolidation = adjudicate_cases(consolidation_cases)
+            consolidation_consensus = [consensus for consensus, _decision in adjudicated_consolidation]
+            _raise_for_operational_adjudication_failures(consolidation_consensus, stage="consolidation")
+            consensus_records.extend(consolidation_consensus)
+            decisions.extend(decision for _consensus, decision in adjudicated_consolidation if decision is not None)
     stage_timings.append(_stage_finish(
         consolidation_timer,
         paper_id=paper_id,
@@ -265,6 +312,17 @@ def run_paper_silver_pipeline(
         equivalent_candidate_groups=equivalent_candidate_groups,
         excluded_candidate_ids=unresolved_candidate_ids,
     )
+    if file_session is not None:
+        try:
+            silver_record = file_session.run_canonicalization(
+                baseline_record=silver_record,
+                decisions=decisions,
+            )
+        except Exception as exc:
+            if not file_session.fallback_to_legacy:
+                raise
+            LOGGER.exception("File-agent canonicalization failed for paper=%s; using baseline Silver.", paper_id)
+            workflow_fallbacks.append(f"canonicalization:{type(exc).__name__}")
     stage_timings.append(_stage_finish(
         canonical_timer,
         paper_id=paper_id,
@@ -272,20 +330,26 @@ def run_paper_silver_pipeline(
             "silver_unit_count": len(silver_record.silver_units),
             "equivalent_group_count": len(equivalent_candidate_groups),
             "unresolved_candidate_count": len(unresolved_candidate_ids),
+            "workflow": "file_agent" if file_session is not None else "legacy",
         },
     ))
 
     importance_timer = _stage_start("silver_importance", "Importance tagging")
-    silver_record = apply_silver_importance(
-        silver_record,
-        classifier=importance_classifier,
-        paper_context=paper_context or _paper_context_from_artifact(bronze_artifact),
-        source_context=source_context,
-    )
+    if file_session is None:
+        silver_record = apply_silver_importance(
+            silver_record,
+            classifier=importance_classifier,
+            paper_context=paper_context or _paper_context_from_artifact(bronze_artifact),
+            source_context=source_context,
+        )
     stage_timings.append(_stage_finish(
         importance_timer,
         paper_id=paper_id,
-        metadata={"enabled": importance_classifier is not None},
+        metadata={
+            "enabled": importance_classifier is not None,
+            "integrated_into_canonicalization": file_session is not None,
+            "workflow": "file_agent_canonicalizer" if file_session is not None else "importance_classifier",
+        },
     ))
 
     graph_timer = _stage_start("silver_graph_metadata", "Graph metadata")
@@ -296,6 +360,20 @@ def run_paper_silver_pipeline(
         adjudication_consensus=consensus_records,
         adjudication_decisions=decisions,
     )
+    if file_session is not None:
+        try:
+            workflow_metadata = file_session.finalize(
+                status="complete_with_fallback" if workflow_fallbacks else "complete",
+                metadata={"fallbacks": workflow_fallbacks},
+            )
+            existing_workflow_metadata = silver_record.metadata.get("file_agent_workflow")
+            silver_record.metadata["file_agent_workflow"] = {
+                **(existing_workflow_metadata if isinstance(existing_workflow_metadata, dict) else {}),
+                **workflow_metadata,
+                "fallbacks": workflow_fallbacks,
+            }
+        except Exception:
+            LOGGER.exception("Could not finalize file-agent workspace for paper=%s.", paper_id)
     stage_timings.append(_stage_finish(graph_timer, paper_id=paper_id))
 
     scoring_timer = _stage_start("silver_scoring", "Silver scoring")
