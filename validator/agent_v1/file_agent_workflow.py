@@ -539,6 +539,8 @@ class FileAgentWorkflowSession:
         )
         audit_task = {
             **common_task,
+            "expected_candidate_count": len(expected_aliases),
+            "expected_draft_unit_count": len(draft_unit_ids),
             "canonical_draft": {
                 "reviewed_candidate_ids": draft.reviewed_candidate_ids,
                 "units": [
@@ -570,14 +572,45 @@ class FileAgentWorkflowSession:
         )
         output = audit_result.payload
         assert isinstance(output, CanonicalAuditOutput)
-        _validate_canonical_audit(output, set(draft_unit_ids))
-        _validate_canonical_partition(
-            output,
-            expected_aliases=expected_aliases,
-            eligible_aliases=expected_aliases.difference(required_exclusion_aliases),
-            required_exclusion_aliases=required_exclusion_aliases,
-            must_link_groups=must_link_aliases,
-        )
+        audit_repair_error = ""
+        try:
+            _validate_canonical_output(
+                output,
+                expected_draft_unit_ids=set(draft_unit_ids),
+                expected_aliases=expected_aliases,
+                eligible_aliases=expected_aliases.difference(required_exclusion_aliases),
+                required_exclusion_aliases=required_exclusion_aliases,
+                must_link_groups=must_link_aliases,
+            )
+        except FileAgentWorkflowError as exc:
+            audit_repair_error = str(exc)
+            repair_result = self._run_stage(
+                stage_key="canonicalization_audit_repair",
+                stage_label="Silver canonicalization audit repair",
+                model=self.config.canonical_audit_model or self.config.canonicalization_model,
+                task={
+                    **audit_task,
+                    "rejected_audit_output": output.model_dump(mode="json"),
+                    "validator_rejection": audit_repair_error,
+                    "repair_requirements": {
+                        "return_the_complete_corrected_output": True,
+                        "fix_every_validator_rejection": True,
+                        "do_not_drop_candidates_or_weaken_completed_quality_checks": True,
+                    },
+                },
+                output_model=CanonicalAuditOutput,
+                skill_path=_skill_path("claims-silver-canonical-auditor"),
+            )
+            output = repair_result.payload
+            assert isinstance(output, CanonicalAuditOutput)
+            _validate_canonical_output(
+                output,
+                expected_draft_unit_ids=set(draft_unit_ids),
+                expected_aliases=expected_aliases,
+                eligible_aliases=expected_aliases.difference(required_exclusion_aliases),
+                required_exclusion_aliases=required_exclusion_aliases,
+                must_link_groups=must_link_aliases,
+            )
 
         baseline_units = list(baseline_record.silver_units)
         canonical_units: list[SilverUnit] = []
@@ -637,6 +670,8 @@ class FileAgentWorkflowSession:
                 finding.model_dump(mode="json") for finding in output.findings
             ],
             "canonical_quality_checks": output.quality_checks.model_dump(mode="json"),
+            "canonical_audit_repaired": bool(audit_repair_error),
+            "canonical_audit_initial_rejection": audit_repair_error or None,
             "mandatory_same_unit_group_count": len(must_link_aliases),
             "mandatory_evidence_exclusion_count": len(required_exclusion_aliases),
         }
@@ -1248,6 +1283,25 @@ def _validate_canonical_audit(output: CanonicalAuditOutput, expected_draft_unit_
     incomplete = sorted(name for name, completed in checks.items() if not completed)
     if incomplete:
         raise FileAgentWorkflowError(f"Canonical auditor did not complete checks: {incomplete}.")
+
+
+def _validate_canonical_output(
+    output: CanonicalAuditOutput,
+    *,
+    expected_draft_unit_ids: set[str],
+    expected_aliases: set[str],
+    eligible_aliases: set[str],
+    required_exclusion_aliases: set[str],
+    must_link_groups: list[list[str]],
+) -> None:
+    _validate_canonical_audit(output, expected_draft_unit_ids)
+    _validate_canonical_partition(
+        output,
+        expected_aliases=expected_aliases,
+        eligible_aliases=eligible_aliases,
+        required_exclusion_aliases=required_exclusion_aliases,
+        must_link_groups=must_link_groups,
+    )
 
 
 def _validate_distinct_direct_judges(passes: list[AdjudicationPass]) -> None:

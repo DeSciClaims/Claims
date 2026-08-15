@@ -394,6 +394,84 @@ def test_file_canonicalizer_rejects_unit_without_linked_evidence(tmp_path) -> No
         session.run_canonicalization(baseline_record=baseline, decisions=[])
 
 
+def test_file_canonicalizer_repairs_incomplete_audit_partition(tmp_path) -> None:
+    candidate = _candidate(
+        "miner:uid_9:C01",
+        "miner",
+        "uid_9",
+        "Treatment reduced mortality.",
+        evidence_ids=["EV01"],
+        source_span_ids=["S1"],
+    )
+    session = _session(tmp_path, [candidate])
+    calls: list[str] = []
+
+    def quality_checks():
+        return CanonicalQualityChecks(
+            duplicate_or_split_attack_checked=True,
+            paper_relevance_checked=True,
+            evidence_support_checked=True,
+            contradiction_checked=True,
+            importance_checked=True,
+        )
+
+    def fake_stage(_self, **kwargs):
+        stage_key = kwargs["stage_key"]
+        calls.append(stage_key)
+        alias = kwargs["task"]["accepted_candidates"][0]["candidate_id"]
+        unit = CanonicalUnitProposal(
+            statement=candidate.statement,
+            importance="central",
+            candidate_ids=[alias],
+        )
+        if stage_key == "canonicalization_draft":
+            return SimpleNamespace(
+                payload=CanonicalizationAgentOutput(
+                    reviewed_candidate_ids=[alias],
+                    units=[unit],
+                )
+            )
+        if stage_key == "canonicalization_audit":
+            return SimpleNamespace(
+                payload=CanonicalAuditOutput(
+                    reviewed_candidate_ids=[alias],
+                    reviewed_draft_unit_ids=["draft_unit_001"],
+                    quality_checks=quality_checks(),
+                    units=[],
+                    exclusions=[],
+                )
+            )
+        assert stage_key == "canonicalization_audit_repair"
+        assert "missing=" in kwargs["task"]["validator_rejection"]
+        return SimpleNamespace(
+            payload=CanonicalAuditOutput(
+                reviewed_candidate_ids=[alias],
+                reviewed_draft_unit_ids=["draft_unit_001"],
+                quality_checks=quality_checks(),
+                units=[unit],
+                exclusions=[],
+            )
+        )
+
+    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    baseline = SilverRecord(
+        silver_record_id="silver_1",
+        paper_id="paper",
+        silver_units=[_unit("unit_m", candidate)],
+    )
+
+    record = session.run_canonicalization(baseline_record=baseline, decisions=[])
+
+    assert calls == [
+        "canonicalization_draft",
+        "canonicalization_audit",
+        "canonicalization_audit_repair",
+    ]
+    assert len(record.silver_units) == 1
+    assert record.metadata["file_agent_workflow"]["canonical_audit_repaired"] is True
+    assert "missing=" in record.metadata["file_agent_workflow"]["canonical_audit_initial_rejection"]
+
+
 def test_orchestrator_uses_file_workflow_without_legacy_relation_or_importance_calls() -> None:
     workflow = _FakeWorkflow()
 

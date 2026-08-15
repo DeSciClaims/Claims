@@ -35,6 +35,10 @@ proposal. Do not preserve a draft unit merely because another agent emitted it.
 
 - Return a complete corrected partition, not comments on the draft.
 - Place every accepted candidate exactly once in one final unit or one exclusion.
+- Check the supplied expected counts before writing. Never omit an accepted
+  candidate, even when excluding it.
+- When `rejected_audit_output` and `validator_rejection` are supplied, repair
+  every reported invariant and return the entire output again, not a patch.
 - Set every quality-check flag to true only after performing that review.
 - Record concise findings and how each was resolved.
 - Preserve all anonymous IDs exactly.

@@ -3194,6 +3194,12 @@ class ClaimsValidator:
                     "silver_file_canonical_auditor",
                     config.canonical_audit_model or config.canonicalization_model,
                 ),
+                (
+                    "silver_canonicalization_audit_repair",
+                    "Silver canonicalization audit repair",
+                    "silver_file_canonical_auditor",
+                    config.canonical_audit_model or config.canonicalization_model,
+                ),
             )
         ]
 
