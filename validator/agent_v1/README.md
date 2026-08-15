@@ -99,15 +99,18 @@ feedback endpoint.
 
 Set `CLAIMS_SILVER_WORKFLOW_MODE=file-agent` to run the experimental per-paper
 workspace pipeline: global comparison, anonymous parallel judges, conditional
-tiebreak, deterministic consensus, and global canonicalization. Comparator and
-canonicalizer agents read mode-`0600` task/schema files and write validated JSON
-artifacts. Only the logical workspace ID and manifest hash are persisted.
+tiebreak, deterministic consensus, canonical draft, and independent canonical
+audit/revision. Exact restatements and adjudicated same-unit groups cannot be
+split, and candidates without linked evidence cannot receive Silver credit.
+Only the logical workspace ID and manifest hash are persisted.
 
 ```bash
 CLAIMS_SILVER_WORKFLOW_MODE=file-agent \
 CLAIMS_SILVER_FILE_AGENT_HARNESS=hermes-cli \
 CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL=deepseek/deepseek-v4-flash \
 CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL=deepseek/deepseek-v4-flash \
+CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL=qwen/qwen3.7-flash \
+CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true \
 python -m neurons.validator ...
 ```
 

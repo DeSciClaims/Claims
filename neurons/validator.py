@@ -1663,7 +1663,8 @@ class ClaimsValidator:
             "Silver file-agent workflow enabled: "
             f"harness={workflow.config.harness} "
             f"comparison_model={workflow.config.comparison_model} "
-            f"canonicalization_model={workflow.config.canonicalization_model}"
+            f"canonicalization_model={workflow.config.canonicalization_model} "
+            f"canonical_audit_model={workflow.config.canonical_audit_model or workflow.config.canonicalization_model}"
         )
         return workflow
 
@@ -3183,9 +3184,15 @@ class ClaimsValidator:
                 ),
                 (
                     "silver_canonicalization",
-                    "Silver canonicalization",
+                    "Silver canonicalization draft",
                     "silver_file_canonicalizer",
                     config.canonicalization_model,
+                ),
+                (
+                    "silver_canonicalization_audit",
+                    "Silver canonicalization audit",
+                    "silver_file_canonical_auditor",
+                    config.canonical_audit_model or config.canonicalization_model,
                 ),
             )
         ]
@@ -4312,6 +4319,13 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         ),
         "claims_silver_file_agent_canonicalization_model": str(
             os.getenv("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", "") or ""
+        ),
+        "claims_silver_file_agent_canonical_audit_model": str(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "") or ""
+        ),
+        "claims_silver_file_agent_require_distinct_judges": _env_flag(
+            "CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES",
+            True,
         ),
         "claims_silver_file_agent_max_turns": int(
             os.getenv("CLAIMS_SILVER_FILE_AGENT_MAX_TURNS", "30") or 30

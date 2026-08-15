@@ -363,6 +363,7 @@ def _run_harness_benchmark(
             output_poll_seconds=0.5,
             output_stable_seconds=1.0,
             fallback_to_legacy=False,
+            require_distinct_direct_judges=False,
             command_template=stub_command_text,
         ),
         usage_sink=collector.record,

@@ -31,6 +31,7 @@ from .adjudication_passes import (
 from .adjudication_runner import AdjudicationPass
 from .comparison_models import CandidatePairEdge, ComparisonCandidate, RelationType, SilverRecord, SilverUnit
 from .model_usage import UsageSink, provider_from_model_or_base
+from .record_projection import normalize_statement
 
 
 LOGGER = logging.getLogger(__name__)
@@ -57,8 +58,21 @@ class ComparisonPairProposal(_StrictOutputModel):
     rationale: str = ""
 
 
+class ComparisonCounterpartReview(_StrictOutputModel):
+    counterpart_candidate_id: str
+    relation: RelationType
+    confidence: float = Field(ge=0.0, le=1.0)
+    rationale: str = Field(min_length=1)
+
+
+class ComparisonCandidateReview(_StrictOutputModel):
+    candidate_id: str
+    counterpart_reviews: list[ComparisonCounterpartReview] = Field(default_factory=list)
+    no_actionable_match_reason: str = ""
+
+
 class ComparisonAgentOutput(_StrictOutputModel):
-    reviewed_candidate_ids: list[str]
+    candidate_reviews: list[ComparisonCandidateReview]
     pairs: list[ComparisonPairProposal] = Field(default_factory=list)
 
 
@@ -103,6 +117,34 @@ class CanonicalizationAgentOutput(_StrictOutputModel):
     exclusions: list[CanonicalExclusionProposal] = Field(default_factory=list)
 
 
+class CanonicalAuditFinding(_StrictOutputModel):
+    category: Literal[
+        "duplicate_or_split",
+        "paper_relevance",
+        "evidence_support",
+        "contradiction",
+        "importance",
+        "partition",
+    ]
+    draft_unit_ids: list[str] = Field(default_factory=list)
+    finding: str = Field(min_length=1)
+    resolution: str = Field(min_length=1)
+
+
+class CanonicalQualityChecks(_StrictOutputModel):
+    duplicate_or_split_attack_checked: bool
+    paper_relevance_checked: bool
+    evidence_support_checked: bool
+    contradiction_checked: bool
+    importance_checked: bool
+
+
+class CanonicalAuditOutput(CanonicalizationAgentOutput):
+    reviewed_draft_unit_ids: list[str]
+    quality_checks: CanonicalQualityChecks
+    findings: list[CanonicalAuditFinding] = Field(default_factory=list)
+
+
 @dataclass(frozen=True)
 class FileAgentWorkflowConfig:
     root: Path
@@ -110,6 +152,7 @@ class FileAgentWorkflowConfig:
     provider: str
     comparison_model: str
     canonicalization_model: str
+    canonical_audit_model: str = ""
     command_template: str = ""
     max_turns: int = 30
     timeout_seconds: float = 1800.0
@@ -117,6 +160,7 @@ class FileAgentWorkflowConfig:
     output_stable_seconds: float = 1.0
     usage_grace_seconds: float = 15.0
     fallback_to_legacy: bool = True
+    require_distinct_direct_judges: bool = True
 
     @classmethod
     def from_env(cls) -> FileAgentWorkflowConfig:
@@ -141,6 +185,13 @@ class FileAgentWorkflowConfig:
                 "CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL",
                 default_model,
             ).strip(),
+            canonical_audit_model=os.getenv(
+                "CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL",
+                os.getenv(
+                    "CLAIMS_SILVER_ADJUDICATION_MODEL_B",
+                    os.getenv("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", default_model),
+                ),
+            ).strip(),
             command_template=os.getenv("CLAIMS_SILVER_FILE_AGENT_CLI_COMMAND_TEMPLATE", "").strip(),
             max_turns=max(1, int(os.getenv("CLAIMS_SILVER_FILE_AGENT_MAX_TURNS", "30") or 30)),
             timeout_seconds=max(1.0, float(os.getenv("CLAIMS_SILVER_FILE_AGENT_TIMEOUT", "1800") or 1800)),
@@ -158,6 +209,11 @@ class FileAgentWorkflowConfig:
             ),
             fallback_to_legacy=os.getenv("CLAIMS_SILVER_FILE_AGENT_FALLBACK", "legacy").strip().lower()
             not in {"none", "disabled", "false", "0"},
+            require_distinct_direct_judges=os.getenv(
+                "CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES",
+                "true",
+            ).strip().lower()
+            in {"1", "true", "yes", "on"},
         )
 
 
@@ -203,6 +259,7 @@ class FileAgentWorkflowSession:
 
     def run_comparison(self) -> list[CandidatePairEdge]:
         aliases, candidates_by_alias = _comparison_aliases(self.candidates)
+        mandatory_pairs = _exact_reference_submission_pairs(self.candidates, aliases)
         task = {
             "paper": self.paper_context,
             "candidates": [
@@ -210,8 +267,17 @@ class FileAgentWorkflowSession:
                 for candidate in self.candidates
             ],
             "source_spans": _referenced_source_spans(self.candidates, self.source_context_by_span_id),
+            "mandatory_exact_restatement_pairs": [
+                {
+                    "reference_candidate_id": reference_alias,
+                    "submission_candidate_id": submission_alias,
+                    "required_relation": "semantic_equivalent",
+                }
+                for reference_alias, submission_alias in sorted(mandatory_pairs)
+            ],
             "requirements": {
-                "review_every_candidate": True,
+                "emit_one_substantive_review_per_candidate": True,
+                "mirror_each_emitted_pair_in_both_candidate_reviews": True,
                 "emit_only_actionable_reference_submission_pairs": True,
                 "allowed_relations": sorted(ACTIONABLE_RELATIONS),
             },
@@ -227,15 +293,11 @@ class FileAgentWorkflowSession:
         output = result.payload
         assert isinstance(output, ComparisonAgentOutput)
         expected_aliases = set(candidates_by_alias)
-        if (
-            set(output.reviewed_candidate_ids) != expected_aliases
-            or len(output.reviewed_candidate_ids) != len(expected_aliases)
-        ):
-            missing = sorted(expected_aliases.difference(output.reviewed_candidate_ids))
-            extra = sorted(set(output.reviewed_candidate_ids).difference(expected_aliases))
-            raise FileAgentWorkflowError(
-                f"Comparison agent completeness check failed; missing={missing[:8]} extra={extra[:8]}"
-            )
+        _validate_comparison_output(
+            output,
+            candidates_by_alias=candidates_by_alias,
+            mandatory_pairs=mandatory_pairs,
+        )
 
         edges: list[CandidatePairEdge] = []
         seen_pairs: set[tuple[str, str]] = set()
@@ -299,6 +361,8 @@ class FileAgentWorkflowSession:
         if not contexts:
             self._write_json("adjudication/consensus.json", {"consensus": []})
             return []
+        if self.config.require_distinct_direct_judges:
+            _validate_distinct_direct_judges(passes)
 
         with ThreadPoolExecutor(max_workers=max(1, len(passes))) as executor:
             futures = {
@@ -386,7 +450,27 @@ class FileAgentWorkflowSession:
             for candidate_id in accepted_candidate_ids
         }
         id_by_alias = {alias: candidate_id for candidate_id, alias in alias_by_id.items()}
-        task = {
+        expected_aliases = set(id_by_alias)
+        required_exclusion_aliases = {
+            alias_by_id[candidate_id]
+            for candidate_id in accepted_candidate_ids
+            if not _candidate_has_linked_evidence(candidates_by_id[candidate_id])
+        }
+        eligible_candidate_ids = [
+            candidate_id
+            for candidate_id in accepted_candidate_ids
+            if alias_by_id[candidate_id] not in required_exclusion_aliases
+        ]
+        must_link_groups = _canonical_must_link_groups(
+            candidate_ids=eligible_candidate_ids,
+            candidates_by_id=candidates_by_id,
+            decisions=decisions,
+        )
+        must_link_aliases = [
+            sorted(alias_by_id[candidate_id] for candidate_id in group)
+            for group in must_link_groups
+        ]
+        common_task = {
             "paper": self.paper_context,
             "accepted_candidates": [
                 _canonical_candidate_payload(candidates_by_id[candidate_id], alias_by_id[candidate_id])
@@ -411,26 +495,89 @@ class FileAgentWorkflowSession:
                 for decision in decisions
                 if any(candidate_id in alias_by_id for candidate_id in decision.accepted_candidate_ids)
             ],
+            "mandatory_same_unit_groups": must_link_aliases,
+            "mandatory_evidence_exclusions": [
+                {
+                    "candidate_id": alias,
+                    "reason": _candidate_evidence_ineligibility_reason(
+                        candidates_by_id[id_by_alias[alias]]
+                    ),
+                }
+                for alias in sorted(required_exclusion_aliases)
+            ],
             "requirements": {
                 "review_every_candidate": True,
                 "partition_candidates_exactly_once": True,
                 "pool_evidence_across_equivalent_candidates": True,
                 "exclude_trivial_or_paper_irrelevant_claims": True,
+                "exclude_candidates_without_valid_linked_evidence": True,
+                "honor_mandatory_same_unit_groups": True,
                 "assign_importance": ["central", "supporting", "minor"],
             },
         }
-        result = self._run_stage(
-            stage_key="canonicalization",
-            stage_label="Silver canonicalization",
+        draft_result = self._run_stage(
+            stage_key="canonicalization_draft",
+            stage_label="Silver canonicalization draft",
             model=self.config.canonicalization_model,
-            task=task,
+            task=common_task,
             output_model=CanonicalizationAgentOutput,
             skill_path=_skill_path("claims-silver-canonicalizer"),
         )
-        output = result.payload
-        assert isinstance(output, CanonicalizationAgentOutput)
-        expected_aliases = set(id_by_alias)
-        _validate_canonical_partition(output, expected_aliases)
+        draft = draft_result.payload
+        assert isinstance(draft, CanonicalizationAgentOutput)
+        draft_unit_ids = [f"draft_unit_{index:03d}" for index, _unit in enumerate(draft.units, start=1)]
+        draft_issues = _canonical_partition_issues(
+            draft,
+            expected_aliases=expected_aliases,
+            eligible_aliases=expected_aliases.difference(required_exclusion_aliases),
+            required_exclusion_aliases=required_exclusion_aliases,
+            must_link_groups=must_link_aliases,
+        )
+        self._write_json(
+            "silver/canonical_draft.json",
+            draft.model_dump(mode="json"),
+        )
+        audit_task = {
+            **common_task,
+            "canonical_draft": {
+                "reviewed_candidate_ids": draft.reviewed_candidate_ids,
+                "units": [
+                    {
+                        "draft_unit_id": draft_unit_id,
+                        **unit.model_dump(mode="json"),
+                    }
+                    for draft_unit_id, unit in zip(draft_unit_ids, draft.units, strict=True)
+                ],
+                "exclusions": [item.model_dump(mode="json") for item in draft.exclusions],
+            },
+            "validator_detected_draft_issues": draft_issues,
+            "audit_requirements": {
+                "return_a_corrected_final_partition": True,
+                "inspect_all_draft_units_globally": True,
+                "merge_transitive_duplicates_splits_and_non_material_refinements": True,
+                "exclude_trivial_irrelevant_or_unsupported_candidates": True,
+                "resolve_contradictory_units_without_preserving_both_as_facts": True,
+                "reassess_every_importance_tag_from_the_paper": True,
+            },
+        }
+        audit_result = self._run_stage(
+            stage_key="canonicalization_audit",
+            stage_label="Silver canonicalization audit",
+            model=self.config.canonical_audit_model or self.config.canonicalization_model,
+            task=audit_task,
+            output_model=CanonicalAuditOutput,
+            skill_path=_skill_path("claims-silver-canonical-auditor"),
+        )
+        output = audit_result.payload
+        assert isinstance(output, CanonicalAuditOutput)
+        _validate_canonical_audit(output, set(draft_unit_ids))
+        _validate_canonical_partition(
+            output,
+            expected_aliases=expected_aliases,
+            eligible_aliases=expected_aliases.difference(required_exclusion_aliases),
+            required_exclusion_aliases=required_exclusion_aliases,
+            must_link_groups=must_link_aliases,
+        )
 
         baseline_units = list(baseline_record.silver_units)
         canonical_units: list[SilverUnit] = []
@@ -486,6 +633,12 @@ class FileAgentWorkflowSession:
             "schema": "claims_silver_file_workflow_v1",
             "workspace_id": self.workspace_id,
             "canonical_exclusions": excluded,
+            "canonical_audit_findings": [
+                finding.model_dump(mode="json") for finding in output.findings
+            ],
+            "canonical_quality_checks": output.quality_checks.model_dump(mode="json"),
+            "mandatory_same_unit_group_count": len(must_link_aliases),
+            "mandatory_evidence_exclusion_count": len(required_exclusion_aliases),
         }
         record = baseline_record.model_copy(
             update={"silver_units": canonical_units, "metadata": metadata}
@@ -793,6 +946,108 @@ def _comparison_aliases(
     return aliases, candidates_by_alias
 
 
+def _exact_reference_submission_pairs(
+    candidates: list[ComparisonCandidate],
+    aliases: dict[str, str],
+) -> set[tuple[str, str]]:
+    references_by_statement: dict[str, list[ComparisonCandidate]] = {}
+    submissions_by_statement: dict[str, list[ComparisonCandidate]] = {}
+    for candidate in candidates:
+        normalized = normalize_statement(candidate.statement)
+        if not normalized:
+            continue
+        target = references_by_statement if candidate.origin == "bronze" else submissions_by_statement
+        target.setdefault(normalized, []).append(candidate)
+    return {
+        (aliases[reference.candidate_id], aliases[submission.candidate_id])
+        for normalized, references in references_by_statement.items()
+        for reference in references
+        for submission in submissions_by_statement.get(normalized, [])
+    }
+
+
+def _validate_comparison_output(
+    output: ComparisonAgentOutput,
+    *,
+    candidates_by_alias: dict[str, ComparisonCandidate],
+    mandatory_pairs: set[tuple[str, str]],
+) -> None:
+    expected_aliases = set(candidates_by_alias)
+    reviewed_aliases = [review.candidate_id for review in output.candidate_reviews]
+    if set(reviewed_aliases) != expected_aliases or len(reviewed_aliases) != len(expected_aliases):
+        missing = sorted(expected_aliases.difference(reviewed_aliases))
+        extra = sorted(set(reviewed_aliases).difference(expected_aliases))
+        raise FileAgentWorkflowError(
+            f"Comparison agent completeness check failed; missing={missing[:8]} extra={extra[:8]}"
+        )
+
+    proposals: dict[tuple[str, str], ComparisonPairProposal] = {}
+    for proposal in output.pairs:
+        left = candidates_by_alias.get(proposal.reference_candidate_id)
+        right = candidates_by_alias.get(proposal.submission_candidate_id)
+        if left is None or right is None:
+            raise FileAgentWorkflowError("Comparison agent returned an unknown candidate alias.")
+        if left.origin != "bronze" or right.origin != "miner":
+            raise FileAgentWorkflowError("Comparison agent returned a pair with invalid candidate sides.")
+        if proposal.relation not in ACTIONABLE_RELATIONS:
+            raise FileAgentWorkflowError("Comparison agent emitted a non-actionable relation as a pair.")
+        key = (proposal.reference_candidate_id, proposal.submission_candidate_id)
+        if key in proposals:
+            raise FileAgentWorkflowError(f"Comparison agent emitted duplicate pair {key}.")
+        proposals[key] = proposal
+
+    missing_mandatory = sorted(
+        pair
+        for pair in mandatory_pairs
+        if pair not in proposals or proposals[pair].relation != "semantic_equivalent"
+    )
+    if missing_mandatory:
+        raise FileAgentWorkflowError(
+            f"Comparison agent missed exact-restatement pairs: {missing_mandatory[:8]}"
+        )
+
+    review_relations: dict[tuple[str, str], RelationType] = {}
+    for review in output.candidate_reviews:
+        candidate = candidates_by_alias[review.candidate_id]
+        if not review.counterpart_reviews and not review.no_actionable_match_reason.strip():
+            raise FileAgentWorkflowError(
+                f"Comparison review for {review.candidate_id} has neither a counterpart nor a substantive no-match reason."
+            )
+        seen_counterparts: set[str] = set()
+        for counterpart_review in review.counterpart_reviews:
+            counterpart_alias = counterpart_review.counterpart_candidate_id
+            counterpart = candidates_by_alias.get(counterpart_alias)
+            if counterpart is None:
+                raise FileAgentWorkflowError("Comparison review referenced an unknown candidate alias.")
+            if counterpart.origin == candidate.origin:
+                raise FileAgentWorkflowError("Comparison review referenced a candidate on the same side.")
+            if counterpart_alias in seen_counterparts:
+                raise FileAgentWorkflowError(
+                    f"Comparison review for {review.candidate_id} repeated counterpart {counterpart_alias}."
+                )
+            seen_counterparts.add(counterpart_alias)
+            if counterpart_review.relation not in ACTIONABLE_RELATIONS:
+                raise FileAgentWorkflowError("Comparison review used a non-actionable counterpart relation.")
+            pair = (
+                (review.candidate_id, counterpart_alias)
+                if candidate.origin == "bronze"
+                else (counterpart_alias, review.candidate_id)
+            )
+            proposal = proposals.get(pair)
+            if proposal is None or proposal.relation != counterpart_review.relation:
+                raise FileAgentWorkflowError(
+                    f"Comparison review for {review.candidate_id} is not mirrored by pair {pair}."
+                )
+            review_relations[(review.candidate_id, counterpart_alias)] = counterpart_review.relation
+
+    for pair, proposal in proposals.items():
+        left_alias, right_alias = pair
+        if review_relations.get((left_alias, right_alias)) != proposal.relation:
+            raise FileAgentWorkflowError(f"Reference review does not substantiate pair {pair}.")
+        if review_relations.get((right_alias, left_alias)) != proposal.relation:
+            raise FileAgentWorkflowError(f"Submission review does not substantiate pair {pair}.")
+
+
 def _comparison_candidate_payload(candidate: ComparisonCandidate, alias: str) -> dict[str, Any]:
     return {
         "candidate_id": alias,
@@ -815,6 +1070,8 @@ def _canonical_candidate_payload(candidate: ComparisonCandidate, alias: str) -> 
         "source_span_ids": candidate.source_span_ids,
         "source_quotes": candidate.source_quotes,
         "evidence_records": candidate.metadata.get("evidence_records", []),
+        "evidence_eligible": _candidate_has_linked_evidence(candidate),
+        "evidence_ineligibility_reason": _candidate_evidence_ineligibility_reason(candidate),
     }
 
 
@@ -830,29 +1087,184 @@ def _referenced_source_spans(
     }
 
 
-def _validate_canonical_partition(
+def _candidate_has_linked_evidence(candidate: ComparisonCandidate) -> bool:
+    records = candidate.metadata.get("evidence_records") if isinstance(candidate.metadata, dict) else None
+    if not candidate.evidence_ids or not isinstance(records, list) or not candidate.source_span_ids:
+        return False
+    evidence_ids = set(candidate.evidence_ids)
+    return any(
+        isinstance(record, dict) and str(record.get("evidence_id") or "") in evidence_ids
+        for record in records
+    )
+
+
+def _candidate_evidence_ineligibility_reason(candidate: ComparisonCandidate) -> str:
+    if not candidate.evidence_ids:
+        return "Claim does not link an evidence ID."
+    records = candidate.metadata.get("evidence_records") if isinstance(candidate.metadata, dict) else None
+    linked_ids = {
+        str(record.get("evidence_id") or "")
+        for record in records or []
+        if isinstance(record, dict)
+    }
+    if not set(candidate.evidence_ids).intersection(linked_ids):
+        return "Claim evidence IDs do not resolve to stored evidence records."
+    if not candidate.source_span_ids:
+        return "Claim does not cite a source span."
+    return ""
+
+
+def _canonical_must_link_groups(
+    *,
+    candidate_ids: list[str],
+    candidates_by_id: dict[str, ComparisonCandidate],
+    decisions: list[AdjudicationDecision],
+) -> list[list[str]]:
+    allowed = set(candidate_ids)
+    parent = {candidate_id: candidate_id for candidate_id in candidate_ids}
+
+    def find(candidate_id: str) -> str:
+        while parent[candidate_id] != candidate_id:
+            parent[candidate_id] = parent[parent[candidate_id]]
+            candidate_id = parent[candidate_id]
+        return candidate_id
+
+    def union(group: list[str]) -> None:
+        members = [candidate_id for candidate_id in group if candidate_id in allowed]
+        if len(members) < 2:
+            return
+        root = find(members[0])
+        for candidate_id in members[1:]:
+            other = find(candidate_id)
+            if root != other:
+                parent[other] = root
+
+    exact_groups: dict[str, list[str]] = {}
+    for candidate_id in candidate_ids:
+        normalized = normalize_statement(candidates_by_id[candidate_id].statement)
+        if normalized:
+            exact_groups.setdefault(normalized, []).append(candidate_id)
+    for group in exact_groups.values():
+        union(group)
+    for decision in decisions:
+        if decision.same_silver_unit:
+            union(decision.accepted_candidate_ids)
+
+    groups: dict[str, list[str]] = {}
+    for candidate_id in candidate_ids:
+        groups.setdefault(find(candidate_id), []).append(candidate_id)
+    return sorted(
+        (sorted(group) for group in groups.values() if len(group) > 1),
+        key=lambda group: tuple(group),
+    )
+
+
+def _canonical_partition_issues(
     output: CanonicalizationAgentOutput,
+    *,
     expected_aliases: set[str],
-) -> None:
+    eligible_aliases: set[str],
+    required_exclusion_aliases: set[str],
+    must_link_groups: list[list[str]],
+) -> list[str]:
+    issues: list[str] = []
     if (
         set(output.reviewed_candidate_ids) != expected_aliases
         or len(output.reviewed_candidate_ids) != len(expected_aliases)
     ):
-        raise FileAgentWorkflowError("Canonicalization agent did not review exactly every accepted candidate.")
-    if expected_aliases and not output.units:
-        raise FileAgentWorkflowError("Canonicalization agent excluded every accepted scientific candidate.")
+        issues.append("Canonicalization did not review exactly every accepted candidate.")
+    if eligible_aliases and not output.units:
+        issues.append("Canonicalization excluded every evidence-eligible scientific candidate.")
     assigned: list[str] = []
-    for unit in output.units:
+    unit_index_by_alias: dict[str, int] = {}
+    for unit_index, unit in enumerate(output.units, start=1):
         assigned.extend(unit.candidate_ids)
+        for alias in unit.candidate_ids:
+            unit_index_by_alias[alias] = unit_index
     for exclusion in output.exclusions:
         assigned.extend(exclusion.candidate_ids)
     unknown = sorted(set(assigned).difference(expected_aliases))
     duplicates = sorted({alias for alias in assigned if assigned.count(alias) > 1})
     missing = sorted(expected_aliases.difference(assigned))
     if unknown or duplicates or missing:
-        raise FileAgentWorkflowError(
-            f"Canonical partition invalid; missing={missing[:8]} duplicate={duplicates[:8]} unknown={unknown[:8]}"
+        issues.append(
+            f"Canonical partition invalid; missing={missing[:8]} duplicate={duplicates[:8]} unknown={unknown[:8]}."
         )
+    wrongly_included = sorted(required_exclusion_aliases.intersection(unit_index_by_alias))
+    if wrongly_included:
+        issues.append(f"Candidates without valid linked evidence were included: {wrongly_included[:8]}.")
+    excluded_aliases = {
+        alias for exclusion in output.exclusions for alias in exclusion.candidate_ids
+    }
+    missing_required_exclusions = sorted(required_exclusion_aliases.difference(excluded_aliases))
+    if missing_required_exclusions:
+        issues.append(
+            f"Required evidence exclusions were not honored: {missing_required_exclusions[:8]}."
+        )
+    for group in must_link_groups:
+        included = [alias for alias in group if alias in unit_index_by_alias]
+        if included and (
+            len(included) != len(group)
+            or len({unit_index_by_alias[alias] for alias in included}) != 1
+        ):
+            issues.append(f"Mandatory same-unit group was split: {group[:8]}.")
+    statements: dict[str, list[int]] = {}
+    for index, unit in enumerate(output.units, start=1):
+        normalized = normalize_statement(unit.statement)
+        if normalized:
+            statements.setdefault(normalized, []).append(index)
+    duplicate_statements = [indexes for indexes in statements.values() if len(indexes) > 1]
+    if duplicate_statements:
+        issues.append(f"Canonical statements are exact duplicates across units: {duplicate_statements[:8]}.")
+    return issues
+
+
+def _validate_canonical_partition(
+    output: CanonicalizationAgentOutput,
+    *,
+    expected_aliases: set[str],
+    eligible_aliases: set[str],
+    required_exclusion_aliases: set[str],
+    must_link_groups: list[list[str]],
+) -> None:
+    issues = _canonical_partition_issues(
+        output,
+        expected_aliases=expected_aliases,
+        eligible_aliases=eligible_aliases,
+        required_exclusion_aliases=required_exclusion_aliases,
+        must_link_groups=must_link_groups,
+    )
+    if issues:
+        raise FileAgentWorkflowError("Canonical quality gate failed: " + " ".join(issues))
+
+
+def _validate_canonical_audit(output: CanonicalAuditOutput, expected_draft_unit_ids: set[str]) -> None:
+    if (
+        set(output.reviewed_draft_unit_ids) != expected_draft_unit_ids
+        or len(output.reviewed_draft_unit_ids) != len(expected_draft_unit_ids)
+    ):
+        raise FileAgentWorkflowError("Canonical auditor did not review exactly every draft unit.")
+    checks = output.quality_checks.model_dump()
+    incomplete = sorted(name for name, completed in checks.items() if not completed)
+    if incomplete:
+        raise FileAgentWorkflowError(f"Canonical auditor did not complete checks: {incomplete}.")
+
+
+def _validate_distinct_direct_judges(passes: list[AdjudicationPass]) -> None:
+    cli_passes = [adjudication_pass for adjudication_pass in passes if isinstance(adjudication_pass, CLIAdjudicationPass)]
+    if len(cli_passes) < 2:
+        return
+    models = [_normalized_model_id(adjudication_pass.model) for adjudication_pass in cli_passes]
+    if len(set(models)) != len(models):
+        raise FileAgentWorkflowError(
+            "File-agent direct judges must use distinct models; set "
+            "CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=false only for controlled benchmarks."
+        )
+
+
+def _normalized_model_id(model: str) -> str:
+    normalized = model.strip().lower()
+    return normalized.removeprefix("openrouter/")
 
 
 def _run_pass_many(

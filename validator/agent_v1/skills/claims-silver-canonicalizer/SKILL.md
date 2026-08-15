@@ -14,6 +14,8 @@ Create one canonical Silver unit for each unique scientific claim. Prevent split
 ## Rules
 
 - Review every supplied candidate and place it exactly once: in one canonical unit or one relevance exclusion.
+- Exclude every candidate listed in `mandatory_evidence_exclusions`; it cannot receive Silver credit.
+- Keep every `mandatory_same_unit_groups` group together if retained. These groups encode exact restatements or adjudicated same-unit decisions.
 - Cluster transitively across the whole accepted set. Do not make isolated pairwise decisions.
 - Merge logical equivalents, paraphrases, refinements that do not add a distinct result, and split/restated versions of one underlying claim.
 - Keep distinct claims separate when they assert materially different results, populations, interventions, mechanisms, outcomes, or qualifiers.

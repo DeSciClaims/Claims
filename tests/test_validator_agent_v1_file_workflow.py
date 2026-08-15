@@ -5,6 +5,8 @@ import sys
 from dataclasses import dataclass
 from types import MethodType, SimpleNamespace
 
+import pytest
+
 from validator.agent_v1.adjudication_models import (
     AdjudicationContextBundle,
     AdjudicationDecision,
@@ -17,13 +19,18 @@ from validator.agent_v1.comparison_models import (
     SilverRecord,
     SilverUnit,
 )
-from validator.agent_v1.adjudication_passes import StaticAdjudicationPass
+from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, StaticAdjudicationPass
 from validator.agent_v1.adjudication_runner import run_adjudication_cases
 from validator.agent_v1.file_agent_workflow import (
+    CanonicalAuditOutput,
+    CanonicalQualityChecks,
     CanonicalUnitProposal,
     CanonicalizationAgentOutput,
     ComparisonAgentOutput,
+    ComparisonCandidateReview,
+    ComparisonCounterpartReview,
     ComparisonPairProposal,
+    FileAgentWorkflowError,
     FileAgentWorkflowConfig,
     FileAgentWorkflowSession,
 )
@@ -48,7 +55,30 @@ def test_file_comparator_requires_complete_global_review_and_maps_anonymous_ids(
         }
         return SimpleNamespace(
             payload=ComparisonAgentOutput(
-                reviewed_candidate_ids=["reference_001", "submission_001_candidate_001"],
+                candidate_reviews=[
+                    ComparisonCandidateReview(
+                        candidate_id="reference_001",
+                        counterpart_reviews=[
+                            ComparisonCounterpartReview(
+                                counterpart_candidate_id="submission_001_candidate_001",
+                                relation="compatible_refinement",
+                                confidence=0.91,
+                                rationale="The submission adds a time qualifier.",
+                            )
+                        ],
+                    ),
+                    ComparisonCandidateReview(
+                        candidate_id="submission_001_candidate_001",
+                        counterpart_reviews=[
+                            ComparisonCounterpartReview(
+                                counterpart_candidate_id="reference_001",
+                                relation="compatible_refinement",
+                                confidence=0.91,
+                                rationale="The submission adds a time qualifier.",
+                            )
+                        ],
+                    ),
+                ],
                 pairs=[
                     ComparisonPairProposal(
                         reference_candidate_id="reference_001",
@@ -69,6 +99,65 @@ def test_file_comparator_requires_complete_global_review_and_maps_anonymous_ids(
     assert edges[0].right_candidate_id == "miner:uid_9:C01"
     assert edges[0].relation == "compatible_refinement"
     assert edges[0].metadata["workflow"] == "file_agent"
+
+
+def test_file_comparator_rejects_ceremonial_candidate_review(tmp_path) -> None:
+    session = _session(
+        tmp_path,
+        [
+            _candidate("bronze:C01", "bronze", None, "Treatment reduced mortality."),
+            _candidate("miner:uid_9:C01", "miner", "uid_9", "No treatment effect was found."),
+        ],
+    )
+
+    def fake_stage(_self, **_kwargs):
+        return SimpleNamespace(
+            payload=ComparisonAgentOutput(
+                candidate_reviews=[
+                    ComparisonCandidateReview(candidate_id="reference_001"),
+                    ComparisonCandidateReview(
+                        candidate_id="submission_001_candidate_001",
+                        no_actionable_match_reason="No related reference result.",
+                    ),
+                ],
+                pairs=[],
+            )
+        )
+
+    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    with pytest.raises(FileAgentWorkflowError, match="neither a counterpart"):
+        session.run_comparison()
+
+
+def test_file_comparator_requires_exact_restatement_pair(tmp_path) -> None:
+    session = _session(
+        tmp_path,
+        [
+            _candidate("bronze:C01", "bronze", None, "Treatment reduced mortality."),
+            _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment reduced mortality."),
+        ],
+    )
+
+    def fake_stage(_self, **_kwargs):
+        return SimpleNamespace(
+            payload=ComparisonAgentOutput(
+                candidate_reviews=[
+                    ComparisonCandidateReview(
+                        candidate_id="reference_001",
+                        no_actionable_match_reason="No match.",
+                    ),
+                    ComparisonCandidateReview(
+                        candidate_id="submission_001_candidate_001",
+                        no_actionable_match_reason="No match.",
+                    ),
+                ],
+                pairs=[],
+            )
+        )
+
+    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    with pytest.raises(FileAgentWorkflowError, match="missed exact-restatement"):
+        session.run_comparison()
 
 
 def test_file_judges_run_concurrently_and_tiebreak_only_unresolved_cases(tmp_path) -> None:
@@ -119,6 +208,41 @@ def test_file_judges_run_concurrently_and_tiebreak_only_unresolved_cases(tmp_pat
     assert tiebreak.calls == 1
 
 
+def test_file_judges_require_distinct_direct_models(tmp_path) -> None:
+    candidate = _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment reduced mortality.")
+    context = AdjudicationContextBundle(
+        case=BronzeDiffCase(
+            case_id="case_1",
+            paper_id="paper",
+            miner_id="uid_9",
+            mismatch_type="EXTRA_FROM_MINER",
+            candidate_ids=[candidate.candidate_id],
+            miner_candidate_id=candidate.candidate_id,
+            question="Is this candidate valid?",
+        ),
+        candidates=[candidate],
+    )
+    session = _session(tmp_path, [candidate])
+    passes = [
+        CLIAdjudicationPass(
+            pass_id=pass_id,
+            adjudication_profile_id=pass_id,
+            model_runtime_id="hermes-cli",
+            command=["false"],
+            model="deepseek/deepseek-v4-flash",
+        )
+        for pass_id in ("pass_a", "pass_b")
+    ]
+
+    with pytest.raises(FileAgentWorkflowError, match="distinct models"):
+        session.run_adjudication(
+            [context],
+            passes=passes,
+            tiebreak_pass=None,
+            direct_judge_confidence=0.9,
+        )
+
+
 def test_file_canonicalizer_partitions_candidates_and_pools_evidence(tmp_path) -> None:
     candidates = [
         _candidate(
@@ -147,14 +271,15 @@ def test_file_canonicalizer_partitions_candidates_and_pools_evidence(tmp_path) -
         ),
     ]
     session = _session(tmp_path, candidates)
+    draft_payload = None
 
     def fake_stage(_self, **kwargs):
-        assert kwargs["stage_key"] == "canonicalization"
+        nonlocal draft_payload
         aliases = [row["candidate_id"] for row in kwargs["task"]["accepted_candidates"]]
-        substantive = aliases[:2]
-        trivial = aliases[2]
-        return SimpleNamespace(
-            payload=CanonicalizationAgentOutput(
+        if kwargs["stage_key"] == "canonicalization_draft":
+            substantive = aliases[:2]
+            trivial = aliases[2]
+            draft_payload = CanonicalizationAgentOutput(
                 reviewed_candidate_ids=aliases,
                 units=[
                     CanonicalUnitProposal(
@@ -165,6 +290,21 @@ def test_file_canonicalizer_partitions_candidates_and_pools_evidence(tmp_path) -
                     )
                 ],
                 exclusions=[{"candidate_ids": [trivial], "reason": "Incidental document formatting."}],
+            )
+            return SimpleNamespace(payload=draft_payload)
+        assert kwargs["stage_key"] == "canonicalization_audit"
+        assert draft_payload is not None
+        return SimpleNamespace(
+            payload=CanonicalAuditOutput(
+                **draft_payload.model_dump(),
+                reviewed_draft_unit_ids=["draft_unit_001"],
+                quality_checks=CanonicalQualityChecks(
+                    duplicate_or_split_attack_checked=True,
+                    paper_relevance_checked=True,
+                    evidence_support_checked=True,
+                    contradiction_checked=True,
+                    importance_checked=True,
+                ),
             )
         )
 
@@ -201,6 +341,57 @@ def test_file_canonicalizer_partitions_candidates_and_pools_evidence(tmp_path) -
     assert record.metadata["file_agent_workflow"]["canonical_exclusions"][0]["candidate_ids"] == [
         "miner:uid_9:C02"
     ]
+
+
+def test_file_canonicalizer_rejects_unit_without_linked_evidence(tmp_path) -> None:
+    candidate = _candidate(
+        "miner:uid_9:C01",
+        "miner",
+        "uid_9",
+        "Treatment reduced mortality.",
+        source_span_ids=["S1"],
+    )
+    session = _session(tmp_path, [candidate])
+    draft_payload = None
+
+    def fake_stage(_self, **kwargs):
+        nonlocal draft_payload
+        alias = kwargs["task"]["accepted_candidates"][0]["candidate_id"]
+        if kwargs["stage_key"] == "canonicalization_draft":
+            draft_payload = CanonicalizationAgentOutput(
+                reviewed_candidate_ids=[alias],
+                units=[
+                    CanonicalUnitProposal(
+                        statement=candidate.statement,
+                        candidate_ids=[alias],
+                    )
+                ],
+            )
+            return SimpleNamespace(payload=draft_payload)
+        assert draft_payload is not None
+        return SimpleNamespace(
+            payload=CanonicalAuditOutput(
+                **draft_payload.model_dump(),
+                reviewed_draft_unit_ids=["draft_unit_001"],
+                quality_checks=CanonicalQualityChecks(
+                    duplicate_or_split_attack_checked=True,
+                    paper_relevance_checked=True,
+                    evidence_support_checked=True,
+                    contradiction_checked=True,
+                    importance_checked=True,
+                ),
+            )
+        )
+
+    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    baseline = SilverRecord(
+        silver_record_id="silver_1",
+        paper_id="paper",
+        silver_units=[_unit("unit_m", candidate)],
+    )
+
+    with pytest.raises(FileAgentWorkflowError, match="without valid linked evidence"):
+        session.run_canonicalization(baseline_record=baseline, decisions=[])
 
 
 def test_orchestrator_uses_file_workflow_without_legacy_relation_or_importance_calls() -> None:
@@ -262,7 +453,14 @@ match = re.search(r"Write exactly one JSON object to (.+)\\.", query)
 if match is None:
     raise SystemExit(2)
 Path(match.group(1)).write_text(
-    json.dumps({"reviewed_candidate_ids": ["reference_001"], "pairs": []}),
+    json.dumps({
+        "candidate_reviews": [{
+            "candidate_id": "reference_001",
+            "counterpart_reviews": [],
+            "no_actionable_match_reason": "No submission candidates were supplied."
+        }],
+        "pairs": []
+    }),
     encoding="utf-8",
 )
 """
@@ -281,7 +479,7 @@ Path(match.group(1)).write_text(
     )
 
     assert isinstance(result.payload, ComparisonAgentOutput)
-    assert result.payload.reviewed_candidate_ids == ["reference_001"]
+    assert result.payload.candidate_reviews[0].candidate_id == "reference_001"
     assert json.loads(result.output_path.read_text(encoding="utf-8"))["pairs"] == []
 
 
@@ -325,6 +523,12 @@ def _candidate(
         normalized_statement=statement.lower(),
         evidence_ids=evidence_ids or [],
         source_span_ids=source_span_ids or [],
+        metadata={
+            "evidence_records": [
+                {"evidence_id": evidence_id, "source_refs": [{"span_ids": source_span_ids or []}]}
+                for evidence_id in evidence_ids or []
+            ]
+        },
     )
 
 

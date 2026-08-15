@@ -52,6 +52,8 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     monkeypatch.setenv("CLAIMS_SILVER_RELATION_WALL_TIMEOUT", "600")
     monkeypatch.setenv("CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS", "48")
     monkeypatch.setenv("CLAIMS_SILVER_CONSOLIDATION_TOP_K", "7")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "qwen/qwen3.7-flash")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES", "true")
     config = SimpleNamespace(
         netuid=530,
         subtensor=SimpleNamespace(network="test"),
@@ -88,6 +90,8 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_silver_relation_batch_input_tokens"] == 80000
     assert snapshot["claims_silver_relation_wall_timeout"] == 600.0
     assert snapshot["claims_silver_pairing_max_dense_pairs"] == 48
+    assert snapshot["claims_silver_file_agent_canonical_audit_model"] == "qwen/qwen3.7-flash"
+    assert snapshot["claims_silver_file_agent_require_distinct_judges"] is True
     assert snapshot["claims_silver_consolidation_top_k"] == 7
     assert snapshot["claims_run_heartbeat_interval"] == 60.0
     assert "api_key" not in json.dumps(snapshot).lower()

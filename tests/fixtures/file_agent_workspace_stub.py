@@ -13,7 +13,9 @@ def main() -> int:
     task_path = _path_from_query(query, "Read the complete task from")
     output_path = _path_from_query(query, "Write exactly one JSON object to")
     task = json.loads(task_path.read_text(encoding="utf-8"))
-    if "accepted_candidates" in task:
+    if "canonical_draft" in task:
+        output = _canonical_audit(task)
+    elif "accepted_candidates" in task:
         output = _canonicalization(task)
     elif "cases" in task:
         output = _adjudication(task)
@@ -45,10 +47,28 @@ def _comparison(task: dict[str, Any]) -> dict[str, Any]:
                     "rationale": "Deterministic fixture matched normalized statements exactly.",
                 }
             )
-    return {
-        "reviewed_candidate_ids": [row["candidate_id"] for row in candidates],
-        "pairs": pairs,
+    reviews_by_id = {
+        row["candidate_id"]: {
+            "candidate_id": row["candidate_id"],
+            "counterpart_reviews": [],
+            "no_actionable_match_reason": "No exact normalized counterpart in the fixture.",
+        }
+        for row in candidates
     }
+    for pair in pairs:
+        left = pair["reference_candidate_id"]
+        right = pair["submission_candidate_id"]
+        for candidate_id, counterpart_id in ((left, right), (right, left)):
+            reviews_by_id[candidate_id]["counterpart_reviews"].append(
+                {
+                    "counterpart_candidate_id": counterpart_id,
+                    "relation": pair["relation"],
+                    "confidence": pair["confidence"],
+                    "rationale": pair["rationale"],
+                }
+            )
+            reviews_by_id[candidate_id]["no_actionable_match_reason"] = ""
+    return {"candidate_reviews": list(reviews_by_id.values()), "pairs": pairs}
 
 
 def _adjudication(task: dict[str, Any]) -> dict[str, Any]:
@@ -79,8 +99,13 @@ def _adjudication(task: dict[str, Any]) -> dict[str, Any]:
 
 def _canonicalization(task: dict[str, Any]) -> dict[str, Any]:
     candidates = task.get("accepted_candidates", [])
+    required_exclusions = {
+        row["candidate_id"] for row in task.get("mandatory_evidence_exclusions", [])
+    }
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in candidates:
+        if row["candidate_id"] in required_exclusions:
+            continue
         grouped[_normalized(row.get("statement"))].append(row)
     units = []
     for rows in grouped.values():
@@ -95,7 +120,34 @@ def _canonicalization(task: dict[str, Any]) -> dict[str, Any]:
     return {
         "reviewed_candidate_ids": [row["candidate_id"] for row in candidates],
         "units": units,
-        "exclusions": [],
+        "exclusions": [
+            {
+                "candidate_ids": [candidate_id],
+                "reason": "Candidate lacks valid linked evidence.",
+            }
+            for candidate_id in sorted(required_exclusions)
+        ],
+    }
+
+
+def _canonical_audit(task: dict[str, Any]) -> dict[str, Any]:
+    draft = task["canonical_draft"]
+    return {
+        "reviewed_candidate_ids": draft["reviewed_candidate_ids"],
+        "reviewed_draft_unit_ids": [row["draft_unit_id"] for row in draft["units"]],
+        "quality_checks": {
+            "duplicate_or_split_attack_checked": True,
+            "paper_relevance_checked": True,
+            "evidence_support_checked": True,
+            "contradiction_checked": True,
+            "importance_checked": True,
+        },
+        "findings": [],
+        "units": [
+            {key: value for key, value in row.items() if key != "draft_unit_id"}
+            for row in draft["units"]
+        ],
+        "exclusions": draft["exclusions"],
     }
 
 

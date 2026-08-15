@@ -292,8 +292,10 @@ Optional Silver graph-pairing envs:
 File-workspace Silver controls:
 
 - `CLAIMS_SILVER_FILE_AGENT_HARNESS=hermes-cli`: comparator and canonicalizer harness; `codex-cli` and `claude-cli` are also supported.
-- `CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL=<MODEL>` / `CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL=<MODEL>`: stage models.
+- `CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL=<MODEL>` / `CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL=<MODEL>`: comparator and canonical draft models.
+- `CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL=<MODEL>`: independent model that audits and revises the canonical draft; defaults to adjudicator B.
 - Existing adjudication harness and model settings control judge A, judge B, and the conditional tiebreaker.
+- `CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true`: require different models for direct judges A and B.
 - `--claims.silver-adjudication-max-in-flight`: global process/model-call cap shared by all file-agent stages.
 - `CLAIMS_SILVER_FILE_AGENT_TIMEOUT=1800`: absolute timeout for each file-agent execution.
 - `CLAIMS_SILVER_FILE_AGENT_USAGE_GRACE_SECONDS=15`: allow a completed CLI to emit its usage footer before forced cleanup.
