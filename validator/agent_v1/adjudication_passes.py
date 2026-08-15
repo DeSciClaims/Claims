@@ -1210,6 +1210,51 @@ def adjudication_batch_payload(contexts: list[AdjudicationContextBundle]) -> dic
     return _adjudication_batch_payload(contexts)
 
 
+def file_adjudication_batch_payload(contexts: list[AdjudicationContextBundle]) -> dict[str, Any]:
+    """Compact anonymous contract for file-agent adjudication.
+
+    Candidates and source contexts are stored once, while cases reference them by
+    opaque IDs. This avoids repeating large evidence records across relation cases.
+    """
+    cases: list[dict[str, Any]] = []
+    candidate_catalog: list[dict[str, Any]] = []
+    candidate_refs: dict[str, str] = {}
+    source_contexts: dict[str, str] = {}
+    for context in contexts:
+        ordered_candidates = _anonymous_candidate_order(context)
+        case_candidate_refs: list[str] = []
+        for candidate in ordered_candidates:
+            candidate_ref = candidate_refs.get(candidate.candidate_id)
+            if candidate_ref is None:
+                candidate_ref = f"candidate_{len(candidate_refs) + 1:04d}"
+                candidate_refs[candidate.candidate_id] = candidate_ref
+                candidate_catalog.append(
+                    _anonymous_candidate_payload(candidate, anonymous_id=candidate_ref)
+                )
+            case_candidate_refs.append(candidate_ref)
+
+        source_context = str(context.source_context or "")[:12000]
+        source_context_ref = f"source_{hashlib.sha256(source_context.encode('utf-8')).hexdigest()[:16]}"
+        source_contexts.setdefault(source_context_ref, source_context)
+        cases.append(
+            {
+                "case_tracking_id": _case_tracking_id(context),
+                "case_type": _neutral_case_type(context),
+                "question": _neutral_question(context),
+                "candidate_refs": case_candidate_refs,
+                "source_context_ref": source_context_ref,
+            }
+        )
+    return {
+        "candidate_catalog": candidate_catalog,
+        "cases": cases,
+        "source_contexts": source_contexts,
+        "allowed_dispositions": sorted(PROMPT_DISPOSITIONS),
+        "disposition_meanings": _adjudication_disposition_meanings(),
+        "required_json_schema": _adjudication_batch_schema(),
+    }
+
+
 def _adjudication_batch_schema() -> dict[str, Any]:
     return {
         "results": [
@@ -1458,20 +1503,22 @@ def _failed_adjudication_vote(
 
 
 def _anonymous_candidate_payloads(context: AdjudicationContextBundle) -> list[dict[str, Any]]:
-    payloads = []
-    for index, candidate in enumerate(_anonymous_candidate_order(context), start=1):
-        payloads.append(
-            {
-                "anonymous_id": f"candidate_{index}",
-                "statement": candidate.statement,
-                "qualifier": candidate.qualifier,
-                "evidence_ids": candidate.evidence_ids,
-                "source_span_ids": candidate.source_span_ids,
-                "source_quotes": candidate.source_quotes[:3],
-                "evidence_records": _candidate_evidence_records(candidate),
-            }
-        )
-    return payloads
+    return [
+        _anonymous_candidate_payload(candidate, anonymous_id=f"candidate_{index}")
+        for index, candidate in enumerate(_anonymous_candidate_order(context), start=1)
+    ]
+
+
+def _anonymous_candidate_payload(candidate: Any, *, anonymous_id: str) -> dict[str, Any]:
+    return {
+        "anonymous_id": anonymous_id,
+        "statement": candidate.statement,
+        "qualifier": candidate.qualifier,
+        "evidence_ids": candidate.evidence_ids,
+        "source_span_ids": candidate.source_span_ids,
+        "source_quotes": candidate.source_quotes[:3],
+        "evidence_records": _candidate_evidence_records(candidate),
+    }
 
 
 def _anonymous_candidate_order(context: AdjudicationContextBundle):

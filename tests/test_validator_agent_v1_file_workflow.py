@@ -19,7 +19,11 @@ from validator.agent_v1.comparison_models import (
     SilverRecord,
     SilverUnit,
 )
-from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, StaticAdjudicationPass
+from validator.agent_v1.adjudication_passes import (
+    CLIAdjudicationPass,
+    StaticAdjudicationPass,
+    file_adjudication_batch_payload,
+)
 from validator.agent_v1.adjudication_runner import run_adjudication_cases
 from validator.agent_v1.file_agent_workflow import (
     CanonicalAuditOutput,
@@ -32,6 +36,7 @@ from validator.agent_v1.file_agent_workflow import (
     FileAgentWorkflowError,
     FileAgentWorkflowConfig,
     FileAgentWorkflowSession,
+    _file_agent_judge_command,
 )
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline
 
@@ -377,6 +382,86 @@ def test_file_judges_require_distinct_direct_models(tmp_path) -> None:
             tiebreak_pass=None,
             direct_judge_confidence=0.9,
         )
+
+
+def test_file_judge_payload_catalogues_repeated_candidates_once(tmp_path) -> None:
+    candidate_a = _candidate(
+        "bronze:C01",
+        "bronze",
+        None,
+        "Treatment reduced mortality.",
+        evidence_ids=["EV01"],
+        source_span_ids=["S1"],
+    )
+    candidate_b = _candidate(
+        "miner:uid_9:C01",
+        "miner",
+        "uid_9",
+        "Treatment reduced 30-day mortality.",
+        evidence_ids=["EV02"],
+        source_span_ids=["S2"],
+    )
+    contexts = [
+        AdjudicationContextBundle(
+            case=BronzeDiffCase(
+                case_id="case_1",
+                paper_id="paper",
+                miner_id="uid_9",
+                mismatch_type="MISSING_FROM_MINER",
+                candidate_ids=[candidate_a.candidate_id],
+                question="Is this candidate valid?",
+            ),
+            candidates=[candidate_a],
+            source_context="S1: Treatment reduced mortality.",
+        ),
+        AdjudicationContextBundle(
+            case=BronzeDiffCase(
+                case_id="case_2",
+                paper_id="paper",
+                miner_id="uid_9",
+                mismatch_type="COMPATIBLE_REFINEMENT",
+                candidate_ids=[candidate_a.candidate_id, candidate_b.candidate_id],
+                question="How are these candidates related?",
+            ),
+            candidates=[candidate_a, candidate_b],
+            source_context="S1: Treatment reduced mortality.\nS2: Treatment reduced 30-day mortality.",
+        ),
+    ]
+
+    payload = file_adjudication_batch_payload(contexts)
+
+    assert len(payload["candidate_catalog"]) == 2
+    assert len(payload["cases"]) == 2
+    assert len(payload["cases"][0]["candidate_refs"]) == 1
+    assert len(payload["cases"][1]["candidate_refs"]) == 2
+    assert payload["cases"][0]["candidate_refs"][0] in payload["cases"][1]["candidate_refs"]
+    assert all("candidates" not in case for case in payload["cases"])
+    assert all("origin" not in candidate for candidate in payload["candidate_catalog"])
+
+
+def test_file_judge_uses_file_agent_hermes_turn_budget(tmp_path) -> None:
+    session = _session(tmp_path, [])
+    adjudication_pass = CLIAdjudicationPass(
+        pass_id="pass_a",
+        adjudication_profile_id="hermes-cli:deepseek/deepseek-v4-flash",
+        model_runtime_id="hermes-cli",
+        command=[
+            "hermes",
+            "chat",
+            "--provider",
+            "openrouter",
+            "-m",
+            "deepseek/deepseek-v4-flash",
+            "--max-turns",
+            "10",
+            "-q",
+        ],
+        model="deepseek/deepseek-v4-flash",
+    )
+
+    command = _file_agent_judge_command(session.config, adjudication_pass)
+
+    assert command[command.index("--max-turns") + 1] == "30"
 
 
 def test_file_canonicalizer_partitions_candidates_and_pools_evidence(tmp_path) -> None:

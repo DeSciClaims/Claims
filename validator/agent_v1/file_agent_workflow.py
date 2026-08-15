@@ -25,7 +25,7 @@ from .adjudication_consensus import aggregate_adjudication_votes
 from .adjudication_models import AdjudicationConsensus, AdjudicationContextBundle, AdjudicationDecision, AdjudicationVote
 from .adjudication_passes import (
     CLIAdjudicationPass,
-    adjudication_batch_payload,
+    file_adjudication_batch_payload,
     votes_from_adjudication_batch_payload,
 )
 from .adjudication_runner import AdjudicationPass
@@ -783,7 +783,7 @@ class FileAgentWorkflowSession:
         contexts: list[AdjudicationContextBundle],
     ) -> list[AdjudicationVote]:
         if isinstance(adjudication_pass, CLIAdjudicationPass):
-            task = adjudication_batch_payload(contexts)
+            task = file_adjudication_batch_payload(contexts)
             try:
                 result = self._run_stage(
                     stage_key=f"judge_{adjudication_pass.pass_id}",
@@ -792,11 +792,7 @@ class FileAgentWorkflowSession:
                     task=task,
                     output_model=JudgeAgentOutput,
                     skill_path=_skill_path("claims-silver-adjudicator"),
-                    command=(
-                        shlex.split(adjudication_pass.command)
-                        if isinstance(adjudication_pass.command, str)
-                        else list(adjudication_pass.command)
-                    ),
+                    command=_file_agent_judge_command(self.config, adjudication_pass),
                     harness=adjudication_pass.model_runtime_id,
                     provider=adjudication_pass.provider,
                     pass_id=adjudication_pass.pass_id,
@@ -1715,6 +1711,30 @@ def _agent_command(config: FileAgentWorkflowConfig, *, model: str, stage_key: st
     return shlex.split(
         f"{claude} -p --permission-mode bypassPermissions --output-format stream-json --verbose{model_args}"
     )
+
+
+def _file_agent_judge_command(
+    config: FileAgentWorkflowConfig,
+    adjudication_pass: CLIAdjudicationPass,
+) -> list[str]:
+    command = (
+        shlex.split(adjudication_pass.command)
+        if isinstance(adjudication_pass.command, str)
+        else list(adjudication_pass.command)
+    )
+    if adjudication_pass.model_runtime_id.strip().lower().replace("_", "-") != "hermes-cli":
+        return command
+
+    try:
+        option_index = command.index("--max-turns")
+    except ValueError:
+        if command and "hermes" in Path(command[0]).name.lower() and "chat" in command:
+            return [*command, "--max-turns", str(config.max_turns)]
+        return command
+    if option_index + 1 >= len(command):
+        return command
+    command[option_index + 1] = str(config.max_turns)
+    return command
 
 
 def _skill_path(name: str) -> Path:
