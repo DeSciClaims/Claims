@@ -239,6 +239,7 @@ python -m neurons.validator \
   --claims.silver-adjudication-max-in-flight 32 \
   --claims.diagnostic-miner-max-workers 2 \
   --claims.diagnostic-max-workers 10 \
+  --claims.diagnostic-miner-batch-size 10 \
   --claims.silver-paper-max-workers 10 \
   --claims.output-dir validator/agent_v1/outputs/neuron/testnet \
   --claims.timeout 1800
@@ -250,7 +251,7 @@ Useful validator flags:
 - `--claims.batch-size 3`: request a random approved paper batch from the backend. The backend accepts larger V0 sampling batches when enough approved papers are available.
 - `--claims.target-uid 1`: only query a specific miner UID. May be passed more than once for focused smoke tests.
 - `--claims.topic economics`: filter backend-selected papers by topic. May be passed more than once.
-- `--claims.batch-score-rule mean`: score the batch by mean Silver score. `min`, `mean`, and `median` are available.
+- Silver batch score: mean across scoring-eligible papers. Miner misses count as zero; validator-failed papers are excluded for every miner.
 - `--claims.rigor-harness hermes-cli --claims.rigor-model <MODEL>`: choose the diagnostic validation harness/model.
 - `--claims.reference-harness codex-cli --claims.reference-model <MODEL>`: choose the private reference miner harness/model.
 - `--claims.adjudication-harness dspy`: call adjudicator models in-process through DSPy/OpenRouter; CLI harnesses remain available.
@@ -258,15 +259,20 @@ Useful validator flags:
 - `--claims.silver-adjudication-batch-size 8`: adjudicate several anonymous cases per model call; use `1` to disable batching.
 - `--claims.silver-adjudication-max-in-flight 32`: cap Silver model calls globally across papers and passes; use `0` for unlimited.
 - Hermes adjudication defaults to a skill-based agent workflow with mode-`0600` task/schema files and validated JSON output. Set `CLAIMS_SILVER_ADJUDICATION_HERMES_EXECUTION_MODE=oneshot` for the optional tool-free path; use `CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE=append` only for legacy CLI behavior.
-- `CLAIMS_SILVER_WORKFLOW_MODE=file-agent`: use one file-workspace comparator, two anonymous judges plus a conditional tiebreaker, deterministic consensus, and one global Silver canonicalizer per paper. The legacy graph workflow remains the default.
-- `--claims.diagnostic-miner-max-workers 2`: run diagnostic validation for multiple miner responses concurrently.
-- `--claims.diagnostic-max-workers 10`: run diagnostic validation for multiple papers concurrently per miner.
+- `CLAIMS_SILVER_WORKFLOW_MODE=file-agent`: use one file-workspace comparator, two anonymous judges plus a conditional tiebreaker, deterministic consensus, and one global Silver canonicalizer per paper. Agents receive short validator-owned `cN`, `kN`, and `uN` references; internal IDs are restored after validation. The legacy graph workflow remains the default.
+- `--claims.diagnostic-miner-batch-size 10`: with a CLI rigor harness, review up to ten anonymized miners in one file-agent session per paper. `1` keeps the original per-miner path.
+- `--claims.diagnostic-max-workers 10`: run paper/shard diagnostic jobs concurrently.
+- `--claims.diagnostic-batch-max-input-bytes 8000000`: split unusually large diagnostic shards before the CLI context becomes unbounded; `0` disables this ceiling.
+- `CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE=4`, `CLAIMS_DIAGNOSTIC_REPAIR_MAX_DEPTH=3`, and `CLAIMS_DIAGNOSTIC_REPAIR_MAX_WORKERS=2`: retry only missing or malformed reports in bounded shared-context shards before any individual fallback.
+- `--claims.diagnostic-miner-max-workers 2`: control concurrent per-miner scoring and any individual diagnostic fallbacks.
 - `--claims.skip-diagnostic-validation`: skip diagnostic reports when Silver is the only scoring path for a large run.
 - `--claims.silver-paper-max-workers 10`: run Silver post-pass work for multiple batch papers concurrently.
 - `--claims.silver-relation-mode dspy --claims.silver-relation-model <MODEL>`: classify comparison and consolidation edges with DSPy. `openai-compatible` and `cli` use the same batch contract; CLI requires `CLAIMS_SILVER_RELATION_CLI_COMMAND` and accepts prompts on stdin or through `{prompt_file}`.
 - `--claims.allow-paper-reuse`: allow already assigned backend papers to be selected again for local smoke tests.
 - `--claims.task-manifest /path/to/tasks.jsonl`: run a list of tasks.
-- `--claims.audit-only`: score miners and write audit files without setting weights.
+- `--claims.audit-only`: calculate and persist proposed weights without submitting them on-chain.
+- `CLAIMS_PAYOUT_MODE=winner-takes-most`: default payout. First place receives 70%; ranks 2-5 split 30% as 16/8/4/2. Ties share occupied slots.
+- `CLAIMS_PAYOUT_WINNER_SHARE=0.70`, `CLAIMS_PAYOUT_RUNNER_UP_SLOTS=4`, `CLAIMS_PAYOUT_RUNNER_UP_DECAY=0.5`: payout controls.
 - `--claims.max-steps 1`: run one validation round and exit.
 - `--claims.query-interval 60` or `CLAIMS_QUERY_INTERVAL=60`: delay after one validation round finishes before the next starts.
 - `--claims.run-heartbeat-interval 60`: keep backend run status live; interrupted runs close automatically.

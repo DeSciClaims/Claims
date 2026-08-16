@@ -38,7 +38,7 @@ from validator.agent_v1.adjudication_queue import (
     completed_consensus_by_case,
     enqueue_adjudication_jobs,
 )
-from validator.agent_v1.batch_scoring import score_batch
+from validator.agent_v1.batch_scoring import score_batch, winner_takes_most_weights
 from validator.agent_v1.comparison_models import BronzeDiffCase, ComparisonCandidate, SilverRecord, SilverScoreBreakdown
 from validator.agent_v1.miner_consensus import MinerConsensusRule, MinerConsensusVote, aggregate_miner_consensus_votes
 from validator.agent_v1.orchestrator import (
@@ -2667,6 +2667,56 @@ def test_batch_score_has_no_winner_when_all_scores_are_zero() -> None:
 
     assert result.winner_miner_id is None
     assert [miner.rank for miner in result.miners] == [1, 1]
+    assert [miner.payout_weight for miner in result.miners] == [0.0, 0.0]
+
+
+def test_winner_takes_most_uses_70_16_8_4_2_rank_curve() -> None:
+    weights = winner_takes_most_weights(
+        {f"miner_{index}": float(10 - index) for index in range(1, 7)}
+    )
+
+    assert weights == pytest.approx(
+        {
+            "miner_1": 0.70,
+            "miner_2": 0.16,
+            "miner_3": 0.08,
+            "miner_4": 0.04,
+            "miner_5": 0.02,
+            "miner_6": 0.0,
+        }
+    )
+
+
+def test_winner_takes_most_renormalizes_runner_pool_and_splits_ties() -> None:
+    one_positive = winner_takes_most_weights({"miner_A": 0.8, "miner_B": 0.0})
+    two_miners = winner_takes_most_weights({"miner_A": 0.8, "miner_B": 0.4})
+    tied_winners = winner_takes_most_weights(
+        {"miner_A": 0.8, "miner_B": 0.8, "miner_C": 0.4}
+    )
+
+    assert one_positive == pytest.approx({"miner_A": 1.0, "miner_B": 0.0})
+    assert two_miners == pytest.approx({"miner_A": 0.70, "miner_B": 0.30})
+    assert tied_winners == pytest.approx({"miner_A": 0.45, "miner_B": 0.45, "miner_C": 0.10})
+
+
+def test_batch_score_excludes_validator_failed_papers_from_every_miner_denominator() -> None:
+    result = score_batch(
+        batch_id="batch",
+        paper_scores=[
+            _score_breakdown("miner_A", "paper_1", 1.0),
+            _score_breakdown("miner_B", "paper_1", 0.5),
+        ],
+        expected_paper_ids=["paper_1", "paper_2"],
+        eligible_paper_ids=["paper_1"],
+        validator_failed_paper_ids=["paper_2"],
+    )
+
+    assert result.outcome == "degraded"
+    assert result.validator_failed_paper_ids == ["paper_2"]
+    assert [(row.miner_id, row.batch_score) for row in result.miners] == [
+        ("miner_A", 1.0),
+        ("miner_B", 0.5),
+    ]
 
 
 def test_paper_silver_pipeline_builds_silver_and_scores_from_artifacts() -> None:

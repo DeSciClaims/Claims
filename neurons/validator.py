@@ -25,10 +25,19 @@ from dotenv import load_dotenv
 from miner.agent_v1.ingest import PDF_READERS
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, build_silver_adjudication_passes
 from validator.agent_v1.artifact_summary import summarize_agent_artifact
-from validator.agent_v1.batch_scoring import score_batch
+from validator.agent_v1.batch_scoring import score_batch, winner_takes_most_weights
 from validator.agent_v1.comparison_models import SilverScoreBreakdown
 from validator.agent_v1.config import AgentV1ValidatorConfig
+from validator.agent_v1.diagnostic_batch import (
+    DiagnosticBatchConfig,
+    DiagnosticBatchExecution,
+    DiagnosticBatchSubmission,
+    precomputed_rigor_manifest,
+    run_diagnostic_batch,
+    shard_diagnostic_submissions,
+)
 from validator.agent_v1.file_agent_workflow import FileAgentSilverWorkflow, file_agent_workflow_enabled
+from validator.agent_v1.grounding import run_grounding_checks
 from validator.agent_v1.models import AgentV1ValidationFinding
 from validator.agent_v1.model_usage import ModelUsageCollector
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline
@@ -45,6 +54,7 @@ from validator.agent_v1.relation_classifier import (
 )
 from validator.agent_v1.runner import AgentV1ValidatorRunner
 from validator.agent_v1.silver_importance import OpenAICompatibleSilverImportanceClassifier
+from validator.agent_v1.structural import run_structural_checks
 from validator.judge_v1.config import JudgeV1Config
 from validator.v0.runner import JudgeV2Runner
 
@@ -68,6 +78,9 @@ class _PaperSilverPostPassResult:
     paper_id: str
     scores: list[SilverScoreBreakdown]
     timing_stages: list[dict[str, Any]]
+    status: str = "scored"
+    failure_stage: str | None = None
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -130,6 +143,8 @@ class ClaimsValidator:
         self._adjudication_progress_seen_votes: set[str] = set()
         self._run_heartbeat_stop: threading.Event | None = None
         self._run_heartbeat_thread: threading.Thread | None = None
+        self._active_silver_batch_outcome: dict[str, Any] = {}
+        self._active_weight_event: dict[str, Any] = {}
         if self.config.claims_dry_run:
             self.wallet = None
             self.subtensor = None
@@ -261,7 +276,7 @@ class ClaimsValidator:
             dest="claims_batch_score_rule",
             choices=("min", "mean", "median"),
             default=os.getenv("CLAIMS_BATCH_SCORE_RULE", "mean"),
-            help="Aggregate per-paper scores into a batch score.",
+            help="Legacy diagnostic aggregation rule. Silver incentives always use the mean across eligible papers.",
         )
         parser.add_argument(
             "--claims.allow-paper-reuse",
@@ -346,6 +361,20 @@ class ClaimsValidator:
             type=int,
             default=int(os.getenv("CLAIMS_DIAGNOSTIC_MINER_MAX_WORKERS", "1")),
             help="Maximum miner responses to run through diagnostic validation concurrently.",
+        )
+        parser.add_argument(
+            "--claims.diagnostic-miner-batch-size",
+            dest="claims_diagnostic_miner_batch_size",
+            type=int,
+            default=int(os.getenv("CLAIMS_DIAGNOSTIC_MINER_BATCH_SIZE", "1")),
+            help="Number of anonymized miner artifacts reviewed by one file-based diagnostic agent per paper. One disables batching.",
+        )
+        parser.add_argument(
+            "--claims.diagnostic-batch-max-input-bytes",
+            dest="claims_diagnostic_batch_max_input_bytes",
+            type=int,
+            default=int(os.getenv("CLAIMS_DIAGNOSTIC_BATCH_MAX_INPUT_BYTES", "8000000")),
+            help="Approximate input-byte ceiling for one diagnostic miner shard. Zero disables the byte ceiling.",
         )
         parser.add_argument(
             "--claims.agent-v1-threshold",
@@ -635,6 +664,34 @@ class ClaimsValidator:
             help="Score miners and write audits without submitting weights.",
         )
         parser.add_argument(
+            "--claims.payout-mode",
+            dest="claims_payout_mode",
+            choices=("winner-takes-most", "proportional"),
+            default=os.getenv("CLAIMS_PAYOUT_MODE", "winner-takes-most"),
+            help="Convert final Silver batch scores into validator weights.",
+        )
+        parser.add_argument(
+            "--claims.payout-winner-share",
+            dest="claims_payout_winner_share",
+            type=float,
+            default=float(os.getenv("CLAIMS_PAYOUT_WINNER_SHARE", "0.70")),
+            help="Weight reserved for first place in winner-takes-most mode.",
+        )
+        parser.add_argument(
+            "--claims.payout-runner-up-slots",
+            dest="claims_payout_runner_up_slots",
+            type=int,
+            default=int(os.getenv("CLAIMS_PAYOUT_RUNNER_UP_SLOTS", "4")),
+            help="Number of runner-up rank slots eligible for weight.",
+        )
+        parser.add_argument(
+            "--claims.payout-runner-up-decay",
+            dest="claims_payout_runner_up_decay",
+            type=float,
+            default=float(os.getenv("CLAIMS_PAYOUT_RUNNER_UP_DECAY", "0.5")),
+            help="Geometric decay applied across runner-up rank slots.",
+        )
+        parser.add_argument(
             "--claims.require-validator-permit",
             dest="claims_require_validator_permit",
             action="store_true",
@@ -690,6 +747,8 @@ class ClaimsValidator:
         config.claims_skip_diagnostic_validation = parsed_args.claims_skip_diagnostic_validation
         config.claims_diagnostic_max_workers = parsed_args.claims_diagnostic_max_workers
         config.claims_diagnostic_miner_max_workers = parsed_args.claims_diagnostic_miner_max_workers
+        config.claims_diagnostic_miner_batch_size = parsed_args.claims_diagnostic_miner_batch_size
+        config.claims_diagnostic_batch_max_input_bytes = parsed_args.claims_diagnostic_batch_max_input_bytes
         config.claims_agent_v1_threshold = parsed_args.claims_agent_v1_threshold
         config.claims_silver_enable = parsed_args.claims_silver_enable
         config.claims_bronze_root = parsed_args.claims_bronze_root
@@ -733,6 +792,16 @@ class ClaimsValidator:
         config.claims_timeout = parsed_args.claims_timeout
         config.claims_max_steps = parsed_args.claims_max_steps
         config.claims_audit_only = parsed_args.claims_audit_only
+        config.claims_payout_mode = parsed_args.claims_payout_mode
+        config.claims_payout_winner_share = parsed_args.claims_payout_winner_share
+        config.claims_payout_runner_up_slots = parsed_args.claims_payout_runner_up_slots
+        config.claims_payout_runner_up_decay = parsed_args.claims_payout_runner_up_decay
+        if not 0.0 <= config.claims_payout_winner_share <= 1.0:
+            raise SystemExit("--claims.payout-winner-share must be between zero and one.")
+        if config.claims_payout_runner_up_slots < 0:
+            raise SystemExit("--claims.payout-runner-up-slots must be non-negative.")
+        if config.claims_payout_runner_up_decay <= 0.0:
+            raise SystemExit("--claims.payout-runner-up-decay must be positive.")
         config.claims_require_validator_permit = parsed_args.claims_require_validator_permit
         config.claims_weight_period = parsed_args.claims_weight_period
         config.claims_dry_run = parsed_args.claims_dry_run
@@ -828,6 +897,8 @@ class ClaimsValidator:
                 run_id = _make_run_id()
                 run_started_at = datetime.now(timezone.utc)
                 self._model_usage_upload_summary = {}
+                self._active_silver_batch_outcome = {}
+                self._active_weight_event = {}
                 self._adjudication_progress_seen_cases = set()
                 self._adjudication_progress_seen_votes = set()
                 self._active_run_timing = _new_pipeline_timing(run_id=run_id, started_at=run_started_at)
@@ -875,6 +946,7 @@ class ClaimsValidator:
                 self._record_timing_stage(scoring_timer)
                 weight_timer = _timing_start("weights", "Weight update")
                 weight_event = self._set_weights(scores)
+                self._active_weight_event = dict(weight_event)
                 self._record_timing_stage(weight_timer)
                 weight_persist_timer = _timing_start("weight_event_persist", "Persist weight event")
                 self._post_weight_event(run_id, scores, weight_event)
@@ -1030,20 +1102,42 @@ class ClaimsValidator:
         scores = {int(neuron.uid): 0.0 for neuron in self.target_neurons}
         scored_responses = list(responses)
 
-        def score_miner_response(index: int, neuron: Any) -> _DiagnosticScoreResult:
+        for index, neuron in enumerate(self.target_neurons):
             response = scored_responses[index] if index < len(scored_responses) else None
             uid = int(neuron.uid)
             if response is None or not getattr(response, "articles", None):
                 recovered = self._recover_backend_artifact_response(run_id=run_id, task=task, uid=uid)
                 if recovered is not None:
                     response = recovered
+            while len(scored_responses) <= index:
+                scored_responses.append(None)
+            scored_responses[index] = response
+            if (
+                response is not None
+                and self._is_protocol_compatible(response)
+                and getattr(response, "articles", None)
+            ):
+                self._hydrate_response_articles(response, uid=uid, run_id=run_id)
+
+        precomputed_rigor: dict[
+            tuple[int, str], tuple[dict[str, Any], dict[str, Any]]
+        ] = {}
+        if not bool(getattr(self.config, "claims_skip_diagnostic_validation", False)):
+            precomputed_rigor = self._prepare_batched_diagnostics(
+                scored_responses,
+                task=task,
+                run_id=run_id,
+            )
+
+        def score_miner_response(index: int, neuron: Any) -> _DiagnosticScoreResult:
+            response = scored_responses[index] if index < len(scored_responses) else None
+            uid = int(neuron.uid)
             score = 0.0
             miner_metadata = self._miner_metadata(uid, response) if response is not None else self._miner_metadata(uid, None)
             if response is not None and not self._is_protocol_compatible(response):
                 self.bt_logging.warning(f"Miner uid={uid} returned incompatible Claims protocol response.")
                 self._post_miner_response(run_id, task, uid, response, miner_metadata, status="incompatible")
             elif response is not None and getattr(response, "articles", None):
-                self._hydrate_response_articles(response, uid=uid, run_id=run_id)
                 diagnostic_timer = _timing_start("diagnostic_validation", "Diagnostic validation")
                 score = self._score_batch_response(
                     response,
@@ -1052,6 +1146,11 @@ class ClaimsValidator:
                     run_id=run_id,
                     miner_metadata=miner_metadata,
                     skip_diagnostic=bool(getattr(self.config, "claims_skip_diagnostic_validation", False)),
+                    precomputed_rigor_by_paper={
+                        paper_id: payload
+                        for (result_uid, paper_id), payload in precomputed_rigor.items()
+                        if result_uid == uid
+                    },
                 )
                 stage = _timing_finish(
                     diagnostic_timer,
@@ -1146,6 +1245,240 @@ class ClaimsValidator:
             return {uid: 0.0 for uid in scores}
         self.bt_logging.info(f"Current diagnostic scores: {sorted(scores.items())}")
         return scores
+
+    def _prepare_batched_diagnostics(
+        self,
+        responses: list[Any],
+        *,
+        task: ClaimsTask,
+        run_id: str,
+    ) -> dict[tuple[int, str], tuple[dict[str, Any], dict[str, Any]]]:
+        config = DiagnosticBatchConfig.from_env()
+        config = replace(
+            config,
+            batch_size=max(
+                1,
+                int(getattr(self.config, "claims_diagnostic_miner_batch_size", 1) or 1),
+            ),
+            max_input_bytes=max(
+                0,
+                int(
+                    getattr(
+                        self.config,
+                        "claims_diagnostic_batch_max_input_bytes",
+                        config.max_input_bytes,
+                    )
+                    or 0
+                ),
+            ),
+            harness=str(getattr(self.config, "claims_rigor_harness", "") or config.harness)
+            .strip()
+            .lower()
+            .replace("_", "-"),
+            model=str(getattr(self.config, "claims_rigor_model", "") or config.model),
+        )
+        if not config.enabled:
+            return {}
+
+        jobs: list[
+            tuple[
+                str,
+                int,
+                list[DiagnosticBatchSubmission],
+                dict[str, tuple[int, str]],
+            ]
+        ] = []
+        preparation_root = config.root / safe_task_id(run_id) / "preparation"
+        for paper in task.paper_tasks():
+            paper_id = paper.paper_id
+            submissions: list[DiagnosticBatchSubmission] = []
+            identity_by_ref: dict[str, tuple[int, str]] = {}
+            for index, neuron in enumerate(self.target_neurons):
+                response = responses[index] if index < len(responses) else None
+                if response is None or not self._is_protocol_compatible(response):
+                    continue
+                uid = int(neuron.uid)
+                articles = [
+                    article
+                    for article in (getattr(response, "articles", []) or [])
+                    if isinstance(article, dict)
+                ]
+                article = next(
+                    (item for item in articles if str(item.get("paper_id") or "") == paper_id),
+                    None,
+                )
+                if article is None and len(articles) == 1 and len(task.paper_tasks()) == 1:
+                    article = articles[0]
+                if not article or article.get("status") != "completed":
+                    continue
+                extraction = article.get("agent_output") or article.get("extraction")
+                if not isinstance(extraction, dict) or self._select_validator_pipeline(extraction) != "agent_v1":
+                    continue
+                source_payload = article.get("source_payload")
+                source_payload = source_payload if isinstance(source_payload, dict) else None
+                submission_ref = f"S{len(submissions) + 1:04d}"
+                artifact_path = (
+                    preparation_root
+                    / safe_task_id(paper_id)
+                    / submission_ref
+                    / "agent_output.json"
+                )
+                _write_json(artifact_path, extraction)
+                try:
+                    _raw, artifact, structural_findings = run_structural_checks(artifact_path)
+                    grounding_findings = run_grounding_checks(artifact, source_payload)
+                except Exception as exc:
+                    self.bt_logging.warning(
+                        f"Could not prepare batched diagnostic input paper={paper_id} uid={uid}: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    continue
+                if artifact is None or any(finding.severity == "blocker" for finding in structural_findings):
+                    continue
+                submissions.append(
+                    DiagnosticBatchSubmission(
+                        submission_ref=submission_ref,
+                        artifact=extraction,
+                        source_payload=source_payload,
+                        structural_findings=[
+                            finding.model_dump(mode="json") for finding in structural_findings
+                        ],
+                        grounding_findings=[
+                            finding.model_dump(mode="json") for finding in grounding_findings
+                        ],
+                    )
+                )
+                identity_by_ref[submission_ref] = (uid, paper_id)
+
+            shards = shard_diagnostic_submissions(
+                submissions,
+                max_count=config.batch_size,
+                max_input_bytes=config.max_input_bytes,
+            )
+            for shard_index, shard in enumerate(shards, start=1):
+                jobs.append(
+                    (
+                        paper_id,
+                        shard_index,
+                        shard,
+                        {
+                            submission.submission_ref: identity_by_ref[submission.submission_ref]
+                            for submission in shard
+                        },
+                    )
+                )
+
+        if not jobs:
+            return {}
+        worker_count = max(
+            1,
+            min(
+                int(getattr(self.config, "claims_diagnostic_max_workers", 1) or 1),
+                len(jobs),
+            ),
+        )
+        self.bt_logging.info(
+            "Running paper-batched diagnostic validation "
+            f"jobs={len(jobs)} batch_size={config.batch_size} max_workers={worker_count}."
+        )
+
+        def run_job(job):
+            paper_id, shard_index, shard, identity_by_ref = job
+            try:
+                execution = run_diagnostic_batch(
+                    config=config,
+                    run_id=run_id,
+                    paper_id=paper_id,
+                    shard_index=shard_index,
+                    submissions=shard,
+                )
+            except Exception as exc:
+                execution = DiagnosticBatchExecution(
+                    reports={},
+                    usage={},
+                    duration_seconds=0.0,
+                    operation_id=(
+                        f"{run_id}:{paper_id}:diagnostic-shard-{shard_index:04d}"
+                    ),
+                    workspace=(
+                        config.root
+                        / safe_task_id(run_id)
+                        / safe_task_id(paper_id)
+                        / f"shard_{shard_index:04d}"
+                    ),
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+            return execution, identity_by_ref
+
+        completed_jobs: list[
+            tuple[DiagnosticBatchExecution, dict[str, tuple[int, str]]]
+        ] = []
+        if worker_count > 1:
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = [executor.submit(run_job, job) for job in jobs]
+                for future in as_completed(futures):
+                    completed_jobs.append(future.result())
+        else:
+            completed_jobs = [run_job(job) for job in jobs]
+
+        prepared: dict[tuple[int, str], tuple[dict[str, Any], dict[str, Any]]] = {}
+        fallback_count = 0
+        for execution, identity_by_ref in completed_jobs:
+            self._record_batched_diagnostic_usage(execution, identity_by_ref=identity_by_ref, config=config)
+            manifest = precomputed_rigor_manifest(execution)
+            for submission_ref, identity in identity_by_ref.items():
+                report = execution.reports.get(submission_ref)
+                if report is None:
+                    fallback_count += 1
+                    continue
+                prepared[identity] = (report, manifest)
+            if execution.error:
+                self.bt_logging.warning(
+                    f"Diagnostic batch failed operation={execution.operation_id}: {execution.error}"
+                )
+        if fallback_count:
+            self.bt_logging.warning(
+                f"Batched diagnostic validation will retry {fallback_count} missing or invalid report(s) individually."
+            )
+        return prepared
+
+    def _record_batched_diagnostic_usage(
+        self,
+        execution: DiagnosticBatchExecution,
+        *,
+        identity_by_ref: dict[str, tuple[int, str]],
+        config: DiagnosticBatchConfig,
+    ) -> None:
+        if getattr(self, "_active_model_usage", None) is None:
+            return
+        paper_ids = sorted({paper_id for _uid, paper_id in identity_by_ref.values()})
+        uids = sorted({uid for uid, _paper_id in identity_by_ref.values()})
+        self._active_model_usage.record(
+            {
+                "paper_id": paper_ids[0] if len(paper_ids) == 1 else None,
+                "stage_key": "diagnostic_validation",
+                "stage_label": "Diagnostic validation",
+                "role": "validator_rigor",
+                "operation_id": execution.operation_id,
+                "harness": config.harness,
+                "runtime": "diagnostic-file-batch",
+                "provider": config.provider or _provider_from_model_or_base(config.model, ""),
+                "model": config.model,
+                "usage": execution.usage,
+                "status": "failed" if execution.error else "success",
+                "error": execution.error,
+                "duration_seconds": execution.duration_seconds,
+                "metadata": {
+                    "workflow": "diagnostic_file_batch",
+                    "submission_count": len(identity_by_ref),
+                    "completed_report_count": len(execution.reports),
+                    "uids": uids,
+                    "workspace": str(execution.workspace),
+                    "repair_operation_ids": execution.repair_operation_ids,
+                    "repair_workspaces": [str(path) for path in execution.repair_workspaces],
+                },
+            }
+        )
 
     def _recover_backend_artifact_response(self, *, run_id: str, task: ClaimsTask, uid: int) -> Any | None:
         if self.backend_client is None:
@@ -1242,16 +1575,9 @@ class ClaimsValidator:
         paper_tasks = task.paper_tasks()
         if not paper_tasks:
             return {}
-        try:
-            bronze_client = self._build_reference_miner_client()
-        except Exception as exc:
-            self.bt_logging.warning(f"Silver post-pass could not initialize Bronze client: {exc}")
-            return {}
-        silver_scores_by_uid: dict[int, list[float]] = {}
         silver_score_breakdowns: list[SilverScoreBreakdown] = []
         expected_uids = [int(neuron.uid) for neuron in self.target_neurons]
         expected_paper_ids = [paper.paper_id or f"paper_{index}" for index, paper in enumerate(paper_tasks, start=1)]
-        scored_paper_ids: set[str] = set()
         metadata_by_uid: dict[int, dict[str, Any]] = {}
         miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None, list[AgentV1ValidationFinding]]]] = {
             paper.paper_id or f"paper_{index}": [] for index, paper in enumerate(paper_tasks, start=1)
@@ -1290,37 +1616,83 @@ class ClaimsValidator:
                         (uid, extraction, metadata, source_payload if isinstance(source_payload, dict) else None, [])
                     )
 
-        adjudication_passes, tiebreak_pass = self._build_silver_adjudication_passes()
-        if not adjudication_passes:
-            raise RuntimeError("Silver scoring is enabled, but no adjudication passes are configured.")
-        adjudication_models = self._adjudication_pass_model_rows(adjudication_passes, tiebreak_pass)
-        file_agent_workflow = self._build_silver_file_agent_workflow(adjudication_passes)
-        file_agent_models = self._silver_file_agent_model_rows(file_agent_workflow)
+        paper_jobs = [
+            (paper_index, paper)
+            for paper_index, paper in enumerate(paper_tasks, start=1)
+            if miners_by_paper.get(paper.paper_id or f"paper_{paper_index}")
+        ]
+        missing_submission_paper_ids = [
+            paper_id for paper_id in expected_paper_ids if not miners_by_paper.get(paper_id)
+        ]
+        bronze_client = None
+        adjudication_passes: list[Any] = []
+        tiebreak_pass = None
+        adjudication_models: list[dict[str, Any]] = []
+        file_agent_workflow = None
+        file_agent_models: list[dict[str, Any]] = []
         relation_classifier = None
         consolidation_relation_classifier = None
         importance_classifier = None
-        if file_agent_workflow is None:
-            relation_classifier = self._build_silver_relation_classifier(
-                request_gate=getattr(adjudication_passes[0], "request_gate", None),
-                stage_key="silver_comparison",
-                stage_label="Comparison graph",
-            )
-            consolidation_relation_classifier = self._build_silver_relation_classifier(
-                request_gate=getattr(adjudication_passes[0], "request_gate", None),
-                stage_key="silver_consolidation",
-                stage_label="Consolidation",
-            )
-            importance_classifier = self._build_silver_importance_classifier()
-        importance_models = self._silver_importance_model_rows() if importance_classifier is not None else []
+        importance_models: list[dict[str, Any]] = []
+        setup_failure: tuple[str, str] | None = None
+        if paper_jobs:
+            try:
+                bronze_client = self._build_reference_miner_client()
+                adjudication_passes, tiebreak_pass = self._build_silver_adjudication_passes()
+                if not adjudication_passes:
+                    raise RuntimeError("Silver scoring is enabled, but no adjudication passes are configured.")
+                adjudication_models = self._adjudication_pass_model_rows(adjudication_passes, tiebreak_pass)
+                file_agent_workflow = self._build_silver_file_agent_workflow(adjudication_passes)
+                file_agent_models = self._silver_file_agent_model_rows(file_agent_workflow)
+                if file_agent_workflow is None:
+                    relation_classifier = self._build_silver_relation_classifier(
+                        request_gate=getattr(adjudication_passes[0], "request_gate", None),
+                        stage_key="silver_comparison",
+                        stage_label="Comparison graph",
+                    )
+                    consolidation_relation_classifier = self._build_silver_relation_classifier(
+                        request_gate=getattr(adjudication_passes[0], "request_gate", None),
+                        stage_key="silver_consolidation",
+                        stage_label="Consolidation",
+                    )
+                    importance_classifier = self._build_silver_importance_classifier()
+                importance_models = self._silver_importance_model_rows() if importance_classifier is not None else []
+            except Exception as exc:
+                setup_failure = ("silver_setup", f"{type(exc).__name__}: {exc}")
+                self.bt_logging.warning(f"Silver post-pass setup failed: {setup_failure[1]}")
 
-        def process_paper(paper_index: int, paper: ClaimsPaperTask) -> _PaperSilverPostPassResult | None:
+        def process_paper(paper_index: int, paper: ClaimsPaperTask) -> _PaperSilverPostPassResult:
             paper_id = paper.paper_id or f"paper_{paper_index}"
             miner_rows = miners_by_paper.get(paper_id, [])
-            if not miner_rows:
-                return None
             paper_wall_timer = _timing_start("paper_wall", "Paper wall time")
             paper_stage_seconds: dict[str, float] = {}
             timing_stages: list[dict[str, Any]] = []
+
+            def failed(stage: str, exc: Exception | str) -> _PaperSilverPostPassResult:
+                error = str(exc)
+                paper_wall_stage = _timing_finish(
+                    paper_wall_timer,
+                    metadata={
+                        "paper_id": paper_id,
+                        "miner_count": len(miner_rows),
+                        "failed": True,
+                        "failure_stage": stage,
+                    },
+                )
+                timing_stages.append(paper_wall_stage)
+                return _PaperSilverPostPassResult(
+                    paper_id=paper_id,
+                    scores=[],
+                    timing_stages=timing_stages,
+                    status="validator_failed",
+                    failure_stage=stage,
+                    error=error,
+                )
+
+            if setup_failure is not None:
+                return failed(setup_failure[0], setup_failure[1])
+            if bronze_client is None:
+                return failed("silver_setup", "Bronze client was not initialized")
             reference_timer: dict[str, Any] | None = None
             try:
                 reference_release_id = str(getattr(self.config, "claims_reference_release_id", "reference-v0"))
@@ -1342,7 +1714,7 @@ class ClaimsValidator:
                 if reference_timer is not None:
                     timing_stages.append(_timing_finish(reference_timer, metadata={"paper_id": paper_id, "failed": True}))
                 self.bt_logging.warning(f"Silver post-pass skipped paper={paper_id}; Bronze unavailable: {exc}")
-                return None
+                return failed("reference_miner", exc)
             silver_timer: dict[str, Any] | None = None
             try:
                 silver_timer = _timing_start("silver_adjudication_scoring", "Silver post-pass")
@@ -1427,19 +1799,28 @@ class ClaimsValidator:
                 if silver_timer is not None:
                     timing_stages.append(_timing_finish(silver_timer, metadata={"paper_id": paper_id, "failed": True}))
                 self.bt_logging.warning(f"Silver post-pass failed for paper={paper_id}: {exc}")
-                return None
+                return failed("silver_pipeline", exc)
             persist_timer = _timing_start("silver_persist", "Persist Silver records")
-            self._persist_silver_pipeline_result(
-                run_id=run_id,
-                task=task,
-                paper_id=paper_id,
-                result=result,
-                miner_rows=miner_rows,
-                paper_stage_seconds=paper_stage_seconds,
-                timing_stages=timing_stages,
-                model_rows=[*reference_models, *adjudication_models, *importance_models, *file_agent_models],
-                score_metadata_by_miner_id={f"uid_{uid}": (uid, metadata) for uid, metadata in metadata_by_uid.items()},
-            )
+            try:
+                self._persist_silver_pipeline_result(
+                    run_id=run_id,
+                    task=task,
+                    paper_id=paper_id,
+                    result=result,
+                    miner_rows=miner_rows,
+                    paper_stage_seconds=paper_stage_seconds,
+                    timing_stages=timing_stages,
+                    model_rows=[*reference_models, *adjudication_models, *importance_models, *file_agent_models],
+                    score_metadata_by_miner_id={f"uid_{uid}": (uid, metadata) for uid, metadata in metadata_by_uid.items()},
+                )
+            except Exception as exc:
+                persist_stage = _timing_finish(
+                    persist_timer,
+                    metadata={"paper_id": paper_id, "failed": True},
+                )
+                timing_stages.append(persist_stage)
+                self.bt_logging.warning(f"Silver persistence failed for paper={paper_id}: {exc}")
+                return failed("silver_persist", exc)
             self._upload_active_model_usage_checkpoint()
             persist_stage = _timing_finish(persist_timer, metadata={"paper_id": paper_id})
             timing_stages.append(persist_stage)
@@ -1460,11 +1841,6 @@ class ClaimsValidator:
             )
             return _PaperSilverPostPassResult(paper_id=paper_id, scores=result.scores, timing_stages=timing_stages)
 
-        paper_jobs = [
-            (paper_index, paper)
-            for paper_index, paper in enumerate(paper_tasks, start=1)
-            if miners_by_paper.get(paper.paper_id or f"paper_{paper_index}")
-        ]
         worker_count = max(
             1,
             min(
@@ -1480,8 +1856,7 @@ class ClaimsValidator:
         if worker_count == 1:
             for paper_index, paper in paper_jobs:
                 result = process_paper(paper_index, paper)
-                if result is not None:
-                    paper_results[result.paper_id] = result
+                paper_results[result.paper_id] = result
         else:
             with ThreadPoolExecutor(max_workers=worker_count) as executor:
                 futures = {
@@ -1496,70 +1871,171 @@ class ClaimsValidator:
                         self.bt_logging.warning(
                             f"Silver post-pass failed for paper={paper_id}: {type(exc).__name__}: {exc}"
                         )
+                        paper_results[paper_id] = _PaperSilverPostPassResult(
+                            paper_id=paper_id,
+                            scores=[],
+                            timing_stages=[],
+                            status="validator_failed",
+                            failure_stage="silver_worker",
+                            error=f"{type(exc).__name__}: {exc}",
+                        )
                         continue
-                    if result is not None:
-                        paper_results[result.paper_id] = result
+                    paper_results[result.paper_id] = result
 
-        failed_paper_ids = [
-            paper.paper_id or f"paper_{paper_index}"
-            for paper_index, paper in paper_jobs
-            if (paper.paper_id or f"paper_{paper_index}") not in paper_results
-        ]
-        if failed_paper_ids:
-            raise RuntimeError(
-                "Silver post-pass failed for processable paper(s): "
-                f"{failed_paper_ids}; refusing to publish partial incentive scores."
-            )
-
+        validator_failed_papers: list[dict[str, Any]] = []
+        eligible_paper_ids: list[str] = []
         for paper_id in expected_paper_ids:
             result = paper_results.get(paper_id)
             if result is None:
                 continue
             self._record_paper_timing_stages(result.paper_id, result.timing_stages)
+            if result.status != "scored":
+                validator_failed_papers.append(
+                    {
+                        "paper_id": paper_id,
+                        "stage": result.failure_stage or "unknown",
+                        "error": result.error or "Validator paper processing failed.",
+                    }
+                )
+                continue
+            eligible_paper_ids.append(paper_id)
             for score in result.scores:
-                uid = _uid_from_miner_id(score.miner_id)
-                if uid is not None:
-                    silver_scores_by_uid.setdefault(uid, []).append(float(score.score))
-                    silver_score_breakdowns.append(score)
-            scored_paper_ids.add(paper_id)
-        if silver_score_breakdowns:
-            unscored_paper_ids = [paper_id for paper_id in expected_paper_ids if paper_id not in scored_paper_ids]
-            if unscored_paper_ids:
-                self.bt_logging.warning(
-                    "Silver batch scoring is counting unscored assigned papers as zero: "
-                    f"{unscored_paper_ids}"
-                )
-                skipped_scores = _scores_for_unscored_papers(
-                    paper_ids=unscored_paper_ids,
-                    expected_uids=expected_uids,
+                silver_score_breakdowns.append(score)
+
+        for paper_id in missing_submission_paper_ids:
+            missing_scores = _scores_for_missing_submission_papers(
+                paper_ids=[paper_id],
+                expected_uids=expected_uids,
+                run_id=run_id,
+            )
+            try:
+                self._persist_missing_submission_scores(
                     run_id=run_id,
+                    task=task,
+                    paper_id=paper_id,
+                    scores=missing_scores,
+                    metadata_by_uid=metadata_by_uid,
                 )
-                for score in skipped_scores:
-                    uid = _uid_from_miner_id(score.miner_id)
-                    if uid is not None:
-                        silver_scores_by_uid.setdefault(uid, []).append(float(score.score))
-                        silver_score_breakdowns.append(score)
-            batch_id = task.batch_id or task.task_id
-            batch_result = score_batch(
-                batch_id=batch_id,
-                paper_scores=silver_score_breakdowns,
+            except Exception as exc:
+                validator_failed_papers.append(
+                    {"paper_id": paper_id, "stage": "silver_persist", "error": f"{type(exc).__name__}: {exc}"}
+                )
+                self.bt_logging.warning(
+                    f"Could not persist all-miner missing scores for paper={paper_id}; excluding paper: {exc}"
+                )
+                continue
+            eligible_paper_ids.append(paper_id)
+            silver_score_breakdowns.extend(missing_scores)
+
+        failed_paper_ids = [str(item["paper_id"]) for item in validator_failed_papers]
+        batch_id = task.batch_id or task.task_id
+        batch_result = score_batch(
+            batch_id=batch_id,
+            paper_scores=silver_score_breakdowns,
+            expected_paper_ids=expected_paper_ids,
+            eligible_paper_ids=eligible_paper_ids,
+            validator_failed_paper_ids=failed_paper_ids,
+            payout_mode=str(getattr(self.config, "claims_payout_mode", "winner-takes-most")),
+            winner_share=float(getattr(self.config, "claims_payout_winner_share", 0.70)),
+            runner_up_slots=int(getattr(self.config, "claims_payout_runner_up_slots", 4)),
+            runner_up_decay=float(getattr(self.config, "claims_payout_runner_up_decay", 0.5)),
+        )
+        batch_payload = batch_result.model_dump(mode="json")
+        batch_payload["validator_failed_papers"] = validator_failed_papers
+        batch_payload["scored_paper_count"] = len(eligible_paper_ids)
+        batch_payload["expected_paper_count"] = len(expected_paper_ids)
+        self._active_silver_batch_outcome = _compact_silver_batch_outcome(batch_payload)
+        batch_output_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / "silver"
+        _write_json(batch_output_dir / "batch_score_result.json", batch_payload)
+
+        if not eligible_paper_ids or not silver_score_breakdowns:
+            raise RuntimeError(
+                "Silver scoring produced no eligible papers; validator paper failures="
+                f"{failed_paper_ids or ['none']}"
             )
-            batch_output_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / "silver"
-            _write_json(batch_output_dir / "batch_score_result.json", batch_result.model_dump(mode="json"))
-            self.bt_logging.info(
-                "Silver batch scoring: "
-                f"batch_id={batch_id} "
-                f"winner={batch_result.winner_miner_id or 'none'} "
-                f"miners={[(item.miner_id, item.mean_score) for item in batch_result.miners]}"
-            )
+
+        self.bt_logging.info(
+            "Silver batch scoring: "
+            f"batch_id={batch_id} outcome={batch_result.outcome} "
+            f"eligible={len(eligible_paper_ids)}/{len(expected_paper_ids)} "
+            f"winner={batch_result.winner_miner_id or 'none'} "
+            f"miners={[(item.miner_id, item.batch_score, item.payout_weight) for item in batch_result.miners]}"
+        )
         return {
-            uid: _aggregate_scores(
-                values,
-                str(getattr(self.config, "claims_batch_score_rule", "mean")),
+            uid: next(
+                (float(item.batch_score) for item in batch_result.miners if item.miner_id == f"uid_{uid}"),
+                0.0,
             )
-            for uid, values in silver_scores_by_uid.items()
-            if values
+            for uid in expected_uids
         }
+
+    def _persist_missing_submission_scores(
+        self,
+        *,
+        run_id: str,
+        task: ClaimsTask,
+        paper_id: str,
+        scores: list[SilverScoreBreakdown],
+        metadata_by_uid: dict[int, dict[str, Any]],
+    ) -> None:
+        output_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / "silver" / safe_task_id(paper_id)
+        _write_json(
+            output_dir / "silver_scores.json",
+            {
+                "items": [item.model_dump(mode="json") for item in scores],
+                "status": "all_miners_missing",
+            },
+        )
+        if self.backend_client is None:
+            return
+        network = str(getattr(self.config, "claims_network", "testnet"))
+        batch_id = task.batch_id or task.task_id
+        score_payloads: list[dict[str, Any]] = []
+        for score in scores:
+            uid = _uid_from_miner_id(score.miner_id) or 0
+            metadata = metadata_by_uid.get(uid, {})
+            breakdown = score.model_dump(mode="json")
+            breakdown["timing"] = self._timing_payload(
+                uid=uid,
+                paper_id=paper_id,
+                stage_seconds={},
+                stages=[],
+                models=self._miner_model_rows(uid, metadata),
+                include_active_run_stages=False,
+            )
+            score_payloads.append(
+                {
+                    "score_report_id": f"silver_score_{run_id}_{safe_task_id(paper_id)}_uid_{uid}",
+                    "network": network,
+                    "run_id": run_id,
+                    "batch_id": batch_id,
+                    "paper_id": paper_id,
+                    "response_id": f"{run_id}:uid_{uid}",
+                    "uid": uid,
+                    "hotkey": metadata.get("hotkey", ""),
+                    "silver_record_id": score.silver_record_id,
+                    "coverage": 0.0,
+                    "quality": 0.0,
+                    "score": 0.0,
+                    "findings": [finding.model_dump(mode="json") for finding in score.findings],
+                    "breakdown": breakdown,
+                }
+            )
+        bulk_post = getattr(self.backend_client, "post_silver_pipeline_chunks", None)
+        if callable(bulk_post):
+            bulk_post(
+                cases=[],
+                votes=[],
+                consensus=[],
+                decisions=[],
+                silver_records=[],
+                score_reports=score_payloads,
+                case_chunk_size=int(os.getenv("CLAIMS_SILVER_PERSIST_CHUNK_SIZE", "50") or 50),
+                vote_chunk_size=int(os.getenv("CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE", "150") or 150),
+            )
+            return
+        for payload in score_payloads:
+            self.backend_client.post_silver_score_report(payload)
 
     def _build_reference_miner_client(self) -> Any:
         self._apply_reference_harness_env()
@@ -2142,12 +2618,18 @@ class ClaimsValidator:
             ("Silver record", self.backend_client.post_silver_record, silver_record_payloads),
             ("Silver score report", self.backend_client.post_silver_score_report, score_payloads),
         )
+        persistence_failures: list[str] = []
         for label, post_row, payloads in legacy_sections:
             for payload in payloads:
                 try:
                     post_row(payload)
                 except BackendClientError as exc:
                     self.bt_logging.warning(f"Could not post {label} to backend: {exc}")
+                    persistence_failures.append(f"{label}: {exc}")
+        if persistence_failures:
+            raise BackendClientError(
+                "Silver paper persistence did not complete: " + "; ".join(persistence_failures[:5])
+            )
 
     def _score_extraction(
         self,
@@ -2158,6 +2640,7 @@ class ClaimsValidator:
         run_id: str | None = None,
         source_payload: dict[str, Any] | None = None,
         miner_metadata: dict[str, Any] | None = None,
+        precomputed_rigor: tuple[dict[str, Any], dict[str, Any]] | None = None,
     ) -> float:
         pipeline = self._select_validator_pipeline(extraction)
         output_dir = Path(self.config.claims_output_dir) / task.task_id
@@ -2173,6 +2656,7 @@ class ClaimsValidator:
                 source_payload=source_payload,
                 output_dir=output_dir,
                 task=task,
+                precomputed_rigor=precomputed_rigor,
             )
         return self._score_v0_extraction(extraction, output_dir=output_dir, task=task)
 
@@ -2185,6 +2669,9 @@ class ClaimsValidator:
         run_id: str,
         miner_metadata: dict[str, Any],
         skip_diagnostic: bool = False,
+        precomputed_rigor_by_paper: dict[
+            str, tuple[dict[str, Any], dict[str, Any]]
+        ] | None = None,
     ) -> float:
         base_dir = Path(self.config.claims_output_dir) / task.task_id / run_id / f"uid_{uid}"
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -2281,6 +2768,7 @@ class ClaimsValidator:
                             run_id=article_run_id,
                             source_payload=source_payload if isinstance(source_payload, dict) else None,
                             miner_metadata=None,
+                            precomputed_rigor=(precomputed_rigor_by_paper or {}).get(paper_id),
                         )
                         article_output_dir = Path(self.config.claims_output_dir) / task.task_id / article_run_id / f"uid_{uid}"
                         report_path = article_output_dir / "agent_v1" / "agent_v1_validation_report.json"
@@ -2320,6 +2808,19 @@ class ClaimsValidator:
                 paper_timer,
                 metadata={"uid": uid, "paper_id": paper_id, "skipped": skip_diagnostic},
             )
+            shared_rigor = (precomputed_rigor_by_paper or {}).get(paper_id)
+            if shared_rigor is not None:
+                shared_manifest = shared_rigor[1]
+                shared_elapsed = shared_manifest.get("elapsed_seconds")
+                if isinstance(shared_elapsed, int | float):
+                    paper_stage["duration_seconds"] = round(float(shared_elapsed), 6)
+                paper_stage["metadata"] = {
+                    **(paper_stage.get("metadata") or {}),
+                    "shared_diagnostic_batch": True,
+                    "operation_id": str(
+                        (shared_manifest.get("metadata") or {}).get("operation_id") or ""
+                    ),
+                }
             if isinstance(article, dict):
                 article["diagnostic_score"] = score
                 article["diagnostic_findings"] = finding_rows
@@ -2434,6 +2935,8 @@ class ClaimsValidator:
         if getattr(self, "_active_model_usage", None) is None:
             return
         metrics = report.get("metrics") if isinstance(report.get("metrics"), dict) else {}
+        if str(metrics.get("usage_source") or "") == "shared_diagnostic_batch":
+            return
         token_usage = metrics.get("token_usage") if isinstance(metrics.get("token_usage"), dict) else {}
         model = str(getattr(self.config, "claims_rigor_model", "") or "unknown")
         harness = str(getattr(self.config, "claims_rigor_harness", "") or "unknown")
@@ -2644,6 +3147,7 @@ class ClaimsValidator:
         source_payload: dict[str, Any] | None,
         output_dir: Path,
         task: ClaimsTask,
+        precomputed_rigor: tuple[dict[str, Any], dict[str, Any]] | None = None,
     ) -> float:
         agent_dir = output_dir / "agent_v1"
         agent_dir.mkdir(parents=True, exist_ok=True)
@@ -2666,6 +3170,8 @@ class ClaimsValidator:
             source_payload_path=source_payload_path,
             output_dir=agent_dir,
             threshold=float(self.config.claims_agent_v1_threshold),
+            precomputed_rigor=precomputed_rigor[0] if precomputed_rigor else None,
+            precomputed_rigor_manifest=precomputed_rigor[1] if precomputed_rigor else None,
         )
         _write_json(
             output_dir / "neuron_score.json",
@@ -2825,6 +3331,8 @@ class ClaimsValidator:
             "runtime": _runtime_snapshot(),
             "config": _run_config_snapshot(self.config),
             "timing": timing_metadata,
+            "scoring": dict(getattr(self, "_active_silver_batch_outcome", {}) or {}),
+            "weights": dict(getattr(self, "_active_weight_event", {}) or {}),
         }
 
     def _start_memory_sampler(self) -> None:
@@ -3369,6 +3877,33 @@ class ClaimsValidator:
             return
         weights = (event or {}).get("weights", [])
         status = str((event or {}).get("status") or "unknown")
+        batch_outcome = dict(getattr(self, "_active_silver_batch_outcome", {}) or {})
+        batch_miners = {
+            str(item.get("miner_id") or ""): item
+            for item in list(batch_outcome.get("miners") or [])
+            if isinstance(item, dict)
+        }
+        score_rows: list[dict[str, Any]] = []
+        for uid, score in sorted(scores.items()):
+            item = batch_miners.get(f"uid_{uid}", {})
+            score_rows.append(
+                {
+                    "uid": uid,
+                    "score": score,
+                    "batch_score": float(item.get("batch_score", score) or 0.0),
+                    "mean_score": float(item.get("mean_score", score) or 0.0),
+                    "median_score": float(item.get("median_score", score) or 0.0),
+                    "min_score": float(item.get("min_score", score) or 0.0),
+                    "rank": item.get("rank"),
+                    "winner": bool(item.get("winner", False)),
+                    "payout_weight": float(item.get("payout_weight", 0.0) or 0.0),
+                    "expected_paper_count": int(item.get("expected_paper_count", 0) or 0),
+                    "eligible_paper_count": int(item.get("eligible_paper_count", 0) or 0),
+                    "submitted_paper_count": int(item.get("submitted_paper_count", 0) or 0),
+                    "missing_paper_ids": list(item.get("missing_paper_ids") or []),
+                    "validator_failed_paper_ids": list(item.get("validator_failed_paper_ids") or []),
+                }
+            )
         try:
             self.backend_client.post(
                 "/validator/weight-events",
@@ -3376,7 +3911,7 @@ class ClaimsValidator:
                     "event_id": f"weights_{run_id}",
                     "network": str(getattr(self.config, "claims_network", "testnet")),
                     "run_id": run_id,
-                    "scores": [{"uid": uid, "score": score} for uid, score in sorted(scores.items())],
+                    "scores": score_rows,
                     "moving_average_scores": [],
                     "weights": weights,
                     "status": status,
@@ -3414,19 +3949,50 @@ class ClaimsValidator:
         }
 
     def _set_weights(self, scores: dict[int, float]) -> dict[str, Any]:
-        if self.config.claims_audit_only:
-            self.bt_logging.info("Audit-only mode enabled; skipping set_weights.")
-            return {"status": "audit_only", "weights": []}
         if not scores:
             self.bt_logging.warning("No target miner scores available; skipping set_weights.")
-            return {"status": "no_scores", "weights": []}
+            return {"status": "no_scores", "weights": [], "calculated": False, "submitted": False}
         total = sum(max(score, 0.0) for score in scores.values())
         if total <= 0:
             self.bt_logging.warning("All target miner scores are zero; skipping set_weights.")
-            return {"status": "all_zero", "weights": []}
+            return {"status": "all_zero", "weights": [], "calculated": False, "submitted": False}
         uids = sorted(scores)
-        weights = [max(scores[uid], 0.0) / total for uid in uids]
-        weight_rows = [{"uid": uid, "weight": weight} for uid, weight in zip(uids, weights)]
+        payout_mode = str(getattr(self.config, "claims_payout_mode", "winner-takes-most") or "winner-takes-most")
+        batch_outcome = dict(getattr(self, "_active_silver_batch_outcome", {}) or {})
+        batch_weights = {
+            _uid_from_miner_id(str(item.get("miner_id") or "")): float(item.get("payout_weight", 0.0) or 0.0)
+            for item in list(batch_outcome.get("miners") or [])
+            if isinstance(item, dict)
+        }
+        if payout_mode == "proportional":
+            weights_by_uid = {uid: max(scores[uid], 0.0) / total for uid in uids}
+        elif batch_weights and all(uid in batch_weights for uid in uids):
+            weights_by_uid = {uid: max(float(batch_weights.get(uid, 0.0)), 0.0) for uid in uids}
+        else:
+            calculated = winner_takes_most_weights(
+                {str(uid): score for uid, score in scores.items()},
+                winner_share=float(getattr(self.config, "claims_payout_winner_share", 0.70)),
+                runner_up_slots=int(getattr(self.config, "claims_payout_runner_up_slots", 4)),
+                runner_up_decay=float(getattr(self.config, "claims_payout_runner_up_decay", 0.5)),
+            )
+            weights_by_uid = {uid: float(calculated.get(str(uid), 0.0)) for uid in uids}
+        payout_total = sum(weights_by_uid.values())
+        if payout_total > 0.0:
+            weights_by_uid = {uid: weight / payout_total for uid, weight in weights_by_uid.items()}
+        weights = [weights_by_uid[uid] for uid in uids]
+        weight_rows = [
+            {"uid": uid, "score": float(scores[uid]), "weight": weight}
+            for uid, weight in zip(uids, weights)
+        ]
+        if self.config.claims_audit_only:
+            self.bt_logging.info(f"Audit-only mode enabled; calculated weights: {list(zip(uids, weights))}")
+            return {
+                "status": "audit_only",
+                "weights": weight_rows,
+                "calculated": True,
+                "submitted": False,
+                "payout_mode": payout_mode,
+            }
         self.bt_logging.info(f"Setting weights: {list(zip(uids, weights))}")
         try:
             response = self.subtensor.set_weights(
@@ -3440,16 +4006,35 @@ class ClaimsValidator:
             )
             if getattr(response, "success", False):
                 self.bt_logging.success(f"Weights set successfully. Fee: {getattr(response, 'extrinsic_fee', '')}")
-                return {"status": "success", "weights": weight_rows}
+                return {
+                    "status": "success",
+                    "weights": weight_rows,
+                    "calculated": True,
+                    "submitted": True,
+                    "payout_mode": payout_mode,
+                }
             else:
                 self.bt_logging.error(
                     f"Failed to set weights: {getattr(response, 'error', '')} "
                     f"{getattr(response, 'message', '')} response={response!r}"
                 )
-                return {"status": "failed", "weights": weight_rows}
+                return {
+                    "status": "failed",
+                    "weights": weight_rows,
+                    "calculated": True,
+                    "submitted": False,
+                    "payout_mode": payout_mode,
+                }
         except Exception as exc:
             self.bt_logging.error(f"Failed to set weights: {type(exc).__name__}: {exc}")
-            return {"status": "error", "weights": weight_rows, "error": str(exc)}
+            return {
+                "status": "error",
+                "weights": weight_rows,
+                "calculated": True,
+                "submitted": False,
+                "payout_mode": payout_mode,
+                "error": str(exc),
+            }
 
     def _preflight_validator(self) -> None:
         try:
@@ -4223,7 +4808,7 @@ def _scores_with_missing_miners(
     return rows
 
 
-def _scores_for_unscored_papers(
+def _scores_for_missing_submission_papers(
     *,
     paper_ids: list[str],
     expected_uids: list[int],
@@ -4239,8 +4824,8 @@ def _scores_for_unscored_papers(
                 severity="blocker",
                 target_type="paper",
                 target_id=paper_id,
-                message="Validator did not produce a Silver score for this assigned paper.",
-                metadata={"code": "unscored_assigned_paper", "paper_id": paper_id},
+                message="Miner did not return a completed artifact for this assigned paper.",
+                metadata={"code": "missing_paper_submission", "paper_id": paper_id},
             )
             rows.append(
                 SilverScoreBreakdown(
@@ -4257,8 +4842,8 @@ def _scores_for_unscored_papers(
                     findings=[finding],
                     metadata={
                         "passed": False,
-                        "code": "unscored_assigned_paper",
-                        "formula": "score = 0 because the validator did not produce a Silver score for this assigned paper",
+                        "code": "missing_paper_submission",
+                        "formula": "score = 0 because the miner did not submit a completed artifact for this assigned paper",
                     },
                 )
             )
@@ -4289,6 +4874,16 @@ def _make_run_id() -> str:
     return f"run_{stamp}_{uuid.uuid4().hex[:6]}"
 
 
+def _compact_silver_batch_outcome(payload: dict[str, Any]) -> dict[str, Any]:
+    compact = {key: value for key, value in payload.items() if key != "miners"}
+    compact["miners"] = [
+        {key: value for key, value in item.items() if key != "paper_scores"}
+        for item in list(payload.get("miners") or [])
+        if isinstance(item, dict)
+    ]
+    return compact
+
+
 def _run_config_snapshot(config: Any) -> dict[str, Any]:
     """Return effective, replay-relevant validator settings without secrets or local paths."""
 
@@ -4308,6 +4903,10 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_run_heartbeat_interval": float(getattr(config, "claims_run_heartbeat_interval", 60.0) or 0.0),
         "claims_max_steps": int(getattr(config, "claims_max_steps", 0) or 0),
         "claims_audit_only": bool(getattr(config, "claims_audit_only", False)),
+        "claims_payout_mode": str(getattr(config, "claims_payout_mode", "winner-takes-most") or "winner-takes-most"),
+        "claims_payout_winner_share": float(getattr(config, "claims_payout_winner_share", 0.70)),
+        "claims_payout_runner_up_slots": int(getattr(config, "claims_payout_runner_up_slots", 4)),
+        "claims_payout_runner_up_decay": float(getattr(config, "claims_payout_runner_up_decay", 0.5)),
         "claims_audit_method": str(getattr(config, "claims_audit_method", "deterministic") or ""),
         "claims_agent_v1_validation_mode": str(getattr(config, "claims_agent_v1_validation_mode", "") or ""),
         "claims_agent_v1_threshold": float(getattr(config, "claims_agent_v1_threshold", 0.7)),
@@ -4318,6 +4917,21 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_skip_diagnostic_validation": bool(getattr(config, "claims_skip_diagnostic_validation", False)),
         "claims_diagnostic_max_workers": int(getattr(config, "claims_diagnostic_max_workers", 1) or 1),
         "claims_diagnostic_miner_max_workers": int(getattr(config, "claims_diagnostic_miner_max_workers", 1) or 1),
+        "claims_diagnostic_miner_batch_size": int(
+            getattr(config, "claims_diagnostic_miner_batch_size", 1) or 1
+        ),
+        "claims_diagnostic_batch_max_input_bytes": int(
+            getattr(config, "claims_diagnostic_batch_max_input_bytes", 8_000_000) or 0
+        ),
+        "claims_diagnostic_repair_batch_size": int(
+            os.getenv("CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE", "4") or 4
+        ),
+        "claims_diagnostic_repair_max_depth": int(
+            os.getenv("CLAIMS_DIAGNOSTIC_REPAIR_MAX_DEPTH", "3") or 0
+        ),
+        "claims_diagnostic_repair_max_workers": int(
+            os.getenv("CLAIMS_DIAGNOSTIC_REPAIR_MAX_WORKERS", "2") or 2
+        ),
         "claims_silver_enable": bool(getattr(config, "claims_silver_enable", False)),
         "claims_silver_workflow_mode": str(os.getenv("CLAIMS_SILVER_WORKFLOW_MODE", "legacy") or "legacy"),
         "claims_silver_file_agent_harness": str(

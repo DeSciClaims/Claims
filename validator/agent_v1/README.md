@@ -81,10 +81,36 @@ mode only; production scoring should include the rigor agent.
   --skip-rigor-agent
 ```
 
+## Batched CLI Diagnostics
+
+The validator can share one paper-level CLI session across an anonymized miner
+shard while preserving one ordinary diagnostic report and score per miner:
+
+```bash
+CLAIMS_AUDIT_METHOD=llm \
+CLAIMS_RIGOR_HARNESS=hermes-cli \
+CLAIMS_RIGOR_MODEL=openai/gpt-4o-mini \
+CLAIMS_DIAGNOSTIC_MINER_BATCH_SIZE=10 \
+CLAIMS_DIAGNOSTIC_BATCH_MAX_INPUT_BYTES=8000000 \
+CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE=4 \
+CLAIMS_DIAGNOSTIC_REPAIR_MAX_DEPTH=3 \
+CLAIMS_DIAGNOSTIC_REPAIR_MAX_WORKERS=2 \
+python -m neurons.validator ...
+```
+
+Identical source payloads are stored once in each workspace. Valid reports are
+retained while missing, duplicated, or malformed reports retry in bounded
+shared-context shards; only unresolved reports reach individual fallback.
+Combined batch and repair usage is recorded once rather than copied onto every
+miner.
+
 ## Silver Scoring Smoke
 
 The Silver path includes Bronze lookup, adjudication cases, Silver record
 construction, miner-vs-Silver scoring, backend persistence, and public feedback.
+Batch scores are means across scoring-eligible papers. Miner misses remain zero;
+validator-side paper failures are excluded for every miner and mark the completed
+run degraded. Weights default to the 70/30 winner-takes-most rank curve.
 
 ```bash
 /Users/ogbanugot/miniconda3/bin/conda run -n claims_subnet \
@@ -102,6 +128,8 @@ workspace pipeline: global comparison, anonymous parallel judges, conditional
 tiebreak, deterministic consensus, canonical draft, and independent canonical
 audit/revision. Exact restatements and adjudicated same-unit groups cannot be
 split, and candidates without linked evidence cannot receive Silver credit.
+Agents use short `cN`, `kN`, and `uN` references; the validator owns the mapping
+to persisted candidate, case, and Silver lineage IDs.
 Only the logical workspace ID and manifest hash are persisted.
 
 ```bash

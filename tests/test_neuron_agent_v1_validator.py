@@ -12,14 +12,15 @@ from types import SimpleNamespace
 import pytest
 
 from neurons.protocol import ClaimExtractionSynapse
-from neurons.tasks import ClaimsTask
+from neurons.tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsTask
 from neurons.validator import (
     ClaimsValidator,
     _bronze_artifact_from_record,
+    _compact_silver_batch_outcome,
     _is_agent_v1_artifact,
     _metadata_for_article,
     _run_config_snapshot,
-    _scores_for_unscored_papers,
+    _scores_for_missing_submission_papers,
     _scores_with_missing_miners,
     _stable_hash,
     _source_context_map_from_payloads,
@@ -28,6 +29,8 @@ from neurons.validator import (
 from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
 from validator.agent_v1.comparison_models import SilverRecord, SilverScoreBreakdown, SilverUnit
+from validator.agent_v1.diagnostic_batch import DiagnosticBatchExecution
+from validator.agent_v1.model_usage import ModelUsageCollector
 from validator.agent_v1.orchestrator import PaperSilverPipelineResult
 from validator.agent_v1.relation_classifier import CLIRelationClassifier, OpenAICompatibleRelationClassifier
 from validator.agent_v1.structural import run_structural_checks
@@ -54,6 +57,9 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     monkeypatch.setenv("CLAIMS_SILVER_CONSOLIDATION_TOP_K", "7")
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "qwen/qwen3.7-flash")
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES", "true")
+    monkeypatch.setenv("CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE", "5")
+    monkeypatch.setenv("CLAIMS_DIAGNOSTIC_REPAIR_MAX_DEPTH", "4")
+    monkeypatch.setenv("CLAIMS_DIAGNOSTIC_REPAIR_MAX_WORKERS", "3")
     config = SimpleNamespace(
         netuid=530,
         subtensor=SimpleNamespace(network="test"),
@@ -70,6 +76,12 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
         claims_silver_adjudication_max_in_flight=0,
         claims_diagnostic_max_workers=10,
         claims_diagnostic_miner_max_workers=2,
+        claims_diagnostic_miner_batch_size=10,
+        claims_diagnostic_batch_max_input_bytes=8_000_000,
+        claims_payout_mode="winner-takes-most",
+        claims_payout_winner_share=0.7,
+        claims_payout_runner_up_slots=4,
+        claims_payout_runner_up_decay=0.5,
     )
 
     snapshot = _run_config_snapshot(config)
@@ -93,7 +105,16 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_silver_file_agent_canonical_audit_model"] == "qwen/qwen3.7-flash"
     assert snapshot["claims_silver_file_agent_require_distinct_judges"] is True
     assert snapshot["claims_silver_consolidation_top_k"] == 7
+    assert snapshot["claims_diagnostic_miner_batch_size"] == 10
+    assert snapshot["claims_diagnostic_batch_max_input_bytes"] == 8_000_000
+    assert snapshot["claims_diagnostic_repair_batch_size"] == 5
+    assert snapshot["claims_diagnostic_repair_max_depth"] == 4
+    assert snapshot["claims_diagnostic_repair_max_workers"] == 3
     assert snapshot["claims_run_heartbeat_interval"] == 60.0
+    assert snapshot["claims_payout_mode"] == "winner-takes-most"
+    assert snapshot["claims_payout_winner_share"] == 0.7
+    assert snapshot["claims_payout_runner_up_slots"] == 4
+    assert snapshot["claims_payout_runner_up_decay"] == 0.5
     assert "api_key" not in json.dumps(snapshot).lower()
     assert "must-not-be-persisted" not in json.dumps(snapshot)
 
@@ -294,6 +315,102 @@ def test_diagnostic_model_rows_include_validation_usage_metrics(monkeypatch) -> 
     assert row["metrics"]["cost_usd"] == 0.0456
 
 
+def test_validator_prepares_one_anonymous_diagnostic_batch_per_paper(monkeypatch, tmp_path) -> None:
+    captured = []
+
+    def fake_batch(**kwargs):
+        captured.append(kwargs)
+        return DiagnosticBatchExecution(
+            reports={
+                submission.submission_ref: {"findings": []}
+                for submission in kwargs["submissions"]
+            },
+            usage={},
+            duration_seconds=4.0,
+            operation_id="diagnostic-batch-1",
+            workspace=tmp_path / "workspace",
+        )
+
+    monkeypatch.setenv("CLAIMS_DIAGNOSTIC_FILE_WORKSPACE_ROOT", str(tmp_path / "workspaces"))
+    monkeypatch.setattr("neurons.validator.run_diagnostic_batch", fake_batch)
+    validator = object.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_diagnostic_miner_batch_size=10,
+        claims_diagnostic_batch_max_input_bytes=8_000_000,
+        claims_diagnostic_max_workers=10,
+        claims_rigor_harness="hermes-cli",
+        claims_rigor_model="openai/gpt-4o-mini",
+        claims_validator_pipeline="auto",
+    )
+    validator.target_neurons = [SimpleNamespace(uid=9), SimpleNamespace(uid=10)]
+    validator.bt_logging = _logger()
+    validator._active_model_usage = None
+    responses = [
+        SimpleNamespace(
+            protocol_version=PROTOCOL_VERSION,
+            schema_version=SCHEMA_VERSION,
+            articles=[
+                {
+                    "paper_id": "paper1",
+                    "status": "completed",
+                    "agent_output": _agent_v1_artifact(),
+                    "source_payload": _source_payload(),
+                }
+            ],
+        )
+        for _uid in (9, 10)
+    ]
+    task = ClaimsTask.from_dict(
+        {"task_id": "task1", "papers": [{"paper_id": "paper1", "title": "Paper 1"}]}
+    )
+
+    prepared = validator._prepare_batched_diagnostics(responses, task=task, run_id="run1")
+
+    assert len(captured) == 1
+    assert [item.submission_ref for item in captured[0]["submissions"]] == ["S0001", "S0002"]
+    assert sorted(prepared) == [(9, "paper1"), (10, "paper1")]
+    assert all(payload[1]["runtime"] == "diagnostic-file-batch" for payload in prepared.values())
+
+
+def test_batched_diagnostic_usage_is_recorded_once_for_the_shared_operation(tmp_path) -> None:
+    validator = object.__new__(ClaimsValidator)
+    validator._active_model_usage = ModelUsageCollector(
+        network="testnet",
+        run_id="run1",
+        batch_id="batch1",
+    )
+    execution = DiagnosticBatchExecution(
+        reports={"S0001": {"findings": []}, "S0002": {"findings": []}},
+        usage={
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "total_tokens": 120,
+            "cost_usd": 0.01,
+            "cost_kind": "actual",
+            "source": "test",
+        },
+        duration_seconds=5.0,
+        operation_id="diagnostic-batch-1",
+        workspace=tmp_path,
+    )
+
+    validator._record_batched_diagnostic_usage(
+        execution,
+        identity_by_ref={"S0001": (9, "paper1"), "S0002": (10, "paper1")},
+        config=SimpleNamespace(
+            harness="hermes-cli",
+            provider="openrouter",
+            model="openai/gpt-4o-mini",
+        ),
+    )
+
+    events = validator._active_model_usage.snapshot()
+    assert len(events) == 1
+    assert events[0]["uid"] is None
+    assert events[0]["total_tokens"] == 120
+    assert events[0]["metadata"]["uids"] == [9, 10]
+
+
 def test_silver_missing_assigned_paper_scores_zero() -> None:
     silver = SilverRecord(
         silver_record_id="silver_paper1",
@@ -332,15 +449,15 @@ def test_silver_missing_assigned_paper_scores_zero() -> None:
     assert missing.findings[0].metadata["code"] == "missing_paper_submission"
 
 
-def test_silver_unscored_assigned_papers_score_zero() -> None:
-    rows = _scores_for_unscored_papers(paper_ids=["paper2"], expected_uids=[9, 10], run_id="run1")
+def test_silver_all_miners_missing_assigned_paper_scores_zero() -> None:
+    rows = _scores_for_missing_submission_papers(paper_ids=["paper2"], expected_uids=[9, 10], run_id="run1")
 
     assert [(row.paper_id, row.miner_id, row.score) for row in rows] == [
         ("paper2", "uid_9", 0.0),
         ("paper2", "uid_10", 0.0),
     ]
     assert rows[0].silver_record_id == "silver_run1_paper2"
-    assert rows[0].findings[0].metadata["code"] == "unscored_assigned_paper"
+    assert rows[0].findings[0].metadata["code"] == "missing_paper_submission"
 
 
 def test_auto_router_detects_agent_v1_artifacts() -> None:
@@ -432,7 +549,7 @@ def test_neuron_silver_post_pass_persists_backend_records(tmp_path) -> None:
     assert len(backend.votes) == 2
 
 
-def test_neuron_silver_post_pass_counts_unscored_batch_paper_as_zero(tmp_path) -> None:
+def test_neuron_silver_post_pass_counts_all_miner_missing_paper_as_zero(tmp_path) -> None:
     bronze_root = tmp_path / "bronze"
     bronze_dir = bronze_root / "paper1"
     bronze_dir.mkdir(parents=True)
@@ -495,6 +612,10 @@ def test_neuron_silver_post_pass_counts_unscored_batch_paper_as_zero(tmp_path) -
         ("paper1", 1.0),
         ("paper2", 0.0),
     ]
+    assert {(row["paper_id"], row["uid"], row["score"]) for row in validator.backend_client.silver_scores} == {
+        ("paper1", 7, 1.0),
+        ("paper2", 7, 0.0),
+    }
 
 
 def test_neuron_silver_post_pass_parallelizes_batch_papers(monkeypatch, tmp_path) -> None:
@@ -610,7 +731,7 @@ def test_neuron_silver_post_pass_parallelizes_batch_papers(monkeypatch, tmp_path
     assert scores == {7: 1.0}
 
 
-def test_neuron_silver_post_pass_refuses_partial_scores_after_pipeline_failure(monkeypatch, tmp_path) -> None:
+def test_neuron_silver_post_pass_fails_when_every_processable_paper_fails(monkeypatch, tmp_path) -> None:
     bronze_root = tmp_path / "bronze"
     bronze_dir = bronze_root / "paper1"
     bronze_dir.mkdir(parents=True)
@@ -673,8 +794,229 @@ def test_neuron_silver_post_pass_refuses_partial_scores_after_pipeline_failure(m
         {"task_id": "task1", "batch_id": "batch1", "papers": [{"paper_id": "paper1", "title": "Paper 1"}]}
     )
 
-    with pytest.raises(RuntimeError, match="refusing to publish partial incentive scores"):
+    with pytest.raises(RuntimeError, match="no eligible papers"):
         validator._run_silver_post_pass([response], task=task, run_id="run1")
+
+    assert validator._active_silver_batch_outcome["eligible_paper_ids"] == []
+    assert validator._active_silver_batch_outcome["validator_failed_paper_ids"] == ["paper1"]
+
+
+def test_neuron_silver_post_pass_excludes_validator_failed_paper_neutrally(monkeypatch, tmp_path) -> None:
+    class FakeBronzeClient:
+        def get_or_create_bronze(self, *, request, reference_release_id):
+            artifact_path = tmp_path / f"{request.paper_id}_agent_output.json"
+            source_path = tmp_path / f"{request.paper_id}_source_payload.json"
+            artifact = _agent_v1_artifact()
+            artifact["paper"]["paper_id"] = request.paper_id
+            artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+            source_path.write_text(json.dumps(_source_payload()), encoding="utf-8")
+            return SimpleNamespace(
+                bronze_record_id=f"bronze_{request.paper_id}",
+                paper_id=request.paper_id,
+                reference_release_id=reference_release_id,
+                reference_profile_id="reference-test",
+                model_runtime_id="static",
+                pipeline_version="test",
+                metadata={},
+                artifact_path=str(artifact_path),
+                source_payload_path=str(source_path),
+            )
+
+    def pipeline(*, paper_id, silver_record_id, bronze_record_id, **_kwargs):
+        if paper_id == "paper2":
+            raise RuntimeError("adjudication provider unavailable")
+        silver = SilverRecord(
+            silver_record_id=silver_record_id,
+            paper_id=paper_id,
+            bronze_record_id=bronze_record_id,
+            silver_units=[
+                SilverUnit(
+                    silver_unit_id="silver_required",
+                    paper_id=paper_id,
+                    statement="Treatment improved outcome.",
+                    equivalent_candidate_ids=["miner:uid_7:C01"],
+                )
+            ],
+        )
+        return PaperSilverPipelineResult(
+            paper_id=paper_id,
+            bronze_candidates=[],
+            miner_submissions=[],
+            candidate_graph_edges=[],
+            diff_cases=[],
+            adjudication_consensus=[],
+            adjudication_decisions=[],
+            silver_record=silver,
+            scores=[
+                SilverScoreBreakdown(
+                    paper_id=paper_id,
+                    miner_id="uid_7",
+                    silver_record_id=silver_record_id,
+                    coverage=0.8,
+                    quality=1.0,
+                    score=0.8,
+                )
+            ],
+        )
+
+    monkeypatch.setattr("neurons.validator.run_paper_silver_pipeline", pipeline)
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_silver_enable=True,
+        claims_reference_release_id="reference-v0",
+        claims_silver_static_disposition="reference_error",
+        claims_output_dir=tmp_path / "outputs",
+        claims_network="testnet",
+        claims_silver_paper_max_workers=2,
+        claims_payout_winner_share=0.7,
+        claims_payout_runner_up_slots=4,
+        claims_payout_runner_up_decay=0.5,
+    )
+    validator.backend_client = None
+    validator.bt_logging = _logger()
+    validator.target_neurons = [
+        SimpleNamespace(uid=7, hotkey="hotkey7", coldkey="coldkey7", axon_info=SimpleNamespace(ip="", port=0, hotkey=""))
+    ]
+    validator._active_run_timing = None
+    validator._build_reference_miner_client = lambda: FakeBronzeClient()  # type: ignore[method-assign]
+    response = SimpleNamespace(
+        protocol_version="claims.v0",
+        schema_version="miner.v0.section_context_compat",
+        miner_version="agent_v1",
+        articles=[
+            {"paper_id": paper_id, "status": "completed", "agent_output": _agent_v1_artifact(), "source_payload": _source_payload()}
+            for paper_id in ("paper1", "paper2")
+        ],
+        extraction=None,
+        source_payload=None,
+    )
+    task = ClaimsTask.from_dict(
+        {
+            "task_id": "task1",
+            "batch_id": "batch1",
+            "papers": [{"paper_id": "paper1"}, {"paper_id": "paper2"}],
+        }
+    )
+
+    scores = validator._run_silver_post_pass([response], task=task, run_id="run1")
+
+    assert scores == {7: 0.8}
+    assert validator._active_silver_batch_outcome["outcome"] == "degraded"
+    assert validator._active_silver_batch_outcome["eligible_paper_ids"] == ["paper1"]
+    assert validator._active_silver_batch_outcome["validator_failed_paper_ids"] == ["paper2"]
+    assert validator._active_silver_batch_outcome["validator_failed_papers"][0]["stage"] == "silver_pipeline"
+
+
+def test_audit_only_calculates_winner_takes_most_weights_without_submitting() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_audit_only=True,
+        claims_payout_mode="winner-takes-most",
+        claims_payout_winner_share=0.7,
+        claims_payout_runner_up_slots=4,
+        claims_payout_runner_up_decay=0.5,
+    )
+    validator.bt_logging = _logger()
+    validator._active_silver_batch_outcome = {
+        "miners": [
+            {"miner_id": "uid_9", "payout_weight": 0.7},
+            {"miner_id": "uid_10", "payout_weight": 0.3},
+        ]
+    }
+
+    event = validator._set_weights({9: 0.8, 10: 0.5})
+
+    assert event["status"] == "audit_only"
+    assert event["calculated"] is True
+    assert event["submitted"] is False
+    assert event["weights"] == [
+        {"uid": 9, "score": 0.8, "weight": 0.7},
+        {"uid": 10, "score": 0.5, "weight": 0.3},
+    ]
+
+
+def test_all_zero_scores_keep_existing_chain_weights_untouched() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(claims_audit_only=False)
+    validator.bt_logging = _logger()
+
+    event = validator._set_weights({9: 0.0, 10: 0.0})
+
+    assert event == {
+        "status": "all_zero",
+        "weights": [],
+        "calculated": False,
+        "submitted": False,
+    }
+
+
+def test_compact_batch_outcome_omits_large_per_paper_breakdowns() -> None:
+    compact = _compact_silver_batch_outcome(
+        {
+            "outcome": "degraded",
+            "eligible_paper_ids": ["paper1"],
+            "miners": [
+                {
+                    "miner_id": "uid_9",
+                    "batch_score": 0.8,
+                    "paper_scores": [{"paper_id": "paper1", "findings": ["large"]}],
+                }
+            ],
+        }
+    )
+
+    assert compact == {
+        "outcome": "degraded",
+        "eligible_paper_ids": ["paper1"],
+        "miners": [{"miner_id": "uid_9", "batch_score": 0.8}],
+    }
+
+
+def test_weight_event_persists_authoritative_batch_summary() -> None:
+    posted: list[tuple[str, dict]] = []
+
+    class FakeBackend:
+        def post(self, path, payload):
+            posted.append((path, payload))
+            return payload
+
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(claims_network="testnet")
+    validator.backend_client = FakeBackend()
+    validator.bt_logging = _logger()
+    validator._active_silver_batch_outcome = {
+        "miners": [
+            {
+                "miner_id": "uid_9",
+                "batch_score": 0.8,
+                "mean_score": 0.8,
+                "median_score": 0.8,
+                "min_score": 0.6,
+                "rank": 1,
+                "winner": True,
+                "payout_weight": 1.0,
+                "expected_paper_count": 2,
+                "eligible_paper_count": 1,
+                "submitted_paper_count": 1,
+                "missing_paper_ids": [],
+                "validator_failed_paper_ids": ["paper2"],
+            }
+        ]
+    }
+
+    validator._post_weight_event(
+        "run1",
+        {9: 0.8},
+        {
+            "status": "audit_only",
+            "weights": [{"uid": 9, "score": 0.8, "weight": 1.0}],
+        },
+    )
+
+    [(_path, payload)] = posted
+    assert payload["scores"][0]["batch_score"] == 0.8
+    assert payload["scores"][0]["validator_failed_paper_ids"] == ["paper2"]
+    assert payload["weights"][0]["weight"] == 1.0
 
 
 def test_neuron_builds_configurable_silver_adjudication_passes() -> None:
