@@ -15,7 +15,8 @@ proposal. Do not preserve a draft unit merely because another agent emitted it.
 
 ## Required Review
 
-- Review every draft unit ID and every accepted candidate ID.
+- Emit exactly one `draft_unit_reviews` decision for every short draft-unit reference such as `u0`.
+- Review every accepted candidate and place its short `cN` reference exactly once in a final unit or exclusion.
 - Inspect the full set globally for transitive duplicates, split claims,
   restatements, and refinements that do not add a separately scoreable result.
 - Merge all mandatory same-unit groups. A split/restatement attack must earn one
@@ -41,7 +42,7 @@ proposal. Do not preserve a draft unit merely because another agent emitted it.
   every reported invariant and return the entire output again, not a patch.
 - Set every quality-check flag to true only after performing that review.
 - Record concise findings and how each was resolved.
-- Preserve all anonymous IDs exactly.
+- Use only the supplied short `cN` and `uN` references. The validator maps them back to internal identifiers.
 - Write one strict JSON object matching the supplied schema.
 
 Do not modify input files and do not finish before the output file validates.

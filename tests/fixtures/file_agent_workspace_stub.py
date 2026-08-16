@@ -13,7 +13,9 @@ def main() -> int:
     task_path = _path_from_query(query, "Read the complete task from")
     output_path = _path_from_query(query, "Write exactly one JSON object to")
     task = json.loads(task_path.read_text(encoding="utf-8"))
-    if "canonical_draft" in task:
+    if "submissions" in task and "review_every_submission_independently" in task.get("requirements", {}):
+        output = _diagnostic_batch(task)
+    elif "canonical_draft" in task:
         output = _canonical_audit(task)
     elif "accepted_candidates" in task:
         output = _canonicalization(task)
@@ -25,6 +27,18 @@ def main() -> int:
         raise ValueError(f"Unknown file-agent task keys: {sorted(task)}")
     output_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
     return 0
+
+
+def _diagnostic_batch(task: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "reports": [
+            {
+                "submission_ref": row["submission_ref"],
+                "findings": [],
+            }
+            for row in task.get("submissions", [])
+        ]
+    }
 
 
 def _comparison(task: dict[str, Any]) -> dict[str, Any]:
@@ -58,27 +72,26 @@ def _comparison(task: dict[str, Any]) -> dict[str, Any]:
                 ),
             }
         )
-    return {
-        "reviewed_reference_candidate_ids": [row["candidate_id"] for row in references],
-        "submission_reviews": reviews,
-    }
+    return {"submission_reviews": reviews}
 
 
 def _adjudication(task: dict[str, Any]) -> dict[str, Any]:
     results = []
     for row in task.get("cases", []):
-        candidates = row.get("candidates", [])
-        span_ids = sorted(
-            {
-                str(span_id)
-                for candidate in candidates
-                for span_id in candidate.get("source_span_ids", [])
-                if str(span_id).strip()
-            }
-        )
+        catalog = {
+            candidate["anonymous_id"]: candidate
+            for candidate in task.get("candidate_catalog", [])
+        }
+        candidates = [catalog[ref] for ref in row.get("candidate_refs", [])]
+        span_ids = sorted({
+            str(span_id)
+            for candidate in candidates
+            for span_id in candidate.get("source_span_ids", [])
+            if str(span_id).strip()
+        })
         results.append(
             {
-                "case_tracking_id": row["case_tracking_id"],
+                "case_ref": row["case_ref"],
                 "disposition": "same_unit" if len(candidates) > 1 else "include_candidate",
                 "material_findings": ["local_fixture_valid"],
                 "cited_span_ids": span_ids,
@@ -111,7 +124,6 @@ def _canonicalization(task: dict[str, Any]) -> dict[str, Any]:
             }
         )
     return {
-        "reviewed_candidate_ids": [row["candidate_id"] for row in candidates],
         "units": units,
         "exclusions": [
             {
@@ -126,8 +138,14 @@ def _canonicalization(task: dict[str, Any]) -> dict[str, Any]:
 def _canonical_audit(task: dict[str, Any]) -> dict[str, Any]:
     draft = task["canonical_draft"]
     return {
-        "reviewed_candidate_ids": draft["reviewed_candidate_ids"],
-        "reviewed_draft_unit_ids": [row["draft_unit_id"] for row in draft["units"]],
+        "draft_unit_reviews": [
+            {
+                "draft_unit_id": row["draft_unit_id"],
+                "outcome": "retained",
+                "rationale": "The deterministic fixture retained this supported draft unit.",
+            }
+            for row in draft["units"]
+        ],
         "quality_checks": {
             "duplicate_or_split_attack_checked": True,
             "paper_relevance_checked": True,

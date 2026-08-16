@@ -13,7 +13,6 @@ Identify actionable scientific relationships between reference candidates and su
 
 ## Rules
 
-- Copy every reference candidate ID exactly once into `reviewed_reference_candidate_ids` after reviewing it.
 - Emit exactly one row in `submission_reviews` for every submission candidate.
 - Put each actionable reference relationship exactly once in that submission's `reference_relations`. Do not mirror or duplicate it elsewhere.
 - When a submission has no actionable reference relationship, emit an empty `reference_relations` array and a specific `no_actionable_relation_reason` naming the closest reference and the material scientific difference.
@@ -39,9 +38,10 @@ Identify actionable scientific relationships between reference candidates and su
 - Treat numerical or methodological differences as material when they change the scientific claim.
 - Keep rationales short and pair-specific. Name the concrete shared proposition and the material equivalence, difference, refinement, split, or contradiction; never reuse a generic rationale across unrelated pairs.
 - Before returning every submission with empty `reference_relations`, explicitly re-check the closest mechanism-level and result-level cross-side candidates. Do not apply one blanket broad-versus-specific decision to the whole candidate set.
-- Before writing, verify that every reference ID appears exactly once in `reviewed_reference_candidate_ids` and every submission ID appears exactly once in `submission_reviews`.
+- Before writing, verify that every submission reference appears exactly once in `submission_reviews`. The validator derives unmatched reference candidates from the emitted relationships.
 - When `rejected_comparison_output` and `validator_rejection` are supplied without repair targets, repair every reported invariant and return the complete global output again.
-- When `repair_target_candidate_ids` is non-empty, preserve the validator-owned earlier decisions. Return targeted reference IDs in `reviewed_reference_candidate_ids`, targeted submission decisions in `submission_reviews`, and only relationships involving at least one repair target.
+- When `repair_target_candidate_ids` is non-empty, preserve the validator-owned earlier decisions. Return complete decisions for targeted submissions and only relationships involving at least one repair target.
+- Candidate references are short validator-owned labels such as `c0`. Copy only those short references into decisions; never invent or expand an internal identifier.
 - Write one strict JSON object matching the supplied schema to the required output file.
 - Use the harness `write_file` tool directly for the final artifact. Do not use Python, `execute_code`, shell commands, or terminal tools to construct or write the JSON.
 

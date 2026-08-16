@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from types import MethodType, SimpleNamespace
 
 import pytest
+import validator.agent_v1.file_agent_workflow as file_agent_workflow_module
 
 from validator.agent_v1.adjudication_models import (
     AdjudicationContextBundle,
@@ -22,11 +23,15 @@ from validator.agent_v1.comparison_models import (
 from validator.agent_v1.adjudication_passes import (
     CLIAdjudicationPass,
     StaticAdjudicationPass,
+    adjudication_batch_payload,
     file_adjudication_batch_payload,
+    restore_file_adjudication_batch_payload,
 )
 from validator.agent_v1.adjudication_runner import run_adjudication_cases
 from validator.agent_v1.file_agent_workflow import (
     CanonicalAuditOutput,
+    CanonicalAuditFinding,
+    CanonicalDraftUnitReview,
     CanonicalQualityChecks,
     CanonicalUnitProposal,
     CanonicalizationAgentOutput,
@@ -36,7 +41,11 @@ from validator.agent_v1.file_agent_workflow import (
     FileAgentWorkflowError,
     FileAgentWorkflowConfig,
     FileAgentWorkflowSession,
+    JudgeResult,
     _file_agent_judge_command,
+    _partial_judge_results,
+    _targeted_judge_repair_task,
+    _validate_canonical_audit,
 )
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline
 
@@ -54,18 +63,17 @@ def test_file_comparator_requires_complete_global_review_and_maps_anonymous_ids(
         assert kwargs["stage_key"] == "comparison"
         task = kwargs["task"]
         assert {row["candidate_id"] for row in task["candidates"]} == {
-            "reference_001",
-            "submission_001_candidate_001",
+            "c0",
+            "c1",
         }
         return SimpleNamespace(
             payload=ComparisonAgentOutput(
-                reviewed_reference_candidate_ids=["reference_001"],
                 submission_reviews=[
                     ComparisonSubmissionReview(
-                        submission_candidate_id="submission_001_candidate_001",
+                        submission_candidate_id="c1",
                         reference_relations=[
                             ComparisonReferenceRelation(
-                                reference_candidate_id="reference_001",
+                                reference_candidate_id="c0",
                                 relation="compatible_refinement",
                                 confidence=0.91,
                                 rationale="The submission adds a supported mortality time qualifier.",
@@ -98,7 +106,6 @@ def test_file_comparator_requires_complete_review_set(tmp_path) -> None:
     def fake_stage(_self, **_kwargs):
         return SimpleNamespace(
             payload=ComparisonAgentOutput(
-                reviewed_reference_candidate_ids=["reference_001"],
                 submission_reviews=[],
             )
         )
@@ -120,10 +127,9 @@ def test_file_comparator_requires_substantive_no_relation_reason(tmp_path) -> No
     def fake_stage(_self, **_kwargs):
         return SimpleNamespace(
             payload=ComparisonAgentOutput(
-                reviewed_reference_candidate_ids=["reference_001"],
                 submission_reviews=[
                     ComparisonSubmissionReview(
-                        submission_candidate_id="submission_001_candidate_001",
+                        submission_candidate_id="c1",
                         reference_relations=[],
                         no_actionable_relation_reason="No match was found for this candidate.",
                     )
@@ -149,16 +155,12 @@ def test_file_comparator_repairs_incomplete_review_set(tmp_path) -> None:
 
     def fake_stage(_self, **kwargs):
         calls.append(kwargs["stage_key"])
-        reviewed_references = ["reference_001"]
         submission_reviews = []
         if kwargs["stage_key"] == "comparison_repair":
-            assert kwargs["task"]["repair_target_candidate_ids"] == [
-                "submission_001_candidate_001"
-            ]
-            reviewed_references = []
+            assert kwargs["task"]["repair_target_candidate_ids"] == ["c1"]
             submission_reviews = [
                 ComparisonSubmissionReview(
-                    submission_candidate_id="submission_001_candidate_001",
+                    submission_candidate_id="c1",
                     reference_relations=[],
                     no_actionable_relation_reason=(
                         "The closest reference reports reduced mortality, while the submission "
@@ -168,7 +170,6 @@ def test_file_comparator_repairs_incomplete_review_set(tmp_path) -> None:
             ]
         return SimpleNamespace(
             payload=ComparisonAgentOutput(
-                reviewed_reference_candidate_ids=reviewed_references,
                 submission_reviews=submission_reviews,
             )
         )
@@ -180,8 +181,8 @@ def test_file_comparator_repairs_incomplete_review_set(tmp_path) -> None:
         (session.root / "comparison" / "comparison_pairs.json").read_text()
     )
     assert projected["unmatched_candidate_ids"] == [
-        "reference_001",
-        "submission_001_candidate_001",
+        "c0",
+        "c1",
     ]
 
 
@@ -203,19 +204,17 @@ def test_file_comparator_targeted_repair_can_relate_an_unreviewed_candidate(tmp_
         if kwargs["stage_key"] == "comparison":
             return SimpleNamespace(
                 payload=ComparisonAgentOutput(
-                    reviewed_reference_candidate_ids=["reference_001"],
                     submission_reviews=[],
                 )
             )
         return SimpleNamespace(
             payload=ComparisonAgentOutput(
-                reviewed_reference_candidate_ids=[],
                 submission_reviews=[
                     ComparisonSubmissionReview(
-                        submission_candidate_id="submission_001_candidate_001",
+                        submission_candidate_id="c1",
                         reference_relations=[
                             ComparisonReferenceRelation(
-                                reference_candidate_id="reference_001",
+                                reference_candidate_id="c0",
                                 relation="compatible_refinement",
                                 confidence=0.91,
                                 rationale="The submission narrows the mortality endpoint to 30 days.",
@@ -248,13 +247,12 @@ def test_file_comparator_rejects_unknown_relation_endpoint(tmp_path) -> None:
     def fake_stage(_self, **_kwargs):
         return SimpleNamespace(
             payload=ComparisonAgentOutput(
-                reviewed_reference_candidate_ids=["reference_001"],
                 submission_reviews=[
                     ComparisonSubmissionReview(
-                        submission_candidate_id="submission_001_candidate_001",
+                        submission_candidate_id="c1",
                         reference_relations=[
                             ComparisonReferenceRelation(
-                                reference_candidate_id="reference_999",
+                                reference_candidate_id="c999",
                                 relation="contradiction",
                                 confidence=0.9,
                                 rationale="The candidates make opposing treatment-effect claims.",
@@ -282,10 +280,9 @@ def test_file_comparator_requires_exact_restatement_pair(tmp_path) -> None:
     def fake_stage(_self, **_kwargs):
         return SimpleNamespace(
             payload=ComparisonAgentOutput(
-                reviewed_reference_candidate_ids=["reference_001"],
                 submission_reviews=[
                     ComparisonSubmissionReview(
-                        submission_candidate_id="submission_001_candidate_001",
+                        submission_candidate_id="c1",
                         reference_relations=[],
                         no_actionable_relation_reason=(
                             "The closest reference was reviewed as scientifically distinct "
@@ -432,11 +429,39 @@ def test_file_judge_payload_catalogues_repeated_candidates_once(tmp_path) -> Non
 
     assert len(payload["candidate_catalog"]) == 2
     assert len(payload["cases"]) == 2
+    assert [case["case_ref"] for case in payload["cases"]] == ["k0", "k1"]
+    assert [candidate["anonymous_id"] for candidate in payload["candidate_catalog"]] == [
+        "c0",
+        "c1",
+    ]
     assert len(payload["cases"][0]["candidate_refs"]) == 1
     assert len(payload["cases"][1]["candidate_refs"]) == 2
     assert payload["cases"][0]["candidate_refs"][0] in payload["cases"][1]["candidate_refs"]
     assert all("candidates" not in case for case in payload["cases"])
     assert all("origin" not in candidate for candidate in payload["candidate_catalog"])
+
+    restored = restore_file_adjudication_batch_payload(
+        contexts,
+        {
+            "results": [
+                {
+                    "case_ref": "k1",
+                    "disposition": "same_unit",
+                    "material_findings": [],
+                    "cited_span_ids": ["S1", "S2"],
+                    "confidence": 0.9,
+                    "rationale": "Both candidates describe one qualified mortality result.",
+                    "insufficient_information": False,
+                }
+            ]
+        },
+    )
+    assert restored["results"][0]["case_tracking_id"] != "case_2"
+    assert "case_ref" not in restored["results"][0]
+
+    legacy_schema = adjudication_batch_payload(contexts)["required_json_schema"]["results"][0]
+    assert "case_tracking_id" in legacy_schema
+    assert "case_ref" not in legacy_schema
 
 
 def test_file_judge_uses_file_agent_hermes_turn_budget(tmp_path) -> None:
@@ -462,6 +487,82 @@ def test_file_judge_uses_file_agent_hermes_turn_budget(tmp_path) -> None:
     command = _file_agent_judge_command(session.config, adjudication_pass)
 
     assert command[command.index("--max-turns") + 1] == "30"
+
+
+def test_partial_judge_results_preserves_valid_rows_and_repairs_only_invalid_cases() -> None:
+    valid = {
+        "case_ref": "k0",
+        "disposition": "same_unit",
+        "material_findings": [],
+        "cited_span_ids": ["S1"],
+        "confidence": 0.9,
+        "rationale": "Both candidates state the same supported scientific result.",
+        "insufficient_information": False,
+    }
+    invalid = {
+        **valid,
+        "case_ref": "k1",
+        "disposition": "compatible_refinement",
+    }
+
+    preserved, repair_refs, rejected, validation_error = _partial_judge_results(
+        {"results": [valid, invalid]},
+        expected_case_refs={"k0", "k1"},
+    )
+
+    assert [result.case_ref for result in preserved] == ["k0"]
+    assert repair_refs == {"k1"}
+    assert rejected == [invalid]
+    assert "disposition" in validation_error
+
+
+def test_canonical_audit_finding_accepts_quality_check_category_name() -> None:
+    finding = CanonicalAuditFinding(
+        category="duplicate_or_split_attack",
+        draft_unit_ids=["u1", "u2"],
+        finding="Two draft units split one underlying scientific result.",
+        resolution="Merge them into one canonical unit.",
+    )
+
+    assert finding.category == "duplicate_or_split_attack"
+
+
+def test_targeted_judge_repair_task_contains_only_failed_cases_and_dependencies() -> None:
+    task = {
+        "candidate_catalog": [
+            {"anonymous_id": "c0", "statement": "One"},
+            {"anonymous_id": "c1", "statement": "Two"},
+            {"anonymous_id": "c2", "statement": "Three"},
+        ],
+        "cases": [
+            {
+                "case_ref": "k0",
+                "candidate_refs": ["c0"],
+                "source_context_ref": "source_a",
+            },
+            {
+                "case_ref": "k1",
+                "candidate_refs": ["c1", "c2"],
+                "source_context_ref": "source_b",
+            },
+        ],
+        "source_contexts": {"source_a": "A", "source_b": "B"},
+        "allowed_dispositions": ["same_unit", "separate_valid_units"],
+        "disposition_meanings": {"same_unit": "same"},
+        "required_json_schema": {"results": []},
+    }
+
+    repair = _targeted_judge_repair_task(
+        task,
+        repair_refs={"k1"},
+        rejected_results=[{"case_ref": "k1", "disposition": "compatible_refinement"}],
+        validator_rejection="invalid disposition",
+    )
+
+    assert [row["case_ref"] for row in repair["cases"]] == ["k1"]
+    assert [row["anonymous_id"] for row in repair["candidate_catalog"]] == ["c1", "c2"]
+    assert repair["source_contexts"] == {"source_b": "B"}
+    assert repair["repair_requirements"]["return_exactly_these_case_refs"] == ["k1"]
 
 
 def test_file_canonicalizer_partitions_candidates_and_pools_evidence(tmp_path) -> None:
@@ -497,11 +598,11 @@ def test_file_canonicalizer_partitions_candidates_and_pools_evidence(tmp_path) -
     def fake_stage(_self, **kwargs):
         nonlocal draft_payload
         aliases = [row["candidate_id"] for row in kwargs["task"]["accepted_candidates"]]
+        assert aliases == ["c0", "c1", "c2"]
         if kwargs["stage_key"] == "canonicalization_draft":
             substantive = aliases[:2]
             trivial = aliases[2]
             draft_payload = CanonicalizationAgentOutput(
-                reviewed_candidate_ids=aliases,
                 units=[
                     CanonicalUnitProposal(
                         statement="Treatment reduced 30-day mortality.",
@@ -515,10 +616,11 @@ def test_file_canonicalizer_partitions_candidates_and_pools_evidence(tmp_path) -
             return SimpleNamespace(payload=draft_payload)
         assert kwargs["stage_key"] == "canonicalization_audit"
         assert draft_payload is not None
+        assert kwargs["task"]["canonical_draft"]["units"][0]["draft_unit_id"] == "u0"
         return SimpleNamespace(
             payload=CanonicalAuditOutput(
                 **draft_payload.model_dump(),
-                reviewed_draft_unit_ids=["draft_unit_001"],
+                draft_unit_reviews=[_draft_unit_review()],
                 quality_checks=CanonicalQualityChecks(
                     duplicate_or_split_attack_checked=True,
                     paper_relevance_checked=True,
@@ -580,7 +682,6 @@ def test_file_canonicalizer_rejects_unit_without_linked_evidence(tmp_path) -> No
         alias = kwargs["task"]["accepted_candidates"][0]["candidate_id"]
         if kwargs["stage_key"] == "canonicalization_draft":
             draft_payload = CanonicalizationAgentOutput(
-                reviewed_candidate_ids=[alias],
                 units=[
                     CanonicalUnitProposal(
                         statement=candidate.statement,
@@ -593,7 +694,7 @@ def test_file_canonicalizer_rejects_unit_without_linked_evidence(tmp_path) -> No
         return SimpleNamespace(
             payload=CanonicalAuditOutput(
                 **draft_payload.model_dump(),
-                reviewed_draft_unit_ids=["draft_unit_001"],
+                draft_unit_reviews=[_draft_unit_review()],
                 quality_checks=CanonicalQualityChecks(
                     duplicate_or_split_attack_checked=True,
                     paper_relevance_checked=True,
@@ -648,15 +749,13 @@ def test_file_canonicalizer_repairs_incomplete_audit_partition(tmp_path) -> None
         if stage_key == "canonicalization_draft":
             return SimpleNamespace(
                 payload=CanonicalizationAgentOutput(
-                    reviewed_candidate_ids=[alias],
                     units=[unit],
                 )
             )
         if stage_key == "canonicalization_audit":
             return SimpleNamespace(
                 payload=CanonicalAuditOutput(
-                    reviewed_candidate_ids=[alias],
-                    reviewed_draft_unit_ids=["draft_unit_001"],
+                    draft_unit_reviews=[_draft_unit_review()],
                     quality_checks=quality_checks(),
                     units=[],
                     exclusions=[],
@@ -666,8 +765,7 @@ def test_file_canonicalizer_repairs_incomplete_audit_partition(tmp_path) -> None
         assert "missing=" in kwargs["task"]["validator_rejection"]
         return SimpleNamespace(
             payload=CanonicalAuditOutput(
-                reviewed_candidate_ids=[alias],
-                reviewed_draft_unit_ids=["draft_unit_001"],
+                draft_unit_reviews=[_draft_unit_review()],
                 quality_checks=quality_checks(),
                 units=[unit],
                 exclusions=[],
@@ -691,6 +789,25 @@ def test_file_canonicalizer_repairs_incomplete_audit_partition(tmp_path) -> None
     assert len(record.silver_units) == 1
     assert record.metadata["file_agent_workflow"]["canonical_audit_repaired"] is True
     assert "missing=" in record.metadata["file_agent_workflow"]["canonical_audit_initial_rejection"]
+
+
+def test_canonical_audit_rejects_invented_short_draft_reference() -> None:
+    output = CanonicalAuditOutput(
+        draft_unit_reviews=[_draft_unit_review("0")],
+        quality_checks=CanonicalQualityChecks(
+            duplicate_or_split_attack_checked=True,
+            paper_relevance_checked=True,
+            evidence_support_checked=True,
+            contradiction_checked=True,
+            importance_checked=True,
+        ),
+    )
+
+    with pytest.raises(
+        FileAgentWorkflowError,
+        match=r"missing=\['u0'\] unknown=\['0'\]",
+    ):
+        _validate_canonical_audit(output, {"u0"})
 
 
 def test_orchestrator_uses_file_workflow_without_legacy_relation_or_importance_calls() -> None:
@@ -736,7 +853,7 @@ def test_orchestrator_uses_file_workflow_without_legacy_relation_or_importance_c
     assert result.silver_record.metadata["file_agent_workflow"]["manifest_sha256"] == "test-hash"
 
 
-def test_file_agent_process_writes_and_validates_the_required_output_file(tmp_path) -> None:
+def test_file_agent_process_writes_and_validates_the_required_output_file(tmp_path, monkeypatch) -> None:
     session = _session(
         tmp_path,
         [_candidate("bronze:C01", "bronze", None, "Treatment reduced mortality.")],
@@ -753,7 +870,6 @@ if match is None:
     raise SystemExit(2)
 Path(match.group(1)).write_text(
     json.dumps({
-        "reviewed_reference_candidate_ids": ["reference_001"],
         "submission_reviews": [],
     }),
     encoding="utf-8",
@@ -761,6 +877,20 @@ Path(match.group(1)).write_text(
 """
     skill_path = tmp_path / "SKILL.md"
     skill_path.write_text("Write the requested JSON artifact.", encoding="utf-8")
+    stale_output = session.root / "executions" / "comparison_smoke" / "output.json"
+    stale_output.parent.mkdir(parents=True, exist_ok=True)
+    stale_output.write_text('{"submission_reviews": [{"stale": true}]}', encoding="utf-8")
+    original_runner = file_agent_workflow_module._run_until_valid_output
+
+    def assert_stale_output_removed(*args, output_path, **kwargs):
+        assert not output_path.exists()
+        return original_runner(*args, output_path=output_path, **kwargs)
+
+    monkeypatch.setattr(
+        file_agent_workflow_module,
+        "_run_until_valid_output",
+        assert_stale_output_removed,
+    )
 
     result = session._run_stage(
         stage_key="comparison_smoke",
@@ -774,7 +904,6 @@ Path(match.group(1)).write_text(
     )
 
     assert isinstance(result.payload, ComparisonAgentOutput)
-    assert result.payload.reviewed_reference_candidate_ids == ["reference_001"]
     assert json.loads(result.output_path.read_text(encoding="utf-8"))["submission_reviews"] == []
 
 
@@ -803,6 +932,14 @@ def _session(tmp_path, candidates, *, workspace_id: str = "workspace") -> FileAg
             "S2": "Treatment reduced 30-day mortality.",
             "S3": "The article used tables.",
         },
+    )
+
+
+def _draft_unit_review(draft_unit_id: str = "u0") -> CanonicalDraftUnitReview:
+    return CanonicalDraftUnitReview(
+        draft_unit_id=draft_unit_id,
+        outcome="retained",
+        rationale="The supported draft unit remains a distinct canonical claim.",
     )
 
 

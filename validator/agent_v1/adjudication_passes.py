@@ -1220,13 +1220,13 @@ def file_adjudication_batch_payload(contexts: list[AdjudicationContextBundle]) -
     candidate_catalog: list[dict[str, Any]] = []
     candidate_refs: dict[str, str] = {}
     source_contexts: dict[str, str] = {}
-    for context in contexts:
+    for case_index, context in enumerate(contexts):
         ordered_candidates = _anonymous_candidate_order(context)
         case_candidate_refs: list[str] = []
         for candidate in ordered_candidates:
             candidate_ref = candidate_refs.get(candidate.candidate_id)
             if candidate_ref is None:
-                candidate_ref = f"candidate_{len(candidate_refs) + 1:04d}"
+                candidate_ref = f"c{len(candidate_refs)}"
                 candidate_refs[candidate.candidate_id] = candidate_ref
                 candidate_catalog.append(
                     _anonymous_candidate_payload(candidate, anonymous_id=candidate_ref)
@@ -1238,7 +1238,7 @@ def file_adjudication_batch_payload(contexts: list[AdjudicationContextBundle]) -
         source_contexts.setdefault(source_context_ref, source_context)
         cases.append(
             {
-                "case_tracking_id": _case_tracking_id(context),
+                "case_ref": f"k{case_index}",
                 "case_type": _neutral_case_type(context),
                 "question": _neutral_question(context),
                 "candidate_refs": case_candidate_refs,
@@ -1251,8 +1251,34 @@ def file_adjudication_batch_payload(contexts: list[AdjudicationContextBundle]) -
         "source_contexts": source_contexts,
         "allowed_dispositions": sorted(PROMPT_DISPOSITIONS),
         "disposition_meanings": _adjudication_disposition_meanings(),
-        "required_json_schema": _adjudication_batch_schema(),
+        "required_json_schema": _file_adjudication_batch_schema(),
     }
+
+
+def restore_file_adjudication_batch_payload(
+    contexts: list[AdjudicationContextBundle],
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Restore validator-owned case IDs after a file-agent judge returns short refs."""
+
+    case_tracking_by_ref = {
+        f"k{index}": _case_tracking_id(context)
+        for index, context in enumerate(contexts)
+    }
+    results = payload.get("results") if isinstance(payload.get("results"), list) else []
+    restored_results: list[dict[str, Any]] = []
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        case_ref = str(result.get("case_ref") or "")
+        case_tracking_id = case_tracking_by_ref.get(case_ref)
+        if case_tracking_id is None:
+            continue
+        restored = dict(result)
+        restored.pop("case_ref", None)
+        restored["case_tracking_id"] = case_tracking_id
+        restored_results.append(restored)
+    return {"results": restored_results}
 
 
 def _adjudication_batch_schema() -> dict[str, Any]:
@@ -1269,6 +1295,13 @@ def _adjudication_batch_schema() -> dict[str, Any]:
             }
         ]
     }
+
+
+def _file_adjudication_batch_schema() -> dict[str, Any]:
+    schema = _adjudication_batch_schema()
+    schema["results"][0]["case_ref"] = schema["results"][0].pop("case_tracking_id")
+    schema["results"][0]["case_ref"] = "exact short case ref from the input"
+    return schema
 
 
 def _case_tracking_id(context: AdjudicationContextBundle) -> str:

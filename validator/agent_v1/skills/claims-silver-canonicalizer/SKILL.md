@@ -23,7 +23,7 @@ Create one canonical Silver unit for each unique scientific claim. Prevent split
 - Pool evidence from every candidate assigned to the unit. The validator performs the mechanical evidence union after your grouping decision.
 - Exclude claims that may be true but are trivial, incidental, or not relevant to the paper's scientific contribution. Give a concrete reason.
 - Assign `central`, `supporting`, or `minor` from the claim's role in the paper, not from miner-provided metadata.
-- Preserve supplied anonymous candidate IDs exactly.
+- Use the supplied short candidate references such as `c0` exactly. Completeness is proven by the final partition, so do not emit a separate reviewed-ID list.
 - Write one strict JSON object matching the supplied schema to the required output file.
 
 Do not modify input files and do not finish before the output file validates.

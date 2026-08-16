@@ -26,6 +26,7 @@ from .adjudication_models import AdjudicationConsensus, AdjudicationContextBundl
 from .adjudication_passes import (
     CLIAdjudicationPass,
     file_adjudication_batch_payload,
+    restore_file_adjudication_batch_payload,
     votes_from_adjudication_batch_payload,
 )
 from .adjudication_runner import AdjudicationPass
@@ -72,12 +73,11 @@ class ComparisonSubmissionReview(_StrictOutputModel):
 
 
 class ComparisonAgentOutput(_StrictOutputModel):
-    reviewed_reference_candidate_ids: list[str]
     submission_reviews: list[ComparisonSubmissionReview]
 
 
 class JudgeResult(_StrictOutputModel):
-    case_tracking_id: str
+    case_ref: str
     disposition: Literal[
         "include_candidate",
         "exclude_candidate",
@@ -112,14 +112,20 @@ class CanonicalExclusionProposal(_StrictOutputModel):
 
 
 class CanonicalizationAgentOutput(_StrictOutputModel):
-    reviewed_candidate_ids: list[str]
     units: list[CanonicalUnitProposal] = Field(default_factory=list)
     exclusions: list[CanonicalExclusionProposal] = Field(default_factory=list)
+
+
+class CanonicalDraftUnitReview(_StrictOutputModel):
+    draft_unit_id: str
+    outcome: Literal["retained", "merged", "split", "rewritten", "excluded"]
+    rationale: str = Field(min_length=1)
 
 
 class CanonicalAuditFinding(_StrictOutputModel):
     category: Literal[
         "duplicate_or_split",
+        "duplicate_or_split_attack",
         "paper_relevance",
         "evidence_support",
         "contradiction",
@@ -140,7 +146,7 @@ class CanonicalQualityChecks(_StrictOutputModel):
 
 
 class CanonicalAuditOutput(CanonicalizationAgentOutput):
-    reviewed_draft_unit_ids: list[str]
+    draft_unit_reviews: list[CanonicalDraftUnitReview]
     quality_checks: CanonicalQualityChecks
     findings: list[CanonicalAuditFinding] = Field(default_factory=list)
 
@@ -281,10 +287,10 @@ class FileAgentWorkflowSession:
                 for reference_alias, submission_alias in sorted(mandatory_pairs)
             ],
             "requirements": {
-                "list_every_reference_once_in_reviewed_reference_candidate_ids": True,
                 "emit_one_review_row_per_submission_candidate": True,
                 "emit_each_actionable_reference_submission_relation_once_in_its_submission_review": True,
                 "give_each_submission_without_relations_a_substantive_reason": True,
+                "scan_all_reference_candidates_for_each_submission": True,
                 "shared_topic_or_pathway_alone_is_not_actionable": True,
                 "omit_unrelated_pairs_from_relations": True,
                 "allowed_relations": sorted(ACTIONABLE_RELATIONS),
@@ -309,8 +315,12 @@ class FileAgentWorkflowSession:
             )
         except FileAgentWorkflowError as exc:
             comparison_repair_error = str(exc)
-            expected_aliases = set(candidates_by_alias)
-            missing_aliases = expected_aliases.difference(
+            expected_submission_aliases = {
+                alias
+                for alias, candidate in candidates_by_alias.items()
+                if candidate.origin == "miner"
+            }
+            missing_aliases = expected_submission_aliases.difference(
                 _comparison_reviewed_aliases(output)
             )
             targeted_repair = bool(missing_aliases) and "review set" in comparison_repair_error
@@ -529,8 +539,8 @@ class FileAgentWorkflowSession:
             return baseline_record
 
         alias_by_id = {
-            candidate_id: f"claim_{hashlib.sha256(f'{self.paper_id}|{candidate_id}'.encode('utf-8')).hexdigest()[:12]}"
-            for candidate_id in accepted_candidate_ids
+            candidate_id: f"c{index}"
+            for index, candidate_id in enumerate(accepted_candidate_ids)
         }
         id_by_alias = {alias: candidate_id for candidate_id, alias in alias_by_id.items()}
         expected_aliases = set(id_by_alias)
@@ -565,7 +575,7 @@ class FileAgentWorkflowSession:
             ),
             "adjudication_consensus": [
                 {
-                    "case_tracking_id": hashlib.sha256(decision.case_id.encode("utf-8")).hexdigest()[:16],
+                    "case_ref": f"k{index}",
                     "disposition": decision.disposition,
                     "accepted_candidate_ids": [
                         alias_by_id[candidate_id]
@@ -575,7 +585,7 @@ class FileAgentWorkflowSession:
                     "same_silver_unit": decision.same_silver_unit,
                     "rationale": decision.rationale,
                 }
-                for decision in decisions
+                for index, decision in enumerate(decisions)
                 if any(candidate_id in alias_by_id for candidate_id in decision.accepted_candidate_ids)
             ],
             "mandatory_same_unit_groups": must_link_aliases,
@@ -608,7 +618,7 @@ class FileAgentWorkflowSession:
         )
         draft = draft_result.payload
         assert isinstance(draft, CanonicalizationAgentOutput)
-        draft_unit_ids = [f"draft_unit_{index:03d}" for index, _unit in enumerate(draft.units, start=1)]
+        draft_unit_ids = [f"u{index}" for index, _unit in enumerate(draft.units)]
         draft_issues = _canonical_partition_issues(
             draft,
             expected_aliases=expected_aliases,
@@ -625,7 +635,6 @@ class FileAgentWorkflowSession:
             "expected_candidate_count": len(expected_aliases),
             "expected_draft_unit_count": len(draft_unit_ids),
             "canonical_draft": {
-                "reviewed_candidate_ids": draft.reviewed_candidate_ids,
                 "units": [
                     {
                         "draft_unit_id": draft_unit_id,
@@ -753,6 +762,9 @@ class FileAgentWorkflowSession:
                 finding.model_dump(mode="json") for finding in output.findings
             ],
             "canonical_quality_checks": output.quality_checks.model_dump(mode="json"),
+            "canonical_draft_unit_reviews": [
+                review.model_dump(mode="json") for review in output.draft_unit_reviews
+            ],
             "canonical_audit_repaired": bool(audit_repair_error),
             "canonical_audit_initial_rejection": audit_repair_error or None,
             "mandatory_same_unit_group_count": len(must_link_aliases),
@@ -784,24 +796,40 @@ class FileAgentWorkflowSession:
     ) -> list[AdjudicationVote]:
         if isinstance(adjudication_pass, CLIAdjudicationPass):
             task = file_adjudication_batch_payload(contexts)
+            stage_key = f"judge_{adjudication_pass.pass_id}"
             try:
-                result = self._run_stage(
-                    stage_key=f"judge_{adjudication_pass.pass_id}",
-                    stage_label="Adjudication",
-                    model=adjudication_pass.model,
-                    task=task,
-                    output_model=JudgeAgentOutput,
-                    skill_path=_skill_path("claims-silver-adjudicator"),
-                    command=_file_agent_judge_command(self.config, adjudication_pass),
-                    harness=adjudication_pass.model_runtime_id,
-                    provider=adjudication_pass.provider,
-                    pass_id=adjudication_pass.pass_id,
-                )
-                output = result.payload
-                assert isinstance(output, JudgeAgentOutput)
-                votes = votes_from_adjudication_batch_payload(
+                try:
+                    result = self._run_stage(
+                        stage_key=stage_key,
+                        stage_label="Adjudication",
+                        model=adjudication_pass.model,
+                        task=task,
+                        output_model=JudgeAgentOutput,
+                        skill_path=_skill_path("claims-silver-adjudicator"),
+                        command=_file_agent_judge_command(self.config, adjudication_pass),
+                        harness=adjudication_pass.model_runtime_id,
+                        provider=adjudication_pass.provider,
+                        pass_id=adjudication_pass.pass_id,
+                    )
+                    output = result.payload
+                    assert isinstance(output, JudgeAgentOutput)
+                    expected_case_refs = {f"k{index}" for index in range(len(contexts))}
+                    _validate_judge_output(output, expected_case_refs=expected_case_refs)
+                except Exception as initial_exc:
+                    output = self._repair_judge_output(
+                        adjudication_pass=adjudication_pass,
+                        task=task,
+                        stage_key=stage_key,
+                        expected_case_refs={f"k{index}" for index in range(len(contexts))},
+                        initial_error=initial_exc,
+                    )
+                restored_output = restore_file_adjudication_batch_payload(
                     contexts,
                     output.model_dump(mode="json"),
+                )
+                votes = votes_from_adjudication_batch_payload(
+                    contexts,
+                    restored_output,
                     pass_id=adjudication_pass.pass_id,
                     adjudication_profile_id=adjudication_pass.adjudication_profile_id,
                     model_runtime_id=adjudication_pass.model_runtime_id,
@@ -823,6 +851,60 @@ class FileAgentWorkflowSession:
             {"votes": [vote.model_dump(mode="json") for vote in votes]},
         )
         return votes
+
+    def _repair_judge_output(
+        self,
+        *,
+        adjudication_pass: CLIAdjudicationPass,
+        task: dict[str, Any],
+        stage_key: str,
+        expected_case_refs: set[str],
+        initial_error: Exception,
+    ) -> JudgeAgentOutput:
+        raw_output = _read_json_value(self.root / "executions" / _safe_path(stage_key) / "output.json")
+        valid_results, repair_refs, rejected_results, validation_error = _partial_judge_results(
+            raw_output,
+            expected_case_refs=expected_case_refs,
+        )
+        if not repair_refs:
+            raise initial_error
+        repair_task = _targeted_judge_repair_task(
+            task,
+            repair_refs=repair_refs,
+            rejected_results=rejected_results,
+            validator_rejection=validation_error or f"{type(initial_error).__name__}: {initial_error}",
+        )
+        repair_result = self._run_stage(
+            stage_key=f"{stage_key}_repair",
+            stage_label="Adjudication repair",
+            model=adjudication_pass.model,
+            task=repair_task,
+            output_model=JudgeAgentOutput,
+            skill_path=_skill_path("claims-silver-adjudicator"),
+            command=_file_agent_judge_command(self.config, adjudication_pass),
+            harness=adjudication_pass.model_runtime_id,
+            provider=adjudication_pass.provider,
+            pass_id=adjudication_pass.pass_id,
+        )
+        repaired = repair_result.payload
+        assert isinstance(repaired, JudgeAgentOutput)
+        _validate_judge_output(repaired, expected_case_refs=repair_refs)
+        merged_by_ref = {result.case_ref: result for result in valid_results}
+        merged_by_ref.update({result.case_ref: result for result in repaired.results})
+        merged = JudgeAgentOutput(
+            results=[merged_by_ref[case_ref] for case_ref in _ordered_case_refs(expected_case_refs)]
+        )
+        _validate_judge_output(merged, expected_case_refs=expected_case_refs)
+        self._write_json(
+            f"adjudication/{_safe_path(adjudication_pass.pass_id)}_repair.json",
+            {
+                "initial_error": f"{type(initial_error).__name__}: {initial_error}",
+                "repair_case_refs": _ordered_case_refs(repair_refs),
+                "preserved_result_count": len(valid_results),
+                "repaired_result_count": len(repaired.results),
+            },
+        )
+        return merged
 
     def _run_stage(
         self,
@@ -846,6 +928,7 @@ class FileAgentWorkflowSession:
         output_path = stage_dir / "output.json"
         stdout_path = stage_dir / "stdout.log"
         stderr_path = stage_dir / "stderr.log"
+        output_path.unlink(missing_ok=True)
         self._atomic_json(task_path, task)
         self._atomic_json(schema_path, output_model.model_json_schema())
         skill_copy.write_text(skill_path.read_text(encoding="utf-8"), encoding="utf-8")
@@ -1045,24 +1128,16 @@ def _comparison_aliases(
 ) -> tuple[dict[str, str], dict[str, ComparisonCandidate]]:
     aliases: dict[str, str] = {}
     candidates_by_alias: dict[str, ComparisonCandidate] = {}
-    bronze = sorted(
-        (candidate for candidate in candidates if candidate.origin == "bronze"),
-        key=lambda candidate: candidate.candidate_id,
+    ordered = sorted(
+        candidates,
+        key=lambda candidate: (
+            0 if candidate.origin == "bronze" else 1,
+            candidate.miner_id or "",
+            candidate.candidate_id,
+        ),
     )
-    for index, candidate in enumerate(bronze, start=1):
-        alias = f"reference_{index:03d}"
-        aliases[candidate.candidate_id] = alias
-        candidates_by_alias[alias] = candidate
-    miner_ids = sorted({candidate.miner_id or "unknown" for candidate in candidates if candidate.origin == "miner"})
-    miner_number = {miner_id: index for index, miner_id in enumerate(miner_ids, start=1)}
-    per_miner_index: dict[str, int] = {}
-    for candidate in sorted(
-        (candidate for candidate in candidates if candidate.origin == "miner"),
-        key=lambda candidate: ((candidate.miner_id or "unknown"), candidate.candidate_id),
-    ):
-        miner_id = candidate.miner_id or "unknown"
-        per_miner_index[miner_id] = per_miner_index.get(miner_id, 0) + 1
-        alias = f"submission_{miner_number[miner_id]:03d}_candidate_{per_miner_index[miner_id]:03d}"
+    for index, candidate in enumerate(ordered):
+        alias = f"c{index}"
         aliases[candidate.candidate_id] = alias
         candidates_by_alias[alias] = candidate
     return aliases, candidates_by_alias
@@ -1094,23 +1169,14 @@ def _validate_comparison_output(
     candidates_by_alias: dict[str, ComparisonCandidate],
     mandatory_pairs: set[tuple[str, str]],
 ) -> None:
-    expected_references = {
-        alias for alias, candidate in candidates_by_alias.items() if candidate.origin == "bronze"
+    expected_submissions = {
+        alias for alias, candidate in candidates_by_alias.items() if candidate.origin == "miner"
     }
-    expected_submissions = set(candidates_by_alias).difference(expected_references)
-    reviewed_references = output.reviewed_reference_candidate_ids
     reviewed_submissions = [review.submission_candidate_id for review in output.submission_reviews]
-    missing_reviewed = sorted(
-        expected_references.difference(reviewed_references)
-        | expected_submissions.difference(reviewed_submissions)
-    )
-    unknown_reviewed = sorted(
-        set(reviewed_references).difference(expected_references)
-        | set(reviewed_submissions).difference(expected_submissions)
-    )
+    missing_reviewed = sorted(expected_submissions.difference(reviewed_submissions))
+    unknown_reviewed = sorted(set(reviewed_submissions).difference(expected_submissions))
     duplicate_reviewed = sorted(
-        {alias for alias in reviewed_references if reviewed_references.count(alias) > 1}
-        | {alias for alias in reviewed_submissions if reviewed_submissions.count(alias) > 1}
+        {alias for alias in reviewed_submissions if reviewed_submissions.count(alias) > 1}
     )
     if missing_reviewed or unknown_reviewed or duplicate_reviewed:
         raise FileAgentWorkflowError(
@@ -1167,9 +1233,7 @@ def _validate_comparison_output(
 
 
 def _comparison_reviewed_aliases(output: ComparisonAgentOutput) -> set[str]:
-    return set(output.reviewed_reference_candidate_ids).union(
-        review.submission_candidate_id for review in output.submission_reviews
-    )
+    return {review.submission_candidate_id for review in output.submission_reviews}
 
 
 def _comparison_proposals(output: ComparisonAgentOutput) -> list[ComparisonPairProposal]:
@@ -1237,12 +1301,6 @@ def _merge_targeted_comparison_repair(
     *,
     target_aliases: set[str],
 ) -> ComparisonAgentOutput:
-    reviewed_references = list(original.reviewed_reference_candidate_ids)
-    reviewed_references.extend(
-        alias
-        for alias in repair.reviewed_reference_candidate_ids
-        if alias in target_aliases and alias not in reviewed_references
-    )
     reviews_by_submission = {
         review.submission_candidate_id: review for review in original.submission_reviews
     }
@@ -1278,7 +1336,6 @@ def _merge_targeted_comparison_repair(
         )
 
     return ComparisonAgentOutput(
-        reviewed_reference_candidate_ids=reviewed_references,
         submission_reviews=list(reviews_by_submission.values()),
     )
 
@@ -1288,7 +1345,7 @@ def _comparison_candidate_payload(candidate: ComparisonCandidate, alias: str) ->
     evidence_records = candidate.metadata.get("evidence_records", [])
     return {
         "candidate_id": alias,
-        "candidate_group": "reference" if candidate.origin == "bronze" else alias.rsplit("_candidate_", 1)[0],
+        "candidate_group": "reference" if candidate.origin == "bronze" else "submission",
         "statement": candidate.statement,
         "qualifier": candidate.qualifier,
         "evidence_ids": candidate.evidence_ids,
@@ -1419,11 +1476,6 @@ def _canonical_partition_issues(
     must_link_groups: list[list[str]],
 ) -> list[str]:
     issues: list[str] = []
-    if (
-        set(output.reviewed_candidate_ids) != expected_aliases
-        or len(output.reviewed_candidate_ids) != len(expected_aliases)
-    ):
-        issues.append("Canonicalization did not review exactly every accepted candidate.")
     if eligible_aliases and not output.units:
         issues.append("Canonicalization excluded every evidence-eligible scientific candidate.")
     assigned: list[str] = []
@@ -1489,12 +1541,150 @@ def _validate_canonical_partition(
         raise FileAgentWorkflowError("Canonical quality gate failed: " + " ".join(issues))
 
 
+def _validate_judge_output(output: JudgeAgentOutput, *, expected_case_refs: set[str]) -> None:
+    returned_refs = [result.case_ref for result in output.results]
+    missing = sorted(expected_case_refs.difference(returned_refs))
+    unknown = sorted(set(returned_refs).difference(expected_case_refs))
+    duplicates = sorted(
+        {case_ref for case_ref in returned_refs if returned_refs.count(case_ref) > 1}
+    )
+    if missing or unknown or duplicates:
+        raise FileAgentWorkflowError(
+            "Adjudication case decisions are incomplete or invalid; "
+            f"missing={missing} unknown={unknown} duplicate={duplicates}."
+        )
+
+
+def _read_json_value(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _partial_judge_results(
+    raw_output: Any,
+    *,
+    expected_case_refs: set[str],
+) -> tuple[list[JudgeResult], set[str], list[Any], str]:
+    rows = raw_output.get("results") if isinstance(raw_output, dict) else None
+    if not isinstance(rows, list):
+        return (
+            [],
+            set(expected_case_refs),
+            [raw_output] if raw_output is not None else [],
+            "Adjudication output must contain a results array.",
+        )
+
+    valid_by_ref: dict[str, JudgeResult] = {}
+    rejected_rows: list[Any] = []
+    repair_refs: set[str] = set()
+    duplicate_refs: set[str] = set()
+    for row in rows:
+        case_ref = str(row.get("case_ref") or "") if isinstance(row, dict) else ""
+        if case_ref not in expected_case_refs:
+            rejected_rows.append(row)
+            continue
+        try:
+            result = JudgeResult.model_validate(row)
+        except ValidationError:
+            repair_refs.add(case_ref)
+            rejected_rows.append(row)
+            continue
+        if case_ref in valid_by_ref:
+            duplicate_refs.add(case_ref)
+            rejected_rows.append(row)
+            continue
+        valid_by_ref[case_ref] = result
+
+    for case_ref in duplicate_refs:
+        rejected_rows.append(valid_by_ref.pop(case_ref).model_dump(mode="json"))
+    repair_refs.update(duplicate_refs)
+    repair_refs.update(expected_case_refs.difference(valid_by_ref))
+
+    validation_error = ""
+    try:
+        parsed = JudgeAgentOutput.model_validate(raw_output)
+        _validate_judge_output(parsed, expected_case_refs=expected_case_refs)
+    except (ValidationError, FileAgentWorkflowError) as exc:
+        validation_error = str(exc)
+    return (
+        [valid_by_ref[case_ref] for case_ref in _ordered_case_refs(set(valid_by_ref))],
+        repair_refs,
+        rejected_rows,
+        validation_error,
+    )
+
+
+def _targeted_judge_repair_task(
+    task: dict[str, Any],
+    *,
+    repair_refs: set[str],
+    rejected_results: list[Any],
+    validator_rejection: str,
+) -> dict[str, Any]:
+    cases = [
+        row
+        for row in task.get("cases", [])
+        if isinstance(row, dict) and str(row.get("case_ref") or "") in repair_refs
+    ]
+    candidate_refs = {
+        str(candidate_ref)
+        for row in cases
+        for candidate_ref in row.get("candidate_refs", [])
+    }
+    source_refs = {
+        str(row.get("source_context_ref") or "")
+        for row in cases
+        if str(row.get("source_context_ref") or "")
+    }
+    return {
+        "candidate_catalog": [
+            row
+            for row in task.get("candidate_catalog", [])
+            if isinstance(row, dict) and str(row.get("anonymous_id") or "") in candidate_refs
+        ],
+        "cases": cases,
+        "source_contexts": {
+            source_ref: text
+            for source_ref, text in (task.get("source_contexts") or {}).items()
+            if source_ref in source_refs
+        },
+        "allowed_dispositions": task.get("allowed_dispositions", []),
+        "disposition_meanings": task.get("disposition_meanings", {}),
+        "required_json_schema": task.get("required_json_schema", {}),
+        "rejected_results": rejected_results,
+        "validator_rejection": validator_rejection,
+        "repair_requirements": {
+            "return_exactly_these_case_refs": _ordered_case_refs(repair_refs),
+            "return_each_case_exactly_once": True,
+            "use_only_allowed_dispositions": True,
+            "relation_labels_are_not_dispositions": True,
+            "do_not_repeat_preserved_results": True,
+        },
+    }
+
+
+def _ordered_case_refs(case_refs: set[str]) -> list[str]:
+    def sort_key(case_ref: str) -> tuple[int, int | str]:
+        suffix = case_ref[1:] if case_ref.startswith("k") else ""
+        return (0, int(suffix)) if suffix.isdigit() else (1, case_ref)
+
+    return sorted(case_refs, key=sort_key)
+
+
 def _validate_canonical_audit(output: CanonicalAuditOutput, expected_draft_unit_ids: set[str]) -> None:
-    if (
-        set(output.reviewed_draft_unit_ids) != expected_draft_unit_ids
-        or len(output.reviewed_draft_unit_ids) != len(expected_draft_unit_ids)
-    ):
-        raise FileAgentWorkflowError("Canonical auditor did not review exactly every draft unit.")
+    reviewed_ids = [review.draft_unit_id for review in output.draft_unit_reviews]
+    missing = sorted(expected_draft_unit_ids.difference(reviewed_ids))
+    unknown = sorted(set(reviewed_ids).difference(expected_draft_unit_ids))
+    duplicates = sorted(
+        {draft_unit_id for draft_unit_id in reviewed_ids if reviewed_ids.count(draft_unit_id) > 1}
+    )
+    if missing or unknown or duplicates:
+        raise FileAgentWorkflowError(
+            "Canonical auditor draft-unit decisions are incomplete or invalid; "
+            f"missing={missing} unknown={unknown} duplicate={duplicates}."
+        )
     checks = output.quality_checks.model_dump()
     incomplete = sorted(name for name, completed in checks.items() if not completed)
     if incomplete:
