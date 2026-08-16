@@ -40,6 +40,8 @@ class AgentV1ValidatorRunner:
         source_payload_path: Path | None = None,
         output_dir: Path | None = None,
         threshold: float = 0.7,
+        precomputed_rigor: dict[str, Any] | None = None,
+        precomputed_rigor_manifest: dict[str, Any] | None = None,
     ) -> AgentV1ValidationReport:
         started = time.time()
         artifact_path = artifact_path.resolve()
@@ -68,10 +70,25 @@ class AgentV1ValidatorRunner:
         )
         write_rigor_findings_schema(run_dir / RIGOR_FINDINGS_SCHEMA_FILENAME)
 
-        rigor_findings, rigor_manifest = self._run_rigor_agent(
-            run_dir=run_dir,
-            artifact_reviewable=artifact is not None and not any(f.severity == "blocker" for f in structural_findings),
+        artifact_reviewable = artifact is not None and not any(
+            f.severity == "blocker" for f in structural_findings
         )
+        if precomputed_rigor is not None and artifact_reviewable:
+            (run_dir / "rigor_findings.json").write_text(
+                json.dumps(precomputed_rigor, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            rigor_findings = _parse_rigor_findings(run_dir / "rigor_findings.json")
+            rigor_manifest = dict(precomputed_rigor_manifest or {})
+            rigor_manifest.setdefault("runtime", "precomputed")
+            rigor_manifest.setdefault("elapsed_seconds", 0.0)
+            rigor_manifest.setdefault("usage", empty_usage("precomputed"))
+            _write_runtime_files(run_dir, rigor_manifest, "", "")
+        else:
+            rigor_findings, rigor_manifest = self._run_rigor_agent(
+                run_dir=run_dir,
+                artifact_reviewable=artifact_reviewable,
+            )
         reviewed_grounding_findings, grounding_review = self._review_grounding_findings(grounding_findings, rigor_findings)
         report_rigor_findings = _reportable_rigor_findings(rigor_findings, reviewed_grounding_findings)
         (run_dir / "grounding_reviewed_findings.json").write_text(

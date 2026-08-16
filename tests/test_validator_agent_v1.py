@@ -126,6 +126,39 @@ def test_validator_agent_v1_runner_accepts_successful_rigor_runtime(monkeypatch,
     assert report.metrics.token_usage["total_tokens"] == 2
 
 
+def test_validator_agent_v1_runner_accepts_precomputed_batched_rigor(monkeypatch, tmp_path: Path) -> None:
+    artifact_path = _write_json(tmp_path / "agent_output.json", _valid_artifact())
+    source_path = _write_json(tmp_path / "source_payload.json", _source_payload())
+    config = _config(tmp_path)
+    monkeypatch.setattr(
+        "validator.agent_v1.runner.build_rigor_runtime",
+        lambda _config: (_ for _ in ()).throw(AssertionError("runtime should not be built")),
+    )
+
+    report = AgentV1ValidatorRunner(config).run(
+        artifact_path=artifact_path,
+        source_payload_path=source_path,
+        output_dir=tmp_path / "validator",
+        precomputed_rigor={"findings": []},
+        precomputed_rigor_manifest={
+            "runtime": "diagnostic-file-batch",
+            "elapsed_seconds": 12.5,
+            "usage": {
+                "prompt_tokens": None,
+                "completion_tokens": None,
+                "total_tokens": None,
+                "cost_usd": None,
+                "cost_kind": "unavailable",
+                "source": "shared_diagnostic_batch",
+            },
+        },
+    )
+
+    assert report.score == 1.0
+    assert report.metrics.rigor_agent_elapsed_seconds == 12.5
+    assert report.metrics.usage_source == "shared_diagnostic_batch"
+
+
 def test_validator_agent_v1_llm_validation_reports_semantic_grounding_findings(monkeypatch, tmp_path: Path) -> None:
     payload = _valid_artifact()
     payload["logic"]["claims"][0]["sources"][0]["quote"] = "Treatment A shortened recovery duration in the randomized trial."
