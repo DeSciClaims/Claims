@@ -250,6 +250,8 @@ Useful validator flags:
 - `--claims.backend-url http://127.0.0.1:8000`: use backend paper release and audit-record APIs.
 - `--claims.batch-size 3`: request a random approved paper batch from the backend. The backend accepts larger V0 sampling batches when enough approved papers are available.
 - `--claims.target-uid 1`: only query a specific miner UID. May be passed more than once for focused smoke tests.
+- `--claims.miner-selection-mode adaptive --claims.miner-sample-size 10`: select a reproducible 60% performance, 20% new/under-tested, and 20% exploration sample from eligible metagraph miners. `CLAIMS_TARGET_UIDS` remains an exact operator override.
+- The validator stores the selected UID-to-hotkey assignments with the run. The miner-upload API uses this immutable snapshot to authorize each signed artifact upload.
 - `--claims.topic economics`: filter backend-selected papers by topic. May be passed more than once.
 - Silver batch score: mean across scoring-eligible papers. Miner misses count as zero; validator-failed papers are excluded for every miner.
 - `--claims.rigor-harness hermes-cli --claims.rigor-model <MODEL>`: choose the diagnostic validation harness/model.

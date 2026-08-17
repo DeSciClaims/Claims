@@ -1328,7 +1328,7 @@ def test_validator_failed_cycle_counts_toward_max_steps_and_records_error() -> N
         batch_id="batch_test",
         paper_tasks=lambda: [],
     )
-    validator._load_target_neurons = lambda: (_ for _ in ()).throw(RuntimeError("target refresh failed"))
+    validator._load_target_neurons = lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("target refresh failed"))
     posted: list[dict] = []
     validator._post_validator_run = lambda *_args, **kwargs: posted.append(kwargs)
 

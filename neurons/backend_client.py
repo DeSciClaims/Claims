@@ -63,6 +63,13 @@ class ClaimsBackendClient:
     def select_batch(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/batches/select", payload)
 
+    def list_miner_selection_history(self, *, period: str = "month") -> list[dict[str, Any]]:
+        result = self.get(
+            "/validator/miner-selection-history",
+            query={"network": self.network, "period": period},
+        )
+        return result if isinstance(result, list) else []
+
     def post_bronze_record(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/bronze-records", payload)
 

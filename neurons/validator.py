@@ -61,6 +61,8 @@ from validator.v0.runner import JudgeV2Runner
 from .backend_client import BackendClientError, ClaimsBackendClient
 from .harness_profiles import SUPPORTED_HARNESSES, quote_command, resolve_agent_harness
 from .memory_monitor import ValidatorMemorySampler
+from .miner_selection import ALGORITHM_VERSION as MINER_SELECTION_VERSION
+from .miner_selection import select_miners
 from .model_usage_upload import (
     pending_model_usage_backups,
     prepare_model_usage_backup,
@@ -145,6 +147,7 @@ class ClaimsValidator:
         self._run_heartbeat_thread: threading.Thread | None = None
         self._active_silver_batch_outcome: dict[str, Any] = {}
         self._active_weight_event: dict[str, Any] = {}
+        self._active_miner_selection: dict[str, Any] = {}
         if self.config.claims_dry_run:
             self.wallet = None
             self.subtensor = None
@@ -152,6 +155,7 @@ class ClaimsValidator:
             self.metagraph = None
             self.uid = -1
             self.target_neurons = []
+            self.backend_client = None
             self.tasks = self._load_tasks()
             self.runner = self._build_runner()
             return
@@ -162,11 +166,11 @@ class ClaimsValidator:
         self.uid = self._registered_uid()
         self._preflight_validator()
         self.tasks = self._load_tasks()
-        self.target_neurons = self._load_target_neurons()
-        self.runner = self._build_runner()
         self.backend_client = self._build_backend_client()
         if self.backend_client is not None:
             self.bt_logging.info(f"Claims backend enabled: {self.config.claims_backend_url}")
+        self.target_neurons = self._load_target_neurons()
+        self.runner = self._build_runner()
 
     def _get_config(self) -> Any:
         base_dir = Path(__file__).resolve().parents[1]
@@ -292,6 +296,20 @@ class ClaimsValidator:
             type=int,
             default=_env_int_list("CLAIMS_TARGET_UIDS"),
             help="Only query the given miner UID. May be passed more than once for focused smoke tests.",
+        )
+        parser.add_argument(
+            "--claims.miner-selection-mode",
+            dest="claims_miner_selection_mode",
+            choices=("all", "adaptive"),
+            default=os.getenv("CLAIMS_MINER_SELECTION_MODE", "all"),
+            help="Select all eligible miners or an adaptive performance/development/exploration sample.",
+        )
+        parser.add_argument(
+            "--claims.miner-sample-size",
+            dest="claims_miner_sample_size",
+            type=int,
+            default=max(1, int(os.getenv("CLAIMS_MINER_SAMPLE_SIZE", "10"))),
+            help="Number of miners selected in adaptive mode. CLAIMS_TARGET_UIDS remains an exact override.",
         )
         parser.add_argument(
             "--claims.audit-method",
@@ -737,6 +755,8 @@ class ClaimsValidator:
         config.claims_batch_score_rule = parsed_args.claims_batch_score_rule
         config.claims_allow_paper_reuse = parsed_args.claims_allow_paper_reuse
         config.claims_target_uids = parsed_args.claims_target_uids
+        config.claims_miner_selection_mode = parsed_args.claims_miner_selection_mode
+        config.claims_miner_sample_size = parsed_args.claims_miner_sample_size
         config.claims_audit_method = parsed_args.claims_audit_method
         config.claims_agent_v1_validation_mode = parsed_args.claims_agent_v1_validation_mode
         config.claims_validator_pipeline = parsed_args.claims_validator_pipeline
@@ -836,18 +856,58 @@ class ClaimsValidator:
         self.bt_logging.info(f"Validator registered with uid {uid}")
         return int(uid)
 
-    def _load_target_neurons(self) -> list[Any]:
+    def _load_target_neurons(self, *, selection_seed: str | None = None) -> list[Any]:
         self._sync_metagraph()
         candidates = list(getattr(self.metagraph, "neurons", []) or [])
         if not candidates:
             candidates = self._load_neurons_by_uid()
         neurons = [neuron for neuron in candidates if self._is_eligible_miner(neuron)]
+        eligible_candidate_count = len(neurons)
         target_uids = set(getattr(self.config, "claims_target_uids", []) or [])
         if target_uids:
             neurons = [neuron for neuron in neurons if int(getattr(neuron, "uid", -1)) in target_uids]
             missing_uids = sorted(target_uids.difference({int(neuron.uid) for neuron in neurons}))
             if missing_uids:
                 self.bt_logging.warning(f"Requested target miner UIDs were not eligible or not found: {missing_uids}")
+            selected = select_miners(
+                neurons,
+                history_rows=[],
+                sample_size=max(1, len(neurons)),
+                seed=selection_seed or "fixed-targets",
+                mode="all",
+            )
+            assignments = [{**item.assignment(), "selection_lane": "override"} for item in selected]
+            mode = "override"
+        else:
+            mode = str(getattr(self.config, "claims_miner_selection_mode", "all") or "all")
+            history: list[dict[str, Any]] = []
+            if mode == "adaptive" and self.backend_client is not None:
+                try:
+                    history = self.backend_client.list_miner_selection_history(period="month")
+                except (BackendClientError, ValueError) as exc:
+                    self.bt_logging.warning(f"Could not load miner selection history; using unscored candidates: {exc}")
+            seed = selection_seed or f"startup:{_metagraph_block(self.metagraph)}"
+            selected = select_miners(
+                neurons,
+                history_rows=history,
+                sample_size=int(getattr(self.config, "claims_miner_sample_size", 10) or 10),
+                seed=seed,
+                mode=mode,
+            )
+            neurons = [item.neuron for item in selected]
+            assignments = [item.assignment() for item in selected]
+
+        self._active_miner_selection = {
+            "schema": "claims_miner_selection_v1",
+            "algorithm": MINER_SELECTION_VERSION if mode == "adaptive" else mode,
+            "mode": mode,
+            "seed": selection_seed,
+            "metagraph_block": _metagraph_block(self.metagraph),
+            "metagraph_neuron_count": len(candidates),
+            "candidate_count": eligible_candidate_count,
+            "selected_count": len(neurons),
+            "assignments": assignments,
+        }
         self.bt_logging.info(f"Discovered target miner UIDs: {[int(neuron.uid) for neuron in neurons]}")
         return neurons
 
@@ -922,7 +982,16 @@ class ClaimsValidator:
                     metadata={"paper_count": len(task.paper_tasks()), "backend": bool(getattr(self.config, "claims_backend_url", ""))},
                 )
                 target_refresh_timer = _timing_start("target_refresh", "Target miner refresh")
-                self.target_neurons = self._load_target_neurons()
+                self.target_neurons = []
+                self._active_miner_selection = {}
+                task_selection_seed = str(
+                    getattr(task, "selection_seed", "")
+                    or getattr(task, "batch_id", "")
+                    or getattr(task, "task_id", "")
+                )
+                self.target_neurons = self._load_target_neurons(
+                    selection_seed=f"{task_selection_seed}:{run_id}"
+                )
                 self._record_timing_stage(
                     target_refresh_timer,
                     metadata={"target_uids": [int(neuron.uid) for neuron in self.target_neurons]},
@@ -3208,6 +3277,8 @@ class ClaimsValidator:
                     "batch_id": task.batch_id or task.task_id,
                     "validator_hotkey": self.wallet.hotkey.ss58_address,
                     "target_uids": [int(neuron.uid) for neuron in self.target_neurons],
+                    "target_miners": list((self._active_miner_selection or {}).get("assignments") or []),
+                    "metagraph_block": (self._active_miner_selection or {}).get("metagraph_block"),
                     "status": status,
                     "started_at": started_at.isoformat(),
                     "ended_at": ended_at.isoformat() if ended_at else None,
@@ -3328,6 +3399,7 @@ class ClaimsValidator:
             "heartbeat_interval_seconds": float(getattr(self.config, "claims_run_heartbeat_interval", 60.0) or 0.0),
             "paper_count": len(task.paper_tasks()),
             "target_uids": [int(neuron.uid) for neuron in self.target_neurons],
+            "miner_selection": dict(getattr(self, "_active_miner_selection", {}) or {}),
             "runtime": _runtime_snapshot(),
             "config": _run_config_snapshot(self.config),
             "timing": timing_metadata,
@@ -4884,6 +4956,16 @@ def _compact_silver_batch_outcome(payload: dict[str, Any]) -> dict[str, Any]:
     return compact
 
 
+def _metagraph_block(metagraph: Any) -> int | None:
+    value = getattr(metagraph, "block", None)
+    try:
+        if hasattr(value, "item"):
+            value = value.item()
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _run_config_snapshot(config: Any) -> dict[str, Any]:
     """Return effective, replay-relevant validator settings without secrets or local paths."""
 
@@ -4898,6 +4980,8 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_batch_size": int(getattr(config, "claims_batch_size", 1) or 1),
         "claims_batch_score_rule": str(getattr(config, "claims_batch_score_rule", "mean") or "mean"),
         "claims_allow_paper_reuse": bool(getattr(config, "claims_allow_paper_reuse", False)),
+        "claims_miner_selection_mode": str(getattr(config, "claims_miner_selection_mode", "all") or "all"),
+        "claims_miner_sample_size": int(getattr(config, "claims_miner_sample_size", 10) or 10),
         "claims_timeout": float(getattr(config, "claims_timeout", 0.0)),
         "claims_query_interval": float(getattr(config, "claims_query_interval", 0.0)),
         "claims_run_heartbeat_interval": float(getattr(config, "claims_run_heartbeat_interval", 60.0) or 0.0),
