@@ -2756,6 +2756,52 @@ def test_paper_silver_pipeline_builds_silver_and_scores_from_artifacts() -> None
     assert result.scores[0].score == 1.0
 
 
+def test_paper_silver_pipeline_excludes_candidate_with_unsupported_evidence() -> None:
+    result = run_paper_silver_pipeline(
+        paper_id="paper",
+        bronze_artifact=_artifact("paper", "C01", "Treatment A reduced mortality in adults."),
+        miner_artifacts=[
+            MinerArtifactSubmission(
+                miner_id="miner_A",
+                artifact=_artifact("paper", "C01", "Treatment A reduced mortality in adults."),
+                candidate_evidence=[
+                    {
+                        "claim_id": "C01",
+                        "status": "unsupported",
+                        "coverage_eligible": False,
+                        "evidence_ids": ["EV01"],
+                        "source_span_ids": ["S1"],
+                        "reason": "The linked evidence concerns an unrelated outcome.",
+                    }
+                ],
+            )
+        ],
+        silver_record_id="silver_evidence_gate",
+        bronze_record_id="bronze_evidence_gate",
+        adjudication_passes=[
+            StaticAdjudicationPass(
+                pass_id="pass_a",
+                adjudication_profile_id="static_a",
+                model_runtime_id="static",
+                dispositions_by_case_id={},
+                default_disposition="accepted_improvement",
+            ),
+            StaticAdjudicationPass(
+                pass_id="pass_b",
+                adjudication_profile_id="static_b",
+                model_runtime_id="static",
+                dispositions_by_case_id={},
+                default_disposition="accepted_improvement",
+            ),
+        ],
+    )
+
+    assert result.miner_submissions[0].candidates == []
+    assert result.silver_record.silver_units[0].equivalent_candidate_ids == ["bronze:C01"]
+    assert result.scores[0].coverage == 0.0
+    assert result.scores[0].score == 0.0
+
+
 def test_missing_from_miner_valid_bronze_becomes_miner_error() -> None:
     result = run_paper_silver_pipeline(
         paper_id="paper",

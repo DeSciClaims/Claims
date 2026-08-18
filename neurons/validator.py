@@ -1648,7 +1648,19 @@ class ClaimsValidator:
         expected_uids = [int(neuron.uid) for neuron in self.target_neurons]
         expected_paper_ids = [paper.paper_id or f"paper_{index}" for index, paper in enumerate(paper_tasks, start=1)]
         metadata_by_uid: dict[int, dict[str, Any]] = {}
-        miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None, list[AgentV1ValidationFinding]]]] = {
+        miners_by_paper: dict[
+            str,
+            list[
+                tuple[
+                    int,
+                    dict[str, Any],
+                    dict[str, Any],
+                    dict[str, Any] | None,
+                    list[AgentV1ValidationFinding],
+                    list[dict[str, Any]] | None,
+                ]
+            ],
+        ] = {
             paper.paper_id or f"paper_{index}": [] for index, paper in enumerate(paper_tasks, start=1)
         }
         for index, neuron in enumerate(self.target_neurons):
@@ -1674,6 +1686,9 @@ class ClaimsValidator:
                                 _metadata_for_article(metadata, article),
                                 source_payload if isinstance(source_payload, dict) else None,
                                 _validation_findings_from_rows(article.get("diagnostic_findings")),
+                                article.get("diagnostic_candidate_evidence")
+                                if isinstance(article.get("diagnostic_candidate_evidence"), list)
+                                else None,
                             )
                         )
             elif getattr(response, "extraction", None) and len(paper_tasks) == 1:
@@ -1682,7 +1697,14 @@ class ClaimsValidator:
                 source_payload = getattr(response, "source_payload", None)
                 if isinstance(extraction, dict) and _is_agent_v1_artifact(extraction):
                     miners_by_paper.setdefault(paper_id, []).append(
-                        (uid, extraction, metadata, source_payload if isinstance(source_payload, dict) else None, [])
+                        (
+                            uid,
+                            extraction,
+                            metadata,
+                            source_payload if isinstance(source_payload, dict) else None,
+                            [],
+                            None,
+                        )
                     )
 
         paper_jobs = [
@@ -1792,15 +1814,22 @@ class ClaimsValidator:
                 source_context_by_span_id = _source_context_map_from_payloads(
                     [
                         bronze_source_payload,
-                        *[source_payload for _uid, _extraction, _metadata, source_payload, _findings in miner_rows],
+                        *[
+                            source_payload
+                            for _uid, _extraction, _metadata, source_payload, _findings, _candidate_evidence in miner_rows
+                        ],
                     ]
                 )
                 result = run_paper_silver_pipeline(
                     paper_id=paper_id,
                     bronze_artifact=bronze_artifact,
                     miner_artifacts=[
-                        MinerArtifactSubmission(miner_id=f"uid_{uid}", artifact=extraction)
-                        for uid, extraction, _metadata, _source_payload, _findings in miner_rows
+                        MinerArtifactSubmission(
+                            miner_id=f"uid_{uid}",
+                            artifact=extraction,
+                            candidate_evidence=_candidate_evidence,
+                        )
+                        for uid, extraction, _metadata, _source_payload, _findings, _candidate_evidence in miner_rows
                     ],
                     silver_record_id=f"silver_{run_id}_{safe_task_id(paper_id)}",
                     bronze_record_id=bronze.bronze_record_id,
@@ -1829,7 +1858,7 @@ class ClaimsValidator:
                     paper_context=_paper_task_context(paper),
                     validation_findings_by_miner_id={
                         f"uid_{uid}": findings
-                        for uid, _extraction, _metadata, _source_payload, findings in miner_rows
+                        for uid, _extraction, _metadata, _source_payload, findings, _candidate_evidence in miner_rows
                     },
                     file_agent_workflow=file_agent_workflow,
                 )
@@ -2448,7 +2477,16 @@ class ClaimsValidator:
         task: ClaimsTask,
         paper_id: str,
         result: Any,
-        miner_rows: list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None, list[AgentV1ValidationFinding]]],
+        miner_rows: list[
+            tuple[
+                int,
+                dict[str, Any],
+                dict[str, Any],
+                dict[str, Any] | None,
+                list[AgentV1ValidationFinding],
+                list[dict[str, Any]] | None,
+            ]
+        ],
         paper_stage_seconds: dict[str, float] | None = None,
         timing_stages: list[dict[str, Any]] | None = None,
         model_rows: list[dict[str, Any]] | None = None,
@@ -2486,7 +2524,10 @@ class ClaimsValidator:
         network = str(getattr(self.config, "claims_network", "testnet"))
         metadata_by_miner_id = {
             **(score_metadata_by_miner_id or {}),
-            **{f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata, _source_payload, _findings in miner_rows},
+            **{
+                f"uid_{uid}": (uid, metadata)
+                for uid, _extraction, metadata, _source_payload, _findings, _candidate_evidence in miner_rows
+            },
         }
         backend_case_ids = {case.case_id: f"{run_id}_{case.case_id}" for case in result.diff_cases}
         case_payloads: list[dict[str, Any]] = []
@@ -2760,6 +2801,7 @@ class ClaimsValidator:
             paper_timer = _timing_start("diagnostic_validation", "Diagnostic validation")
             article = articles_by_id.get(paper_id)
             report: dict[str, Any] = {}
+            candidate_evidence: list[dict[str, Any]] | None = None
             paper_miner_metadata = miner_metadata
             finding_rows: list[dict[str, Any]] = []
             summary_delta: dict[str, int] = {}
@@ -2842,6 +2884,11 @@ class ClaimsValidator:
                         article_output_dir = Path(self.config.claims_output_dir) / task.task_id / article_run_id / f"uid_{uid}"
                         report_path = article_output_dir / "agent_v1" / "agent_v1_validation_report.json"
                         report = _read_json_object(report_path) if report_path.exists() else {}
+                        candidate_evidence = (report.get("metadata") or {}).get(
+                            "candidate_evidence"
+                        )
+                        if not isinstance(candidate_evidence, list):
+                            candidate_evidence = None
                         self._record_diagnostic_model_usage(
                             run_id=run_id,
                             paper_id=paper_id,
@@ -2872,6 +2919,7 @@ class ClaimsValidator:
                         "error": None,
                         "report_path": str(report_path) if report_path else None,
                         "artifact_summary": summarize_agent_artifact(extraction),
+                        "candidate_evidence": candidate_evidence,
                     }
             paper_stage = _timing_finish(
                 paper_timer,
@@ -2893,6 +2941,9 @@ class ClaimsValidator:
             if isinstance(article, dict):
                 article["diagnostic_score"] = score
                 article["diagnostic_findings"] = finding_rows
+                article["diagnostic_candidate_evidence"] = result.get(
+                    "candidate_evidence"
+                )
             result["timing"] = self._timing_payload(
                 uid=uid,
                 paper_id=paper_id,
