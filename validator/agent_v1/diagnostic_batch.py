@@ -44,8 +44,18 @@ class DiagnosticFinding(_StrictModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class DiagnosticCandidateEvidence(_StrictModel):
+    claim_id: str = Field(min_length=1)
+    status: Literal["supported", "partially_supported", "unsupported", "unverifiable"]
+    evidence_ids: list[str] = Field(default_factory=list)
+    source_span_ids: list[str] = Field(default_factory=list)
+    reason: str = Field(min_length=1)
+    unsupported_assertions: list[str] = Field(default_factory=list)
+
+
 class DiagnosticSubmissionReport(_StrictModel):
     submission_ref: str = Field(min_length=1)
+    candidate_evidence: list[DiagnosticCandidateEvidence]
     findings: list[DiagnosticFinding] = Field(default_factory=list)
 
 
@@ -344,14 +354,27 @@ def run_diagnostic_batch(
             raise RuntimeError(f"Diagnostic batch did not produce valid output. {stderr}")
         reports: dict[str, dict[str, Any]] = {}
         duplicate_refs: set[str] = set()
+        submissions_by_ref = {
+            submission.submission_ref: submission for submission in submissions
+        }
         for report in payload.reports if payload is not None else partial_reports:
             if report.submission_ref not in expected:
                 continue
             if report.submission_ref in reports:
                 duplicate_refs.add(report.submission_ref)
                 continue
+            submission = submissions_by_ref[report.submission_ref]
+            if not _valid_candidate_evidence_partition(report, submission):
+                continue
             reports[report.submission_ref] = {
-                "findings": [finding.model_dump(mode="json") for finding in report.findings]
+                "candidate_evidence": [
+                    {
+                        **assessment.model_dump(mode="json"),
+                        "coverage_eligible": assessment.status == "supported",
+                    }
+                    for assessment in report.candidate_evidence
+                ],
+                "findings": _diagnostic_finding_rows(report),
             }
         for duplicate_ref in duplicate_refs:
             reports.pop(duplicate_ref, None)
@@ -504,6 +527,102 @@ def _read_partial_batch_reports(path: Path) -> list[DiagnosticSubmissionReport]:
         except Exception:
             continue
     return reports
+
+
+def _valid_candidate_evidence_partition(
+    report: DiagnosticSubmissionReport,
+    submission: DiagnosticBatchSubmission,
+) -> bool:
+    claims = _artifact_claims(submission.artifact)
+    assessments = {assessment.claim_id: assessment for assessment in report.candidate_evidence}
+    if len(assessments) != len(report.candidate_evidence) or set(assessments) != set(claims):
+        return False
+    for claim_id, assessment in assessments.items():
+        claim = claims[claim_id]
+        linked_evidence_ids = {
+            str(item) for item in claim.get("evidence_ids", []) if str(item)
+        }
+        linked_span_ids = _claim_source_span_ids(claim)
+        if not set(assessment.evidence_ids).issubset(linked_evidence_ids):
+            return False
+        if not set(assessment.source_span_ids).issubset(linked_span_ids):
+            return False
+        if assessment.status == "supported" and (
+            not assessment.evidence_ids or not assessment.source_span_ids
+        ):
+            return False
+    return True
+
+
+def _artifact_claims(artifact: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    logic = artifact.get("logic") if isinstance(artifact, dict) else None
+    rows = logic.get("claims") if isinstance(logic, dict) else None
+    claims: dict[str, dict[str, Any]] = {}
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        claim_id = str(row.get("claim_id") or "")
+        if claim_id:
+            claims[claim_id] = row
+    return claims
+
+
+def _claim_source_span_ids(claim: dict[str, Any]) -> set[str]:
+    span_ids = {
+        str(item) for item in claim.get("source_span_ids", []) if str(item)
+    }
+    sources = claim.get("sources")
+    for source in sources if isinstance(sources, list) else []:
+        if not isinstance(source, dict):
+            continue
+        span_ids.update(
+            str(item) for item in source.get("span_ids", []) if str(item)
+        )
+    return span_ids
+
+
+def _diagnostic_finding_rows(report: DiagnosticSubmissionReport) -> list[dict[str, Any]]:
+    ineligible_claim_ids = {
+        assessment.claim_id
+        for assessment in report.candidate_evidence
+        if assessment.status != "supported"
+    }
+    rows = [
+        finding.model_dump(mode="json")
+        for finding in report.findings
+        if not (
+            finding.dimension == "evidence_relevance"
+            and str(finding.target_id or "") in ineligible_claim_ids
+        )
+    ]
+    severity_by_status = {
+        "partially_supported": "major",
+        "unsupported": "critical",
+        "unverifiable": "major",
+    }
+    for assessment in report.candidate_evidence:
+        if assessment.status == "supported":
+            continue
+        rows.append(
+            {
+                "dimension": "evidence_relevance",
+                "severity": severity_by_status[assessment.status],
+                "target_type": "claim",
+                "target_id": assessment.claim_id,
+                "message": assessment.reason,
+                "evidence_span": None,
+                "suggestion": "Provide source evidence that supports every material assertion in the claim.",
+                "metadata": {
+                    "code": "candidate_evidence_ineligible",
+                    "evidence_status": assessment.status,
+                    "coverage_eligible": False,
+                    "evidence_ids": assessment.evidence_ids,
+                    "source_span_ids": assessment.source_span_ids,
+                    "unsupported_assertions": assessment.unsupported_assertions,
+                },
+            }
+        )
+    return rows
 
 
 def _write_json(path: Path, payload: Any) -> None:

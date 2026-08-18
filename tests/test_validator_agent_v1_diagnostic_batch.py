@@ -43,6 +43,17 @@ def test_diagnostic_batch_reviews_anonymous_submissions_and_deduplicates_sources
 
     assert result.error is None
     assert sorted(result.reports) == ["S0001", "S0002"]
+    assert result.reports["S0001"]["candidate_evidence"] == [
+        {
+            "claim_id": "C01",
+            "status": "supported",
+            "evidence_ids": ["EV01"],
+            "source_span_ids": ["span-1"],
+            "reason": "The linked evidence supports the claim as written.",
+            "unsupported_assertions": [],
+            "coverage_eligible": True,
+        }
+    ]
     manifest = json.loads((result.workspace / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["submission_count"] == 2
     assert manifest["source_payload_count"] == 1
@@ -78,8 +89,16 @@ def test_diagnostic_batch_keeps_valid_reports_from_a_partially_invalid_output(tm
         json.dumps(
             {
                 "reports": [
-                    {"submission_ref": "S0001", "findings": []},
-                    {"submission_ref": "S0002", "findings": "invalid"},
+                    {
+                        "submission_ref": "S0001",
+                        "candidate_evidence": [],
+                        "findings": [],
+                    },
+                    {
+                        "submission_ref": "S0002",
+                        "candidate_evidence": [],
+                        "findings": "invalid",
+                    },
                 ]
             }
         ),
@@ -110,7 +129,20 @@ def test_diagnostic_batch_repairs_only_missing_reports_in_bounded_shards(
             json.dumps(
                 {
                     "reports": [
-                        {"submission_ref": submission_ref, "findings": []}
+                        {
+                            "submission_ref": submission_ref,
+                            "candidate_evidence": [
+                                {
+                                    "claim_id": "C01",
+                                    "status": "supported",
+                                    "evidence_ids": ["EV01"],
+                                    "source_span_ids": ["span-1"],
+                                    "reason": "The linked evidence supports the claim.",
+                                    "unsupported_assertions": [],
+                                }
+                            ],
+                            "findings": [],
+                        }
                         for submission_ref in emitted
                     ]
                 }
@@ -153,12 +185,137 @@ def test_diagnostic_batch_repairs_only_missing_reports_in_bounded_shards(
     assert len(manifest["repair_operation_ids"]) == 2
 
 
+def test_diagnostic_batch_turns_poor_evidence_verdict_into_load_bearing_finding(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_agent(command, *, cwd, output_path, **_kwargs):
+        output_path.write_text(
+            json.dumps(
+                {
+                    "reports": [
+                        {
+                            "submission_ref": "S0001",
+                            "candidate_evidence": [
+                                {
+                                    "claim_id": "C01",
+                                    "status": "unsupported",
+                                    "evidence_ids": ["EV01"],
+                                    "source_span_ids": ["span-1"],
+                                    "reason": "The linked evidence describes an unrelated result.",
+                                    "unsupported_assertions": ["Supported result."],
+                                }
+                            ],
+                            "findings": [],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(diagnostic_batch_module, "_run_until_valid_output", fake_agent)
+    result = run_diagnostic_batch(
+        config=DiagnosticBatchConfig(
+            root=tmp_path,
+            harness="hermes-cli",
+            provider="openrouter",
+            model="test/model",
+            batch_size=10,
+            output_stable_seconds=0.0,
+            usage_grace_seconds=0.0,
+            timeout_seconds=10.0,
+        ),
+        run_id="run-evidence",
+        paper_id="paper-1",
+        shard_index=1,
+        submissions=[_submission("S0001", {"spans": []})],
+    )
+
+    assert result.error is None
+    report = result.reports["S0001"]
+    assert report["candidate_evidence"][0]["coverage_eligible"] is False
+    assert report["findings"][0]["dimension"] == "evidence_relevance"
+    assert report["findings"][0]["severity"] == "critical"
+    assert report["findings"][0]["metadata"]["code"] == "candidate_evidence_ineligible"
+
+
+def test_diagnostic_batch_repairs_incomplete_candidate_evidence_partition(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls = 0
+
+    def fake_agent(command, *, cwd, output_path, **_kwargs):
+        nonlocal calls
+        calls += 1
+        assessments = []
+        if calls == 2:
+            assessments = [
+                {
+                    "claim_id": "C01",
+                    "status": "supported",
+                    "evidence_ids": ["EV01"],
+                    "source_span_ids": ["span-1"],
+                    "reason": "The linked evidence supports the claim.",
+                    "unsupported_assertions": [],
+                }
+            ]
+        output_path.write_text(
+            json.dumps(
+                {
+                    "reports": [
+                        {
+                            "submission_ref": "S0001",
+                            "candidate_evidence": assessments,
+                            "findings": [],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(diagnostic_batch_module, "_run_until_valid_output", fake_agent)
+    result = run_diagnostic_batch(
+        config=DiagnosticBatchConfig(
+            root=tmp_path,
+            harness="hermes-cli",
+            provider="openrouter",
+            model="test/model",
+            batch_size=10,
+            repair_batch_size=1,
+            repair_max_depth=1,
+            repair_max_workers=1,
+        ),
+        run_id="run-candidate-repair",
+        paper_id="paper-1",
+        shard_index=1,
+        submissions=[_submission("S0001", {"spans": []})],
+    )
+
+    assert result.error is None
+    assert calls == 2
+    assert result.reports["S0001"]["candidate_evidence"][0]["coverage_eligible"] is True
+
+
 def _submission(ref: str, source_payload: dict) -> DiagnosticBatchSubmission:
     return DiagnosticBatchSubmission(
         submission_ref=ref,
         artifact={
             "paper": {"paper_id": "paper-1"},
-            "logic": {"claims": [{"claim_id": "C01", "statement": "Supported result."}]},
+            "logic": {
+                "claims": [
+                    {
+                        "claim_id": "C01",
+                        "statement": "Supported result.",
+                        "evidence_ids": ["EV01"],
+                        "source_span_ids": ["span-1"],
+                    }
+                ]
+            },
         },
         source_payload=source_payload,
         structural_findings=[],

@@ -121,6 +121,7 @@ def test_validator_agent_v1_runner_accepts_successful_rigor_runtime(monkeypatch,
     )
 
     assert report.passed is True
+    assert "candidate_evidence" not in report.metadata
     assert report.score == 1.0
     assert report.metrics.rigor_agent_elapsed_seconds == 0.25
     assert report.metrics.token_usage["total_tokens"] == 2
@@ -139,7 +140,20 @@ def test_validator_agent_v1_runner_accepts_precomputed_batched_rigor(monkeypatch
         artifact_path=artifact_path,
         source_payload_path=source_path,
         output_dir=tmp_path / "validator",
-        precomputed_rigor={"findings": []},
+        precomputed_rigor={
+            "candidate_evidence": [
+                {
+                    "claim_id": "C01",
+                    "status": "supported",
+                    "evidence_ids": ["EV01"],
+                    "source_span_ids": ["S01"],
+                    "reason": "The linked evidence supports the claim.",
+                    "unsupported_assertions": [],
+                    "coverage_eligible": True,
+                }
+            ],
+            "findings": [],
+        },
         precomputed_rigor_manifest={
             "runtime": "diagnostic-file-batch",
             "elapsed_seconds": 12.5,
@@ -157,6 +171,7 @@ def test_validator_agent_v1_runner_accepts_precomputed_batched_rigor(monkeypatch
     assert report.score == 1.0
     assert report.metrics.rigor_agent_elapsed_seconds == 12.5
     assert report.metrics.usage_source == "shared_diagnostic_batch"
+    assert report.metadata["candidate_evidence"][0]["coverage_eligible"] is True
 
 
 def test_validator_agent_v1_llm_validation_reports_semantic_grounding_findings(monkeypatch, tmp_path: Path) -> None:

@@ -5,7 +5,7 @@ argument-hint: "<diagnostic-batch-workspace>"
 allowed-tools: Read, Write, Glob, Grep
 metadata:
   category: claims-validation
-  version: "1.0.0"
+  version: "1.1.0"
   tags: [claims, validator, diagnostics, batch]
 ---
 
@@ -35,6 +35,34 @@ For each submission, review:
 Use only the linked source payload as source truth. Do not fetch external
 sources. Do not repair artifacts and do not calculate final scores.
 
+## Candidate Evidence Verdicts
+
+For every claim in every submission, emit exactly one `candidate_evidence`
+assessment. Copy `claim_id` and `evidence_ids` exactly from that claim. Copy
+`source_span_ids` from the claim's `sources[].span_ids` links. Use only evidence
+linked by that same claim; evidence belonging to another claim or submission
+cannot support it.
+
+Assign one status:
+
+- `supported`: every material assertion in the claim is supported by its own
+  linked evidence and cited source spans.
+- `partially_supported`: some material assertions are supported, but the claim
+  adds unsupported scope, mechanism, population, causality, quantities, or
+  conclusions.
+- `unsupported`: the linked evidence is irrelevant to or contradicts the claim.
+- `unverifiable`: the linked evidence or source text is missing or insufficient
+  to decide support.
+
+Only `supported` claims are eligible for Silver coverage. Judge the scientific
+content, not metadiscourse. Phrases such as "as reported in the cited source"
+or "this claim is not generalized beyond that scope" do not establish evidence
+support or scope calibration. List unsupported material assertions explicitly.
+
+Do not write free-form evidence excerpts. Return only evidence IDs and span IDs
+that appear on the claim; the validator resolves those IDs to stored source
+text.
+
 ## Findings
 
 - Emit only concrete issues.
@@ -57,6 +85,16 @@ Write one strict JSON object containing exactly one report per expected
   "reports": [
     {
       "submission_ref": "S0001",
+      "candidate_evidence": [
+        {
+          "claim_id": "C01",
+          "status": "partially_supported",
+          "evidence_ids": ["EV01"],
+          "source_span_ids": ["span-001"],
+          "reason": "The evidence supports an association in the study sample but not the claim's causal conclusion.",
+          "unsupported_assertions": ["The association is causal."]
+        }
+      ],
       "findings": [
         {
           "dimension": "scope_calibration",
@@ -74,5 +112,8 @@ Write one strict JSON object containing exactly one report per expected
 }
 ```
 
-Use an empty `findings` array when a submission has no concrete rigor issue.
+Use an empty `findings` array when a submission has no concrete rigor issue,
+but always return the complete `candidate_evidence` partition. The validator
+will reject and repair a report that omits, duplicates, or invents claim IDs or
+evidence references.
 Validate the complete output against `output_schema.json` before writing it.
