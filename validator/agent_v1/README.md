@@ -92,19 +92,15 @@ CLAIMS_RIGOR_HARNESS=hermes-cli \
 CLAIMS_RIGOR_MODEL=openai/gpt-4o-mini \
 CLAIMS_DIAGNOSTIC_MINER_BATCH_SIZE=10 \
 CLAIMS_DIAGNOSTIC_BATCH_MAX_INPUT_BYTES=8000000 \
-CLAIMS_DIAGNOSTIC_BATCH_MAX_CLAIMS=80 \
 CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE=4 \
 CLAIMS_DIAGNOSTIC_REPAIR_MAX_DEPTH=3 \
 CLAIMS_DIAGNOSTIC_REPAIR_MAX_WORKERS=2 \
 python -m neurons.validator ...
 ```
 
-Identical source payloads are stored once in each workspace. Model-facing
-submission, claim, evidence, and span IDs are short aliases that the validator
-maps back to stored IDs. Shards are bounded by miner count, input bytes, and
-total claims. Valid reports are retained while missing, duplicated, or
-malformed reports retry in progressively smaller shared-context shards; only
-unresolved reports reach individual fallback.
+Identical source payloads are stored once in each workspace. Valid reports are
+retained while missing, duplicated, or malformed reports retry in bounded
+shared-context shards; only unresolved reports reach individual fallback.
 Combined batch and repair usage is recorded once rather than copied onto every
 miner.
 
@@ -130,10 +126,8 @@ feedback endpoint.
 Set `CLAIMS_SILVER_WORKFLOW_MODE=file-agent` to run the experimental per-paper
 workspace pipeline: global comparison, anonymous parallel judges, conditional
 tiebreak, deterministic consensus, canonical draft, and independent canonical
-audit/revision. The validator generates exact-restatement edges directly;
-adjudicated same-unit groups cannot be split, and candidates without linked
-evidence cannot receive Silver credit. Large judge workloads are sharded and
-merged by validator-owned case references.
+audit/revision. Exact restatements and adjudicated same-unit groups cannot be
+split, and candidates without linked evidence cannot receive Silver credit.
 Agents use short `cN`, `kN`, and `uN` references; the validator owns the mapping
 to persisted candidate, case, and Silver lineage IDs.
 Only the logical workspace ID and manifest hash are persisted.
@@ -146,12 +140,6 @@ CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL=deepseek/deepseek-v4-flash \
 CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL=qwen/qwen3.7-flash \
 CLAIMS_SILVER_FILE_AGENT_MAX_TURNS=30 \
 CLAIMS_SILVER_FILE_AGENT_MAX_TOKENS=32768 \
-CLAIMS_SILVER_FILE_ADJUDICATION_SHARD_SIZE=25 \
-CLAIMS_SILVER_FILE_ADJUDICATION_MAX_INPUT_BYTES=2000000 \
-CLAIMS_SILVER_FILE_ADJUDICATION_MAX_WORKERS=4 \
-CLAIMS_SILVER_FILE_AGENT_MODEL_MAX_IN_FLIGHT=4 \
-CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_ATTEMPTS=3 \
-CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_BACKOFF_SECONDS=15 \
 CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true \
 python -m neurons.validator ...
 ```

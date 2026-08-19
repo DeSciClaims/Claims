@@ -5,22 +5,21 @@ import inspect
 import json
 import logging
 import os
-import re
 import shlex
 import signal
 import subprocess
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from miner.agent_v1.runtime.usage import empty_usage, merge_usage, usage_from_cli_process
+from miner.agent_v1.runtime.usage import empty_usage, usage_from_cli_process
 
 from .adjudication_consensus import aggregate_adjudication_votes
 from .adjudication_models import AdjudicationConsensus, AdjudicationContextBundle, AdjudicationDecision, AdjudicationVote
@@ -106,20 +105,6 @@ class CanonicalUnitProposal(_StrictOutputModel):
     candidate_ids: list[str] = Field(min_length=1)
     rationale: str = ""
 
-    @model_validator(mode="before")
-    @classmethod
-    def discard_redundant_input_unit_ids(cls, value: Any) -> Any:
-        if not isinstance(value, dict):
-            return value
-        # Auditors often retain the draft label while rewriting a unit. The
-        # label is presentation-only; candidate_ids remain the authoritative
-        # canonical partition and are validated separately below.
-        return {
-            key: item
-            for key, item in value.items()
-            if key not in {"unit_id", "draft_unit_id"}
-        }
-
 
 class CanonicalExclusionProposal(_StrictOutputModel):
     candidate_ids: list[str] = Field(min_length=1)
@@ -181,12 +166,6 @@ class FileAgentWorkflowConfig:
     output_poll_seconds: float = 0.5
     output_stable_seconds: float = 1.0
     usage_grace_seconds: float = 15.0
-    adjudication_shard_size: int = 25
-    adjudication_max_input_bytes: int = 2_000_000
-    adjudication_max_workers: int = 4
-    model_max_in_flight: int = 4
-    provider_retry_attempts: int = 3
-    provider_retry_backoff_seconds: float = 15.0
     fallback_to_legacy: bool = True
     require_distinct_direct_judges: bool = True
 
@@ -239,42 +218,6 @@ class FileAgentWorkflowConfig:
                 0.0,
                 float(os.getenv("CLAIMS_SILVER_FILE_AGENT_USAGE_GRACE_SECONDS", "15.0") or 15.0),
             ),
-            adjudication_shard_size=max(
-                1,
-                int(os.getenv("CLAIMS_SILVER_FILE_ADJUDICATION_SHARD_SIZE", "25") or 25),
-            ),
-            adjudication_max_input_bytes=max(
-                0,
-                int(
-                    os.getenv(
-                        "CLAIMS_SILVER_FILE_ADJUDICATION_MAX_INPUT_BYTES",
-                        "2000000",
-                    )
-                    or 0
-                ),
-            ),
-            adjudication_max_workers=max(
-                1,
-                int(os.getenv("CLAIMS_SILVER_FILE_ADJUDICATION_MAX_WORKERS", "4") or 4),
-            ),
-            model_max_in_flight=max(
-                0,
-                int(os.getenv("CLAIMS_SILVER_FILE_AGENT_MODEL_MAX_IN_FLIGHT", "4") or 0),
-            ),
-            provider_retry_attempts=max(
-                1,
-                int(os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_ATTEMPTS", "3") or 3),
-            ),
-            provider_retry_backoff_seconds=max(
-                0.0,
-                float(
-                    os.getenv(
-                        "CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_BACKOFF_SECONDS",
-                        "15",
-                    )
-                    or 0
-                ),
-            ),
             fallback_to_legacy=os.getenv("CLAIMS_SILVER_FILE_AGENT_FALLBACK", "legacy").strip().lower()
             not in {"none", "disabled", "false", "0"},
             require_distinct_direct_judges=os.getenv(
@@ -303,8 +246,6 @@ class FileAgentWorkflowSession:
     source_context_by_span_id: dict[str, str]
     usage_sink: UsageSink | None = None
     request_gate: Any | None = None
-    model_request_gates: dict[str, Any] = field(default_factory=dict, repr=False)
-    model_gate_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     root: Path = field(init=False)
     manifest: dict[str, Any] = field(init=False)
     _manifest_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
@@ -326,17 +267,6 @@ class FileAgentWorkflowSession:
     @property
     def fallback_to_legacy(self) -> bool:
         return self.config.fallback_to_legacy
-
-    def _model_request_gate(self, model: str) -> Any | None:
-        if self.config.model_max_in_flight <= 0:
-            return None
-        key = model.strip().lower()
-        with self.model_gate_lock:
-            gate = self.model_request_gates.get(key)
-            if gate is None:
-                gate = threading.BoundedSemaphore(self.config.model_max_in_flight)
-                self.model_request_gates[key] = gate
-            return gate
 
     def run_comparison(self) -> list[CandidatePairEdge]:
         aliases, candidates_by_alias = _comparison_aliases(self.candidates)
@@ -376,7 +306,6 @@ class FileAgentWorkflowSession:
         )
         output = result.payload
         assert isinstance(output, ComparisonAgentOutput)
-        output = _inject_exact_restatement_relations(output, mandatory_pairs)
         comparison_repair_error = ""
         try:
             _validate_comparison_output(
@@ -441,7 +370,6 @@ class FileAgentWorkflowSession:
                 if targeted_repair
                 else repaired_output
             )
-            output = _inject_exact_restatement_relations(output, mandatory_pairs)
             _validate_comparison_output(
                 output,
                 candidates_by_alias=candidates_by_alias,
@@ -473,24 +401,8 @@ class FileAgentWorkflowSession:
                     relation=proposal.relation,
                     confidence=proposal.confidence,
                     rationale=proposal.rationale,
-                    filter_sources=(
-                        ["validator_exact_restatement"]
-                        if (
-                            proposal.reference_candidate_id,
-                            proposal.submission_candidate_id,
-                        )
-                        in mandatory_pairs
-                        else ["file_agent_global_review"]
-                    ),
-                    metadata={
-                        "workflow": "file_agent",
-                        "workspace_id": self.workspace_id,
-                        "validator_generated": (
-                            proposal.reference_candidate_id,
-                            proposal.submission_candidate_id,
-                        )
-                        in mandatory_pairs,
-                    },
+                    filter_sources=["file_agent_global_review"],
+                    metadata={"workflow": "file_agent", "workspace_id": self.workspace_id},
                 )
             )
         self._write_json(
@@ -548,40 +460,13 @@ class FileAgentWorkflowSession:
         with ThreadPoolExecutor(max_workers=max(1, len(passes))) as executor:
             futures = {
                 adjudication_pass.pass_id: executor.submit(
-                    self._run_judge_sharded,
+                    self._run_judge,
                     adjudication_pass,
                     contexts,
                 )
                 for adjudication_pass in passes
             }
-            votes_by_pass: dict[str, list[AdjudicationVote]] = {}
-            direct_failures: dict[str, Exception] = {}
-            for pass_id, future in futures.items():
-                try:
-                    votes_by_pass[pass_id] = future.result()
-                except Exception as exc:
-                    direct_failures[pass_id] = exc
-
-        tiebreak_used_as_direct_substitute = False
-        if direct_failures:
-            if len(direct_failures) != 1 or tiebreak_pass is None:
-                failed = ", ".join(
-                    f"{pass_id}={type(exc).__name__}: {exc}"
-                    for pass_id, exc in sorted(direct_failures.items())
-                )
-                raise FileAgentWorkflowError(f"Direct adjudication pass failure: {failed}")
-            failed_pass_id = next(iter(direct_failures))
-            LOGGER.warning(
-                "Direct judge %s failed; using configured tiebreak judge %s as its substitute.",
-                failed_pass_id,
-                tiebreak_pass.pass_id,
-            )
-            votes_by_pass[failed_pass_id] = self._run_judge_sharded(
-                tiebreak_pass,
-                contexts,
-                stage_suffix="direct_substitute",
-            )
-            tiebreak_used_as_direct_substitute = True
+            votes_by_pass = {pass_id: future.result() for pass_id, future in futures.items()}
 
         direct_votes: dict[str, list[AdjudicationVote]] = {context.case.case_id: [] for context in contexts}
         for adjudication_pass in passes:
@@ -604,12 +489,8 @@ class FileAgentWorkflowSession:
             if consensus.route == "unresolved" and tiebreak_pass is not None:
                 unresolved_contexts.append(context)
 
-        if (
-            unresolved_contexts
-            and tiebreak_pass is not None
-            and not tiebreak_used_as_direct_substitute
-        ):
-            tiebreak_votes = self._run_judge_sharded(tiebreak_pass, unresolved_contexts)
+        if unresolved_contexts and tiebreak_pass is not None:
+            tiebreak_votes = self._run_judge(tiebreak_pass, unresolved_contexts)
             if progress_sink is not None and tiebreak_votes:
                 progress_sink(unresolved_contexts, tiebreak_votes)
             tiebreak_by_case = {vote.case_id: vote for vote in tiebreak_votes}
@@ -627,9 +508,6 @@ class FileAgentWorkflowSession:
                 if consensus.route == "unresolved":
                     consensus.route = "manual_review"
                 consensus_by_case[case_id] = consensus
-        elif unresolved_contexts:
-            for context in unresolved_contexts:
-                consensus_by_case[context.case.case_id].route = "manual_review"
 
         ordered = [consensus_by_case[context.case.case_id] for context in contexts]
         self._write_json(
@@ -911,69 +789,14 @@ class FileAgentWorkflowSession:
         manifest_hash = _sha256(self.root / "manifest.json")
         return {"workspace_id": self.workspace_id, "manifest_sha256": manifest_hash, "status": status}
 
-    def _run_judge_sharded(
-        self,
-        adjudication_pass: AdjudicationPass,
-        contexts: list[AdjudicationContextBundle],
-        *,
-        stage_suffix: str = "",
-    ) -> list[AdjudicationVote]:
-        shards = _shard_adjudication_contexts(
-            contexts,
-            max_count=self.config.adjudication_shard_size,
-            max_input_bytes=self.config.adjudication_max_input_bytes,
-        )
-        if len(shards) == 1:
-            return self._run_judge(
-                adjudication_pass,
-                shards[0],
-                stage_suffix=stage_suffix,
-            )
-
-        worker_count = min(self.config.adjudication_max_workers, len(shards))
-        votes: list[AdjudicationVote] = []
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            futures = {
-                executor.submit(
-                    self._run_judge,
-                    adjudication_pass,
-                    shard,
-                    stage_suffix=(
-                        f"{stage_suffix}_shard_{index:04d}"
-                        if stage_suffix
-                        else f"shard_{index:04d}"
-                    ),
-                ): index
-                for index, shard in enumerate(shards, start=1)
-            }
-            for future in as_completed(futures):
-                votes.extend(future.result())
-        votes_by_case = {vote.case_id: vote for vote in votes}
-        ordered = [
-            votes_by_case[context.case.case_id]
-            for context in contexts
-            if context.case.case_id in votes_by_case
-        ]
-        self._write_json(
-            f"adjudication/{_safe_path(adjudication_pass.pass_id)}.json",
-            {
-                "shard_count": len(shards),
-                "votes": [vote.model_dump(mode="json") for vote in ordered],
-            },
-        )
-        return ordered
-
     def _run_judge(
         self,
         adjudication_pass: AdjudicationPass,
         contexts: list[AdjudicationContextBundle],
-        *,
-        stage_suffix: str = "",
     ) -> list[AdjudicationVote]:
         if isinstance(adjudication_pass, CLIAdjudicationPass):
             task = file_adjudication_batch_payload(contexts)
-            suffix = f"_{stage_suffix}" if stage_suffix else ""
-            stage_key = f"judge_{adjudication_pass.pass_id}{suffix}"
+            stage_key = f"judge_{adjudication_pass.pass_id}"
             try:
                 try:
                     result = self._run_stage(
@@ -1024,10 +847,7 @@ class FileAgentWorkflowSession:
 
         votes = _complete_votes(adjudication_pass, contexts, votes, self.config.timeout_seconds)
         self._write_json(
-            (
-                f"adjudication/{_safe_path(adjudication_pass.pass_id)}"
-                f"{f'_{_safe_path(stage_suffix)}' if stage_suffix else ''}.json"
-            ),
+            f"adjudication/{_safe_path(adjudication_pass.pass_id)}.json",
             {"votes": [vote.model_dump(mode="json") for vote in votes]},
         )
         return votes
@@ -1076,7 +896,7 @@ class FileAgentWorkflowSession:
         )
         _validate_judge_output(merged, expected_case_refs=expected_case_refs)
         self._write_json(
-            f"adjudication/{_safe_path(stage_key)}_repair.json",
+            f"adjudication/{_safe_path(adjudication_pass.pass_id)}_repair.json",
             {
                 "initial_error": f"{type(initial_error).__name__}: {initial_error}",
                 "repair_case_refs": _ordered_case_refs(repair_refs),
@@ -1139,106 +959,46 @@ class FileAgentWorkflowSession:
         status = "success"
         error: str | None = None
         completed: subprocess.CompletedProcess[str] | None = None
-        attempt_usages: list[dict[str, Any]] = []
-        attempt_count = 0
         try:
-            payload: BaseModel | None = None
-            for attempt in range(1, self.config.provider_retry_attempts + 1):
-                attempt_count = attempt
-                if output_path.exists():
-                    if attempt > 1:
-                        output_path.replace(
-                            stage_dir / f"output_attempt_{attempt - 1:02d}.json"
-                        )
-                    else:
-                        output_path.unlink()
-                attempt_stdout_path = (
-                    stdout_path
-                    if attempt == 1
-                    else stage_dir / f"stdout_attempt_{attempt:02d}.log"
+            with _request_slot(self.request_gate):
+                completed = _run_until_valid_output(
+                    [*resolved_command, query],
+                    cwd=stage_dir,
+                    output_path=output_path,
+                    output_model=output_model,
+                    stdout_path=stdout_path,
+                    stderr_path=stderr_path,
+                    timeout_seconds=self.config.timeout_seconds,
+                    poll_seconds=self.config.output_poll_seconds,
+                    stable_seconds=self.config.output_stable_seconds,
+                    usage_grace_seconds=self.config.usage_grace_seconds,
+                    env=(
+                        {
+                            **os.environ,
+                            "HERMES_MAX_TOKENS": str(self.config.max_tokens),
+                        }
+                        if resolved_harness == "hermes-cli"
+                        else None
+                    ),
                 )
-                attempt_stderr_path = (
-                    stderr_path
-                    if attempt == 1
-                    else stage_dir / f"stderr_attempt_{attempt:02d}.log"
-                )
-                attempt_started_at = datetime.now(timezone.utc)
-                with _request_slot(self.request_gate):
-                    with _request_slot(self._model_request_gate(model)):
-                        completed = _run_until_valid_output(
-                            [*resolved_command, query],
-                            cwd=stage_dir,
-                            output_path=output_path,
-                            output_model=output_model,
-                            stdout_path=attempt_stdout_path,
-                            stderr_path=attempt_stderr_path,
-                            timeout_seconds=self.config.timeout_seconds,
-                            poll_seconds=self.config.output_poll_seconds,
-                            stable_seconds=self.config.output_stable_seconds,
-                            usage_grace_seconds=self.config.usage_grace_seconds,
-                            env=(
-                                {
-                                    **os.environ,
-                                    "HERMES_MAX_TOKENS": str(self.config.max_tokens),
-                                }
-                                if resolved_harness == "hermes-cli"
-                                else None
-                            ),
-                        )
-                attempt_usages.append(
-                    usage_from_cli_process(
-                        resolved_command,
-                        completed.stdout,
-                        completed.stderr,
-                        cwd=stage_dir,
-                        started_at=attempt_started_at,
-                        model=model,
-                    )
-                )
-                payload = _read_model(output_path, output_model)
-                if payload is not None:
-                    break
-                provider_detail = "\n".join(
-                    [completed.stdout[-4000:], completed.stderr[-4000:]]
-                )
-                if (
-                    attempt >= self.config.provider_retry_attempts
-                    or not _transient_provider_failure(provider_detail)
-                ):
-                    break
-                delay = _provider_retry_delay(
-                    self.config.provider_retry_backoff_seconds,
-                    attempt=attempt,
-                    stage_key=stage_key,
-                    model=model,
-                    provider_detail=provider_detail,
-                )
-                LOGGER.warning(
-                    "Transient provider failure stage=%s model=%s attempt=%s/%s; retrying in %.1fs.",
-                    stage_key,
-                    model,
-                    attempt,
-                    self.config.provider_retry_attempts,
-                    delay,
-                )
-                if delay:
-                    time.sleep(delay)
             for path in (task_path, schema_path, skill_copy):
                 if _sha256(path) != input_hashes[path.name]:
                     raise FileAgentWorkflowError(f"Agent modified immutable input file {path.name}.")
+            payload = _read_model(output_path, output_model)
             if payload is None:
-                process_detail = (
-                    "\n".join([completed.stdout[-1000:], completed.stderr[-1000:]])
-                    if completed is not None
-                    else ""
-                )
-                validation_detail = _model_validation_error(output_path, output_model)
+                stderr = completed.stderr[-1000:] if completed is not None else ""
                 raise FileAgentWorkflowError(
-                    f"{stage_key} agent did not write a valid output file. "
-                    f"{validation_detail} {process_detail}".strip()
+                    f"{stage_key} agent did not write a valid output file. {stderr}"
                 )
             duration = time.perf_counter() - started
-            usage = merge_usage(attempt_usages)
+            usage = usage_from_cli_process(
+                resolved_command,
+                completed.stdout if completed is not None else "",
+                completed.stderr if completed is not None else "",
+                cwd=stage_dir,
+                started_at=started_at,
+                model=model,
+            )
             stage_result = _StageResult(payload, output_path, usage, duration)
             self._record_manifest_stage(
                 {
@@ -1246,7 +1006,6 @@ class FileAgentWorkflowSession:
                     "status": "complete",
                     "model": model,
                     "harness": resolved_harness,
-                    "attempt_count": attempt_count,
                     "duration_seconds": round(duration, 3),
                     "output_sha256": _sha256(output_path),
                 },
@@ -1260,7 +1019,18 @@ class FileAgentWorkflowSession:
             )
             raise
         finally:
-            usage = merge_usage(attempt_usages) if attempt_usages else empty_usage("file_agent_not_started")
+            usage = (
+                usage_from_cli_process(
+                    resolved_command,
+                    completed.stdout if completed is not None else "",
+                    completed.stderr if completed is not None else "",
+                    cwd=stage_dir,
+                    started_at=started_at,
+                    model=model,
+                )
+                if completed is not None
+                else empty_usage("file_agent_not_started")
+            )
             if self.usage_sink is not None:
                 self.usage_sink(
                     {
@@ -1280,11 +1050,7 @@ class FileAgentWorkflowSession:
                         "started_at": started_at,
                         "ended_at": datetime.now(timezone.utc),
                         "duration_seconds": time.perf_counter() - started,
-                        "metadata": {
-                            "workflow": "file_agent",
-                            "workspace_id": self.workspace_id,
-                            "attempt_count": attempt_count,
-                        },
+                        "metadata": {"workflow": "file_agent", "workspace_id": self.workspace_id},
                     }
                 )
 
@@ -1315,12 +1081,6 @@ class FileAgentSilverWorkflow:
     config: FileAgentWorkflowConfig
     usage_sink: UsageSink | None = None
     request_gate: Any | None = None
-    model_request_gates: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
-    model_gate_lock: threading.Lock = field(
-        default_factory=threading.Lock,
-        compare=False,
-        repr=False,
-    )
 
     @classmethod
     def from_env(
@@ -1353,8 +1113,6 @@ class FileAgentSilverWorkflow:
             source_context_by_span_id=source_context_by_span_id,
             usage_sink=self.usage_sink,
             request_gate=self.request_gate,
-            model_request_gates=self.model_request_gates,
-            model_gate_lock=self.model_gate_lock,
         )
 
 
@@ -1490,39 +1248,6 @@ def _comparison_proposals(output: ComparisonAgentOutput) -> list[ComparisonPairP
         for review in output.submission_reviews
         for relation in review.reference_relations
     ]
-
-
-def _inject_exact_restatement_relations(
-    output: ComparisonAgentOutput,
-    mandatory_pairs: set[tuple[str, str]],
-) -> ComparisonAgentOutput:
-    if not mandatory_pairs:
-        return output
-    reviews = [review.model_copy(deep=True) for review in output.submission_reviews]
-    reviews_by_submission = {
-        review.submission_candidate_id: review for review in reviews
-    }
-    for reference_ref, submission_ref in sorted(mandatory_pairs):
-        review = reviews_by_submission.get(submission_ref)
-        if review is None:
-            # Do not fabricate the required submission review. The completeness
-            # gate will route that omission through targeted repair.
-            continue
-        existing = {
-            relation.reference_candidate_id: relation
-            for relation in review.reference_relations
-        }
-        existing[reference_ref] = ComparisonReferenceRelation(
-            reference_candidate_id=reference_ref,
-            relation="semantic_equivalent",
-            confidence=1.0,
-            rationale=(
-                "The validator normalized both statements to the same exact scientific text."
-            ),
-        )
-        review.reference_relations = list(existing.values())
-        review.no_actionable_relation_reason = ""
-    return ComparisonAgentOutput(submission_reviews=reviews)
 
 
 def _targeted_comparison_repair_task(
@@ -1828,41 +1553,6 @@ def _validate_judge_output(output: JudgeAgentOutput, *, expected_case_refs: set[
             "Adjudication case decisions are incomplete or invalid; "
             f"missing={missing} unknown={unknown} duplicate={duplicates}."
         )
-
-
-def _shard_adjudication_contexts(
-    contexts: list[AdjudicationContextBundle],
-    *,
-    max_count: int,
-    max_input_bytes: int,
-) -> list[list[AdjudicationContextBundle]]:
-    if not contexts:
-        return []
-    shards: list[list[AdjudicationContextBundle]] = []
-    current: list[AdjudicationContextBundle] = []
-    for context in contexts:
-        proposed = [*current, context]
-        count_full = len(proposed) > max(1, max_count)
-        bytes_full = bool(
-            max_input_bytes
-            and current
-            and len(
-                json.dumps(
-                    file_adjudication_batch_payload(proposed),
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                ).encode("utf-8")
-            )
-            > max_input_bytes
-        )
-        if count_full or bytes_full:
-            shards.append(current)
-            current = [context]
-        else:
-            current = proposed
-    if current:
-        shards.append(current)
-    return shards
 
 
 def _read_json_value(path: Path) -> Any:
@@ -2188,76 +1878,6 @@ def _read_model(path: Path, model: type[BaseModel]) -> BaseModel | None:
         return model.model_validate(payload)
     except (OSError, json.JSONDecodeError, ValidationError):
         return None
-
-
-def _model_validation_error(path: Path, model: type[BaseModel]) -> str:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except OSError:
-        return "No output JSON file was written."
-    except json.JSONDecodeError as exc:
-        return f"Output JSON could not be parsed: {exc}."
-    try:
-        model.model_validate(payload)
-    except ValidationError as exc:
-        errors = [
-            {
-                "path": ".".join(str(item) for item in error.get("loc", [])),
-                "message": error.get("msg") or error.get("type"),
-            }
-            for error in exc.errors(include_url=False)[:8]
-        ]
-        return f"Output schema validation failed: {errors}."
-    return "Output validation failed after parsing."
-
-
-def _transient_provider_failure(detail: str) -> bool:
-    normalized = detail.casefold()
-    return any(
-        marker in normalized
-        for marker in (
-            "http 429",
-            "rate limit",
-            "rate-limit",
-            "temporarily rate-limited",
-            "http 502",
-            "http 503",
-            "http 504",
-            "service unavailable",
-            "upstream timeout",
-            "connection error",
-            "connection reset",
-        )
-    )
-
-
-def _provider_retry_delay(
-    base_seconds: float,
-    *,
-    attempt: int,
-    stage_key: str,
-    model: str,
-    provider_detail: str = "",
-) -> float:
-    retry_after = _retry_after_seconds(provider_detail)
-    if base_seconds <= 0:
-        return retry_after
-    jitter_seed = int(
-        hashlib.sha256(f"{stage_key}:{model}".encode("utf-8")).hexdigest()[:8],
-        16,
-    )
-    jitter = (jitter_seed % 1000) / 1000.0 * base_seconds * 0.25
-    exponential = base_seconds * (2 ** max(0, attempt - 1)) + jitter
-    return max(exponential, retry_after)
-
-
-def _retry_after_seconds(detail: str) -> float:
-    match = re.search(
-        r"retry[-_ ]after[\"']?\s*[:=]\s*[\"']?(\d+(?:\.\d+)?)",
-        detail,
-        flags=re.IGNORECASE,
-    )
-    return float(match.group(1)) if match is not None else 0.0
 
 
 def _agent_command(config: FileAgentWorkflowConfig, *, model: str, stage_key: str) -> list[str]:

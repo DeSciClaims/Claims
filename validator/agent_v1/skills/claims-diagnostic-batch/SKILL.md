@@ -5,7 +5,7 @@ argument-hint: "<diagnostic-batch-workspace>"
 allowed-tools: Read, Write, Glob, Grep
 metadata:
   category: claims-validation
-  version: "1.2.0"
+  version: "1.0.0"
   tags: [claims, validator, diagnostics, batch]
 ---
 
@@ -16,10 +16,8 @@ be judged independently against its own artifact, linked source payload,
 structural findings, and grounding findings.
 
 Do not compare or rank submissions. Do not transfer a finding from one
-submission to another. All model-facing identifiers are short opaque aliases.
-Submission references, claim refs, evidence refs, and source-span refs must be
-copied exactly into the output. The validator maps them back to stored artifact
-identifiers.
+submission to another. Submission references are opaque and must be copied
+exactly into the output.
 
 ## Required Dimensions
 
@@ -36,37 +34,6 @@ For each submission, review:
 
 Use only the linked source payload as source truth. Do not fetch external
 sources. Do not repair artifacts and do not calculate final scores.
-
-## Candidate Evidence Verdicts
-
-For every alias listed in each submission's `required_claim_refs`, emit exactly
-one `candidate_evidence` assessment. Load the model-facing artifact
-programmatically and verify that the set of emitted `claim_id` values exactly
-equals `required_claim_refs` before writing. Copy `claim_id` and `evidence_ids`
-exactly from that claim. The validator attaches the authoritative
-`evidence_ids` and `source_span_ids` from the claim after validating the output,
-so these arrays may be empty in model output. Use only evidence linked by that
-same claim when deciding the status; evidence belonging to another claim or
-submission cannot support it.
-
-Assign one status:
-
-- `supported`: every material assertion in the claim is supported by its own
-  linked evidence and cited source spans.
-- `partially_supported`: some material assertions are supported, but the claim
-  adds unsupported scope, mechanism, population, causality, quantities, or
-  conclusions.
-- `unsupported`: the linked evidence is irrelevant to or contradicts the claim.
-- `unverifiable`: the linked evidence or source text is missing or insufficient
-  to decide support.
-
-Only `supported` claims are eligible for Silver coverage. Judge the scientific
-content, not metadiscourse. Phrases such as "as reported in the cited source"
-or "this claim is not generalized beyond that scope" do not establish evidence
-support or scope calibration. List unsupported material assertions explicitly.
-
-Do not write free-form evidence excerpts. Do not invent evidence IDs or span
-IDs; the validator derives those fields from the stored claim links.
 
 ## Findings
 
@@ -89,23 +56,13 @@ Write one strict JSON object containing exactly one report per expected
 {
   "reports": [
     {
-      "submission_ref": "s0",
-      "candidate_evidence": [
-        {
-          "claim_id": "c0",
-          "status": "partially_supported",
-          "evidence_ids": ["e0"],
-          "source_span_ids": ["p0"],
-          "reason": "The evidence supports an association in the study sample but not the claim's causal conclusion.",
-          "unsupported_assertions": ["The association is causal."]
-        }
-      ],
+      "submission_ref": "S0001",
       "findings": [
         {
           "dimension": "scope_calibration",
           "severity": "major",
           "target_type": "claim",
-          "target_id": "c0",
+          "target_id": "C01",
           "message": "The claim exceeds the population described by its evidence.",
           "evidence_span": "exact artifact excerpt",
           "suggestion": "Narrow the claim to the studied population.",
@@ -117,9 +74,5 @@ Write one strict JSON object containing exactly one report per expected
 }
 ```
 
-Use an empty `findings` array when a submission has no concrete rigor issue,
-but always return the complete `candidate_evidence` partition. The validator
-will reject and repair a report that omits, duplicates, or invents claim IDs or
-evidence references. When `validator_rejections` is non-empty, correct every
-listed issue while still returning the complete required claim partition.
+Use an empty `findings` array when a submission has no concrete rigor issue.
 Validate the complete output against `output_schema.json` before writing it.

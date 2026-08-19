@@ -395,13 +395,6 @@ class ClaimsValidator:
             help="Approximate input-byte ceiling for one diagnostic miner shard. Zero disables the byte ceiling.",
         )
         parser.add_argument(
-            "--claims.diagnostic-batch-max-claims",
-            dest="claims_diagnostic_batch_max_claims",
-            type=int,
-            default=int(os.getenv("CLAIMS_DIAGNOSTIC_BATCH_MAX_CLAIMS", "80")),
-            help="Maximum total claims reviewed in one diagnostic shard. Zero disables the claim ceiling.",
-        )
-        parser.add_argument(
             "--claims.agent-v1-threshold",
             dest="claims_agent_v1_threshold",
             type=float,
@@ -776,7 +769,6 @@ class ClaimsValidator:
         config.claims_diagnostic_miner_max_workers = parsed_args.claims_diagnostic_miner_max_workers
         config.claims_diagnostic_miner_batch_size = parsed_args.claims_diagnostic_miner_batch_size
         config.claims_diagnostic_batch_max_input_bytes = parsed_args.claims_diagnostic_batch_max_input_bytes
-        config.claims_diagnostic_batch_max_claims = parsed_args.claims_diagnostic_batch_max_claims
         config.claims_agent_v1_threshold = parsed_args.claims_agent_v1_threshold
         config.claims_silver_enable = parsed_args.claims_silver_enable
         config.claims_bronze_root = parsed_args.claims_bronze_root
@@ -1348,17 +1340,6 @@ class ClaimsValidator:
                     or 0
                 ),
             ),
-            max_claims=max(
-                0,
-                int(
-                    getattr(
-                        self.config,
-                        "claims_diagnostic_batch_max_claims",
-                        config.max_claims,
-                    )
-                    or 0
-                ),
-            ),
             harness=str(getattr(self.config, "claims_rigor_harness", "") or config.harness)
             .strip()
             .lower()
@@ -1442,7 +1423,6 @@ class ClaimsValidator:
                 submissions,
                 max_count=config.batch_size,
                 max_input_bytes=config.max_input_bytes,
-                max_claims=config.max_claims,
             )
             for shard_index, shard in enumerate(shards, start=1):
                 jobs.append(
@@ -1468,8 +1448,7 @@ class ClaimsValidator:
         )
         self.bt_logging.info(
             "Running paper-batched diagnostic validation "
-            f"jobs={len(jobs)} batch_size={config.batch_size} "
-            f"max_claims={config.max_claims or 'unlimited'} max_workers={worker_count}."
+            f"jobs={len(jobs)} batch_size={config.batch_size} max_workers={worker_count}."
         )
 
         def run_job(job):
@@ -1669,19 +1648,7 @@ class ClaimsValidator:
         expected_uids = [int(neuron.uid) for neuron in self.target_neurons]
         expected_paper_ids = [paper.paper_id or f"paper_{index}" for index, paper in enumerate(paper_tasks, start=1)]
         metadata_by_uid: dict[int, dict[str, Any]] = {}
-        miners_by_paper: dict[
-            str,
-            list[
-                tuple[
-                    int,
-                    dict[str, Any],
-                    dict[str, Any],
-                    dict[str, Any] | None,
-                    list[AgentV1ValidationFinding],
-                    list[dict[str, Any]] | None,
-                ]
-            ],
-        ] = {
+        miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None, list[AgentV1ValidationFinding]]]] = {
             paper.paper_id or f"paper_{index}": [] for index, paper in enumerate(paper_tasks, start=1)
         }
         for index, neuron in enumerate(self.target_neurons):
@@ -1707,9 +1674,6 @@ class ClaimsValidator:
                                 _metadata_for_article(metadata, article),
                                 source_payload if isinstance(source_payload, dict) else None,
                                 _validation_findings_from_rows(article.get("diagnostic_findings")),
-                                article.get("diagnostic_candidate_evidence")
-                                if isinstance(article.get("diagnostic_candidate_evidence"), list)
-                                else None,
                             )
                         )
             elif getattr(response, "extraction", None) and len(paper_tasks) == 1:
@@ -1718,14 +1682,7 @@ class ClaimsValidator:
                 source_payload = getattr(response, "source_payload", None)
                 if isinstance(extraction, dict) and _is_agent_v1_artifact(extraction):
                     miners_by_paper.setdefault(paper_id, []).append(
-                        (
-                            uid,
-                            extraction,
-                            metadata,
-                            source_payload if isinstance(source_payload, dict) else None,
-                            [],
-                            None,
-                        )
+                        (uid, extraction, metadata, source_payload if isinstance(source_payload, dict) else None, [])
                     )
 
         paper_jobs = [
@@ -1835,22 +1792,15 @@ class ClaimsValidator:
                 source_context_by_span_id = _source_context_map_from_payloads(
                     [
                         bronze_source_payload,
-                        *[
-                            source_payload
-                            for _uid, _extraction, _metadata, source_payload, _findings, _candidate_evidence in miner_rows
-                        ],
+                        *[source_payload for _uid, _extraction, _metadata, source_payload, _findings in miner_rows],
                     ]
                 )
                 result = run_paper_silver_pipeline(
                     paper_id=paper_id,
                     bronze_artifact=bronze_artifact,
                     miner_artifacts=[
-                        MinerArtifactSubmission(
-                            miner_id=f"uid_{uid}",
-                            artifact=extraction,
-                            candidate_evidence=_candidate_evidence,
-                        )
-                        for uid, extraction, _metadata, _source_payload, _findings, _candidate_evidence in miner_rows
+                        MinerArtifactSubmission(miner_id=f"uid_{uid}", artifact=extraction)
+                        for uid, extraction, _metadata, _source_payload, _findings in miner_rows
                     ],
                     silver_record_id=f"silver_{run_id}_{safe_task_id(paper_id)}",
                     bronze_record_id=bronze.bronze_record_id,
@@ -1879,7 +1829,7 @@ class ClaimsValidator:
                     paper_context=_paper_task_context(paper),
                     validation_findings_by_miner_id={
                         f"uid_{uid}": findings
-                        for uid, _extraction, _metadata, _source_payload, findings, _candidate_evidence in miner_rows
+                        for uid, _extraction, _metadata, _source_payload, findings in miner_rows
                     },
                     file_agent_workflow=file_agent_workflow,
                 )
@@ -2498,16 +2448,7 @@ class ClaimsValidator:
         task: ClaimsTask,
         paper_id: str,
         result: Any,
-        miner_rows: list[
-            tuple[
-                int,
-                dict[str, Any],
-                dict[str, Any],
-                dict[str, Any] | None,
-                list[AgentV1ValidationFinding],
-                list[dict[str, Any]] | None,
-            ]
-        ],
+        miner_rows: list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None, list[AgentV1ValidationFinding]]],
         paper_stage_seconds: dict[str, float] | None = None,
         timing_stages: list[dict[str, Any]] | None = None,
         model_rows: list[dict[str, Any]] | None = None,
@@ -2545,10 +2486,7 @@ class ClaimsValidator:
         network = str(getattr(self.config, "claims_network", "testnet"))
         metadata_by_miner_id = {
             **(score_metadata_by_miner_id or {}),
-            **{
-                f"uid_{uid}": (uid, metadata)
-                for uid, _extraction, metadata, _source_payload, _findings, _candidate_evidence in miner_rows
-            },
+            **{f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata, _source_payload, _findings in miner_rows},
         }
         backend_case_ids = {case.case_id: f"{run_id}_{case.case_id}" for case in result.diff_cases}
         case_payloads: list[dict[str, Any]] = []
@@ -2822,7 +2760,6 @@ class ClaimsValidator:
             paper_timer = _timing_start("diagnostic_validation", "Diagnostic validation")
             article = articles_by_id.get(paper_id)
             report: dict[str, Any] = {}
-            candidate_evidence: list[dict[str, Any]] | None = None
             paper_miner_metadata = miner_metadata
             finding_rows: list[dict[str, Any]] = []
             summary_delta: dict[str, int] = {}
@@ -2905,11 +2842,6 @@ class ClaimsValidator:
                         article_output_dir = Path(self.config.claims_output_dir) / task.task_id / article_run_id / f"uid_{uid}"
                         report_path = article_output_dir / "agent_v1" / "agent_v1_validation_report.json"
                         report = _read_json_object(report_path) if report_path.exists() else {}
-                        candidate_evidence = (report.get("metadata") or {}).get(
-                            "candidate_evidence"
-                        )
-                        if not isinstance(candidate_evidence, list):
-                            candidate_evidence = None
                         self._record_diagnostic_model_usage(
                             run_id=run_id,
                             paper_id=paper_id,
@@ -2940,7 +2872,6 @@ class ClaimsValidator:
                         "error": None,
                         "report_path": str(report_path) if report_path else None,
                         "artifact_summary": summarize_agent_artifact(extraction),
-                        "candidate_evidence": candidate_evidence,
                     }
             paper_stage = _timing_finish(
                 paper_timer,
@@ -2962,9 +2893,6 @@ class ClaimsValidator:
             if isinstance(article, dict):
                 article["diagnostic_score"] = score
                 article["diagnostic_findings"] = finding_rows
-                article["diagnostic_candidate_evidence"] = result.get(
-                    "candidate_evidence"
-                )
             result["timing"] = self._timing_payload(
                 uid=uid,
                 paper_id=paper_id,
@@ -5079,9 +5007,6 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_diagnostic_batch_max_input_bytes": int(
             getattr(config, "claims_diagnostic_batch_max_input_bytes", 8_000_000) or 0
         ),
-        "claims_diagnostic_batch_max_claims": int(
-            getattr(config, "claims_diagnostic_batch_max_claims", 80) or 0
-        ),
         "claims_diagnostic_repair_batch_size": int(
             os.getenv("CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE", "4") or 4
         ),
@@ -5120,24 +5045,6 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         ),
         "claims_silver_file_agent_usage_grace_seconds": float(
             os.getenv("CLAIMS_SILVER_FILE_AGENT_USAGE_GRACE_SECONDS", "15") or 15
-        ),
-        "claims_silver_file_adjudication_shard_size": int(
-            os.getenv("CLAIMS_SILVER_FILE_ADJUDICATION_SHARD_SIZE", "25") or 25
-        ),
-        "claims_silver_file_adjudication_max_input_bytes": int(
-            os.getenv("CLAIMS_SILVER_FILE_ADJUDICATION_MAX_INPUT_BYTES", "2000000") or 0
-        ),
-        "claims_silver_file_adjudication_max_workers": int(
-            os.getenv("CLAIMS_SILVER_FILE_ADJUDICATION_MAX_WORKERS", "4") or 4
-        ),
-        "claims_silver_file_agent_model_max_in_flight": int(
-            os.getenv("CLAIMS_SILVER_FILE_AGENT_MODEL_MAX_IN_FLIGHT", "4") or 0
-        ),
-        "claims_silver_file_agent_provider_retry_attempts": int(
-            os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_ATTEMPTS", "3") or 3
-        ),
-        "claims_silver_file_agent_provider_retry_backoff_seconds": float(
-            os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_BACKOFF_SECONDS", "15") or 0
         ),
         "claims_silver_file_agent_fallback": str(
             os.getenv("CLAIMS_SILVER_FILE_AGENT_FALLBACK", "legacy") or "legacy"

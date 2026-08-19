@@ -91,10 +91,6 @@ class AgentV1ValidatorRunner:
             )
         reviewed_grounding_findings, grounding_review = self._review_grounding_findings(grounding_findings, rigor_findings)
         report_rigor_findings = _reportable_rigor_findings(rigor_findings, reviewed_grounding_findings)
-        rigor_payload = _read_json_object(run_dir / "rigor_findings.json") or {}
-        candidate_evidence = rigor_payload.get("candidate_evidence")
-        if not isinstance(candidate_evidence, list):
-            candidate_evidence = None
         (run_dir / "grounding_reviewed_findings.json").write_text(
             json.dumps([f.model_dump(mode="json") for f in reviewed_grounding_findings], indent=2, ensure_ascii=False),
             encoding="utf-8",
@@ -103,22 +99,6 @@ class AgentV1ValidatorRunner:
         all_findings = structural_findings + reviewed_grounding_findings + report_rigor_findings
         score, passed, summary = score_findings(all_findings, threshold=threshold)
         metrics = _metrics(started, rigor_manifest)
-        report_metadata = {
-            "validator_runtime": self.config.runtime,
-            "validation_mode": self.config.validation_mode,
-            "rigor_skill_dir": str(self.config.skill_dir),
-            "rigor_agent_required": not self.config.skip_rigor_agent,
-            "grounding_review": grounding_review,
-            "output_files": {
-                "report": "agent_v1_validation_report.json",
-                "structural_findings": "structural_findings.json",
-                "grounding_findings": "grounding_findings.json",
-                "grounding_reviewed_findings": "grounding_reviewed_findings.json",
-                "rigor_findings": "rigor_findings.json",
-            },
-        }
-        if candidate_evidence is not None:
-            report_metadata["candidate_evidence"] = candidate_evidence
         report = AgentV1ValidationReport(
             artifact_path=str(artifact_path),
             source_payload_path=str(source_payload_path) if source_payload_path else None,
@@ -146,7 +126,20 @@ class AgentV1ValidatorRunner:
             },
             findings=all_findings,
             metrics=metrics,
-            metadata=report_metadata,
+            metadata={
+                "validator_runtime": self.config.runtime,
+                "validation_mode": self.config.validation_mode,
+                "rigor_skill_dir": str(self.config.skill_dir),
+                "rigor_agent_required": not self.config.skip_rigor_agent,
+                "grounding_review": grounding_review,
+                "output_files": {
+                    "report": "agent_v1_validation_report.json",
+                    "structural_findings": "structural_findings.json",
+                    "grounding_findings": "grounding_findings.json",
+                    "grounding_reviewed_findings": "grounding_reviewed_findings.json",
+                    "rigor_findings": "rigor_findings.json",
+                },
+            },
         )
         (run_dir / "agent_v1_validation_report.json").write_text(
             json.dumps(report.model_dump(mode="json"), indent=2, ensure_ascii=False),

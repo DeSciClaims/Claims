@@ -52,7 +52,6 @@ class SilverScoringJob:
 class MinerArtifactSubmission:
     miner_id: str
     artifact: dict
-    candidate_evidence: list[dict] | None = None
 
 
 @dataclass(frozen=True)
@@ -99,31 +98,15 @@ def run_paper_silver_pipeline(
 
     projection_timer = _stage_start("silver_projection", "Silver projection")
     bronze_candidates = project_agent_artifact(bronze_artifact, origin="bronze")
-    miner_submissions: list[MinerPaperSubmission] = []
-    evidence_rejected_candidate_count = 0
-    for submission in miner_artifacts:
-        projected_candidates = project_agent_artifact(
-            submission.artifact,
-            origin="miner",
+    miner_submissions = [
+        MinerPaperSubmission(
             miner_id=submission.miner_id,
+            paper_id=paper_id,
+            candidates=project_agent_artifact(submission.artifact, origin="miner", miner_id=submission.miner_id),
+            normal_findings=(validation_findings_by_miner_id or {}).get(submission.miner_id, []),
         )
-        eligible_candidates = _evidence_eligible_candidates(
-            projected_candidates,
-            submission.candidate_evidence,
-        )
-        evidence_rejected_candidate_count += len(projected_candidates) - len(
-            eligible_candidates
-        )
-        miner_submissions.append(
-            MinerPaperSubmission(
-                miner_id=submission.miner_id,
-                paper_id=paper_id,
-                candidates=eligible_candidates,
-                normal_findings=(validation_findings_by_miner_id or {}).get(
-                    submission.miner_id, []
-                ),
-            )
-        )
+        for submission in miner_artifacts
+    ]
     candidate_pool = [*bronze_candidates, *[candidate for submission in miner_submissions for candidate in submission.candidates]]
     candidates_by_id = {candidate.candidate_id: candidate for candidate in candidate_pool}
     workflow_fallbacks: list[str] = []
@@ -143,7 +126,6 @@ def run_paper_silver_pipeline(
             "bronze_candidate_count": len(bronze_candidates),
             "miner_count": len(miner_submissions),
             "candidate_count": len(candidate_pool),
-            "evidence_rejected_candidate_count": evidence_rejected_candidate_count,
         },
     ))
 
@@ -1131,24 +1113,6 @@ def _case_decision_same_silver_unit(case: BronzeDiffCase, disposition: str) -> b
     if relation in {"compatible_refinement", "compatible_split_merge"} and disposition in {"accepted_improvement", "benign_difference"}:
         return True
     return disposition == "benign_difference"
-
-
-def _evidence_eligible_candidates(
-    candidates: list[ComparisonCandidate],
-    assessments: list[dict] | None,
-) -> list[ComparisonCandidate]:
-    if assessments is None:
-        return candidates
-    status_by_claim_id = {
-        str(row.get("claim_id") or ""): str(row.get("status") or "")
-        for row in assessments
-        if isinstance(row, dict) and row.get("claim_id")
-    }
-    return [
-        candidate
-        for candidate in candidates
-        if status_by_claim_id.get(candidate.record_id) == "supported"
-    ]
 
 
 def _paper_context_from_artifact(artifact: dict) -> dict:

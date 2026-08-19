@@ -265,7 +265,6 @@ Useful validator flags:
 - `--claims.diagnostic-miner-batch-size 10`: with a CLI rigor harness, review up to ten anonymized miners in one file-agent session per paper. `1` keeps the original per-miner path.
 - `--claims.diagnostic-max-workers 10`: run paper/shard diagnostic jobs concurrently.
 - `--claims.diagnostic-batch-max-input-bytes 8000000`: split unusually large diagnostic shards before the CLI context becomes unbounded; `0` disables this ceiling.
-- `--claims.diagnostic-batch-max-claims 80`: split diagnostic shards by total claim count as well as miner count and bytes; `0` disables this ceiling. Model-facing submission, claim, evidence, and span IDs are short aliases restored by the validator.
 - `CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE=4`, `CLAIMS_DIAGNOSTIC_REPAIR_MAX_DEPTH=3`, and `CLAIMS_DIAGNOSTIC_REPAIR_MAX_WORKERS=2`: retry only missing or malformed reports in bounded shared-context shards before any individual fallback.
 - `--claims.diagnostic-miner-max-workers 2`: control concurrent per-miner scoring and any individual diagnostic fallbacks.
 - `--claims.skip-diagnostic-validation`: skip diagnostic reports when Silver is the only scoring path for a large run.
@@ -310,10 +309,6 @@ File-workspace Silver controls:
 - `CLAIMS_SILVER_FILE_AGENT_MAX_TURNS=30`: Hermes turn budget for comparator, judge, canonicalizer, and canonical-audit agents.
 - `CLAIMS_SILVER_FILE_AGENT_MAX_TOKENS=32768`: per-turn Hermes output budget for all file-agent stages.
 - `CLAIMS_SILVER_FILE_AGENT_USAGE_GRACE_SECONDS=15`: allow a completed CLI to emit its usage footer before forced cleanup.
-- `CLAIMS_SILVER_FILE_ADJUDICATION_SHARD_SIZE=25` / `CLAIMS_SILVER_FILE_ADJUDICATION_MAX_INPUT_BYTES=2000000`: bound each judge workspace by case count and serialized input size.
-- `CLAIMS_SILVER_FILE_ADJUDICATION_MAX_WORKERS=4`: run one judge's case shards concurrently.
-- `CLAIMS_SILVER_FILE_AGENT_MODEL_MAX_IN_FLIGHT=4`: cap concurrent file-agent executions separately for each model.
-- `CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_ATTEMPTS=3` / `CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_BACKOFF_SECONDS=15`: retry transient provider failures with exponential backoff. A failed direct judge can be replaced by the configured tiebreak judge.
 - `CLAIMS_SILVER_FILE_AGENT_FALLBACK=none`: fail the paper instead of falling back to the legacy stage.
 - `CLAIMS_MODEL_PRICING_JSON='{"model":{"input":1,"output":2}}'`: optional USD-per-million-token rates when a subscription CLI reports tokens but no dollar cost.
 

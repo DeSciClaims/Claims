@@ -30,35 +30,15 @@ def main() -> int:
 
 
 def _diagnostic_batch(task: dict[str, Any]) -> dict[str, Any]:
-    reports = []
-    for row in task.get("submissions", []):
-        artifact = json.loads(Path(row["artifact_path"]).read_text(encoding="utf-8"))
-        claims = (artifact.get("logic") or {}).get("claims") or []
-        reports.append(
+    return {
+        "reports": [
             {
                 "submission_ref": row["submission_ref"],
-                "candidate_evidence": [
-                    {
-                        "claim_id": claim["claim_id"],
-                        "status": "supported",
-                        "evidence_ids": claim.get("evidence_ids") or [],
-                        "source_span_ids": sorted(
-                            {
-                                span_id
-                                for source in claim.get("sources") or []
-                                for span_id in source.get("span_ids") or []
-                            }
-                            | set(claim.get("source_span_ids") or [])
-                        ),
-                        "reason": "The linked evidence supports the claim as written.",
-                        "unsupported_assertions": [],
-                    }
-                    for claim in claims
-                ],
                 "findings": [],
             }
-        )
-    return {"reports": reports}
+            for row in task.get("submissions", [])
+        ]
+    }
 
 
 def _comparison(task: dict[str, Any]) -> dict[str, Any]:
