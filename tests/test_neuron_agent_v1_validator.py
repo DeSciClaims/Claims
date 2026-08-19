@@ -78,6 +78,7 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
         claims_diagnostic_miner_max_workers=2,
         claims_diagnostic_miner_batch_size=10,
         claims_diagnostic_batch_max_input_bytes=8_000_000,
+        claims_diagnostic_batch_max_claims=80,
         claims_payout_mode="winner-takes-most",
         claims_payout_winner_share=0.7,
         claims_payout_runner_up_slots=4,
@@ -107,9 +108,16 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_silver_consolidation_top_k"] == 7
     assert snapshot["claims_diagnostic_miner_batch_size"] == 10
     assert snapshot["claims_diagnostic_batch_max_input_bytes"] == 8_000_000
+    assert snapshot["claims_diagnostic_batch_max_claims"] == 80
     assert snapshot["claims_diagnostic_repair_batch_size"] == 5
     assert snapshot["claims_diagnostic_repair_max_depth"] == 4
     assert snapshot["claims_diagnostic_repair_max_workers"] == 3
+    assert snapshot["claims_silver_file_adjudication_shard_size"] == 25
+    assert snapshot["claims_silver_file_adjudication_max_input_bytes"] == 2_000_000
+    assert snapshot["claims_silver_file_adjudication_max_workers"] == 4
+    assert snapshot["claims_silver_file_agent_model_max_in_flight"] == 4
+    assert snapshot["claims_silver_file_agent_provider_retry_attempts"] == 3
+    assert snapshot["claims_silver_file_agent_provider_retry_backoff_seconds"] == 15.0
     assert snapshot["claims_run_heartbeat_interval"] == 60.0
     assert snapshot["claims_payout_mode"] == "winner-takes-most"
     assert snapshot["claims_payout_winner_share"] == 0.7
@@ -337,6 +345,7 @@ def test_validator_prepares_one_anonymous_diagnostic_batch_per_paper(monkeypatch
     validator.config = SimpleNamespace(
         claims_diagnostic_miner_batch_size=10,
         claims_diagnostic_batch_max_input_bytes=8_000_000,
+        claims_diagnostic_batch_max_claims=80,
         claims_diagnostic_max_workers=10,
         claims_rigor_harness="hermes-cli",
         claims_rigor_model="openai/gpt-4o-mini",

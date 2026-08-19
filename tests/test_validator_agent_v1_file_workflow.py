@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from types import MethodType, SimpleNamespace
 
 import pytest
@@ -44,6 +46,8 @@ from validator.agent_v1.file_agent_workflow import (
     JudgeResult,
     _file_agent_judge_command,
     _partial_judge_results,
+    _provider_retry_delay,
+    _shard_adjudication_contexts,
     _targeted_judge_repair_task,
     _validate_canonical_audit,
 )
@@ -268,7 +272,7 @@ def test_file_comparator_rejects_unknown_relation_endpoint(tmp_path) -> None:
         session.run_comparison()
 
 
-def test_file_comparator_requires_exact_restatement_pair(tmp_path) -> None:
+def test_file_comparator_injects_exact_restatement_pair_validator_side(tmp_path) -> None:
     session = _session(
         tmp_path,
         [
@@ -294,8 +298,13 @@ def test_file_comparator_requires_exact_restatement_pair(tmp_path) -> None:
         )
 
     session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
-    with pytest.raises(FileAgentWorkflowError, match="missed exact-restatement"):
-        session.run_comparison()
+    edges = session.run_comparison()
+
+    assert len(edges) == 1
+    assert edges[0].relation == "semantic_equivalent"
+    assert edges[0].confidence == 1.0
+    assert edges[0].filter_sources == ["validator_exact_restatement"]
+    assert edges[0].metadata["validator_generated"] is True
 
 
 def test_file_judges_run_concurrently_and_tiebreak_only_unresolved_cases(tmp_path) -> None:
@@ -344,6 +353,103 @@ def test_file_judges_run_concurrently_and_tiebreak_only_unresolved_cases(tmp_pat
     assert consensus[0].route == "tiebreak"
     assert consensus[0].final_disposition == "accepted_improvement"
     assert tiebreak.calls == 1
+
+
+def test_file_judges_shard_large_case_sets_and_merge_in_original_order(tmp_path) -> None:
+    candidate = _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment reduced mortality.")
+    contexts = [
+        AdjudicationContextBundle(
+            case=BronzeDiffCase(
+                case_id=f"case_{index:03d}",
+                paper_id="paper",
+                miner_id="uid_9",
+                mismatch_type="EXTRA_FROM_MINER",
+                candidate_ids=[candidate.candidate_id],
+                miner_candidate_id=candidate.candidate_id,
+                question="Is this candidate valid?",
+            ),
+            candidates=[candidate],
+        )
+        for index in range(61)
+    ]
+    session = _session(tmp_path, [candidate])
+    pass_a = _RecordingPass("pass_a", "accepted_improvement")
+    pass_b = _RecordingPass("pass_b", "accepted_improvement")
+
+    consensus = session.run_adjudication(
+        contexts,
+        passes=[pass_a, pass_b],
+        tiebreak_pass=None,
+        direct_judge_confidence=0.9,
+    )
+
+    assert [row.case_id for row in consensus] == [context.case.case_id for context in contexts]
+    assert pass_a.calls == 3
+    assert pass_b.calls == 3
+
+
+def test_file_judge_shards_respect_serialized_input_ceiling() -> None:
+    candidate = _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment reduced mortality.")
+    contexts = [
+        AdjudicationContextBundle(
+            case=BronzeDiffCase(
+                case_id=f"case_{index}",
+                paper_id="paper",
+                miner_id="uid_9",
+                mismatch_type="EXTRA_FROM_MINER",
+                candidate_ids=[candidate.candidate_id],
+                miner_candidate_id=candidate.candidate_id,
+                question="Is this candidate valid?",
+            ),
+            candidates=[candidate],
+            source_context=f"span-{index}: " + (str(index) * 4_000),
+        )
+        for index in range(2)
+    ]
+
+    shards = _shard_adjudication_contexts(
+        contexts,
+        max_count=25,
+        max_input_bytes=6_000,
+    )
+
+    assert [len(shard) for shard in shards] == [1, 1]
+
+
+def test_file_judge_uses_tiebreak_as_substitute_when_one_direct_provider_fails(tmp_path) -> None:
+    candidate = _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment reduced mortality.")
+    context = AdjudicationContextBundle(
+        case=BronzeDiffCase(
+            case_id="case_1",
+            paper_id="paper",
+            miner_id="uid_9",
+            mismatch_type="EXTRA_FROM_MINER",
+            candidate_ids=[candidate.candidate_id],
+            miner_candidate_id=candidate.candidate_id,
+            question="Is this candidate valid?",
+        ),
+        candidates=[candidate],
+    )
+
+    class FailingPass(_RecordingPass):
+        def run_many(self, contexts, *, timeout_seconds=None):
+            raise RuntimeError("HTTP 429 provider rate limit")
+
+    session = _session(tmp_path, [candidate])
+    pass_a = _RecordingPass("pass_a", "accepted_improvement")
+    pass_b = FailingPass("pass_b", "accepted_improvement")
+    substitute = _RecordingPass("pass_c", "accepted_improvement")
+
+    consensus = session.run_adjudication(
+        [context],
+        passes=[pass_a, pass_b],
+        tiebreak_pass=substitute,
+        direct_judge_confidence=0.9,
+    )
+
+    assert consensus[0].route == "direct"
+    assert consensus[0].final_disposition == "accepted_improvement"
+    assert substitute.calls == 1
 
 
 def test_file_judges_require_distinct_direct_models(tmp_path) -> None:
@@ -525,6 +631,42 @@ def test_canonical_audit_finding_accepts_quality_check_category_name() -> None:
     )
 
     assert finding.category == "duplicate_or_split_attack"
+
+
+@pytest.mark.parametrize("redundant_key", ["unit_id", "draft_unit_id"])
+def test_canonical_audit_ignores_redundant_unit_identity_fields(redundant_key) -> None:
+    output = CanonicalAuditOutput.model_validate(
+        {
+            "units": [
+                {
+                    redundant_key: "u0",
+                    "statement": "Treatment reduced mortality.",
+                    "importance": "central",
+                    "candidate_ids": ["c0"],
+                    "rationale": "The candidate is a supported central result.",
+                }
+            ],
+            "exclusions": [],
+            "draft_unit_reviews": [
+                {
+                    "draft_unit_id": "u0",
+                    "outcome": "retained",
+                    "rationale": "The draft unit remains valid.",
+                }
+            ],
+            "quality_checks": {
+                "duplicate_or_split_attack_checked": True,
+                "paper_relevance_checked": True,
+                "evidence_support_checked": True,
+                "contradiction_checked": True,
+                "importance_checked": True,
+            },
+            "findings": [],
+        }
+    )
+
+    assert output.units[0].candidate_ids == ["c0"]
+    assert redundant_key not in output.units[0].model_dump()
 
 
 def test_targeted_judge_repair_task_contains_only_failed_cases_and_dependencies() -> None:
@@ -907,11 +1049,81 @@ Path(match.group(1)).write_text(
     assert json.loads(result.output_path.read_text(encoding="utf-8"))["submission_reviews"] == []
 
 
+def test_file_agent_retries_transient_provider_failure_without_network(tmp_path, monkeypatch) -> None:
+    session = _session(tmp_path, [])
+    session.config = FileAgentWorkflowConfig(
+        root=tmp_path,
+        harness="hermes-cli",
+        provider="openrouter",
+        comparison_model="test/model",
+        canonicalization_model="test/model",
+        provider_retry_attempts=2,
+        provider_retry_backoff_seconds=0.0,
+        output_stable_seconds=0.0,
+        usage_grace_seconds=0.0,
+    )
+    calls = 0
+
+    def fake_runner(command, *, output_path, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                stdout="HTTP 429: model is temporarily rate-limited upstream",
+                stderr="",
+            )
+        output_path.write_text('{"submission_reviews": []}', encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(file_agent_workflow_module, "_run_until_valid_output", fake_runner)
+    result = session._run_stage(
+        stage_key="comparison",
+        stage_label="Comparison graph",
+        model="test/model",
+        task={"candidates": []},
+        output_model=ComparisonAgentOutput,
+        skill_path=(
+            Path("validator/agent_v1/skills/claims-silver-comparator/SKILL.md").resolve()
+        ),
+        command=["fixture-agent"],
+        harness="test-cli",
+    )
+
+    assert calls == 2
+    assert isinstance(result.payload, ComparisonAgentOutput)
+
+
+def test_provider_retry_delay_honors_retry_after_header() -> None:
+    assert _provider_retry_delay(
+        2.0,
+        attempt=1,
+        stage_key="judge_pass_b",
+        model="qwen/test",
+        provider_detail="HTTP 429 Retry-After: 30",
+    ) >= 30.0
+
+
 def test_file_agent_config_reads_hermes_output_budget(monkeypatch) -> None:
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_HARNESS", "hermes-cli")
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_MAX_TOKENS", "49152")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_ADJUDICATION_SHARD_SIZE", "17")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_ADJUDICATION_MAX_INPUT_BYTES", "123456")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_ADJUDICATION_MAX_WORKERS", "6")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_MODEL_MAX_IN_FLIGHT", "3")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_ATTEMPTS", "4")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_BACKOFF_SECONDS", "8")
 
-    assert FileAgentWorkflowConfig.from_env().max_tokens == 49152
+    config = FileAgentWorkflowConfig.from_env()
+
+    assert config.max_tokens == 49152
+    assert config.adjudication_shard_size == 17
+    assert config.adjudication_max_input_bytes == 123456
+    assert config.adjudication_max_workers == 6
+    assert config.model_max_in_flight == 3
+    assert config.provider_retry_attempts == 4
+    assert config.provider_retry_backoff_seconds == 8.0
 
 
 def _session(tmp_path, candidates, *, workspace_id: str = "workspace") -> FileAgentWorkflowSession:

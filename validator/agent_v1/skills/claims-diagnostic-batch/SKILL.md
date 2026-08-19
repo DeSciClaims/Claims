@@ -5,7 +5,7 @@ argument-hint: "<diagnostic-batch-workspace>"
 allowed-tools: Read, Write, Glob, Grep
 metadata:
   category: claims-validation
-  version: "1.1.0"
+  version: "1.2.0"
   tags: [claims, validator, diagnostics, batch]
 ---
 
@@ -16,8 +16,10 @@ be judged independently against its own artifact, linked source payload,
 structural findings, and grounding findings.
 
 Do not compare or rank submissions. Do not transfer a finding from one
-submission to another. Submission references are opaque and must be copied
-exactly into the output.
+submission to another. All model-facing identifiers are short opaque aliases.
+Submission references, claim refs, evidence refs, and source-span refs must be
+copied exactly into the output. The validator maps them back to stored artifact
+identifiers.
 
 ## Required Dimensions
 
@@ -37,11 +39,15 @@ sources. Do not repair artifacts and do not calculate final scores.
 
 ## Candidate Evidence Verdicts
 
-For every claim in every submission, emit exactly one `candidate_evidence`
-assessment. Copy `claim_id` and `evidence_ids` exactly from that claim. Copy
-`source_span_ids` from the claim's `sources[].span_ids` links. Use only evidence
-linked by that same claim; evidence belonging to another claim or submission
-cannot support it.
+For every alias listed in each submission's `required_claim_refs`, emit exactly
+one `candidate_evidence` assessment. Load the model-facing artifact
+programmatically and verify that the set of emitted `claim_id` values exactly
+equals `required_claim_refs` before writing. Copy `claim_id` and `evidence_ids`
+exactly from that claim. The validator attaches the authoritative
+`evidence_ids` and `source_span_ids` from the claim after validating the output,
+so these arrays may be empty in model output. Use only evidence linked by that
+same claim when deciding the status; evidence belonging to another claim or
+submission cannot support it.
 
 Assign one status:
 
@@ -59,9 +65,8 @@ content, not metadiscourse. Phrases such as "as reported in the cited source"
 or "this claim is not generalized beyond that scope" do not establish evidence
 support or scope calibration. List unsupported material assertions explicitly.
 
-Do not write free-form evidence excerpts. Return only evidence IDs and span IDs
-that appear on the claim; the validator resolves those IDs to stored source
-text.
+Do not write free-form evidence excerpts. Do not invent evidence IDs or span
+IDs; the validator derives those fields from the stored claim links.
 
 ## Findings
 
@@ -84,13 +89,13 @@ Write one strict JSON object containing exactly one report per expected
 {
   "reports": [
     {
-      "submission_ref": "S0001",
+      "submission_ref": "s0",
       "candidate_evidence": [
         {
-          "claim_id": "C01",
+          "claim_id": "c0",
           "status": "partially_supported",
-          "evidence_ids": ["EV01"],
-          "source_span_ids": ["span-001"],
+          "evidence_ids": ["e0"],
+          "source_span_ids": ["p0"],
           "reason": "The evidence supports an association in the study sample but not the claim's causal conclusion.",
           "unsupported_assertions": ["The association is causal."]
         }
@@ -100,7 +105,7 @@ Write one strict JSON object containing exactly one report per expected
           "dimension": "scope_calibration",
           "severity": "major",
           "target_type": "claim",
-          "target_id": "C01",
+          "target_id": "c0",
           "message": "The claim exceeds the population described by its evidence.",
           "evidence_span": "exact artifact excerpt",
           "suggestion": "Narrow the claim to the studied population.",
@@ -115,5 +120,6 @@ Write one strict JSON object containing exactly one report per expected
 Use an empty `findings` array when a submission has no concrete rigor issue,
 but always return the complete `candidate_evidence` partition. The validator
 will reject and repair a report that omits, duplicates, or invents claim IDs or
-evidence references.
+evidence references. When `validator_rejections` is non-empty, correct every
+listed issue while still returning the complete required claim partition.
 Validate the complete output against `output_schema.json` before writing it.

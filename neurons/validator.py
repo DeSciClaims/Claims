@@ -395,6 +395,13 @@ class ClaimsValidator:
             help="Approximate input-byte ceiling for one diagnostic miner shard. Zero disables the byte ceiling.",
         )
         parser.add_argument(
+            "--claims.diagnostic-batch-max-claims",
+            dest="claims_diagnostic_batch_max_claims",
+            type=int,
+            default=int(os.getenv("CLAIMS_DIAGNOSTIC_BATCH_MAX_CLAIMS", "80")),
+            help="Maximum total claims reviewed in one diagnostic shard. Zero disables the claim ceiling.",
+        )
+        parser.add_argument(
             "--claims.agent-v1-threshold",
             dest="claims_agent_v1_threshold",
             type=float,
@@ -769,6 +776,7 @@ class ClaimsValidator:
         config.claims_diagnostic_miner_max_workers = parsed_args.claims_diagnostic_miner_max_workers
         config.claims_diagnostic_miner_batch_size = parsed_args.claims_diagnostic_miner_batch_size
         config.claims_diagnostic_batch_max_input_bytes = parsed_args.claims_diagnostic_batch_max_input_bytes
+        config.claims_diagnostic_batch_max_claims = parsed_args.claims_diagnostic_batch_max_claims
         config.claims_agent_v1_threshold = parsed_args.claims_agent_v1_threshold
         config.claims_silver_enable = parsed_args.claims_silver_enable
         config.claims_bronze_root = parsed_args.claims_bronze_root
@@ -1340,6 +1348,17 @@ class ClaimsValidator:
                     or 0
                 ),
             ),
+            max_claims=max(
+                0,
+                int(
+                    getattr(
+                        self.config,
+                        "claims_diagnostic_batch_max_claims",
+                        config.max_claims,
+                    )
+                    or 0
+                ),
+            ),
             harness=str(getattr(self.config, "claims_rigor_harness", "") or config.harness)
             .strip()
             .lower()
@@ -1423,6 +1442,7 @@ class ClaimsValidator:
                 submissions,
                 max_count=config.batch_size,
                 max_input_bytes=config.max_input_bytes,
+                max_claims=config.max_claims,
             )
             for shard_index, shard in enumerate(shards, start=1):
                 jobs.append(
@@ -1448,7 +1468,8 @@ class ClaimsValidator:
         )
         self.bt_logging.info(
             "Running paper-batched diagnostic validation "
-            f"jobs={len(jobs)} batch_size={config.batch_size} max_workers={worker_count}."
+            f"jobs={len(jobs)} batch_size={config.batch_size} "
+            f"max_claims={config.max_claims or 'unlimited'} max_workers={worker_count}."
         )
 
         def run_job(job):
@@ -5058,6 +5079,9 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_diagnostic_batch_max_input_bytes": int(
             getattr(config, "claims_diagnostic_batch_max_input_bytes", 8_000_000) or 0
         ),
+        "claims_diagnostic_batch_max_claims": int(
+            getattr(config, "claims_diagnostic_batch_max_claims", 80) or 0
+        ),
         "claims_diagnostic_repair_batch_size": int(
             os.getenv("CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE", "4") or 4
         ),
@@ -5096,6 +5120,24 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         ),
         "claims_silver_file_agent_usage_grace_seconds": float(
             os.getenv("CLAIMS_SILVER_FILE_AGENT_USAGE_GRACE_SECONDS", "15") or 15
+        ),
+        "claims_silver_file_adjudication_shard_size": int(
+            os.getenv("CLAIMS_SILVER_FILE_ADJUDICATION_SHARD_SIZE", "25") or 25
+        ),
+        "claims_silver_file_adjudication_max_input_bytes": int(
+            os.getenv("CLAIMS_SILVER_FILE_ADJUDICATION_MAX_INPUT_BYTES", "2000000") or 0
+        ),
+        "claims_silver_file_adjudication_max_workers": int(
+            os.getenv("CLAIMS_SILVER_FILE_ADJUDICATION_MAX_WORKERS", "4") or 4
+        ),
+        "claims_silver_file_agent_model_max_in_flight": int(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_MODEL_MAX_IN_FLIGHT", "4") or 0
+        ),
+        "claims_silver_file_agent_provider_retry_attempts": int(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_ATTEMPTS", "3") or 3
+        ),
+        "claims_silver_file_agent_provider_retry_backoff_seconds": float(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER_RETRY_BACKOFF_SECONDS", "15") or 0
         ),
         "claims_silver_file_agent_fallback": str(
             os.getenv("CLAIMS_SILVER_FILE_AGENT_FALLBACK", "legacy") or "legacy"

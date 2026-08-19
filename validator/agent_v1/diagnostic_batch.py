@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from miner.agent_v1.runtime.usage import empty_usage, merge_usage, usage_from_cli_process
 
@@ -72,6 +72,7 @@ class DiagnosticBatchConfig:
     command_template: str = ""
     batch_size: int = 1
     max_input_bytes: int = 8_000_000
+    max_claims: int = 80
     max_turns: int = 30
     max_tokens: int = 16384
     timeout_seconds: float = 1800.0
@@ -104,6 +105,10 @@ class DiagnosticBatchConfig:
             max_input_bytes=max(
                 0,
                 int(os.getenv("CLAIMS_DIAGNOSTIC_BATCH_MAX_INPUT_BYTES", "8000000") or 0),
+            ),
+            max_claims=max(
+                0,
+                int(os.getenv("CLAIMS_DIAGNOSTIC_BATCH_MAX_CLAIMS", "80") or 0),
             ),
             max_turns=max(1, int(os.getenv("CLAIMS_RIGOR_MAX_TURNS", "30") or 30)),
             max_tokens=max(
@@ -174,6 +179,14 @@ class DiagnosticBatchExecution:
     error: str | None = None
     repair_operation_ids: list[str] = field(default_factory=list)
     repair_workspaces: list[Path] = field(default_factory=list)
+    report_rejections: dict[str, list[str]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class _AliasedDiagnosticSubmission:
+    original: DiagnosticBatchSubmission
+    model: DiagnosticBatchSubmission
+    alias_to_original: dict[str, str]
 
 
 def shard_diagnostic_submissions(
@@ -181,10 +194,12 @@ def shard_diagnostic_submissions(
     *,
     max_count: int,
     max_input_bytes: int,
+    max_claims: int = 0,
 ) -> list[list[DiagnosticBatchSubmission]]:
     shards: list[list[DiagnosticBatchSubmission]] = []
     current: list[DiagnosticBatchSubmission] = []
     current_bytes = 0
+    current_claims = 0
     current_source_hashes: set[str] = set()
     for submission in submissions:
         source_bytes = _json_bytes(submission.source_payload or {})
@@ -195,12 +210,15 @@ def shard_diagnostic_submissions(
             + len(_json_bytes(submission.grounding_findings))
             + (0 if source_hash in current_source_hashes else len(source_bytes))
         )
+        item_claims = len(_artifact_claims(submission.artifact))
         count_full = len(current) >= max(1, max_count)
         bytes_full = bool(max_input_bytes and current and current_bytes + item_bytes > max_input_bytes)
-        if count_full or bytes_full:
+        claims_full = bool(max_claims and current and current_claims + item_claims > max_claims)
+        if count_full or bytes_full or claims_full:
             shards.append(current)
             current = []
             current_bytes = 0
+            current_claims = 0
             current_source_hashes = set()
             item_bytes = (
                 len(_json_bytes(submission.artifact))
@@ -210,6 +228,7 @@ def shard_diagnostic_submissions(
             )
         current.append(submission)
         current_bytes += item_bytes
+        current_claims += item_claims
         current_source_hashes.add(source_hash)
     if current:
         shards.append(current)
@@ -225,6 +244,7 @@ def run_diagnostic_batch(
     submissions: list[DiagnosticBatchSubmission],
     _repair_depth: int = 0,
     _workspace_name: str = "",
+    _repair_rejections: dict[str, list[str]] | None = None,
 ) -> DiagnosticBatchExecution:
     workspace_name = _workspace_name or f"shard_{shard_index:04d}"
     operation_id = (
@@ -240,9 +260,17 @@ def run_diagnostic_batch(
     )
     root.mkdir(parents=True, exist_ok=True)
     os.chmod(root, 0o700)
+    aliased_submissions = [
+        _alias_diagnostic_submission(submission, index)
+        for index, submission in enumerate(submissions)
+    ]
+    aliases_by_ref = {
+        aliased.model.submission_ref: aliased for aliased in aliased_submissions
+    }
     source_paths: dict[str, Path] = {}
     task_rows: list[dict[str, Any]] = []
-    for submission in submissions:
+    for aliased in aliased_submissions:
+        submission = aliased.model
         source_payload = submission.source_payload or {}
         source_hash = hashlib.sha256(_json_bytes(source_payload)).hexdigest()
         source_path = source_paths.get(source_hash)
@@ -264,6 +292,13 @@ def run_diagnostic_batch(
                 "source_payload_path": str(source_path),
                 "structural_findings_path": str(structural_path),
                 "grounding_findings_path": str(grounding_path),
+                "required_claim_refs": sorted(
+                    _artifact_claims(submission.artifact),
+                    key=_short_identifier_sort_key,
+                ),
+                "validator_rejections": list(
+                    (_repair_rejections or {}).get(aliased.original.submission_ref, [])
+                ),
             }
         )
 
@@ -291,8 +326,10 @@ def run_diagnostic_batch(
             "requirements": {
                 "review_every_submission_independently": True,
                 "emit_exactly_one_report_per_submission_ref": True,
+                "emit_exactly_one_candidate_evidence_row_per_required_claim_ref": True,
                 "do_not_compare_rank_or_copy_findings_between_submissions": True,
                 "use_only_each_submission_artifact_and_its_linked_source_payload": True,
+                "use_only_short_identifiers_from_the_model_facing_files": True,
             },
         },
     )
@@ -329,6 +366,9 @@ def run_diagnostic_batch(
     completed = None
     error: str | None = None
     expected = {submission.submission_ref for submission in submissions}
+    expected_model_refs = set(aliases_by_ref)
+    report_rejections: dict[str, list[str]] = {}
+    initial_completed_report_count = 0
     try:
         completed = _run_until_valid_output(
             [*command, query],
@@ -348,39 +388,70 @@ def run_diagnostic_batch(
             ),
         )
         payload = _read_batch_output(output_path)
-        partial_reports = _read_partial_batch_reports(output_path) if payload is None else []
+        partial_reports, partial_errors = (
+            _read_partial_batch_reports_with_errors(output_path)
+            if payload is None
+            else ([], {})
+        )
+        for model_ref, reasons in partial_errors.items():
+            aliased = aliases_by_ref.get(model_ref)
+            if aliased is not None:
+                report_rejections.setdefault(aliased.original.submission_ref, []).extend(
+                    reasons
+                )
         if payload is None and not partial_reports:
             stderr = completed.stderr[-1000:] if completed is not None else ""
             raise RuntimeError(f"Diagnostic batch did not produce valid output. {stderr}")
         reports: dict[str, dict[str, Any]] = {}
         duplicate_refs: set[str] = set()
-        submissions_by_ref = {
-            submission.submission_ref: submission for submission in submissions
-        }
-        for report in payload.reports if payload is not None else partial_reports:
-            if report.submission_ref not in expected:
+        seen_model_refs: set[str] = set()
+        candidate_reports = payload.reports if payload is not None else partial_reports
+        for report in candidate_reports:
+            aliased = aliases_by_ref.get(report.submission_ref)
+            if aliased is None:
                 continue
-            if report.submission_ref in reports:
+            if report.submission_ref in seen_model_refs:
                 duplicate_refs.add(report.submission_ref)
                 continue
-            submission = submissions_by_ref[report.submission_ref]
-            if not _valid_candidate_evidence_partition(report, submission):
+            seen_model_refs.add(report.submission_ref)
+            report = _attach_authoritative_candidate_links(report, aliased.model)
+            partition_errors = _candidate_evidence_partition_errors(
+                report,
+                aliased.model,
+            )
+            if partition_errors:
+                report_rejections.setdefault(aliased.original.submission_ref, []).extend(
+                    partition_errors
+                )
                 continue
-            reports[report.submission_ref] = {
+            restored = _restore_diagnostic_report(report, aliased)
+            reports[aliased.original.submission_ref] = {
                 "candidate_evidence": [
                     {
                         **assessment.model_dump(mode="json"),
                         "coverage_eligible": assessment.status == "supported",
                     }
-                    for assessment in report.candidate_evidence
+                    for assessment in restored.candidate_evidence
                 ],
-                "findings": _diagnostic_finding_rows(report),
+                "findings": _diagnostic_finding_rows(restored),
             }
-        for duplicate_ref in duplicate_refs:
-            reports.pop(duplicate_ref, None)
+        for duplicate_model_ref in duplicate_refs:
+            aliased = aliases_by_ref[duplicate_model_ref]
+            reports.pop(aliased.original.submission_ref, None)
+            report_rejections.setdefault(aliased.original.submission_ref, []).append(
+                f"Duplicate report for submission ref {duplicate_model_ref}."
+            )
+        omitted_model_refs = expected_model_refs.difference(seen_model_refs)
+        for model_ref in omitted_model_refs:
+            original_ref = aliases_by_ref[model_ref].original.submission_ref
+            report_rejections.setdefault(original_ref, []).append(
+                f"Missing report for submission ref {model_ref}."
+            )
+        initial_completed_report_count = len(reports)
     except Exception as exc:
         reports = {}
         error = f"{type(exc).__name__}: {exc}"
+        initial_completed_report_count = 0
 
     base_usage = (
         usage_from_cli_process(
@@ -403,10 +474,19 @@ def run_diagnostic_batch(
             for submission in submissions
             if submission.submission_ref in missing_refs
         ]
-        repair_shards = [
-            missing_submissions[index : index + config.repair_batch_size]
-            for index in range(0, len(missing_submissions), config.repair_batch_size)
+        repair_size = min(
+            config.repair_batch_size,
+            max(1, (len(missing_submissions) + 1) // 2),
+        )
+        candidate_repair_shards = [
+            missing_submissions[index : index + repair_size]
+            for index in range(0, len(missing_submissions), repair_size)
         ]
+        # A singleton is the individual fallback. Do not run it once here and
+        # then run the legacy per-miner validator again downstream if it fails.
+        # Shared-context repair stops at two submissions; unresolved singleton
+        # work is attempted exactly once by the established individual path.
+        repair_shards = [shard for shard in candidate_repair_shards if len(shard) > 1]
 
         def run_repair(repair_index: int, repair_shard: list[DiagnosticBatchSubmission]):
             return run_diagnostic_batch(
@@ -419,6 +499,13 @@ def run_diagnostic_batch(
                 _workspace_name=(
                     f"{workspace_name}_repair_d{_repair_depth + 1}_{repair_index:02d}"
                 ),
+                _repair_rejections={
+                    submission.submission_ref: report_rejections.get(
+                        submission.submission_ref,
+                        ["The previous attempt omitted this submission or returned invalid output."],
+                    )
+                    for submission in repair_shard
+                },
             )
 
         worker_count = min(config.repair_max_workers, len(repair_shards))
@@ -436,6 +523,8 @@ def run_diagnostic_batch(
             ]
         for repair in repair_executions:
             reports.update(repair.reports)
+            for submission_ref, reasons in repair.report_rejections.items():
+                report_rejections.setdefault(submission_ref, []).extend(reasons)
 
     remaining_refs = expected.difference(reports)
     if remaining_refs:
@@ -472,9 +561,10 @@ def run_diagnostic_batch(
             "status": "complete" if not error else "failed",
             "error": error,
             "initial_error": initial_error,
-            "initial_completed_report_count": len(expected.difference(missing_refs)),
+            "initial_completed_report_count": initial_completed_report_count,
             "repair_operation_ids": repair_operation_ids,
             "repair_depth": _repair_depth,
+            "report_rejections": report_rejections,
         },
     )
     return DiagnosticBatchExecution(
@@ -486,6 +576,7 @@ def run_diagnostic_batch(
         error=error,
         repair_operation_ids=repair_operation_ids,
         repair_workspaces=repair_workspaces,
+        report_rejections=report_rejections,
     )
 
 
@@ -501,6 +592,9 @@ def precomputed_rigor_manifest(execution: DiagnosticBatchExecution) -> dict[str,
             "usage_recorded_separately": True,
             "repair_operation_ids": execution.repair_operation_ids,
             "repair_workspaces": [str(path) for path in execution.repair_workspaces],
+            "report_rejection_count": sum(
+                len(reasons) for reasons in execution.report_rejections.values()
+            ),
         },
     }
 
@@ -513,45 +607,250 @@ def _read_batch_output(path: Path) -> DiagnosticBatchOutput | None:
 
 
 def _read_partial_batch_reports(path: Path) -> list[DiagnosticSubmissionReport]:
+    reports, _errors = _read_partial_batch_reports_with_errors(path)
+    return reports
+
+
+def _read_partial_batch_reports_with_errors(
+    path: Path,
+) -> tuple[list[DiagnosticSubmissionReport], dict[str, list[str]]]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return []
+        return [], {"": ["Diagnostic output is not valid JSON."]}
     records = payload.get("reports") if isinstance(payload, dict) else None
     if not isinstance(records, list):
-        return []
+        return [], {"": ["Diagnostic output must contain a reports array."]}
     reports: list[DiagnosticSubmissionReport] = []
+    errors: dict[str, list[str]] = {}
     for record in records:
         try:
             reports.append(DiagnosticSubmissionReport.model_validate(record))
-        except Exception:
+        except ValidationError as exc:
+            model_ref = str(record.get("submission_ref") or "") if isinstance(record, dict) else ""
+            errors.setdefault(model_ref, []).extend(
+                _format_validation_error(error) for error in exc.errors(include_url=False)
+            )
+    return reports, errors
+
+
+def _format_validation_error(error: dict[str, Any]) -> str:
+    location = ".".join(str(item) for item in error.get("loc", [])) or "output"
+    return f"{location}: {error.get('msg') or error.get('type') or 'invalid value'}"
+
+
+def _alias_diagnostic_submission(
+    submission: DiagnosticBatchSubmission,
+    index: int,
+) -> _AliasedDiagnosticSubmission:
+    claim_ids = list(_artifact_claims(submission.artifact))
+    evidence_ids = _artifact_evidence_ids(submission.artifact)
+    span_ids = _source_span_ids(submission.artifact, submission.source_payload)
+    alias_by_original: dict[str, str] = {}
+    for prefix, identifiers in (
+        ("c", claim_ids),
+        ("e", evidence_ids),
+        ("p", span_ids),
+    ):
+        for item_index, identifier in enumerate(identifiers):
+            alias_by_original.setdefault(identifier, f"{prefix}{item_index}")
+    alias_to_original = {
+        alias: original for original, alias in alias_by_original.items()
+    }
+    model_ref = f"s{index}"
+    return _AliasedDiagnosticSubmission(
+        original=submission,
+        model=DiagnosticBatchSubmission(
+            submission_ref=model_ref,
+            artifact=_replace_exact_identifiers(submission.artifact, alias_by_original),
+            source_payload=_replace_exact_identifiers(
+                submission.source_payload,
+                alias_by_original,
+            ),
+            structural_findings=_replace_exact_identifiers(
+                submission.structural_findings,
+                alias_by_original,
+            ),
+            grounding_findings=_replace_exact_identifiers(
+                submission.grounding_findings,
+                alias_by_original,
+            ),
+        ),
+        alias_to_original=alias_to_original,
+    )
+
+
+def _restore_diagnostic_report(
+    report: DiagnosticSubmissionReport,
+    aliased: _AliasedDiagnosticSubmission,
+) -> DiagnosticSubmissionReport:
+    restored = _replace_exact_identifiers(
+        report.model_dump(mode="json"),
+        aliased.alias_to_original,
+    )
+    restored["submission_ref"] = aliased.original.submission_ref
+    return DiagnosticSubmissionReport.model_validate(restored)
+
+
+def _attach_authoritative_candidate_links(
+    report: DiagnosticSubmissionReport,
+    submission: DiagnosticBatchSubmission,
+) -> DiagnosticSubmissionReport:
+    claims = _artifact_claims(submission.artifact)
+    assessments: list[DiagnosticCandidateEvidence] = []
+    for assessment in report.candidate_evidence:
+        claim = claims.get(assessment.claim_id)
+        if claim is None:
+            assessments.append(assessment)
             continue
-    return reports
+        assessments.append(
+            assessment.model_copy(
+                update={
+                    "evidence_ids": sorted(
+                        {str(item) for item in claim.get("evidence_ids", []) if str(item)},
+                        key=_short_identifier_sort_key,
+                    ),
+                    "source_span_ids": sorted(
+                        _claim_source_span_ids(claim),
+                        key=_short_identifier_sort_key,
+                    ),
+                }
+            )
+        )
+    return report.model_copy(update={"candidate_evidence": assessments})
+
+
+def _replace_exact_identifiers(value: Any, replacements: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        return replacements.get(value, value)
+    if isinstance(value, list):
+        return [_replace_exact_identifiers(item, replacements) for item in value]
+    if isinstance(value, dict):
+        return {
+            replacements.get(str(key), str(key)): _replace_exact_identifiers(item, replacements)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _artifact_evidence_ids(artifact: dict[str, Any]) -> list[str]:
+    identifiers: list[str] = []
+    evidence = artifact.get("evidence") if isinstance(artifact, dict) else None
+    if isinstance(evidence, dict):
+        for collection in ("records", "items", "evidence_items"):
+            rows = evidence.get(collection)
+            for row in rows if isinstance(rows, list) else []:
+                if not isinstance(row, dict):
+                    continue
+                identifier = str(row.get("evidence_id") or row.get("id") or "")
+                if identifier and identifier not in identifiers:
+                    identifiers.append(identifier)
+    for identifier in _strings_for_keys(artifact, {"evidence_ids"}):
+        if identifier not in identifiers:
+            identifiers.append(identifier)
+    return identifiers
+
+
+def _source_span_ids(
+    artifact: dict[str, Any],
+    source_payload: dict[str, Any] | None,
+) -> list[str]:
+    identifiers: list[str] = []
+    for payload in (source_payload or {}, artifact):
+        for identifier in _strings_for_keys(
+            payload,
+            {"span_id", "span_ids", "source_span_ids"},
+        ):
+            if identifier not in identifiers:
+                identifiers.append(identifier)
+    return identifiers
+
+
+def _strings_for_keys(value: Any, keys: set[str]) -> list[str]:
+    found: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in keys:
+                values = item if isinstance(item, list) else [item]
+                found.extend(str(candidate) for candidate in values if str(candidate))
+            found.extend(_strings_for_keys(item, keys))
+    elif isinstance(value, list):
+        for item in value:
+            found.extend(_strings_for_keys(item, keys))
+    return found
+
+
+def _short_identifier_sort_key(value: str) -> tuple[str, int | str]:
+    prefix = value[:1]
+    suffix = value[1:]
+    return (prefix, int(suffix)) if suffix.isdigit() else (prefix, value)
 
 
 def _valid_candidate_evidence_partition(
     report: DiagnosticSubmissionReport,
     submission: DiagnosticBatchSubmission,
 ) -> bool:
+    return not _candidate_evidence_partition_errors(report, submission)
+
+
+def _candidate_evidence_partition_errors(
+    report: DiagnosticSubmissionReport,
+    submission: DiagnosticBatchSubmission,
+) -> list[str]:
     claims = _artifact_claims(submission.artifact)
     assessments = {assessment.claim_id: assessment for assessment in report.candidate_evidence}
-    if len(assessments) != len(report.candidate_evidence) or set(assessments) != set(claims):
-        return False
+    errors: list[str] = []
+    duplicate_claim_ids = sorted(
+        {
+            assessment.claim_id
+            for assessment in report.candidate_evidence
+            if sum(
+                item.claim_id == assessment.claim_id
+                for item in report.candidate_evidence
+            )
+            > 1
+        },
+        key=_short_identifier_sort_key,
+    )
+    missing_claim_ids = sorted(
+        set(claims).difference(assessments),
+        key=_short_identifier_sort_key,
+    )
+    unknown_claim_ids = sorted(
+        set(assessments).difference(claims),
+        key=_short_identifier_sort_key,
+    )
+    if duplicate_claim_ids:
+        errors.append(f"Duplicate candidate evidence claim refs: {duplicate_claim_ids}.")
+    if missing_claim_ids:
+        errors.append(f"Missing candidate evidence claim refs: {missing_claim_ids}.")
+    if unknown_claim_ids:
+        errors.append(f"Unknown candidate evidence claim refs: {unknown_claim_ids}.")
     for claim_id, assessment in assessments.items():
+        if claim_id not in claims:
+            continue
         claim = claims[claim_id]
         linked_evidence_ids = {
             str(item) for item in claim.get("evidence_ids", []) if str(item)
         }
         linked_span_ids = _claim_source_span_ids(claim)
-        if not set(assessment.evidence_ids).issubset(linked_evidence_ids):
-            return False
-        if not set(assessment.source_span_ids).issubset(linked_span_ids):
-            return False
+        unknown_evidence_ids = sorted(set(assessment.evidence_ids).difference(linked_evidence_ids))
+        unknown_span_ids = sorted(set(assessment.source_span_ids).difference(linked_span_ids))
+        if unknown_evidence_ids:
+            errors.append(
+                f"Claim {claim_id} cites unlinked evidence refs: {unknown_evidence_ids}."
+            )
+        if unknown_span_ids:
+            errors.append(
+                f"Claim {claim_id} cites unlinked source span refs: {unknown_span_ids}."
+            )
         if assessment.status == "supported" and (
             not assessment.evidence_ids or not assessment.source_span_ids
         ):
-            return False
-    return True
+            errors.append(
+                f"Claim {claim_id} is marked supported without both evidence and source span refs."
+            )
+    return errors
 
 
 def _artifact_claims(artifact: dict[str, Any]) -> dict[str, dict[str, Any]]:
