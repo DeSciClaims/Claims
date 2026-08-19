@@ -578,6 +578,17 @@ class ClaimsValidator:
             help="Maximum evidence-supported central/supporting claims retained per miner and paper.",
         )
         parser.add_argument(
+            "--claims.silver-filter-by-assessment",
+            dest="claims_silver_filter_by_assessment",
+            type=lambda value: value.strip().lower() in {"1", "true", "yes", "on"},
+            default=_env_flag("CLAIMS_SILVER_FILTER_BY_ASSESSMENT", False),
+            help=(
+                "Filter miner claims using diagnostic claim assessment before Silver. "
+                "When false, assessment metadata is retained for scoring but does not "
+                "exclude claims from downstream Silver tasks."
+            ),
+        )
+        parser.add_argument(
             "--claims.silver-max-adjudication-cases-per-paper",
             dest="claims_silver_max_adjudication_cases_per_paper",
             type=int,
@@ -814,6 +825,9 @@ class ClaimsValidator:
             raise SystemExit("--claims.silver-max-eligible-claims-per-miner must be positive.")
         if config.claims_silver_max_adjudication_cases_per_paper <= 0:
             raise SystemExit("--claims.silver-max-adjudication-cases-per-paper must be positive.")
+        config.claims_silver_filter_by_assessment = (
+            parsed_args.claims_silver_filter_by_assessment
+        )
         config.claims_silver_direct_confidence = parsed_args.claims_silver_direct_confidence
         config.claims_silver_relation_mode = parsed_args.claims_silver_relation_mode
         config.claims_silver_relation_model = parsed_args.claims_silver_relation_model
@@ -1854,6 +1868,13 @@ class ClaimsValidator:
                             6,
                         )
                         or 0
+                    ),
+                    filter_by_assessment=bool(
+                        getattr(
+                            self.config,
+                            "claims_silver_filter_by_assessment",
+                            False,
+                        )
                     ),
                     max_adjudication_cases=int(
                         getattr(
