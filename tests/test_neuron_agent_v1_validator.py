@@ -57,9 +57,6 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     monkeypatch.setenv("CLAIMS_SILVER_CONSOLIDATION_TOP_K", "7")
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "qwen/qwen3.7-flash")
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES", "true")
-    monkeypatch.setenv("CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE", "5")
-    monkeypatch.setenv("CLAIMS_DIAGNOSTIC_REPAIR_MAX_DEPTH", "4")
-    monkeypatch.setenv("CLAIMS_DIAGNOSTIC_REPAIR_MAX_WORKERS", "3")
     config = SimpleNamespace(
         netuid=530,
         subtensor=SimpleNamespace(network="test"),
@@ -77,7 +74,8 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
         claims_diagnostic_max_workers=10,
         claims_diagnostic_miner_max_workers=2,
         claims_diagnostic_miner_batch_size=10,
-        claims_diagnostic_batch_max_input_bytes=8_000_000,
+        claims_silver_max_eligible_claims_per_miner=6,
+        claims_silver_max_adjudication_cases_per_paper=80,
         claims_payout_mode="winner-takes-most",
         claims_payout_winner_share=0.7,
         claims_payout_runner_up_slots=4,
@@ -106,10 +104,8 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_silver_file_agent_require_distinct_judges"] is True
     assert snapshot["claims_silver_consolidation_top_k"] == 7
     assert snapshot["claims_diagnostic_miner_batch_size"] == 10
-    assert snapshot["claims_diagnostic_batch_max_input_bytes"] == 8_000_000
-    assert snapshot["claims_diagnostic_repair_batch_size"] == 5
-    assert snapshot["claims_diagnostic_repair_max_depth"] == 4
-    assert snapshot["claims_diagnostic_repair_max_workers"] == 3
+    assert snapshot["claims_silver_max_eligible_claims_per_miner"] == 6
+    assert snapshot["claims_silver_max_adjudication_cases_per_paper"] == 80
     assert snapshot["claims_run_heartbeat_interval"] == 60.0
     assert snapshot["claims_payout_mode"] == "winner-takes-most"
     assert snapshot["claims_payout_winner_share"] == 0.7
@@ -336,7 +332,6 @@ def test_validator_prepares_one_anonymous_diagnostic_batch_per_paper(monkeypatch
     validator = object.__new__(ClaimsValidator)
     validator.config = SimpleNamespace(
         claims_diagnostic_miner_batch_size=10,
-        claims_diagnostic_batch_max_input_bytes=8_000_000,
         claims_diagnostic_max_workers=10,
         claims_rigor_harness="hermes-cli",
         claims_rigor_model="openai/gpt-4o-mini",
@@ -369,7 +364,7 @@ def test_validator_prepares_one_anonymous_diagnostic_batch_per_paper(monkeypatch
     assert len(captured) == 1
     assert [item.submission_ref for item in captured[0]["submissions"]] == ["S0001", "S0002"]
     assert sorted(prepared) == [(9, "paper1"), (10, "paper1")]
-    assert all(payload[1]["runtime"] == "diagnostic-file-batch" for payload in prepared.values())
+    assert all(payload[1]["runtime"] == "diagnostic-file-paper" for payload in prepared.values())
 
 
 def test_batched_diagnostic_usage_is_recorded_once_for_the_shared_operation(tmp_path) -> None:

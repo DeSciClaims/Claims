@@ -241,6 +241,8 @@ python -m neurons.validator \
   --claims.diagnostic-max-workers 10 \
   --claims.diagnostic-miner-batch-size 10 \
   --claims.silver-paper-max-workers 10 \
+  --claims.silver-max-eligible-claims-per-miner 6 \
+  --claims.silver-max-adjudication-cases-per-paper 80 \
   --claims.output-dir validator/agent_v1/outputs/neuron/testnet \
   --claims.timeout 1800
 ```
@@ -262,13 +264,13 @@ Useful validator flags:
 - `--claims.silver-adjudication-max-in-flight 32`: cap Silver model calls globally across papers and passes; use `0` for unlimited.
 - Hermes adjudication defaults to a skill-based agent workflow with mode-`0600` task/schema files and validated JSON output. Set `CLAIMS_SILVER_ADJUDICATION_HERMES_EXECUTION_MODE=oneshot` for the optional tool-free path; use `CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE=append` only for legacy CLI behavior.
 - `CLAIMS_SILVER_WORKFLOW_MODE=file-agent`: use one file-workspace comparator, two anonymous judges plus a conditional tiebreaker, deterministic consensus, and one global Silver canonicalizer per paper. Agents receive short validator-owned `cN`, `kN`, and `uN` references; internal IDs are restored after validation. The legacy graph workflow remains the default.
-- `--claims.diagnostic-miner-batch-size 10`: with a CLI rigor harness, review up to ten anonymized miners in one file-agent session per paper. `1` keeps the original per-miner path.
-- `--claims.diagnostic-max-workers 10`: run paper/shard diagnostic jobs concurrently.
-- `--claims.diagnostic-batch-max-input-bytes 8000000`: split unusually large diagnostic shards before the CLI context becomes unbounded; `0` disables this ceiling.
-- `CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE=4`, `CLAIMS_DIAGNOSTIC_REPAIR_MAX_DEPTH=3`, and `CLAIMS_DIAGNOSTIC_REPAIR_MAX_WORKERS=2`: retry only missing or malformed reports in bounded shared-context shards before any individual fallback.
-- `--claims.diagnostic-miner-max-workers 2`: control concurrent per-miner scoring and any individual diagnostic fallbacks.
+- `--claims.diagnostic-miner-batch-size 10`: enable one diagnostic file-agent operation per paper. It reviews all available miners together; miners are not sharded. `1` keeps the original per-miner path.
+- `--claims.diagnostic-max-workers 10`: run paper-level diagnostic operations concurrently.
+- `--claims.diagnostic-miner-max-workers 2`: control concurrent per-miner scoring when paper-level diagnostics are disabled.
 - `--claims.skip-diagnostic-validation`: skip diagnostic reports when Silver is the only scoring path for a large run.
 - `--claims.silver-paper-max-workers 10`: run Silver post-pass work for multiple batch papers concurrently.
+- `--claims.silver-max-eligible-claims-per-miner 6`: retain only the highest-ranked evidence-supported central/supporting claims per miner and paper.
+- `--claims.silver-max-adjudication-cases-per-paper 80`: bound primary adjudication cases before judge calls. Candidate capacity is shared fairly across miners.
 - `--claims.silver-relation-mode dspy --claims.silver-relation-model <MODEL>`: classify comparison and consolidation edges with DSPy. `openai-compatible` and `cli` use the same batch contract; CLI requires `CLAIMS_SILVER_RELATION_CLI_COMMAND` and accepts prompts on stdin or through `{prompt_file}`.
 - `--claims.allow-paper-reuse`: allow already assigned backend papers to be selected again for local smoke tests.
 - `--claims.task-manifest /path/to/tasks.jsonl`: run a list of tasks.

@@ -32,9 +32,9 @@ from validator.agent_v1.diagnostic_batch import (
     DiagnosticBatchConfig,
     DiagnosticBatchExecution,
     DiagnosticBatchSubmission,
+    failed_diagnostic_report,
     precomputed_rigor_manifest,
     run_diagnostic_batch,
-    shard_diagnostic_submissions,
 )
 from validator.agent_v1.file_agent_workflow import FileAgentSilverWorkflow, file_agent_workflow_enabled
 from validator.agent_v1.grounding import run_grounding_checks
@@ -385,14 +385,7 @@ class ClaimsValidator:
             dest="claims_diagnostic_miner_batch_size",
             type=int,
             default=int(os.getenv("CLAIMS_DIAGNOSTIC_MINER_BATCH_SIZE", "1")),
-            help="Number of anonymized miner artifacts reviewed by one file-based diagnostic agent per paper. One disables batching.",
-        )
-        parser.add_argument(
-            "--claims.diagnostic-batch-max-input-bytes",
-            dest="claims_diagnostic_batch_max_input_bytes",
-            type=int,
-            default=int(os.getenv("CLAIMS_DIAGNOSTIC_BATCH_MAX_INPUT_BYTES", "8000000")),
-            help="Approximate input-byte ceiling for one diagnostic miner shard. Zero disables the byte ceiling.",
+            help="Enable one file-based diagnostic agent per paper when greater than one. All available miners share that operation; the value is not a shard size.",
         )
         parser.add_argument(
             "--claims.agent-v1-threshold",
@@ -576,6 +569,20 @@ class ClaimsValidator:
             type=int,
             default=int(os.getenv("CLAIMS_SILVER_PAPER_MAX_WORKERS", "3")),
             help="Maximum batch papers to run through the Silver post-pass concurrently.",
+        )
+        parser.add_argument(
+            "--claims.silver-max-eligible-claims-per-miner",
+            dest="claims_silver_max_eligible_claims_per_miner",
+            type=int,
+            default=int(os.getenv("CLAIMS_SILVER_MAX_ELIGIBLE_CLAIMS_PER_MINER", "6")),
+            help="Maximum evidence-supported central/supporting claims retained per miner and paper.",
+        )
+        parser.add_argument(
+            "--claims.silver-max-adjudication-cases-per-paper",
+            dest="claims_silver_max_adjudication_cases_per_paper",
+            type=int,
+            default=int(os.getenv("CLAIMS_SILVER_MAX_ADJUDICATION_CASES_PER_PAPER", "80")),
+            help="Hard ceiling on primary Silver adjudication cases for one paper.",
         )
         parser.add_argument(
             "--claims.silver-direct-confidence",
@@ -768,7 +775,6 @@ class ClaimsValidator:
         config.claims_diagnostic_max_workers = parsed_args.claims_diagnostic_max_workers
         config.claims_diagnostic_miner_max_workers = parsed_args.claims_diagnostic_miner_max_workers
         config.claims_diagnostic_miner_batch_size = parsed_args.claims_diagnostic_miner_batch_size
-        config.claims_diagnostic_batch_max_input_bytes = parsed_args.claims_diagnostic_batch_max_input_bytes
         config.claims_agent_v1_threshold = parsed_args.claims_agent_v1_threshold
         config.claims_silver_enable = parsed_args.claims_silver_enable
         config.claims_bronze_root = parsed_args.claims_bronze_root
@@ -798,6 +804,16 @@ class ClaimsValidator:
         config.claims_silver_adjudication_max_workers = parsed_args.claims_silver_adjudication_max_workers
         config.claims_silver_adjudication_batch_size = parsed_args.claims_silver_adjudication_batch_size
         config.claims_silver_paper_max_workers = parsed_args.claims_silver_paper_max_workers
+        config.claims_silver_max_eligible_claims_per_miner = (
+            parsed_args.claims_silver_max_eligible_claims_per_miner
+        )
+        config.claims_silver_max_adjudication_cases_per_paper = (
+            parsed_args.claims_silver_max_adjudication_cases_per_paper
+        )
+        if config.claims_silver_max_eligible_claims_per_miner <= 0:
+            raise SystemExit("--claims.silver-max-eligible-claims-per-miner must be positive.")
+        if config.claims_silver_max_adjudication_cases_per_paper <= 0:
+            raise SystemExit("--claims.silver-max-adjudication-cases-per-paper must be positive.")
         config.claims_silver_direct_confidence = parsed_args.claims_silver_direct_confidence
         config.claims_silver_relation_mode = parsed_args.claims_silver_relation_mode
         config.claims_silver_relation_model = parsed_args.claims_silver_relation_model
@@ -1329,17 +1345,6 @@ class ClaimsValidator:
                 1,
                 int(getattr(self.config, "claims_diagnostic_miner_batch_size", 1) or 1),
             ),
-            max_input_bytes=max(
-                0,
-                int(
-                    getattr(
-                        self.config,
-                        "claims_diagnostic_batch_max_input_bytes",
-                        config.max_input_bytes,
-                    )
-                    or 0
-                ),
-            ),
             harness=str(getattr(self.config, "claims_rigor_harness", "") or config.harness)
             .strip()
             .lower()
@@ -1352,7 +1357,6 @@ class ClaimsValidator:
         jobs: list[
             tuple[
                 str,
-                int,
                 list[DiagnosticBatchSubmission],
                 dict[str, tuple[int, str]],
             ]
@@ -1419,23 +1423,8 @@ class ClaimsValidator:
                 )
                 identity_by_ref[submission_ref] = (uid, paper_id)
 
-            shards = shard_diagnostic_submissions(
-                submissions,
-                max_count=config.batch_size,
-                max_input_bytes=config.max_input_bytes,
-            )
-            for shard_index, shard in enumerate(shards, start=1):
-                jobs.append(
-                    (
-                        paper_id,
-                        shard_index,
-                        shard,
-                        {
-                            submission.submission_ref: identity_by_ref[submission.submission_ref]
-                            for submission in shard
-                        },
-                    )
-                )
+            if submissions:
+                jobs.append((paper_id, submissions, identity_by_ref))
 
         if not jobs:
             return {}
@@ -1448,32 +1437,29 @@ class ClaimsValidator:
         )
         self.bt_logging.info(
             "Running paper-batched diagnostic validation "
-            f"jobs={len(jobs)} batch_size={config.batch_size} max_workers={worker_count}."
+            f"papers={len(jobs)} max_workers={worker_count}; miner sharding disabled."
         )
 
         def run_job(job):
-            paper_id, shard_index, shard, identity_by_ref = job
+            paper_id, submissions, identity_by_ref = job
             try:
                 execution = run_diagnostic_batch(
                     config=config,
                     run_id=run_id,
                     paper_id=paper_id,
-                    shard_index=shard_index,
-                    submissions=shard,
+                    submissions=submissions,
                 )
             except Exception as exc:
                 execution = DiagnosticBatchExecution(
                     reports={},
                     usage={},
                     duration_seconds=0.0,
-                    operation_id=(
-                        f"{run_id}:{paper_id}:diagnostic-shard-{shard_index:04d}"
-                    ),
+                    operation_id=f"{run_id}:{paper_id}:diagnostic-paper",
                     workspace=(
                         config.root
                         / safe_task_id(run_id)
                         / safe_task_id(paper_id)
-                        / f"shard_{shard_index:04d}"
+                        / "paper"
                     ),
                     error=f"{type(exc).__name__}: {exc}",
                 )
@@ -1491,24 +1477,21 @@ class ClaimsValidator:
             completed_jobs = [run_job(job) for job in jobs]
 
         prepared: dict[tuple[int, str], tuple[dict[str, Any], dict[str, Any]]] = {}
-        fallback_count = 0
         for execution, identity_by_ref in completed_jobs:
             self._record_batched_diagnostic_usage(execution, identity_by_ref=identity_by_ref, config=config)
             manifest = precomputed_rigor_manifest(execution)
             for submission_ref, identity in identity_by_ref.items():
                 report = execution.reports.get(submission_ref)
                 if report is None:
-                    fallback_count += 1
-                    continue
+                    report = failed_diagnostic_report(
+                        "The paper-level diagnostic operation did not return a valid, complete "
+                        f"report for {submission_ref}."
+                    )
                 prepared[identity] = (report, manifest)
             if execution.error:
                 self.bt_logging.warning(
                     f"Diagnostic batch failed operation={execution.operation_id}: {execution.error}"
                 )
-        if fallback_count:
-            self.bt_logging.warning(
-                f"Batched diagnostic validation will retry {fallback_count} missing or invalid report(s) individually."
-            )
         return prepared
 
     def _record_batched_diagnostic_usage(
@@ -1530,7 +1513,7 @@ class ClaimsValidator:
                 "role": "validator_rigor",
                 "operation_id": execution.operation_id,
                 "harness": config.harness,
-                "runtime": "diagnostic-file-batch",
+                "runtime": "diagnostic-file-paper",
                 "provider": config.provider or _provider_from_model_or_base(config.model, ""),
                 "model": config.model,
                 "usage": execution.usage,
@@ -1538,13 +1521,11 @@ class ClaimsValidator:
                 "error": execution.error,
                 "duration_seconds": execution.duration_seconds,
                 "metadata": {
-                    "workflow": "diagnostic_file_batch",
+                    "workflow": "diagnostic_file_paper",
                     "submission_count": len(identity_by_ref),
                     "completed_report_count": len(execution.reports),
                     "uids": uids,
                     "workspace": str(execution.workspace),
-                    "repair_operation_ids": execution.repair_operation_ids,
-                    "repair_workspaces": [str(path) for path in execution.repair_workspaces],
                 },
             }
         )
@@ -1648,7 +1629,19 @@ class ClaimsValidator:
         expected_uids = [int(neuron.uid) for neuron in self.target_neurons]
         expected_paper_ids = [paper.paper_id or f"paper_{index}" for index, paper in enumerate(paper_tasks, start=1)]
         metadata_by_uid: dict[int, dict[str, Any]] = {}
-        miners_by_paper: dict[str, list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None, list[AgentV1ValidationFinding]]]] = {
+        miners_by_paper: dict[
+            str,
+            list[
+                tuple[
+                    int,
+                    dict[str, Any],
+                    dict[str, Any],
+                    dict[str, Any] | None,
+                    list[AgentV1ValidationFinding],
+                    list[dict[str, Any]] | None,
+                ]
+            ],
+        ] = {
             paper.paper_id or f"paper_{index}": [] for index, paper in enumerate(paper_tasks, start=1)
         }
         for index, neuron in enumerate(self.target_neurons):
@@ -1674,6 +1667,15 @@ class ClaimsValidator:
                                 _metadata_for_article(metadata, article),
                                 source_payload if isinstance(source_payload, dict) else None,
                                 _validation_findings_from_rows(article.get("diagnostic_findings")),
+                                (
+                                    [
+                                        row
+                                        for row in (article.get("diagnostic_claim_assessments") or [])
+                                        if isinstance(row, dict)
+                                    ]
+                                    if "diagnostic_claim_assessments" in article
+                                    else None
+                                ),
                             )
                         )
             elif getattr(response, "extraction", None) and len(paper_tasks) == 1:
@@ -1682,7 +1684,14 @@ class ClaimsValidator:
                 source_payload = getattr(response, "source_payload", None)
                 if isinstance(extraction, dict) and _is_agent_v1_artifact(extraction):
                     miners_by_paper.setdefault(paper_id, []).append(
-                        (uid, extraction, metadata, source_payload if isinstance(source_payload, dict) else None, [])
+                        (
+                            uid,
+                            extraction,
+                            metadata,
+                            source_payload if isinstance(source_payload, dict) else None,
+                            [],
+                            None,
+                        )
                     )
 
         paper_jobs = [
@@ -1792,15 +1801,22 @@ class ClaimsValidator:
                 source_context_by_span_id = _source_context_map_from_payloads(
                     [
                         bronze_source_payload,
-                        *[source_payload for _uid, _extraction, _metadata, source_payload, _findings in miner_rows],
+                        *[
+                            source_payload
+                            for _uid, _extraction, _metadata, source_payload, _findings, _assessments in miner_rows
+                        ],
                     ]
                 )
                 result = run_paper_silver_pipeline(
                     paper_id=paper_id,
                     bronze_artifact=bronze_artifact,
                     miner_artifacts=[
-                        MinerArtifactSubmission(miner_id=f"uid_{uid}", artifact=extraction)
-                        for uid, extraction, _metadata, _source_payload, _findings in miner_rows
+                        MinerArtifactSubmission(
+                            miner_id=f"uid_{uid}",
+                            artifact=extraction,
+                            claim_assessments=assessments,
+                        )
+                        for uid, extraction, _metadata, _source_payload, _findings, assessments in miner_rows
                     ],
                     silver_record_id=f"silver_{run_id}_{safe_task_id(paper_id)}",
                     bronze_record_id=bronze.bronze_record_id,
@@ -1829,8 +1845,24 @@ class ClaimsValidator:
                     paper_context=_paper_task_context(paper),
                     validation_findings_by_miner_id={
                         f"uid_{uid}": findings
-                        for uid, _extraction, _metadata, _source_payload, findings in miner_rows
+                        for uid, _extraction, _metadata, _source_payload, findings, _assessments in miner_rows
                     },
+                    max_eligible_claims_per_miner=int(
+                        getattr(
+                            self.config,
+                            "claims_silver_max_eligible_claims_per_miner",
+                            6,
+                        )
+                        or 0
+                    ),
+                    max_adjudication_cases=int(
+                        getattr(
+                            self.config,
+                            "claims_silver_max_adjudication_cases_per_paper",
+                            80,
+                        )
+                        or 0
+                    ),
                     file_agent_workflow=file_agent_workflow,
                 )
                 score_rows = _scores_with_missing_miners(
@@ -2448,7 +2480,16 @@ class ClaimsValidator:
         task: ClaimsTask,
         paper_id: str,
         result: Any,
-        miner_rows: list[tuple[int, dict[str, Any], dict[str, Any], dict[str, Any] | None, list[AgentV1ValidationFinding]]],
+        miner_rows: list[
+            tuple[
+                int,
+                dict[str, Any],
+                dict[str, Any],
+                dict[str, Any] | None,
+                list[AgentV1ValidationFinding],
+                list[dict[str, Any]] | None,
+            ]
+        ],
         paper_stage_seconds: dict[str, float] | None = None,
         timing_stages: list[dict[str, Any]] | None = None,
         model_rows: list[dict[str, Any]] | None = None,
@@ -2486,7 +2527,10 @@ class ClaimsValidator:
         network = str(getattr(self.config, "claims_network", "testnet"))
         metadata_by_miner_id = {
             **(score_metadata_by_miner_id or {}),
-            **{f"uid_{uid}": (uid, metadata) for uid, _extraction, metadata, _source_payload, _findings in miner_rows},
+            **{
+                f"uid_{uid}": (uid, metadata)
+                for uid, _extraction, metadata, _source_payload, _findings, _assessments in miner_rows
+            },
         }
         backend_case_ids = {case.case_id: f"{run_id}_{case.case_id}" for case in result.diff_cases}
         case_payloads: list[dict[str, Any]] = []
@@ -2760,6 +2804,7 @@ class ClaimsValidator:
             paper_timer = _timing_start("diagnostic_validation", "Diagnostic validation")
             article = articles_by_id.get(paper_id)
             report: dict[str, Any] = {}
+            claim_assessment_rows: list[dict[str, Any]] | None = None
             paper_miner_metadata = miner_metadata
             finding_rows: list[dict[str, Any]] = []
             summary_delta: dict[str, int] = {}
@@ -2842,6 +2887,13 @@ class ClaimsValidator:
                         article_output_dir = Path(self.config.claims_output_dir) / task.task_id / article_run_id / f"uid_{uid}"
                         report_path = article_output_dir / "agent_v1" / "agent_v1_validation_report.json"
                         report = _read_json_object(report_path) if report_path.exists() else {}
+                        report_metadata = report.get("metadata") if isinstance(report.get("metadata"), dict) else {}
+                        if "claim_assessments" in report_metadata:
+                            claim_assessment_rows = [
+                                row
+                                for row in (report_metadata.get("claim_assessments") or [])
+                                if isinstance(row, dict)
+                            ]
                         self._record_diagnostic_model_usage(
                             run_id=run_id,
                             paper_id=paper_id,
@@ -2893,6 +2945,8 @@ class ClaimsValidator:
             if isinstance(article, dict):
                 article["diagnostic_score"] = score
                 article["diagnostic_findings"] = finding_rows
+                if claim_assessment_rows is not None:
+                    article["diagnostic_claim_assessments"] = claim_assessment_rows
             result["timing"] = self._timing_payload(
                 uid=uid,
                 paper_id=paper_id,
@@ -5004,18 +5058,6 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_diagnostic_miner_batch_size": int(
             getattr(config, "claims_diagnostic_miner_batch_size", 1) or 1
         ),
-        "claims_diagnostic_batch_max_input_bytes": int(
-            getattr(config, "claims_diagnostic_batch_max_input_bytes", 8_000_000) or 0
-        ),
-        "claims_diagnostic_repair_batch_size": int(
-            os.getenv("CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE", "4") or 4
-        ),
-        "claims_diagnostic_repair_max_depth": int(
-            os.getenv("CLAIMS_DIAGNOSTIC_REPAIR_MAX_DEPTH", "3") or 0
-        ),
-        "claims_diagnostic_repair_max_workers": int(
-            os.getenv("CLAIMS_DIAGNOSTIC_REPAIR_MAX_WORKERS", "2") or 2
-        ),
         "claims_silver_enable": bool(getattr(config, "claims_silver_enable", False)),
         "claims_silver_workflow_mode": str(os.getenv("CLAIMS_SILVER_WORKFLOW_MODE", "legacy") or "legacy"),
         "claims_silver_file_agent_harness": str(
@@ -5050,6 +5092,12 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
             os.getenv("CLAIMS_SILVER_FILE_AGENT_FALLBACK", "legacy") or "legacy"
         ),
         "claims_silver_paper_max_workers": int(getattr(config, "claims_silver_paper_max_workers", 1) or 1),
+        "claims_silver_max_eligible_claims_per_miner": int(
+            getattr(config, "claims_silver_max_eligible_claims_per_miner", 6) or 0
+        ),
+        "claims_silver_max_adjudication_cases_per_paper": int(
+            getattr(config, "claims_silver_max_adjudication_cases_per_paper", 80) or 0
+        ),
         "claims_silver_adjudication_mode": str(getattr(config, "claims_silver_adjudication_mode", "static") or ""),
         "claims_silver_adjudication_model_a": str(getattr(config, "claims_silver_adjudication_model_a", "") or ""),
         "claims_silver_adjudication_model_b": str(getattr(config, "claims_silver_adjudication_model_b", "") or ""),

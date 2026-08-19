@@ -45,8 +45,11 @@ from validator.agent_v1.orchestrator import (
     MinerArtifactSubmission,
     MinerPaperSubmission,
     SilverScoringJob,
+    _apply_case_budget,
+    _comparison_cases_from_graph,
     _dedupe_equivalent_candidate_groups,
     _raise_for_operational_adjudication_failures,
+    _select_assessed_candidates,
     _source_context_for_candidates,
     run_batch_silver_scoring,
     run_paper_silver_pipeline,
@@ -2827,7 +2830,7 @@ def test_unresolved_missing_from_miner_does_not_enter_silver() -> None:
     assert result.scores[0].score == 0.0
 
 
-def test_missing_from_miner_cases_are_kept_per_miner() -> None:
+def test_missing_from_miner_case_is_created_once_globally() -> None:
     empty_artifact = {"paper": {"paper_id": "paper"}, "logic": {"claims": []}}
     result = run_paper_silver_pipeline(
         paper_id="paper",
@@ -2852,10 +2855,86 @@ def test_missing_from_miner_cases_are_kept_per_miner() -> None:
     missing_cases = [case for case in result.diff_cases if case.mismatch_type == "MISSING_FROM_MINER"]
 
     assert [(case.miner_id, case.candidate_ids) for case in missing_cases] == [
-        ("uid_9", ["bronze:C01"]),
-        ("uid_10", ["bronze:C01"]),
+        ("graph", ["bronze:C01"]),
     ]
-    assert len({case.case_id for case in missing_cases}) == 2
+    assert len({case.case_id for case in missing_cases}) == 1
+
+
+def test_claim_assessments_filter_rank_and_cap_miner_candidates() -> None:
+    candidates = [
+        _candidate(f"m{index}", "miner", "uid_9", f"Claim {index}")
+        for index in range(1, 6)
+    ]
+    assessments = [
+        {"claim_id": "m1", "evidence_status": "supported", "paper_relevance": "central", "priority_rank": 2},
+        {"claim_id": "m2", "evidence_status": "unsupported", "paper_relevance": "central", "priority_rank": 1},
+        {"claim_id": "m3", "evidence_status": "supported", "paper_relevance": "peripheral", "priority_rank": 1},
+        {"claim_id": "m4", "evidence_status": "supported", "paper_relevance": "central", "priority_rank": 1},
+        {"claim_id": "m5", "evidence_status": "supported", "paper_relevance": "supporting", "priority_rank": 1},
+    ]
+
+    selected = _select_assessed_candidates(candidates, assessments, max_claims=2)
+
+    assert [candidate.record_id for candidate in selected] == ["m4", "m1"]
+    assert selected[0].metadata["diagnostic_claim_assessment"]["priority_rank"] == 1
+
+
+def test_case_budget_is_allocated_round_robin_across_miners() -> None:
+    submissions = [
+        MinerPaperSubmission(
+            miner_id=miner_id,
+            paper_id="paper",
+            candidates=[
+                _candidate(f"{miner_id}_{index}", "miner", miner_id, f"{miner_id} claim {index}")
+                for index in range(3)
+            ],
+        )
+        for miner_id in ("uid_9", "uid_10")
+    ]
+
+    bounded, rejected = _apply_case_budget(
+        submissions,
+        bronze_candidate_count=1,
+        max_adjudication_cases=4,
+    )
+
+    assert [len(submission.candidates) for submission in bounded] == [2, 1]
+    assert rejected == 3
+
+
+def test_comparison_groups_all_bronze_edges_for_one_miner_claim() -> None:
+    bronze = [
+        _candidate("b1", "bronze", None, "Bronze claim one"),
+        _candidate("b2", "bronze", None, "Bronze claim two"),
+    ]
+    miner = _candidate("m1", "miner", "uid_9", "Combined miner claim")
+    edges = [
+        CandidatePairEdge(
+            edge_id=f"edge-{index}",
+            left_candidate_id=bronze_candidate.candidate_id,
+            right_candidate_id=miner.candidate_id,
+            relation="partial_overlap",
+            confidence=0.8,
+        )
+        for index, bronze_candidate in enumerate(bronze, start=1)
+    ]
+
+    cases = _comparison_cases_from_graph(
+        paper_id="paper",
+        bronze_candidates=bronze,
+        miner_submissions=[
+            MinerPaperSubmission(
+                miner_id="uid_9",
+                paper_id="paper",
+                candidates=[miner],
+            )
+        ],
+        candidate_graph_edges=edges,
+    )
+
+    assert len(cases) == 1
+    assert cases[0].candidate_ids == ["b1", "b2", "m1"]
+    assert len(cases[0].metadata["candidate_graph_edges"]) == 2
 
 
 def _candidate(

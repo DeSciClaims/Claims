@@ -11,7 +11,6 @@ from typing import Callable, Iterable
 from .adjudication_models import AdjudicationConsensus, AdjudicationContextBundle, AdjudicationDecision, AdjudicationVote
 from .adjudication_runner import AdjudicationPass, run_adjudication_cases
 from .batch_scoring import BatchScoreResult, score_batch
-from .bronze_diff import compare_miner_to_bronze_result
 from .comparison_models import BronzeDiffCase, CandidatePairEdge, ComparisonCandidate, SilverRecord, SilverScoreBreakdown
 from .file_agent_workflow import FileAgentSilverWorkflow, FileAgentWorkflowSession
 from .models import AgentV1ValidationFinding
@@ -52,6 +51,7 @@ class SilverScoringJob:
 class MinerArtifactSubmission:
     miner_id: str
     artifact: dict
+    claim_assessments: list[dict] | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +87,8 @@ def run_paper_silver_pipeline(
     source_context_by_span_id: dict[str, str] | None = None,
     adjudication_max_workers: int = 4,
     adjudication_batch_size: int = 8,
+    max_eligible_claims_per_miner: int = 6,
+    max_adjudication_cases: int = 80,
     adjudication_progress_sink: Callable[
         [list[AdjudicationContextBundle], list[AdjudicationVote]],
         None,
@@ -98,15 +100,37 @@ def run_paper_silver_pipeline(
 
     projection_timer = _stage_start("silver_projection", "Silver projection")
     bronze_candidates = project_agent_artifact(bronze_artifact, origin="bronze")
-    miner_submissions = [
-        MinerPaperSubmission(
+    miner_submissions: list[MinerPaperSubmission] = []
+    projected_miner_candidate_count = 0
+    assessment_rejected_candidate_count = 0
+    for submission in miner_artifacts:
+        projected_candidates = project_agent_artifact(
+            submission.artifact,
+            origin="miner",
             miner_id=submission.miner_id,
-            paper_id=paper_id,
-            candidates=project_agent_artifact(submission.artifact, origin="miner", miner_id=submission.miner_id),
-            normal_findings=(validation_findings_by_miner_id or {}).get(submission.miner_id, []),
         )
-        for submission in miner_artifacts
-    ]
+        projected_miner_candidate_count += len(projected_candidates)
+        selected_candidates = _select_assessed_candidates(
+            projected_candidates,
+            submission.claim_assessments,
+            max_claims=max_eligible_claims_per_miner,
+        )
+        assessment_rejected_candidate_count += len(projected_candidates) - len(selected_candidates)
+        miner_submissions.append(
+            MinerPaperSubmission(
+                miner_id=submission.miner_id,
+                paper_id=paper_id,
+                candidates=selected_candidates,
+                normal_findings=(validation_findings_by_miner_id or {}).get(
+                    submission.miner_id, []
+                ),
+            )
+        )
+    miner_submissions, case_budget_rejected_candidate_count = _apply_case_budget(
+        miner_submissions,
+        bronze_candidate_count=len(bronze_candidates),
+        max_adjudication_cases=max_adjudication_cases,
+    )
     candidate_pool = [*bronze_candidates, *[candidate for submission in miner_submissions for candidate in submission.candidates]]
     candidates_by_id = {candidate.candidate_id: candidate for candidate in candidate_pool}
     workflow_fallbacks: list[str] = []
@@ -126,6 +150,11 @@ def run_paper_silver_pipeline(
             "bronze_candidate_count": len(bronze_candidates),
             "miner_count": len(miner_submissions),
             "candidate_count": len(candidate_pool),
+            "projected_miner_candidate_count": projected_miner_candidate_count,
+            "assessment_rejected_candidate_count": assessment_rejected_candidate_count,
+            "case_budget_rejected_candidate_count": case_budget_rejected_candidate_count,
+            "max_eligible_claims_per_miner": max_eligible_claims_per_miner,
+            "max_adjudication_cases": max_adjudication_cases,
         },
     ))
 
@@ -153,34 +182,18 @@ def run_paper_silver_pipeline(
             [hit for hits in comparison_hits.values() for hit in hits],
             relation_classifier=relation_classifier,
         )
-    edges_by_miner_id: dict[str, list[CandidatePairEdge]] = {
-        submission.miner_id: [] for submission in miner_submissions
-    }
-    for edge in comparison_edges:
-        right_candidate = candidates_by_id.get(edge.right_candidate_id)
-        if right_candidate is not None and right_candidate.miner_id in edges_by_miner_id:
-            edges_by_miner_id[right_candidate.miner_id].append(edge)
-    comparison_results = [
-        compare_miner_to_bronze_result(
-            paper_id=paper_id,
-            miner_id=submission.miner_id,
-            bronze_candidates=bronze_candidates,
-            miner_candidates=submission.candidates,
-            relation_classifier=relation_classifier,
-            candidate_graph_edges=edges_by_miner_id.get(submission.miner_id, []),
+    candidate_graph_edges = _dedupe_candidate_graph_edges(comparison_edges)
+    diff_cases = _comparison_cases_from_graph(
+        paper_id=paper_id,
+        bronze_candidates=bronze_candidates,
+        miner_submissions=miner_submissions,
+        candidate_graph_edges=candidate_graph_edges,
+    )
+    if len(diff_cases) > max_adjudication_cases:
+        raise RuntimeError(
+            "Comparison produced more adjudication cases than the configured paper ceiling: "
+            f"cases={len(diff_cases)} ceiling={max_adjudication_cases}."
         )
-        for submission in miner_submissions
-    ]
-    candidate_graph_edges = _dedupe_candidate_graph_edges(
-        edge
-        for result in comparison_results
-        for edge in result.candidate_graph_edges
-    )
-    diff_cases = _dedupe_cases(
-        case
-        for result in comparison_results
-        for case in result.cases
-    )
     if file_session is not None:
         file_session.record_comparison_cases(diff_cases)
     stage_timings.append(_stage_finish(
@@ -454,6 +467,204 @@ def _stage_finish(timer: dict, *, paper_id: str, metadata: dict | None = None) -
         stage_metadata.update(metadata)
     payload["metadata"] = stage_metadata
     return payload
+
+
+def _select_assessed_candidates(
+    candidates: list[ComparisonCandidate],
+    assessments: list[dict] | None,
+    *,
+    max_claims: int,
+) -> list[ComparisonCandidate]:
+    if assessments is None:
+        return candidates[:max_claims]
+    assessment_by_claim_id = {
+        str(row.get("claim_id") or ""): row
+        for row in assessments
+        if isinstance(row, dict) and str(row.get("claim_id") or "")
+    }
+    relevance_order = {"central": 0, "supporting": 1}
+    selected: list[tuple[tuple[int, int, str], ComparisonCandidate]] = []
+    for candidate in candidates:
+        assessment = assessment_by_claim_id.get(candidate.record_id)
+        if not assessment:
+            continue
+        evidence_status = str(assessment.get("evidence_status") or "")
+        paper_relevance = str(assessment.get("paper_relevance") or "")
+        if evidence_status != "supported" or paper_relevance not in relevance_order:
+            continue
+        try:
+            priority_rank = max(1, int(assessment.get("priority_rank") or 1))
+        except (TypeError, ValueError):
+            priority_rank = 1
+        selected.append(
+            (
+                (relevance_order[paper_relevance], priority_rank, candidate.record_id),
+                candidate.model_copy(
+                    update={
+                        "metadata": {
+                            **candidate.metadata,
+                            "diagnostic_claim_assessment": dict(assessment),
+                        }
+                    }
+                ),
+            )
+        )
+    selected.sort(key=lambda item: item[0])
+    return [candidate for _key, candidate in selected[:max_claims]]
+
+
+def _apply_case_budget(
+    submissions: list[MinerPaperSubmission],
+    *,
+    bronze_candidate_count: int,
+    max_adjudication_cases: int,
+) -> tuple[list[MinerPaperSubmission], int]:
+    candidate_budget = max_adjudication_cases - bronze_candidate_count
+    if candidate_budget < 0:
+        raise RuntimeError(
+            "Bronze candidate count exceeds the configured adjudication case ceiling: "
+            f"bronze={bronze_candidate_count} ceiling={max_adjudication_cases}."
+        )
+    retained_by_miner: dict[str, list[ComparisonCandidate]] = {
+        submission.miner_id: [] for submission in submissions
+    }
+    max_depth = max((len(submission.candidates) for submission in submissions), default=0)
+    retained_count = 0
+    for candidate_index in range(max_depth):
+        for submission in submissions:
+            if retained_count >= candidate_budget:
+                break
+            if candidate_index >= len(submission.candidates):
+                continue
+            retained_by_miner[submission.miner_id].append(
+                submission.candidates[candidate_index]
+            )
+            retained_count += 1
+        if retained_count >= candidate_budget:
+            break
+    original_count = sum(len(submission.candidates) for submission in submissions)
+    bounded = [
+        MinerPaperSubmission(
+            miner_id=submission.miner_id,
+            paper_id=submission.paper_id,
+            candidates=retained_by_miner[submission.miner_id],
+            normal_findings=submission.normal_findings,
+        )
+        for submission in submissions
+    ]
+    return bounded, original_count - retained_count
+
+
+def _comparison_cases_from_graph(
+    *,
+    paper_id: str,
+    bronze_candidates: list[ComparisonCandidate],
+    miner_submissions: list[MinerPaperSubmission],
+    candidate_graph_edges: list[CandidatePairEdge],
+) -> list[BronzeDiffCase]:
+    bronze_ids = {candidate.candidate_id for candidate in bronze_candidates}
+    miner_candidates = {
+        candidate.candidate_id: candidate
+        for submission in miner_submissions
+        for candidate in submission.candidates
+    }
+    edges_by_miner_candidate: dict[str, list[CandidatePairEdge]] = {
+        candidate_id: [] for candidate_id in miner_candidates
+    }
+    paired_bronze_ids: set[str] = set()
+    for edge in candidate_graph_edges:
+        if edge.left_candidate_id in bronze_ids and edge.right_candidate_id in miner_candidates:
+            bronze_id = edge.left_candidate_id
+            miner_id = edge.right_candidate_id
+        elif edge.right_candidate_id in bronze_ids and edge.left_candidate_id in miner_candidates:
+            bronze_id = edge.right_candidate_id
+            miner_id = edge.left_candidate_id
+        else:
+            continue
+        edges_by_miner_candidate[miner_id].append(edge)
+        paired_bronze_ids.add(bronze_id)
+
+    cases: list[BronzeDiffCase] = []
+    for candidate_id, candidate in sorted(miner_candidates.items()):
+        edges = sorted(
+            edges_by_miner_candidate[candidate_id],
+            key=lambda edge: (-edge.confidence, edge.edge_id),
+        )
+        connected_bronze_ids = sorted({
+            endpoint
+            for edge in edges
+            for endpoint in (edge.left_candidate_id, edge.right_candidate_id)
+            if endpoint in bronze_ids
+        })
+        if not edges:
+            mismatch_type = "EXTRA_FROM_MINER"
+            candidate_ids = [candidate_id]
+            question = "Is this miner-only candidate a valid, paper-relevant improvement?"
+        else:
+            mismatch_type = _combined_mismatch_type(edges)
+            candidate_ids = [*connected_bronze_ids, candidate_id]
+            question = (
+                "How should this miner candidate and all of its candidate Bronze relations "
+                "resolve into Silver?"
+            )
+        cases.append(
+            BronzeDiffCase(
+                case_id=_graph_case_id(paper_id, mismatch_type, candidate_ids),
+                paper_id=paper_id,
+                miner_id=candidate.miner_id or "unknown",
+                mismatch_type=mismatch_type,  # type: ignore[arg-type]
+                candidate_ids=candidate_ids,
+                bronze_candidate_id=connected_bronze_ids[0] if connected_bronze_ids else None,
+                miner_candidate_id=candidate_id,
+                question=question,
+                metadata={
+                    "candidate_graph_edge": (
+                        edges[0].model_dump(mode="json") if edges else None
+                    ),
+                    "candidate_graph_edges": [edge.model_dump(mode="json") for edge in edges],
+                    "comparison_graph": {
+                        "edge_ids": [edge.edge_id for edge in edges],
+                        "relations": sorted({edge.relation for edge in edges}),
+                        "grouped_by_miner_candidate": True,
+                    },
+                },
+            )
+        )
+
+    for bronze in bronze_candidates:
+        if bronze.candidate_id in paired_bronze_ids:
+            continue
+        cases.append(
+            BronzeDiffCase(
+                case_id=_graph_case_id(
+                    paper_id,
+                    "MISSING_FROM_MINER",
+                    [bronze.candidate_id],
+                ),
+                paper_id=paper_id,
+                miner_id="graph",
+                mismatch_type="MISSING_FROM_MINER",
+                candidate_ids=[bronze.candidate_id],
+                bronze_candidate_id=bronze.candidate_id,
+                miner_candidate_id=None,
+                question="Is this Bronze-only candidate valid and required in Silver?",
+                metadata={"comparison_graph": {"global_bronze_only": True}},
+            )
+        )
+    return _dedupe_cases(cases)
+
+
+def _combined_mismatch_type(edges: list[CandidatePairEdge]) -> str:
+    relations = {edge.relation for edge in edges}
+    if "contradiction" in relations:
+        return "CONTRADICTION"
+    if relations & {"partial_overlap", "insufficient_context"}:
+        return "SEMANTIC_EQUIVALENCE_UNCERTAIN"
+    if "compatible_split_merge" in relations:
+        return "SEMANTIC_EQUIVALENCE_UNCERTAIN"
+    if "compatible_refinement" in relations:
+        return "COMPATIBLE_REFINEMENT"
+    return "SEMANTIC_EQUIVALENCE_CANDIDATE"
 
 
 def _dedupe_cases(cases: Iterable[BronzeDiffCase]) -> list[BronzeDiffCase]:
