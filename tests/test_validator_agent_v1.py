@@ -139,9 +139,19 @@ def test_validator_agent_v1_runner_accepts_precomputed_batched_rigor(monkeypatch
         artifact_path=artifact_path,
         source_payload_path=source_path,
         output_dir=tmp_path / "validator",
-        precomputed_rigor={"findings": []},
+        precomputed_rigor={
+            "findings": [],
+            "claim_assessments": [
+                {
+                    "claim_id": "C01",
+                    "evidence_status": "supported",
+                    "paper_relevance": "central",
+                    "priority_rank": 1,
+                }
+            ],
+        },
         precomputed_rigor_manifest={
-            "runtime": "diagnostic-file-batch",
+            "runtime": "diagnostic-file-paper",
             "elapsed_seconds": 12.5,
             "usage": {
                 "prompt_tokens": None,
@@ -157,6 +167,7 @@ def test_validator_agent_v1_runner_accepts_precomputed_batched_rigor(monkeypatch
     assert report.score == 1.0
     assert report.metrics.rigor_agent_elapsed_seconds == 12.5
     assert report.metrics.usage_source == "shared_diagnostic_batch"
+    assert report.metadata["claim_assessments"][0]["claim_id"] == "C01"
 
 
 def test_validator_agent_v1_llm_validation_reports_semantic_grounding_findings(monkeypatch, tmp_path: Path) -> None:

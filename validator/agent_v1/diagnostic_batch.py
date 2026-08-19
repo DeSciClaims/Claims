@@ -4,15 +4,14 @@ import hashlib
 import json
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from miner.agent_v1.runtime.usage import empty_usage, merge_usage, usage_from_cli_process
+from miner.agent_v1.runtime.usage import empty_usage, usage_from_cli_process
 
 from .file_agent_workflow import (
     FileAgentWorkflowConfig,
@@ -44,8 +43,23 @@ class DiagnosticFinding(_StrictModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class DiagnosticClaimAssessment(_StrictModel):
+    claim_ref: str = Field(min_length=1)
+    evidence_status: Literal[
+        "supported",
+        "partially_supported",
+        "unsupported",
+        "unverifiable",
+    ]
+    paper_relevance: Literal["central", "supporting", "peripheral"]
+    priority_rank: int = Field(ge=1)
+    reason: str = Field(min_length=1)
+    unsupported_assertions: list[str] = Field(default_factory=list)
+
+
 class DiagnosticSubmissionReport(_StrictModel):
     submission_ref: str = Field(min_length=1)
+    claim_assessments: list[DiagnosticClaimAssessment]
     findings: list[DiagnosticFinding] = Field(default_factory=list)
 
 
@@ -61,16 +75,12 @@ class DiagnosticBatchConfig:
     model: str
     command_template: str = ""
     batch_size: int = 1
-    max_input_bytes: int = 8_000_000
     max_turns: int = 30
     max_tokens: int = 16384
     timeout_seconds: float = 1800.0
     output_poll_seconds: float = 0.5
     output_stable_seconds: float = 1.0
     usage_grace_seconds: float = 15.0
-    repair_batch_size: int = 4
-    repair_max_depth: int = 3
-    repair_max_workers: int = 2
 
     @classmethod
     def from_env(cls) -> DiagnosticBatchConfig:
@@ -91,10 +101,6 @@ class DiagnosticBatchConfig:
                 "CLAIMS_DIAGNOSTIC_FILE_AGENT_CLI_COMMAND_TEMPLATE", ""
             ).strip(),
             batch_size=max(1, int(os.getenv("CLAIMS_DIAGNOSTIC_MINER_BATCH_SIZE", "1") or 1)),
-            max_input_bytes=max(
-                0,
-                int(os.getenv("CLAIMS_DIAGNOSTIC_BATCH_MAX_INPUT_BYTES", "8000000") or 0),
-            ),
             max_turns=max(1, int(os.getenv("CLAIMS_RIGOR_MAX_TURNS", "30") or 30)),
             max_tokens=max(
                 1024,
@@ -121,18 +127,6 @@ class DiagnosticBatchConfig:
             usage_grace_seconds=max(
                 0.0,
                 float(os.getenv("CLAIMS_DIAGNOSTIC_USAGE_GRACE_SECONDS", "15.0") or 15.0),
-            ),
-            repair_batch_size=max(
-                1,
-                int(os.getenv("CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE", "4") or 4),
-            ),
-            repair_max_depth=max(
-                0,
-                int(os.getenv("CLAIMS_DIAGNOSTIC_REPAIR_MAX_DEPTH", "3") or 0),
-            ),
-            repair_max_workers=max(
-                1,
-                int(os.getenv("CLAIMS_DIAGNOSTIC_REPAIR_MAX_WORKERS", "2") or 2),
             ),
         )
 
@@ -162,48 +156,6 @@ class DiagnosticBatchExecution:
     operation_id: str
     workspace: Path
     error: str | None = None
-    repair_operation_ids: list[str] = field(default_factory=list)
-    repair_workspaces: list[Path] = field(default_factory=list)
-
-
-def shard_diagnostic_submissions(
-    submissions: list[DiagnosticBatchSubmission],
-    *,
-    max_count: int,
-    max_input_bytes: int,
-) -> list[list[DiagnosticBatchSubmission]]:
-    shards: list[list[DiagnosticBatchSubmission]] = []
-    current: list[DiagnosticBatchSubmission] = []
-    current_bytes = 0
-    current_source_hashes: set[str] = set()
-    for submission in submissions:
-        source_bytes = _json_bytes(submission.source_payload or {})
-        source_hash = hashlib.sha256(source_bytes).hexdigest()
-        item_bytes = (
-            len(_json_bytes(submission.artifact))
-            + len(_json_bytes(submission.structural_findings))
-            + len(_json_bytes(submission.grounding_findings))
-            + (0 if source_hash in current_source_hashes else len(source_bytes))
-        )
-        count_full = len(current) >= max(1, max_count)
-        bytes_full = bool(max_input_bytes and current and current_bytes + item_bytes > max_input_bytes)
-        if count_full or bytes_full:
-            shards.append(current)
-            current = []
-            current_bytes = 0
-            current_source_hashes = set()
-            item_bytes = (
-                len(_json_bytes(submission.artifact))
-                + len(_json_bytes(submission.structural_findings))
-                + len(_json_bytes(submission.grounding_findings))
-                + len(source_bytes)
-            )
-        current.append(submission)
-        current_bytes += item_bytes
-        current_source_hashes.add(source_hash)
-    if current:
-        shards.append(current)
-    return shards
 
 
 def run_diagnostic_batch(
@@ -211,27 +163,15 @@ def run_diagnostic_batch(
     config: DiagnosticBatchConfig,
     run_id: str,
     paper_id: str,
-    shard_index: int,
     submissions: list[DiagnosticBatchSubmission],
-    _repair_depth: int = 0,
-    _workspace_name: str = "",
 ) -> DiagnosticBatchExecution:
-    workspace_name = _workspace_name or f"shard_{shard_index:04d}"
-    operation_id = (
-        f"{run_id}:{paper_id}:diagnostic-shard-{shard_index:04d}"
-        if not _workspace_name
-        else f"{run_id}:{paper_id}:diagnostic-{workspace_name.replace('_', '-')}"
-    )
-    root = (
-        config.root
-        / _safe_path(run_id)
-        / _safe_path(paper_id)
-        / workspace_name
-    )
+    operation_id = f"{run_id}:{paper_id}:diagnostic-paper"
+    root = config.root / _safe_path(run_id) / _safe_path(paper_id) / "paper"
     root.mkdir(parents=True, exist_ok=True)
     os.chmod(root, 0o700)
     source_paths: dict[str, Path] = {}
     task_rows: list[dict[str, Any]] = []
+    claim_cases_by_submission: dict[str, dict[str, dict[str, Any]]] = {}
     for submission in submissions:
         source_payload = submission.source_payload or {}
         source_hash = hashlib.sha256(_json_bytes(source_payload)).hexdigest()
@@ -244,9 +184,15 @@ def run_diagnostic_batch(
         artifact_path = submission_dir / "agent_output.json"
         structural_path = submission_dir / "structural_findings.json"
         grounding_path = submission_dir / "grounding_findings.json"
+        claim_cases_path = submission_dir / "claim_assessment_cases.json"
+        claim_cases = _claim_assessment_cases(submission.artifact, source_payload)
+        claim_cases_by_submission[submission.submission_ref] = {
+            row["claim_ref"]: row for row in claim_cases
+        }
         _write_json(artifact_path, submission.artifact)
         _write_json(structural_path, submission.structural_findings)
         _write_json(grounding_path, submission.grounding_findings)
+        _write_json(claim_cases_path, _model_claim_assessment_payload(claim_cases))
         task_rows.append(
             {
                 "submission_ref": submission.submission_ref,
@@ -254,6 +200,8 @@ def run_diagnostic_batch(
                 "source_payload_path": str(source_path),
                 "structural_findings_path": str(structural_path),
                 "grounding_findings_path": str(grounding_path),
+                "claim_assessment_cases_path": str(claim_cases_path),
+                "required_claim_refs": [row["claim_ref"] for row in claim_cases],
             }
         )
 
@@ -281,6 +229,7 @@ def run_diagnostic_batch(
             "requirements": {
                 "review_every_submission_independently": True,
                 "emit_exactly_one_report_per_submission_ref": True,
+                "assess_every_claim_ref_exactly_once": True,
                 "do_not_compare_rank_or_copy_findings_between_submissions": True,
                 "use_only_each_submission_artifact_and_its_linked_source_payload": True,
             },
@@ -305,7 +254,7 @@ def run_diagnostic_batch(
     command = _agent_command(file_config, model=config.model, stage_key="diagnostic_batch")
     query = "\n".join(
         [
-            "Run this Claims batched diagnostic validation task.",
+            "Run this Claims paper-level diagnostic validation task.",
             f"Read the complete skill instructions from {skill_path}.",
             f"Read the complete task from {task_path}.",
             f"Validate the result against {schema_path}.",
@@ -317,8 +266,8 @@ def run_diagnostic_batch(
     started_at = datetime.now(timezone.utc)
     started = time.perf_counter()
     completed = None
+    reports: dict[str, dict[str, Any]] = {}
     error: str | None = None
-    expected = {submission.submission_ref for submission in submissions}
     try:
         completed = _run_until_valid_output(
             [*command, query],
@@ -337,29 +286,16 @@ def run_diagnostic_batch(
                 else None
             ),
         )
-        payload = _read_batch_output(output_path)
-        partial_reports = _read_partial_batch_reports(output_path) if payload is None else []
-        if payload is None and not partial_reports:
-            stderr = completed.stderr[-1000:] if completed is not None else ""
-            raise RuntimeError(f"Diagnostic batch did not produce valid output. {stderr}")
-        reports: dict[str, dict[str, Any]] = {}
-        duplicate_refs: set[str] = set()
-        for report in payload.reports if payload is not None else partial_reports:
-            if report.submission_ref not in expected:
-                continue
-            if report.submission_ref in reports:
-                duplicate_refs.add(report.submission_ref)
-                continue
-            reports[report.submission_ref] = {
-                "findings": [finding.model_dump(mode="json") for finding in report.findings]
-            }
-        for duplicate_ref in duplicate_refs:
-            reports.pop(duplicate_ref, None)
+        payload = DiagnosticBatchOutput.model_validate_json(output_path.read_text(encoding="utf-8"))
+        reports = _validated_reports(
+            payload,
+            expected_submission_refs={submission.submission_ref for submission in submissions},
+            claim_cases_by_submission=claim_cases_by_submission,
+        )
     except Exception as exc:
-        reports = {}
         error = f"{type(exc).__name__}: {exc}"
 
-    base_usage = (
+    usage = (
         usage_from_cli_process(
             command,
             completed.stdout if completed is not None else "",
@@ -371,76 +307,15 @@ def run_diagnostic_batch(
         if completed is not None
         else empty_usage("diagnostic_batch_not_started")
     )
-    initial_error = error
-    repair_executions: list[DiagnosticBatchExecution] = []
-    missing_refs = expected.difference(reports)
-    if missing_refs and _repair_depth < config.repair_max_depth:
-        missing_submissions = [
-            submission
-            for submission in submissions
-            if submission.submission_ref in missing_refs
-        ]
-        repair_shards = [
-            missing_submissions[index : index + config.repair_batch_size]
-            for index in range(0, len(missing_submissions), config.repair_batch_size)
-        ]
-
-        def run_repair(repair_index: int, repair_shard: list[DiagnosticBatchSubmission]):
-            return run_diagnostic_batch(
-                config=config,
-                run_id=run_id,
-                paper_id=paper_id,
-                shard_index=shard_index,
-                submissions=repair_shard,
-                _repair_depth=_repair_depth + 1,
-                _workspace_name=(
-                    f"{workspace_name}_repair_d{_repair_depth + 1}_{repair_index:02d}"
-                ),
-            )
-
-        worker_count = min(config.repair_max_workers, len(repair_shards))
-        if worker_count > 1:
-            with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                futures = {
-                    executor.submit(run_repair, index, repair_shard): index
-                    for index, repair_shard in enumerate(repair_shards, start=1)
-                }
-                repair_executions = [future.result() for future in as_completed(futures)]
-        else:
-            repair_executions = [
-                run_repair(index, repair_shard)
-                for index, repair_shard in enumerate(repair_shards, start=1)
-            ]
-        for repair in repair_executions:
-            reports.update(repair.reports)
-
-    remaining_refs = expected.difference(reports)
-    if remaining_refs:
-        error = (
-            "Diagnostic batch omitted required submissions after bounded repair; "
-            f"missing={sorted(remaining_refs)} depth={_repair_depth}."
-        )
-    else:
-        error = None
     duration = time.perf_counter() - started
-    usage = merge_usage([base_usage, *[repair.usage for repair in repair_executions]])
-    repair_operation_ids = [
-        operation
-        for repair in repair_executions
-        for operation in [repair.operation_id, *repair.repair_operation_ids]
-    ]
-    repair_workspaces = [
-        workspace
-        for repair in repair_executions
-        for workspace in [repair.workspace, *repair.repair_workspaces]
-    ]
     _write_json(
         root / "manifest.json",
         {
-            "schema": "claims_diagnostic_batch_v1",
+            "schema": "claims_diagnostic_paper_v2",
             "operation_id": operation_id,
             "paper_id": paper_id,
             "submission_count": len(submissions),
+            "claim_count": sum(len(rows) for rows in claim_cases_by_submission.values()),
             "completed_report_count": len(reports),
             "source_payload_count": len(source_paths),
             "harness": config.harness,
@@ -448,10 +323,6 @@ def run_diagnostic_batch(
             "duration_seconds": round(duration, 3),
             "status": "complete" if not error else "failed",
             "error": error,
-            "initial_error": initial_error,
-            "initial_completed_report_count": len(expected.difference(missing_refs)),
-            "repair_operation_ids": repair_operation_ids,
-            "repair_depth": _repair_depth,
         },
     )
     return DiagnosticBatchExecution(
@@ -461,49 +332,306 @@ def run_diagnostic_batch(
         operation_id=operation_id,
         workspace=root,
         error=error,
-        repair_operation_ids=repair_operation_ids,
-        repair_workspaces=repair_workspaces,
     )
 
 
 def precomputed_rigor_manifest(execution: DiagnosticBatchExecution) -> dict[str, Any]:
     return {
-        "runtime": "diagnostic-file-batch",
+        "runtime": "diagnostic-file-paper",
         "elapsed_seconds": execution.duration_seconds,
-        "usage": empty_usage("shared_diagnostic_batch"),
+        "usage": empty_usage("shared_diagnostic_paper"),
         "metadata": {
             "diagnostic_batch": True,
             "operation_id": execution.operation_id,
             "workspace": str(execution.workspace),
             "usage_recorded_separately": True,
-            "repair_operation_ids": execution.repair_operation_ids,
-            "repair_workspaces": [str(path) for path in execution.repair_workspaces],
         },
     }
 
 
-def _read_batch_output(path: Path) -> DiagnosticBatchOutput | None:
-    try:
-        return DiagnosticBatchOutput.model_validate_json(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+def failed_diagnostic_report(message: str) -> dict[str, Any]:
+    return {
+        "claim_assessments": [],
+        "findings": [
+            {
+                "dimension": "methodological_rigor",
+                "severity": "critical",
+                "target_type": "artifact",
+                "target_id": None,
+                "message": message,
+                "evidence_span": None,
+                "suggestion": "Retry diagnostic validation before allowing miner claims into Silver.",
+                "metadata": {"code": "diagnostic_paper_review_failed"},
+            }
+        ],
+    }
 
 
-def _read_partial_batch_reports(path: Path) -> list[DiagnosticSubmissionReport]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return []
-    records = payload.get("reports") if isinstance(payload, dict) else None
-    if not isinstance(records, list):
-        return []
-    reports: list[DiagnosticSubmissionReport] = []
-    for record in records:
-        try:
-            reports.append(DiagnosticSubmissionReport.model_validate(record))
-        except Exception:
-            continue
+def _validated_reports(
+    payload: DiagnosticBatchOutput,
+    *,
+    expected_submission_refs: set[str],
+    claim_cases_by_submission: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, dict[str, Any]]:
+    refs = [report.submission_ref for report in payload.reports]
+    if len(refs) != len(set(refs)) or set(refs) != expected_submission_refs:
+        raise ValueError(
+            "Diagnostic output must contain exactly one report per submission; "
+            f"expected={sorted(expected_submission_refs)} actual={sorted(refs)}"
+        )
+    reports: dict[str, dict[str, Any]] = {}
+    for report in payload.reports:
+        cases = claim_cases_by_submission[report.submission_ref]
+        assessment_refs = [assessment.claim_ref for assessment in report.claim_assessments]
+        if len(assessment_refs) != len(set(assessment_refs)) or set(assessment_refs) != set(cases):
+            raise ValueError(
+                "Diagnostic output must assess every claim exactly once; "
+                f"submission={report.submission_ref} expected={sorted(cases)} "
+                f"actual={sorted(assessment_refs)}"
+            )
+        assessments = [
+            _materialize_claim_assessment(assessment, cases[assessment.claim_ref])
+            for assessment in report.claim_assessments
+        ]
+        reports[report.submission_ref] = {
+            "claim_assessments": assessments,
+            "findings": _diagnostic_finding_rows(report, assessments),
+        }
     return reports
+
+
+def _claim_assessment_cases(
+    artifact: dict[str, Any],
+    source_payload: dict[str, Any],
+) -> list[dict[str, Any]]:
+    logic = artifact.get("logic") if isinstance(artifact.get("logic"), dict) else {}
+    claims = logic.get("claims") if isinstance(logic.get("claims"), list) else []
+    evidence_layer = artifact.get("evidence") if isinstance(artifact.get("evidence"), dict) else {}
+    evidence_records = evidence_layer.get("records") if isinstance(evidence_layer.get("records"), list) else []
+    evidence_by_id = {
+        str(row.get("evidence_id")): row
+        for row in evidence_records
+        if isinstance(row, dict) and str(row.get("evidence_id") or "")
+    }
+    spans = source_payload.get("spans") if isinstance(source_payload.get("spans"), list) else []
+    spans_by_id: dict[str, dict[str, Any]] = {}
+    for row in spans:
+        if not isinstance(row, dict):
+            continue
+        span_id = str(row.get("span_id") or "")
+        if span_id:
+            spans_by_id[span_id] = row
+        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        reader_span_id = str(metadata.get("reader_span_id") or "")
+        if reader_span_id:
+            spans_by_id[reader_span_id] = row
+    cases: list[dict[str, Any]] = []
+    for index, claim in enumerate(row for row in claims if isinstance(row, dict)):
+        claim_id = str(claim.get("claim_id") or f"claim_{index + 1}")
+        evidence_ids = [
+            str(value) for value in claim.get("evidence_ids", []) if str(value).strip()
+        ] if isinstance(claim.get("evidence_ids"), list) else []
+        source_refs = claim.get("sources") if isinstance(claim.get("sources"), list) else []
+        source_span_ids = sorted({
+            str(span_id)
+            for ref in source_refs
+            if isinstance(ref, dict)
+            for span_id in (ref.get("span_ids") if isinstance(ref.get("span_ids"), list) else [])
+            if str(span_id).strip()
+        })
+        linked_evidence = [
+            _compact_evidence_record(evidence_by_id[evidence_id])
+            for evidence_id in evidence_ids
+            if evidence_id in evidence_by_id
+        ]
+        evidence_span_ids = {
+            str(span_id)
+            for record in linked_evidence
+            for source_ref in record.get("source_refs", [])
+            if isinstance(source_ref, dict)
+            for span_id in source_ref.get("span_ids", [])
+            if str(span_id).strip()
+        }
+        all_span_ids = sorted(set(source_span_ids) | evidence_span_ids)
+        cases.append(
+            {
+                "claim_ref": f"c{index}",
+                "claim_id": claim_id,
+                "statement": str(claim.get("statement") or ""),
+                "conditions": claim.get("conditions"),
+                "falsification_criteria": claim.get("falsification_criteria"),
+                "evidence_ids": evidence_ids,
+                "source_span_ids": all_span_ids,
+                "claim_source_refs": source_refs,
+                "linked_evidence": linked_evidence,
+                "source_spans": [
+                    {
+                        "span_id": str(spans_by_id[span_id].get("span_id") or span_id),
+                        "section_name": spans_by_id[span_id].get("section_name"),
+                        "page": spans_by_id[span_id].get("page"),
+                        "text": spans_by_id[span_id].get("text"),
+                    }
+                    for span_id in all_span_ids
+                    if span_id in spans_by_id
+                ],
+            }
+        )
+    return cases
+
+
+def _compact_evidence_record(record: dict[str, Any]) -> dict[str, Any]:
+    source_refs = record.get("source_refs") if isinstance(record.get("source_refs"), list) else []
+    return {
+        "evidence_id": str(record.get("evidence_id") or ""),
+        "title": record.get("title"),
+        "role": record.get("role"),
+        "summary": record.get("summary"),
+        "evidence_method": record.get("evidence_method"),
+        "outcome_type": record.get("outcome_type"),
+        "source_refs": source_refs,
+    }
+
+
+def _model_claim_assessment_payload(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    source_spans_by_id = {
+        str(span.get("span_id")): span
+        for case in cases
+        for span in case.get("source_spans", [])
+        if isinstance(span, dict) and str(span.get("span_id") or "")
+    }
+    span_aliases = {
+        span_id: f"p{index}"
+        for index, span_id in enumerate(sorted(source_spans_by_id))
+    }
+    return {
+        "claims": [
+            _model_claim_assessment_case(case, span_aliases)
+            for case in cases
+        ],
+        "source_spans": [
+            {
+                "source_ref": span_aliases[span_id],
+                "section_name": source_spans_by_id[span_id].get("section_name"),
+                "page": source_spans_by_id[span_id].get("page"),
+                "text": source_spans_by_id[span_id].get("text"),
+            }
+            for span_id in sorted(source_spans_by_id)
+        ],
+    }
+
+
+def _model_claim_assessment_case(
+    case: dict[str, Any],
+    span_aliases: dict[str, str],
+) -> dict[str, Any]:
+    return {
+        "claim_ref": case["claim_ref"],
+        "statement": case["statement"],
+        "conditions": case["conditions"],
+        "falsification_criteria": case["falsification_criteria"],
+        "claim_sources": [
+            {
+                "quote": source_ref.get("quote"),
+                "role": source_ref.get("role"),
+            }
+            for source_ref in case.get("claim_source_refs", [])
+            if isinstance(source_ref, dict)
+        ],
+        "linked_evidence": [
+            {
+                "title": record.get("title"),
+                "role": record.get("role"),
+                "summary": record.get("summary"),
+                "evidence_method": record.get("evidence_method"),
+                "outcome_type": record.get("outcome_type"),
+                "source_quotes": [
+                    {
+                        "quote": source_ref.get("quote"),
+                        "role": source_ref.get("role"),
+                    }
+                    for source_ref in record.get("source_refs", [])
+                    if isinstance(source_ref, dict)
+                ],
+            }
+            for record in case.get("linked_evidence", [])
+            if isinstance(record, dict)
+        ],
+        "source_refs": sorted({
+            span_aliases[str(span.get("span_id"))]
+            for span in case.get("source_spans", [])
+            if isinstance(span, dict) and str(span.get("span_id")) in span_aliases
+        }),
+    }
+
+
+def _materialize_claim_assessment(
+    assessment: DiagnosticClaimAssessment,
+    case: dict[str, Any],
+) -> dict[str, Any]:
+    evidence_status = assessment.evidence_status
+    reason = assessment.reason
+    if evidence_status == "supported" and (
+        not case.get("evidence_ids") or not case.get("source_span_ids")
+    ):
+        evidence_status = "unverifiable"
+        reason = "The claim has no complete claim-owned evidence and source-span links."
+    return {
+        "claim_id": str(case["claim_id"]),
+        "evidence_status": evidence_status,
+        "paper_relevance": assessment.paper_relevance,
+        "priority_rank": assessment.priority_rank,
+        "reason": reason,
+        "unsupported_assertions": assessment.unsupported_assertions,
+        "evidence_ids": list(case.get("evidence_ids") or []),
+        "source_span_ids": list(case.get("source_span_ids") or []),
+    }
+
+
+def _diagnostic_finding_rows(
+    report: DiagnosticSubmissionReport,
+    assessments: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    ineligible_claim_ids = {
+        str(assessment["claim_id"])
+        for assessment in assessments
+        if assessment["evidence_status"] != "supported"
+    }
+    rows = [
+        finding.model_dump(mode="json")
+        for finding in report.findings
+        if not (
+            finding.dimension == "evidence_relevance"
+            and str(finding.target_id or "") in ineligible_claim_ids
+        )
+    ]
+    severity_by_status = {
+        "partially_supported": "major",
+        "unsupported": "critical",
+        "unverifiable": "major",
+    }
+    for assessment in assessments:
+        status = str(assessment["evidence_status"])
+        if status == "supported":
+            continue
+        rows.append(
+            {
+                "dimension": "evidence_relevance",
+                "severity": severity_by_status[status],
+                "target_type": "claim",
+                "target_id": assessment["claim_id"],
+                "message": assessment["reason"],
+                "evidence_span": None,
+                "suggestion": "Provide claim-owned source evidence for every material assertion.",
+                "metadata": {
+                    "code": "claim_evidence_ineligible",
+                    "evidence_status": status,
+                    "evidence_ids": assessment["evidence_ids"],
+                    "source_span_ids": assessment["source_span_ids"],
+                    "unsupported_assertions": assessment["unsupported_assertions"],
+                },
+            }
+        )
+    return rows
 
 
 def _write_json(path: Path, payload: Any) -> None:
@@ -527,5 +655,8 @@ def _json_bytes(payload: Any) -> bytes:
 
 
 def _safe_path(value: str) -> str:
-    safe = "".join(character if character.isalnum() or character in {"-", "_"} else "_" for character in value)
+    safe = "".join(
+        character if character.isalnum() or character in {"-", "_"} else "_"
+        for character in value
+    )
     return safe[:180] or "unknown"

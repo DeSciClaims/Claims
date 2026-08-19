@@ -9,109 +9,96 @@ import validator.agent_v1.diagnostic_batch as diagnostic_batch_module
 from validator.agent_v1.diagnostic_batch import (
     DiagnosticBatchConfig,
     DiagnosticBatchSubmission,
-    _read_partial_batch_reports,
+    failed_diagnostic_report,
     run_diagnostic_batch,
-    shard_diagnostic_submissions,
 )
 
 
-def test_diagnostic_batch_reviews_anonymous_submissions_and_deduplicates_sources(tmp_path: Path) -> None:
-    source_payload = {"spans": [{"span_id": "span-1", "text": "Supported result."}]}
+def test_diagnostic_paper_reviews_all_submissions_in_one_operation(tmp_path: Path) -> None:
+    source_payload = {
+        "spans": [
+            {
+                "span_id": "span-1",
+                "text": "Supported result.",
+                "metadata": {"reader_span_id": "reader-span-1"},
+            }
+        ]
+    }
     submissions = [
         _submission("S0001", source_payload),
         _submission("S0002", source_payload),
     ]
-    config = DiagnosticBatchConfig(
-        root=tmp_path,
-        harness="hermes-cli",
-        provider="openrouter",
-        model="test/model",
-        command_template=f"{sys.executable} {Path('tests/fixtures/file_agent_workspace_stub.py').resolve()}",
-        batch_size=10,
-        output_stable_seconds=0.0,
-        usage_grace_seconds=0.0,
-        timeout_seconds=10.0,
-    )
+    config = _config(tmp_path)
 
     result = run_diagnostic_batch(
         config=config,
         run_id="run-1",
         paper_id="paper-1",
-        shard_index=1,
         submissions=submissions,
     )
 
     assert result.error is None
+    assert result.operation_id == "run-1:paper-1:diagnostic-paper"
     assert sorted(result.reports) == ["S0001", "S0002"]
+    assert result.reports["S0001"]["claim_assessments"] == [
+        {
+            "claim_id": "C01",
+            "evidence_status": "supported",
+            "paper_relevance": "central",
+            "priority_rank": 1,
+            "reason": "The deterministic fixture found claim-owned supporting evidence.",
+            "unsupported_assertions": [],
+            "evidence_ids": ["EV01"],
+            "source_span_ids": ["reader-span-1", "span-1"],
+        }
+    ]
     manifest = json.loads((result.workspace / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["submission_count"] == 2
+    assert manifest["claim_count"] == 2
     assert manifest["source_payload_count"] == 1
     task = json.loads((result.workspace / "task.json").read_text(encoding="utf-8"))
+    assert len(task["submissions"]) == 2
+    assert all(row["required_claim_refs"] == ["c0"] for row in task["submissions"])
     assert all("uid" not in json.dumps(row).lower() for row in task["submissions"])
-
-
-def test_diagnostic_batch_shards_by_count_and_unique_input_bytes() -> None:
-    shared_source = {"spans": [{"span_id": "span-1", "text": "x" * 100}]}
-    submissions = [_submission(f"S{index:04d}", shared_source) for index in range(1, 6)]
-
-    by_count = shard_diagnostic_submissions(
-        submissions,
-        max_count=2,
-        max_input_bytes=0,
+    claim_cases = json.loads(
+        Path(task["submissions"][0]["claim_assessment_cases_path"]).read_text(
+            encoding="utf-8"
+        )
     )
-    by_bytes = shard_diagnostic_submissions(
-        submissions,
-        max_count=10,
-        max_input_bytes=650,
-    )
-
-    assert [len(shard) for shard in by_count] == [2, 2, 1]
-    assert len(by_bytes) > 1
-    assert [item.submission_ref for shard in by_bytes for item in shard] == [
-        submission.submission_ref for submission in submissions
-    ]
+    assert claim_cases["claims"][0]["claim_ref"] == "c0"
+    assert "C01" not in json.dumps(claim_cases)
+    assert "EV01" not in json.dumps(claim_cases)
 
 
-def test_diagnostic_batch_keeps_valid_reports_from_a_partially_invalid_output(tmp_path: Path) -> None:
-    output_path = tmp_path / "output.json"
-    output_path.write_text(
-        json.dumps(
-            {
-                "reports": [
-                    {"submission_ref": "S0001", "findings": []},
-                    {"submission_ref": "S0002", "findings": "invalid"},
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    reports = _read_partial_batch_reports(output_path)
-
-    assert [report.submission_ref for report in reports] == ["S0001"]
-
-
-def test_diagnostic_batch_repairs_only_missing_reports_in_bounded_shards(
+def test_diagnostic_paper_rejects_an_incomplete_claim_partition(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    submissions = [
-        _submission(f"S{index:04d}", {"spans": []})
-        for index in range(1, 6)
-    ]
-    calls: list[list[str]] = []
+    submission = _submission(
+        "S0001",
+        {"spans": [{"span_id": "span-1", "text": "Supported result."}]},
+        claim_count=2,
+    )
 
-    def fake_agent(command, *, cwd, output_path, **_kwargs):
-        task = json.loads((Path(cwd) / "task.json").read_text(encoding="utf-8"))
-        refs = [row["submission_ref"] for row in task["submissions"]]
-        calls.append(refs)
-        emitted = refs[:1] if len(calls) == 1 else refs
+    def fake_agent(command, *, output_path, **_kwargs):
         output_path.write_text(
             json.dumps(
                 {
                     "reports": [
-                        {"submission_ref": submission_ref, "findings": []}
-                        for submission_ref in emitted
+                        {
+                            "submission_ref": "S0001",
+                            "claim_assessments": [
+                                {
+                                    "claim_ref": "c0",
+                                    "evidence_status": "supported",
+                                    "paper_relevance": "central",
+                                    "priority_rank": 1,
+                                    "reason": "Only one claim was reviewed.",
+                                    "unsupported_assertions": [],
+                                }
+                            ],
+                            "findings": [],
+                        }
                     ]
                 }
             ),
@@ -119,46 +106,113 @@ def test_diagnostic_batch_repairs_only_missing_reports_in_bounded_shards(
         )
         return subprocess.CompletedProcess(command, 0, "", "")
 
-    monkeypatch.setattr(
-        diagnostic_batch_module,
-        "_run_until_valid_output",
-        fake_agent,
+    monkeypatch.setattr(diagnostic_batch_module, "_run_until_valid_output", fake_agent)
+
+    result = run_diagnostic_batch(
+        config=_config(tmp_path),
+        run_id="run-incomplete",
+        paper_id="paper-1",
+        submissions=[submission],
     )
-    config = DiagnosticBatchConfig(
+
+    assert result.reports == {}
+    assert "assess every claim exactly once" in str(result.error)
+
+
+def test_supported_claim_without_owned_evidence_is_downgraded(tmp_path: Path) -> None:
+    submission = DiagnosticBatchSubmission(
+        submission_ref="S0001",
+        artifact={
+            "paper": {"paper_id": "paper-1"},
+            "logic": {
+                "claims": [
+                    {
+                        "claim_id": "C01",
+                        "statement": "Unsupported assertion.",
+                        "evidence_ids": [],
+                        "sources": [],
+                    }
+                ]
+            },
+            "evidence": {"records": []},
+        },
+        source_payload={"spans": []},
+        structural_findings=[],
+        grounding_findings=[],
+    )
+
+    result = run_diagnostic_batch(
+        config=_config(tmp_path),
+        run_id="run-no-evidence",
+        paper_id="paper-1",
+        submissions=[submission],
+    )
+
+    assessment = result.reports["S0001"]["claim_assessments"][0]
+    assert assessment["evidence_status"] == "unverifiable"
+    assert result.reports["S0001"]["findings"][0]["metadata"]["code"] == "claim_evidence_ineligible"
+
+
+def test_failed_diagnostic_report_excludes_claims_and_penalizes_quality() -> None:
+    report = failed_diagnostic_report("paper review failed")
+
+    assert report["claim_assessments"] == []
+    assert report["findings"][0]["severity"] == "critical"
+
+
+def _config(tmp_path: Path) -> DiagnosticBatchConfig:
+    return DiagnosticBatchConfig(
         root=tmp_path,
         harness="hermes-cli",
         provider="openrouter",
         model="test/model",
+        command_template=(
+            f"{sys.executable} "
+            f"{Path('tests/fixtures/file_agent_workspace_stub.py').resolve()}"
+        ),
         batch_size=10,
-        repair_batch_size=2,
-        repair_max_depth=2,
-        repair_max_workers=2,
+        output_stable_seconds=0.0,
+        usage_grace_seconds=0.0,
+        timeout_seconds=10.0,
     )
 
-    result = run_diagnostic_batch(
-        config=config,
-        run_id="run-repair",
-        paper_id="paper-1",
-        shard_index=1,
-        submissions=submissions,
-    )
 
-    assert result.error is None
-    assert sorted(result.reports) == [submission.submission_ref for submission in submissions]
-    assert calls[0] == [submission.submission_ref for submission in submissions]
-    assert sorted(calls[1:]) == [["S0002", "S0003"], ["S0004", "S0005"]]
-    assert len(result.repair_operation_ids) == 2
-    manifest = json.loads((result.workspace / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["initial_completed_report_count"] == 1
-    assert len(manifest["repair_operation_ids"]) == 2
-
-
-def _submission(ref: str, source_payload: dict) -> DiagnosticBatchSubmission:
+def _submission(
+    ref: str,
+    source_payload: dict,
+    *,
+    claim_count: int = 1,
+) -> DiagnosticBatchSubmission:
+    claims = [
+        {
+            "claim_id": f"C{index + 1:02d}",
+            "statement": f"Supported result {index + 1}.",
+            "conditions": "The reported study.",
+            "falsification_criteria": "The source does not contain the result.",
+            "evidence_ids": [f"EV{index + 1:02d}"],
+            "sources": [
+                {
+                    "span_ids": ["reader-span-1" if claim_count == 1 else "span-1"],
+                    "quote": "Supported result.",
+                }
+            ],
+        }
+        for index in range(claim_count)
+    ]
+    evidence = [
+        {
+            "evidence_id": f"EV{index + 1:02d}",
+            "summary": f"Supported result {index + 1}.",
+            "source_refs": [{"span_ids": ["span-1"]}],
+        }
+        for index in range(claim_count)
+    ]
     return DiagnosticBatchSubmission(
         submission_ref=ref,
         artifact={
             "paper": {"paper_id": "paper-1"},
-            "logic": {"claims": [{"claim_id": "C01", "statement": "Supported result."}]},
+            "logic": {"claims": claims},
+            "evidence": {"records": evidence},
         },
         source_payload=source_payload,
         structural_findings=[],

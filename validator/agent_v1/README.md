@@ -81,28 +81,23 @@ mode only; production scoring should include the rigor agent.
   --skip-rigor-agent
 ```
 
-## Batched CLI Diagnostics
+## Paper-Level CLI Diagnostics
 
-The validator can share one paper-level CLI session across an anonymized miner
-shard while preserving one ordinary diagnostic report and score per miner:
+The validator can share one CLI session across every available anonymized miner
+for a paper while preserving one diagnostic report and score per miner:
 
 ```bash
 CLAIMS_AUDIT_METHOD=llm \
 CLAIMS_RIGOR_HARNESS=hermes-cli \
 CLAIMS_RIGOR_MODEL=openai/gpt-4o-mini \
 CLAIMS_DIAGNOSTIC_MINER_BATCH_SIZE=10 \
-CLAIMS_DIAGNOSTIC_BATCH_MAX_INPUT_BYTES=8000000 \
-CLAIMS_DIAGNOSTIC_REPAIR_BATCH_SIZE=4 \
-CLAIMS_DIAGNOSTIC_REPAIR_MAX_DEPTH=3 \
-CLAIMS_DIAGNOSTIC_REPAIR_MAX_WORKERS=2 \
 python -m neurons.validator ...
 ```
 
-Identical source payloads are stored once in each workspace. Valid reports are
-retained while missing, duplicated, or malformed reports retry in bounded
-shared-context shards; only unresolved reports reach individual fallback.
-Combined batch and repair usage is recorded once rather than copied onto every
-miner.
+Identical source payloads are stored once. The same operation emits sparse rigor
+findings and one compact evidence/relevance assessment per claim. Miner shards
+and recursive repair calls are not used; invalid output becomes an explicit
+failed diagnostic report.
 
 ## Silver Scoring Smoke
 
