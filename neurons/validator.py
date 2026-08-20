@@ -112,6 +112,25 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_bool(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError("expected one of: true, false, 1, 0, yes, no, on, off")
+
+
+def _strict_env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return _parse_bool(value)
+    except ValueError as exc:
+        raise SystemExit(f"Invalid {name}: {exc}") from exc
+
+
 def _env_int_list(name: str) -> list[int]:
     values = []
     for item in os.getenv(name, "").replace(" ", ",").split(","):
@@ -580,8 +599,8 @@ class ClaimsValidator:
         parser.add_argument(
             "--claims.silver-filter-by-assessment",
             dest="claims_silver_filter_by_assessment",
-            type=lambda value: value.strip().lower() in {"1", "true", "yes", "on"},
-            default=_env_flag("CLAIMS_SILVER_FILTER_BY_ASSESSMENT", False),
+            type=_parse_bool,
+            default=_strict_env_flag("CLAIMS_SILVER_FILTER_BY_ASSESSMENT", False),
             help=(
                 "Filter miner claims using diagnostic claim assessment before Silver. "
                 "When false, assessment metadata is retained for scoring but does not "
@@ -5115,6 +5134,9 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_silver_paper_max_workers": int(getattr(config, "claims_silver_paper_max_workers", 1) or 1),
         "claims_silver_max_eligible_claims_per_miner": int(
             getattr(config, "claims_silver_max_eligible_claims_per_miner", 6) or 0
+        ),
+        "claims_silver_filter_by_assessment": bool(
+            getattr(config, "claims_silver_filter_by_assessment", False)
         ),
         "claims_silver_max_adjudication_cases_per_paper": int(
             getattr(config, "claims_silver_max_adjudication_cases_per_paper", 80) or 0

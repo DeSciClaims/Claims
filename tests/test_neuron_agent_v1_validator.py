@@ -19,10 +19,12 @@ from neurons.validator import (
     _compact_silver_batch_outcome,
     _is_agent_v1_artifact,
     _metadata_for_article,
+    _parse_bool,
     _run_config_snapshot,
     _scores_for_missing_submission_papers,
     _scores_with_missing_miners,
     _stable_hash,
+    _strict_env_flag,
     _source_context_map_from_payloads,
     _validation_findings_from_rows,
 )
@@ -75,6 +77,7 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
         claims_diagnostic_miner_max_workers=2,
         claims_diagnostic_miner_batch_size=10,
         claims_silver_max_eligible_claims_per_miner=6,
+        claims_silver_filter_by_assessment=True,
         claims_silver_max_adjudication_cases_per_paper=80,
         claims_payout_mode="winner-takes-most",
         claims_payout_winner_share=0.7,
@@ -105,6 +108,7 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_silver_consolidation_top_k"] == 7
     assert snapshot["claims_diagnostic_miner_batch_size"] == 10
     assert snapshot["claims_silver_max_eligible_claims_per_miner"] == 6
+    assert snapshot["claims_silver_filter_by_assessment"] is True
     assert snapshot["claims_silver_max_adjudication_cases_per_paper"] == 80
     assert snapshot["claims_run_heartbeat_interval"] == 60.0
     assert snapshot["claims_payout_mode"] == "winner-takes-most"
@@ -113,6 +117,30 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_payout_runner_up_decay"] == 0.5
     assert "api_key" not in json.dumps(snapshot).lower()
     assert "must-not-be-persisted" not in json.dumps(snapshot)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("true", True),
+        ("YES", True),
+        ("1", True),
+        ("false", False),
+        ("Off", False),
+        ("0", False),
+    ],
+)
+def test_parse_bool_accepts_explicit_values(value: str, expected: bool) -> None:
+    assert _parse_bool(value) is expected
+
+
+def test_assessment_filter_env_defaults_false_and_rejects_invalid(monkeypatch) -> None:
+    monkeypatch.delenv("CLAIMS_SILVER_FILTER_BY_ASSESSMENT", raising=False)
+    assert _strict_env_flag("CLAIMS_SILVER_FILTER_BY_ASSESSMENT", False) is False
+
+    monkeypatch.setenv("CLAIMS_SILVER_FILTER_BY_ASSESSMENT", "treu")
+    with pytest.raises(SystemExit, match="Invalid CLAIMS_SILVER_FILTER_BY_ASSESSMENT"):
+        _strict_env_flag("CLAIMS_SILVER_FILTER_BY_ASSESSMENT", False)
 
 
 def test_validator_run_heartbeat_starts_and_stops() -> None:
