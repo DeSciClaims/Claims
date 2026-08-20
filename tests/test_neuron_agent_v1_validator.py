@@ -434,6 +434,55 @@ def test_batched_diagnostic_usage_is_recorded_once_for_the_shared_operation(tmp_
     assert events[0]["metadata"]["uids"] == [9, 10]
 
 
+def test_batched_diagnostic_repair_usage_is_recorded_as_a_separate_operation(
+    tmp_path,
+) -> None:
+    validator = object.__new__(ClaimsValidator)
+    validator._active_model_usage = ModelUsageCollector(
+        network="testnet",
+        run_id="run1",
+        batch_id="batch1",
+    )
+    execution = DiagnosticBatchExecution(
+        reports={"S0001": {"findings": []}, "S0002": {"findings": []}},
+        usage={},
+        duration_seconds=8.0,
+        operation_id="run1:paper1:diagnostic-paper",
+        workspace=tmp_path,
+        usage_events=(
+            {
+                "operation_id": "run1:paper1:diagnostic-paper",
+                "usage": {"total_tokens": 100, "source": "test"},
+                "duration_seconds": 5.0,
+                "status": "success",
+                "error": None,
+            },
+            {
+                "operation_id": "run1:paper1:diagnostic-paper-repair",
+                "usage": {"total_tokens": 30, "source": "test"},
+                "duration_seconds": 3.0,
+                "status": "success",
+                "error": None,
+            },
+        ),
+    )
+
+    validator._record_batched_diagnostic_usage(
+        execution,
+        identity_by_ref={"S0001": (9, "paper1"), "S0002": (10, "paper1")},
+        config=SimpleNamespace(
+            harness="hermes-cli",
+            provider="openrouter",
+            model="openai/gpt-4o-mini",
+        ),
+    )
+
+    events = validator._active_model_usage.snapshot()
+    assert len(events) == 2
+    assert [event["total_tokens"] for event in events] == [100, 30]
+    assert [event["metadata"]["repair"] for event in events] == [False, True]
+
+
 def test_silver_missing_assigned_paper_scores_zero() -> None:
     silver = SilverRecord(
         silver_record_id="silver_paper1",

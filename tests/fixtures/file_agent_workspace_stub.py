@@ -31,12 +31,10 @@ def main() -> int:
 
 def _diagnostic_batch(task: dict[str, Any]) -> dict[str, Any]:
     return {
-        "reports": [
-            {
-                "submission_ref": row["submission_ref"],
-                "claim_assessments": [
-                    {
-                        "claim_ref": claim_ref,
+        "reports": {
+            row["submission_ref"]: {
+                "claim_assessments": {
+                    claim_ref: {
                         "evidence_status": "supported",
                         "paper_relevance": "central" if index == 0 else "supporting",
                         "priority_rank": index + 1,
@@ -44,11 +42,11 @@ def _diagnostic_batch(task: dict[str, Any]) -> dict[str, Any]:
                         "unsupported_assertions": [],
                     }
                     for index, claim_ref in enumerate(row.get("required_claim_refs", []))
-                ],
+                },
                 "findings": [],
             }
             for row in task.get("submissions", [])
-        ]
+        }
     }
 
 

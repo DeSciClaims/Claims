@@ -68,6 +68,15 @@ def test_diagnostic_paper_reviews_all_submissions_in_one_operation(tmp_path: Pat
     assert claim_cases["claims"][0]["claim_ref"] == "c0"
     assert "C01" not in json.dumps(claim_cases)
     assert "EV01" not in json.dumps(claim_cases)
+    skeleton = json.loads(
+        (result.workspace / "output_skeleton.json").read_text(encoding="utf-8")
+    )
+    assert skeleton == {
+        "reports": {
+            "S0001": {"claim_assessments": {"c0": None}, "findings": []},
+            "S0002": {"claim_assessments": {"c0": None}, "findings": []},
+        }
+    }
 
 
 def test_diagnostic_paper_rejects_an_incomplete_claim_partition(
@@ -116,7 +125,138 @@ def test_diagnostic_paper_rejects_an_incomplete_claim_partition(
     )
 
     assert result.reports == {}
-    assert "assess every claim exactly once" in str(result.error)
+    assert "missing or invalid claims=['c1']" in str(result.error)
+    assert len(result.usage_events) == 2
+
+
+def test_diagnostic_paper_repairs_only_missing_submission_slots(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    submissions = [
+        _submission("S0001", {"spans": [{"span_id": "span-1", "text": "Result."}]}),
+        _submission("S0002", {"spans": [{"span_id": "span-1", "text": "Result."}]}),
+    ]
+    calls: list[Path] = []
+
+    def fake_agent(command, *, output_path, **_kwargs):
+        calls.append(output_path)
+        refs = ["S0001"] if len(calls) == 1 else ["S0002"]
+        output_path.write_text(
+            json.dumps(
+                {
+                    "reports": {
+                        ref: {
+                            "claim_assessments": {"c0": _assessment()},
+                            "findings": [],
+                        }
+                        for ref in refs
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(diagnostic_batch_module, "_run_until_valid_output", fake_agent)
+
+    result = run_diagnostic_batch(
+        config=_config(tmp_path),
+        run_id="run-repair",
+        paper_id="paper-1",
+        submissions=submissions,
+    )
+
+    assert result.error is None
+    assert sorted(result.reports) == ["S0001", "S0002"]
+    assert [path.name for path in calls] == ["output.json", "repair_output.json"]
+    repair_skeleton = json.loads(
+        (result.workspace / "repair_output_skeleton.json").read_text(encoding="utf-8")
+    )
+    assert sorted(repair_skeleton["reports"]) == ["S0002"]
+    assert len(result.usage_events) == 2
+
+
+def test_diagnostic_paper_normalizes_safe_evidence_status_alias(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls = 0
+
+    def fake_agent(command, *, output_path, **_kwargs):
+        nonlocal calls
+        calls += 1
+        assessment = _assessment()
+        assessment["evidence_status"] = "partial_supported"
+        output_path.write_text(
+            json.dumps(
+                {
+                    "reports": {
+                        "S0001": {
+                            "claim_assessments": {"c0": assessment},
+                            "findings": [],
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(diagnostic_batch_module, "_run_until_valid_output", fake_agent)
+    result = run_diagnostic_batch(
+        config=_config(tmp_path),
+        run_id="run-alias",
+        paper_id="paper-1",
+        submissions=[
+            _submission("S0001", {"spans": [{"span_id": "span-1", "text": "Result."}]})
+        ],
+    )
+
+    assert result.error is None
+    assert calls == 1
+    assert (
+        result.reports["S0001"]["claim_assessments"][0]["evidence_status"]
+        == "partially_supported"
+    )
+
+
+def test_diagnostic_paper_preserves_valid_reports_when_repair_is_incomplete(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls = 0
+
+    def fake_agent(command, *, output_path, **_kwargs):
+        nonlocal calls
+        calls += 1
+        reports = (
+            {
+                "S0001": {
+                    "claim_assessments": {"c0": _assessment()},
+                    "findings": [],
+                }
+            }
+            if calls == 1
+            else {}
+        )
+        output_path.write_text(json.dumps({"reports": reports}), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(diagnostic_batch_module, "_run_until_valid_output", fake_agent)
+    result = run_diagnostic_batch(
+        config=_config(tmp_path),
+        run_id="run-partial",
+        paper_id="paper-1",
+        submissions=[
+            _submission("S0001", {"spans": [{"span_id": "span-1", "text": "Result."}]}),
+            _submission("S0002", {"spans": [{"span_id": "span-1", "text": "Result."}]}),
+        ],
+    )
+
+    assert sorted(result.reports) == ["S0001"]
+    assert "S0002" in str(result.error)
+    assert calls == 2
 
 
 def test_supported_claim_without_owned_evidence_is_downgraded(tmp_path: Path) -> None:
@@ -175,6 +315,16 @@ def _config(tmp_path: Path) -> DiagnosticBatchConfig:
         usage_grace_seconds=0.0,
         timeout_seconds=10.0,
     )
+
+
+def _assessment() -> dict:
+    return {
+        "evidence_status": "supported",
+        "paper_relevance": "central",
+        "priority_rank": 1,
+        "reason": "The deterministic fixture found claim-owned supporting evidence.",
+        "unsupported_assertions": [],
+    }
 
 
 def _submission(

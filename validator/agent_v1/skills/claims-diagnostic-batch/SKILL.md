@@ -5,7 +5,7 @@ argument-hint: "<diagnostic-paper-workspace>"
 allowed-tools: Read, Write, Glob, Grep
 metadata:
   category: claims-validation
-  version: "2.0.0"
+  version: "3.0.0"
   tags: [claims, validator, diagnostics, batch]
 ---
 
@@ -16,8 +16,9 @@ be judged independently against its own artifact, linked source payload,
 structural findings, and grounding findings.
 
 Do not compare or rank submissions. Do not transfer a finding from one
-submission to another. Submission references are opaque and must be copied
-exactly into the output.
+submission to another. The validator has already allocated every submission
+and claim identifier in `output_skeleton.json`. Preserve those object keys
+exactly. Never create, copy, rename, remove, or reorder identifiers.
 
 This is one paper-level review operation. Do not create miner shards, child
 tasks, or additional agent sessions.
@@ -40,11 +41,15 @@ sources. Do not repair artifacts and do not calculate final scores.
 
 ## Claim Assessments
 
-Each submission row links to `claim_assessment_cases.json`. Read it and emit
-exactly one compact assessment for every `claim_ref`. The references are local
-aliases such as `c0`; copy those aliases exactly. Do not emit or reconstruct the
-artifact's longer claim IDs, evidence IDs, or span IDs. The validator owns that
-mapping.
+Each submission row links to `claim_assessment_cases.json`. Read it and fill
+the matching null claim slot in `output_skeleton.json`. The references are
+local aliases such as `c0`; they remain object keys and must not be repeated in
+the assessment value. Do not emit or reconstruct the artifact's longer claim
+IDs, evidence IDs, or span IDs. The validator owns that mapping.
+
+When `task.json` contains `repair_only_the_preallocated_missing_or_invalid_claim_slots`,
+review only the slots present in the repair skeleton. Do not regenerate any
+submission or claim absent from that skeleton.
 
 For each claim assign:
 
@@ -82,24 +87,22 @@ importance metadata.
 
 ## Output Contract
 
-Write one strict JSON object containing exactly one report per expected
-`submission_ref`:
+Write one strict JSON object by replacing every null assessment value in the
+provided skeleton. Keep `submission_ref` and `claim_ref` as object keys:
 
 ```json
 {
-  "reports": [
-    {
-      "submission_ref": "S0001",
-      "claim_assessments": [
-        {
-          "claim_ref": "c0",
+  "reports": {
+    "S0001": {
+      "claim_assessments": {
+        "c0": {
           "evidence_status": "partially_supported",
           "paper_relevance": "central",
           "priority_rank": 1,
           "reason": "The evidence supports an association but not the causal wording.",
           "unsupported_assertions": ["The association is causal."]
         }
-      ],
+      },
       "findings": [
         {
           "dimension": "scope_calibration",
@@ -113,10 +116,11 @@ Write one strict JSON object containing exactly one report per expected
         }
       ]
     }
-  ]
+  }
 }
 ```
 
 Use an empty `findings` array when a submission has no concrete rigor issue,
-but always return the complete `claim_assessments` partition. Validate the
-complete output against `output_schema.json` before writing it.
+but always fill every claim slot in the supplied skeleton. The only allowed
+evidence status for partial support is exactly `partially_supported`. Validate
+the complete output against `output_schema.json` before writing it.

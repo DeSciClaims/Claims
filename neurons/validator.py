@@ -1538,30 +1538,52 @@ class ClaimsValidator:
             return
         paper_ids = sorted({paper_id for _uid, paper_id in identity_by_ref.values()})
         uids = sorted({uid for uid, _paper_id in identity_by_ref.values()})
-        self._active_model_usage.record(
+        usage_events = execution.usage_events or (
             {
-                "paper_id": paper_ids[0] if len(paper_ids) == 1 else None,
-                "stage_key": "diagnostic_validation",
-                "stage_label": "Diagnostic validation",
-                "role": "validator_rigor",
                 "operation_id": execution.operation_id,
-                "harness": config.harness,
-                "runtime": "diagnostic-file-paper",
-                "provider": config.provider or _provider_from_model_or_base(config.model, ""),
-                "model": config.model,
                 "usage": execution.usage,
+                "duration_seconds": execution.duration_seconds,
                 "status": "failed" if execution.error else "success",
                 "error": execution.error,
-                "duration_seconds": execution.duration_seconds,
-                "metadata": {
-                    "workflow": "diagnostic_file_paper",
-                    "submission_count": len(identity_by_ref),
-                    "completed_report_count": len(execution.reports),
-                    "uids": uids,
-                    "workspace": str(execution.workspace),
-                },
-            }
+            },
         )
+        for usage_event in usage_events:
+            event_operation_id = str(
+                usage_event.get("operation_id") or execution.operation_id
+            )
+            is_repair = event_operation_id.endswith("-repair")
+            self._active_model_usage.record(
+                {
+                    "paper_id": paper_ids[0] if len(paper_ids) == 1 else None,
+                    "stage_key": "diagnostic_validation",
+                    "stage_label": (
+                        "Diagnostic validation repair"
+                        if is_repair
+                        else "Diagnostic validation"
+                    ),
+                    "role": "validator_rigor",
+                    "operation_id": event_operation_id,
+                    "harness": config.harness,
+                    "runtime": "diagnostic-file-paper",
+                    "provider": config.provider
+                    or _provider_from_model_or_base(config.model, ""),
+                    "model": config.model,
+                    "usage": usage_event.get("usage") or {},
+                    "status": str(usage_event.get("status") or "success"),
+                    "error": usage_event.get("error"),
+                    "duration_seconds": float(
+                        usage_event.get("duration_seconds") or 0.0
+                    ),
+                    "metadata": {
+                        "workflow": "diagnostic_file_paper",
+                        "repair": is_repair,
+                        "submission_count": len(identity_by_ref),
+                        "completed_report_count": len(execution.reports),
+                        "uids": uids,
+                        "workspace": str(execution.workspace),
+                    },
+                }
+            )
 
     def _recover_backend_artifact_response(self, *, run_id: str, task: ClaimsTask, uid: int) -> Any | None:
         if self.backend_client is None:

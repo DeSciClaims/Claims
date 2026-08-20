@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from miner.agent_v1.runtime.usage import empty_usage, usage_from_cli_process
+from miner.agent_v1.runtime.usage import empty_usage, merge_usage, usage_from_cli_process
 
 from .file_agent_workflow import (
     FileAgentWorkflowConfig,
@@ -65,6 +65,28 @@ class DiagnosticSubmissionReport(_StrictModel):
 
 class DiagnosticBatchOutput(_StrictModel):
     reports: list[DiagnosticSubmissionReport]
+
+
+class DiagnosticAgentClaimAssessment(_StrictModel):
+    evidence_status: Literal[
+        "supported",
+        "partially_supported",
+        "unsupported",
+        "unverifiable",
+    ]
+    paper_relevance: Literal["central", "supporting", "peripheral"]
+    priority_rank: int = Field(ge=1)
+    reason: str = Field(min_length=1)
+    unsupported_assertions: list[str] = Field(default_factory=list)
+
+
+class DiagnosticAgentSubmissionReport(_StrictModel):
+    claim_assessments: dict[str, DiagnosticAgentClaimAssessment]
+    findings: list[DiagnosticFinding] = Field(default_factory=list)
+
+
+class DiagnosticAgentOutput(_StrictModel):
+    reports: dict[str, DiagnosticAgentSubmissionReport]
 
 
 @dataclass(frozen=True)
@@ -156,6 +178,15 @@ class DiagnosticBatchExecution:
     operation_id: str
     workspace: Path
     error: str | None = None
+    usage_events: tuple[dict[str, Any], ...] = ()
+
+
+@dataclass(frozen=True)
+class _DiagnosticValidation:
+    reports: dict[str, dict[str, Any]]
+    accepted_payload: dict[str, Any]
+    repair_claim_refs: dict[str, list[str]]
+    errors: tuple[str, ...]
 
 
 def run_diagnostic_batch(
@@ -205,6 +236,7 @@ def run_diagnostic_batch(
             }
         )
 
+    expected_submission_refs = {submission.submission_ref for submission in submissions}
     skill_source = (
         Path(__file__).resolve().parent
         / "skills"
@@ -217,25 +249,28 @@ def run_diagnostic_batch(
     skill_path.write_text(skill_source.read_text(encoding="utf-8"), encoding="utf-8")
     task_path = root / "task.json"
     schema_path = root / "output_schema.json"
+    skeleton_path = root / "output_skeleton.json"
     output_path = root / "output.json"
     stdout_path = root / "stdout.log"
     stderr_path = root / "stderr.log"
     output_path.unlink(missing_ok=True)
+    _write_json(skeleton_path, _output_skeleton(claim_cases_by_submission))
     _write_json(
         task_path,
         {
             "paper_ref": "P0001",
             "submissions": task_rows,
+            "output_skeleton_path": str(skeleton_path),
             "requirements": {
                 "review_every_submission_independently": True,
-                "emit_exactly_one_report_per_submission_ref": True,
-                "assess_every_claim_ref_exactly_once": True,
+                "fill_every_preallocated_submission_and_claim_slot": True,
+                "do_not_add_remove_or_rename_identifier_keys": True,
                 "do_not_compare_rank_or_copy_findings_between_submissions": True,
                 "use_only_each_submission_artifact_and_its_linked_source_payload": True,
             },
         },
     )
-    _write_json(schema_path, DiagnosticBatchOutput.model_json_schema())
+    _write_json(schema_path, DiagnosticAgentOutput.model_json_schema())
 
     file_config = FileAgentWorkflowConfig(
         root=config.root,
@@ -257,61 +292,194 @@ def run_diagnostic_batch(
             "Run this Claims paper-level diagnostic validation task.",
             f"Read the complete skill instructions from {skill_path}.",
             f"Read the complete task from {task_path}.",
+            f"Use the validator-owned identifier skeleton at {skeleton_path}.",
             f"Validate the result against {schema_path}.",
             f"Write exactly one JSON object to {output_path}.",
             "After writing valid output, finish immediately without another tool or model call.",
-            "Do not modify the task, schema, source, or submission files.",
+            "Do not modify the task, schema, skeleton, source, or submission files.",
         ]
     )
-    started_at = datetime.now(timezone.utc)
-    started = time.perf_counter()
-    completed = None
-    reports: dict[str, dict[str, Any]] = {}
-    error: str | None = None
+    overall_started = time.perf_counter()
+    usage_events: list[dict[str, Any]] = []
+    initial_error: str | None = None
+    initial_payload: dict[str, Any] = {}
     try:
-        completed = _run_until_valid_output(
-            [*command, query],
-            cwd=root,
+        _, usage, operation_duration = _invoke_diagnostic_agent(
+            config=config,
+            command=command,
+            root=root,
             output_path=output_path,
-            output_model=DiagnosticBatchOutput,
+            output_model=DiagnosticAgentOutput,
             stdout_path=stdout_path,
             stderr_path=stderr_path,
-            timeout_seconds=config.timeout_seconds,
-            poll_seconds=config.output_poll_seconds,
-            stable_seconds=config.output_stable_seconds,
-            usage_grace_seconds=config.usage_grace_seconds,
-            env=(
-                {**os.environ, "HERMES_MAX_TOKENS": str(config.max_tokens)}
-                if config.harness == "hermes-cli"
-                else None
-            ),
+            query=query,
         )
-        payload = DiagnosticBatchOutput.model_validate_json(output_path.read_text(encoding="utf-8"))
-        reports = _validated_reports(
-            payload,
-            expected_submission_refs={submission.submission_ref for submission in submissions},
-            claim_cases_by_submission=claim_cases_by_submission,
+        usage_events.append(
+            _usage_event(
+                operation_id=operation_id,
+                usage=usage,
+                duration_seconds=operation_duration,
+                status="success" if output_path.is_file() else "failed",
+            )
         )
+        initial_payload = _read_json_object(output_path)
     except Exception as exc:
-        error = f"{type(exc).__name__}: {exc}"
-
-    usage = (
-        usage_from_cli_process(
-            command,
-            completed.stdout if completed is not None else "",
-            completed.stderr if completed is not None else "",
-            cwd=root,
-            started_at=started_at,
-            model=config.model,
+        initial_error = f"{type(exc).__name__}: {exc}"
+        recorded_event = next(
+            (
+                event
+                for event in usage_events
+                if event["operation_id"] == operation_id
+            ),
+            None,
         )
-        if completed is not None
-        else empty_usage("diagnostic_batch_not_started")
+        if recorded_event is not None:
+            recorded_event["status"] = "failed"
+            recorded_event["error"] = initial_error
+        else:
+            usage_events.append(
+                _usage_event(
+                    operation_id=operation_id,
+                    usage=empty_usage("diagnostic_batch_failed"),
+                    duration_seconds=time.perf_counter() - overall_started,
+                    status="failed",
+                    error=initial_error,
+                )
+            )
+
+    initial_validation = _validate_agent_payload(
+        initial_payload,
+        expected_submission_refs=expected_submission_refs,
+        claim_cases_by_submission=claim_cases_by_submission,
     )
-    duration = time.perf_counter() - started
+    validation = initial_validation
+    repair_attempted = bool(validation.repair_claim_refs)
+    repair_error: str | None = None
+    if repair_attempted:
+        repair_operation_id = f"{operation_id}-repair"
+        repair_task_path = root / "repair_task.json"
+        repair_schema_path = root / "repair_output_schema.json"
+        repair_skeleton_path = root / "repair_output_skeleton.json"
+        repair_output_path = root / "repair_output.json"
+        repair_stdout_path = root / "repair_stdout.log"
+        repair_stderr_path = root / "repair_stderr.log"
+        repair_output_path.unlink(missing_ok=True)
+        repair_rows = [
+            {
+                **row,
+                "required_claim_refs": validation.repair_claim_refs[row["submission_ref"]],
+            }
+            for row in task_rows
+            if row["submission_ref"] in validation.repair_claim_refs
+        ]
+        repair_cases = {
+            submission_ref: {
+                claim_ref: claim_cases_by_submission[submission_ref][claim_ref]
+                for claim_ref in claim_refs
+            }
+            for submission_ref, claim_refs in validation.repair_claim_refs.items()
+        }
+        _write_json(repair_skeleton_path, _output_skeleton(repair_cases))
+        _write_json(repair_schema_path, DiagnosticAgentOutput.model_json_schema())
+        _write_json(
+            repair_task_path,
+            {
+                "paper_ref": "P0001",
+                "submissions": repair_rows,
+                "output_skeleton_path": str(repair_skeleton_path),
+                "validator_rejection": list(validation.errors),
+                "requirements": {
+                    "repair_only_the_preallocated_missing_or_invalid_claim_slots": True,
+                    "fill_every_preallocated_submission_and_claim_slot": True,
+                    "do_not_add_remove_or_rename_identifier_keys": True,
+                    "do_not_regenerate_already_valid_claim_assessments": True,
+                },
+            },
+        )
+        repair_command = _agent_command(
+            file_config,
+            model=config.model,
+            stage_key="diagnostic_batch_repair",
+        )
+        repair_query = "\n".join(
+            [
+                "Repair only the missing or invalid Claims diagnostic assessment slots.",
+                f"Read the complete skill instructions from {skill_path}.",
+                f"Read the targeted repair task from {repair_task_path}.",
+                f"Use the validator-owned repair skeleton at {repair_skeleton_path}.",
+                f"Validate the result against {repair_schema_path}.",
+                f"Write exactly one JSON object to {repair_output_path}.",
+                "Do not regenerate submissions or claims absent from the repair skeleton.",
+                "After writing valid output, finish immediately without another tool or model call.",
+            ]
+        )
+        repair_started = time.perf_counter()
+        try:
+            _, repair_usage, repair_duration = _invoke_diagnostic_agent(
+                config=config,
+                command=repair_command,
+                root=root,
+                output_path=repair_output_path,
+                output_model=DiagnosticAgentOutput,
+                stdout_path=repair_stdout_path,
+                stderr_path=repair_stderr_path,
+                query=repair_query,
+            )
+            usage_events.append(
+                _usage_event(
+                    operation_id=repair_operation_id,
+                    usage=repair_usage,
+                    duration_seconds=repair_duration,
+                    status="success" if repair_output_path.is_file() else "failed",
+                )
+            )
+            validation = _validate_agent_payload(
+                _merge_repair_payload(
+                    validation.accepted_payload,
+                    _read_json_object(repair_output_path),
+                    repair_claim_refs=validation.repair_claim_refs,
+                ),
+                expected_submission_refs=expected_submission_refs,
+                claim_cases_by_submission=claim_cases_by_submission,
+            )
+        except Exception as exc:
+            repair_error = f"{type(exc).__name__}: {exc}"
+            recorded_event = next(
+                (
+                    event
+                    for event in usage_events
+                    if event["operation_id"] == repair_operation_id
+                ),
+                None,
+            )
+            if recorded_event is not None:
+                recorded_event["status"] = "failed"
+                recorded_event["error"] = repair_error
+            else:
+                usage_events.append(
+                    _usage_event(
+                        operation_id=repair_operation_id,
+                        usage=empty_usage("diagnostic_batch_repair_failed"),
+                        duration_seconds=time.perf_counter() - repair_started,
+                        status="failed",
+                        error=repair_error,
+                    )
+                )
+
+    reports = validation.reports
+    unresolved_error = None
+    if validation.repair_claim_refs:
+        unresolved_error = (
+            "Diagnostic output remained incomplete after one targeted repair; "
+            + "; ".join(validation.errors)
+        )
+    error = repair_error or unresolved_error
+    duration = time.perf_counter() - overall_started
+    usage = merge_usage([event["usage"] for event in usage_events])
     _write_json(
         root / "manifest.json",
         {
-            "schema": "claims_diagnostic_paper_v2",
+            "schema": "claims_diagnostic_paper_v3",
             "operation_id": operation_id,
             "paper_id": paper_id,
             "submission_count": len(submissions),
@@ -321,7 +489,10 @@ def run_diagnostic_batch(
             "harness": config.harness,
             "model": config.model,
             "duration_seconds": round(duration, 3),
-            "status": "complete" if not error else "failed",
+            "status": "complete" if not error else "partial" if reports else "failed",
+            "repair_attempted": repair_attempted,
+            "initial_error": initial_error,
+            "initial_validation_errors": list(initial_validation.errors),
             "error": error,
         },
     )
@@ -332,7 +503,49 @@ def run_diagnostic_batch(
         operation_id=operation_id,
         workspace=root,
         error=error,
+        usage_events=tuple(usage_events),
     )
+
+
+def _invoke_diagnostic_agent(
+    *,
+    config: DiagnosticBatchConfig,
+    command: list[str],
+    root: Path,
+    output_path: Path,
+    output_model: type[BaseModel],
+    stdout_path: Path,
+    stderr_path: Path,
+    query: str,
+) -> tuple[Any, dict[str, Any], float]:
+    started_at = datetime.now(timezone.utc)
+    started = time.perf_counter()
+    completed = _run_until_valid_output(
+        [*command, query],
+        cwd=root,
+        output_path=output_path,
+        output_model=output_model,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        timeout_seconds=config.timeout_seconds,
+        poll_seconds=config.output_poll_seconds,
+        stable_seconds=config.output_stable_seconds,
+        usage_grace_seconds=config.usage_grace_seconds,
+        env=(
+            {**os.environ, "HERMES_MAX_TOKENS": str(config.max_tokens)}
+            if config.harness == "hermes-cli"
+            else None
+        ),
+    )
+    usage = usage_from_cli_process(
+        command,
+        completed.stdout,
+        completed.stderr,
+        cwd=root,
+        started_at=started_at,
+        model=config.model,
+    )
+    return completed, usage, time.perf_counter() - started
 
 
 def precomputed_rigor_manifest(execution: DiagnosticBatchExecution) -> dict[str, Any]:
@@ -367,37 +580,228 @@ def failed_diagnostic_report(message: str) -> dict[str, Any]:
     }
 
 
-def _validated_reports(
-    payload: DiagnosticBatchOutput,
+def _output_skeleton(
+    claim_cases_by_submission: dict[str, dict[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    return {
+        "reports": {
+            submission_ref: {
+                "claim_assessments": {
+                    claim_ref: None for claim_ref in sorted(claim_cases)
+                },
+                "findings": [],
+            }
+            for submission_ref, claim_cases in sorted(claim_cases_by_submission.items())
+        }
+    }
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Diagnostic output must be a JSON object: {path}")
+    return payload
+
+
+def _canonical_agent_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    reports = payload.get("reports")
+    if isinstance(reports, dict):
+        return {"reports": reports}
+    if not isinstance(reports, list):
+        return {"reports": {}}
+
+    normalized: dict[str, Any] = {}
+    for row in reports:
+        if not isinstance(row, dict):
+            continue
+        submission_ref = str(row.get("submission_ref") or "")
+        if not submission_ref or submission_ref in normalized:
+            continue
+        assessments = row.get("claim_assessments")
+        assessment_map: dict[str, Any] = {}
+        if isinstance(assessments, list):
+            for assessment in assessments:
+                if not isinstance(assessment, dict):
+                    continue
+                claim_ref = str(assessment.get("claim_ref") or "")
+                if claim_ref and claim_ref not in assessment_map:
+                    assessment_map[claim_ref] = {
+                        key: value
+                        for key, value in assessment.items()
+                        if key != "claim_ref"
+                    }
+        elif isinstance(assessments, dict):
+            assessment_map = assessments
+        normalized[submission_ref] = {
+            "claim_assessments": assessment_map,
+            "findings": row.get("findings") if isinstance(row.get("findings"), list) else [],
+        }
+    return {"reports": normalized}
+
+
+def _validate_agent_payload(
+    payload: dict[str, Any],
     *,
     expected_submission_refs: set[str],
     claim_cases_by_submission: dict[str, dict[str, dict[str, Any]]],
-) -> dict[str, dict[str, Any]]:
-    refs = [report.submission_ref for report in payload.reports]
-    if len(refs) != len(set(refs)) or set(refs) != expected_submission_refs:
-        raise ValueError(
-            "Diagnostic output must contain exactly one report per submission; "
-            f"expected={sorted(expected_submission_refs)} actual={sorted(refs)}"
-        )
+) -> _DiagnosticValidation:
+    canonical = _canonical_agent_payload(payload)
+    raw_reports = canonical["reports"]
     reports: dict[str, dict[str, Any]] = {}
-    for report in payload.reports:
-        cases = claim_cases_by_submission[report.submission_ref]
-        assessment_refs = [assessment.claim_ref for assessment in report.claim_assessments]
-        if len(assessment_refs) != len(set(assessment_refs)) or set(assessment_refs) != set(cases):
-            raise ValueError(
-                "Diagnostic output must assess every claim exactly once; "
-                f"submission={report.submission_ref} expected={sorted(cases)} "
-                f"actual={sorted(assessment_refs)}"
+    accepted_reports: dict[str, Any] = {}
+    repair_claim_refs: dict[str, list[str]] = {}
+    errors: list[str] = []
+
+    unexpected_submissions = sorted(set(raw_reports).difference(expected_submission_refs))
+    if unexpected_submissions:
+        errors.append(f"unknown submissions={unexpected_submissions}")
+    for submission_ref in sorted(expected_submission_refs):
+        cases = claim_cases_by_submission[submission_ref]
+        raw_report = raw_reports.get(submission_ref)
+        report_present = isinstance(raw_report, dict)
+        if not report_present:
+            raw_report = {}
+        raw_assessments = raw_report.get("claim_assessments")
+        if not isinstance(raw_assessments, dict):
+            raw_assessments = {}
+        accepted_assessments: dict[str, Any] = {}
+        invalid_refs: list[str] = []
+        unexpected_claims = sorted(set(raw_assessments).difference(cases))
+        if unexpected_claims:
+            errors.append(
+                f"submission={submission_ref} unknown claims={unexpected_claims}"
             )
+        for claim_ref in sorted(cases):
+            raw_assessment = raw_assessments.get(claim_ref)
+            if not isinstance(raw_assessment, dict):
+                invalid_refs.append(claim_ref)
+                continue
+            normalized_assessment = _normalize_assessment_aliases(raw_assessment)
+            try:
+                assessment = DiagnosticAgentClaimAssessment.model_validate(
+                    normalized_assessment
+                )
+            except Exception as exc:
+                invalid_refs.append(claim_ref)
+                errors.append(
+                    f"submission={submission_ref} claim={claim_ref} invalid: {exc}"
+                )
+                continue
+            accepted_assessments[claim_ref] = assessment.model_dump(mode="json")
+
+        findings: list[DiagnosticFinding] = []
+        raw_findings = raw_report.get("findings")
+        if isinstance(raw_findings, list):
+            for index, raw_finding in enumerate(raw_findings):
+                try:
+                    findings.append(DiagnosticFinding.model_validate(raw_finding))
+                except Exception as exc:
+                    errors.append(
+                        f"submission={submission_ref} finding={index} ignored: {exc}"
+                    )
+        accepted_reports[submission_ref] = {
+            "claim_assessments": accepted_assessments,
+            "findings": [finding.model_dump(mode="json") for finding in findings],
+        }
+        if not report_present or invalid_refs:
+            repair_claim_refs[submission_ref] = invalid_refs or sorted(cases)
+            if not report_present:
+                errors.append(f"submission={submission_ref} report missing")
+            elif invalid_refs:
+                errors.append(
+                    f"submission={submission_ref} missing or invalid claims={invalid_refs}"
+                )
+            continue
+
         assessments = [
-            _materialize_claim_assessment(assessment, cases[assessment.claim_ref])
-            for assessment in report.claim_assessments
+            _materialize_claim_assessment(
+                DiagnosticClaimAssessment(
+                    claim_ref=claim_ref,
+                    **accepted_assessments[claim_ref],
+                ),
+                cases[claim_ref],
+            )
+            for claim_ref in sorted(cases)
         ]
-        reports[report.submission_ref] = {
+        report = DiagnosticSubmissionReport(
+            submission_ref=submission_ref,
+            claim_assessments=[
+                DiagnosticClaimAssessment(
+                    claim_ref=claim_ref,
+                    **accepted_assessments[claim_ref],
+                )
+                for claim_ref in sorted(cases)
+            ],
+            findings=findings,
+        )
+        reports[submission_ref] = {
             "claim_assessments": assessments,
             "findings": _diagnostic_finding_rows(report, assessments),
         }
-    return reports
+
+    return _DiagnosticValidation(
+        reports=reports,
+        accepted_payload={"reports": accepted_reports},
+        repair_claim_refs=repair_claim_refs,
+        errors=tuple(errors),
+    )
+
+
+def _normalize_assessment_aliases(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload)
+    status = str(normalized.get("evidence_status") or "").strip().lower()
+    status = status.replace("-", "_").replace(" ", "_")
+    if status == "partial_supported":
+        status = "partially_supported"
+    normalized["evidence_status"] = status
+    return normalized
+
+
+def _merge_repair_payload(
+    accepted_payload: dict[str, Any],
+    repair_payload: dict[str, Any],
+    *,
+    repair_claim_refs: dict[str, list[str]],
+) -> dict[str, Any]:
+    merged = json.loads(json.dumps(accepted_payload))
+    merged_reports = merged.setdefault("reports", {})
+    repair_reports = _canonical_agent_payload(repair_payload)["reports"]
+    for submission_ref, allowed_claim_refs in repair_claim_refs.items():
+        repair_report = repair_reports.get(submission_ref)
+        if not isinstance(repair_report, dict):
+            continue
+        target_report = merged_reports.setdefault(
+            submission_ref,
+            {"claim_assessments": {}, "findings": []},
+        )
+        repair_assessments = repair_report.get("claim_assessments")
+        if isinstance(repair_assessments, dict):
+            for claim_ref in allowed_claim_refs:
+                if claim_ref in repair_assessments:
+                    target_report["claim_assessments"][claim_ref] = repair_assessments[
+                        claim_ref
+                    ]
+        repair_findings = repair_report.get("findings")
+        if isinstance(repair_findings, list) and repair_findings:
+            target_report["findings"] = repair_findings
+    return merged
+
+
+def _usage_event(
+    *,
+    operation_id: str,
+    usage: dict[str, Any],
+    duration_seconds: float,
+    status: str,
+    error: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "operation_id": operation_id,
+        "usage": usage,
+        "duration_seconds": duration_seconds,
+        "status": status,
+        "error": error,
+    }
 
 
 def _claim_assessment_cases(
