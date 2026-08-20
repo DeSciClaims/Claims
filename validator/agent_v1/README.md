@@ -96,8 +96,9 @@ python -m neurons.validator ...
 
 Identical source payloads are stored once. The same operation emits sparse rigor
 findings and one compact evidence/relevance assessment per claim. Miner shards
-and recursive repair calls are not used; invalid output becomes an explicit
-failed diagnostic report.
+and recursive repair are not used. The validator preallocates every anonymized
+submission/claim slot and permits one targeted repair call for unresolved slots.
+Valid reports survive; only submissions still incomplete after repair fail.
 
 ## Silver Scoring Smoke
 

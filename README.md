@@ -264,7 +264,7 @@ Useful validator flags:
 - `--claims.silver-adjudication-max-in-flight 32`: cap Silver model calls globally across papers and passes; use `0` for unlimited.
 - Hermes adjudication defaults to a skill-based agent workflow with mode-`0600` task/schema files and validated JSON output. Set `CLAIMS_SILVER_ADJUDICATION_HERMES_EXECUTION_MODE=oneshot` for the optional tool-free path; use `CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE=append` only for legacy CLI behavior.
 - `CLAIMS_SILVER_WORKFLOW_MODE=file-agent`: use one file-workspace comparator, two anonymous judges plus a conditional tiebreaker, deterministic consensus, and one global Silver canonicalizer per paper. Agents receive short validator-owned `cN`, `kN`, and `uN` references; internal IDs are restored after validation. The legacy graph workflow remains the default.
-- `--claims.diagnostic-miner-batch-size 10`: enable one diagnostic file-agent operation per paper. It reviews all available miners together; miners are not sharded. `1` keeps the original per-miner path.
+- `--claims.diagnostic-miner-batch-size 10`: enable one diagnostic file-agent operation per paper. It reviews all available miners together using validator-owned submission/claim slots; miners are not sharded. One targeted repair may fill invalid slots, while valid miner reports are preserved. `1` keeps the original per-miner path.
 - `--claims.diagnostic-max-workers 10`: run paper-level diagnostic operations concurrently.
 - `--claims.diagnostic-miner-max-workers 2`: control concurrent per-miner scoring when paper-level diagnostics are disabled.
 - `--claims.skip-diagnostic-validation`: skip diagnostic reports when Silver is the only scoring path for a large run.
