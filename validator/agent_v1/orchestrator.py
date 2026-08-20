@@ -156,6 +156,7 @@ def run_paper_silver_pipeline(
             "assessment_rejected_candidate_count": assessment_rejected_candidate_count,
             "case_budget_rejected_candidate_count": case_budget_rejected_candidate_count,
             "max_eligible_claims_per_miner": max_eligible_claims_per_miner,
+            "filter_by_assessment": filter_by_assessment,
             "max_adjudication_cases": max_adjudication_cases,
         },
     ))
@@ -479,7 +480,7 @@ def _select_assessed_candidates(
     filter_by_assessment: bool = False,
 ) -> list[ComparisonCandidate]:
     if assessments is None:
-        return candidates[:max_claims]
+        return [] if filter_by_assessment else candidates[:max_claims]
 
     assessment_by_claim_id = {
         str(row.get("claim_id") or ""): row
