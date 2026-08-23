@@ -169,9 +169,10 @@ def run_paper_silver_pipeline(
             comparison_edges = file_session.run_comparison()
             comparison_mode = "file_agent"
         except Exception as exc:
-            if not file_session.fallback_to_legacy:
-                raise
-            LOGGER.exception("File-agent comparison failed for paper=%s; using legacy comparison.", paper_id)
+            LOGGER.exception(
+                "File-agent comparison failed for paper=%s; using legacy comparison to keep paper adjudicable.",
+                paper_id,
+            )
             workflow_fallbacks.append(f"comparison:{type(exc).__name__}")
             comparison_edges = []
     else:

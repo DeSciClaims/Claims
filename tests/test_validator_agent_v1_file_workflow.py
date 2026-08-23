@@ -94,7 +94,7 @@ def test_file_comparator_requires_complete_global_review_and_maps_anonymous_ids(
     assert edges[0].metadata["workflow"] == "file_agent"
 
 
-def test_file_comparator_requires_complete_review_set(tmp_path) -> None:
+def test_file_comparator_salvages_incomplete_review_set(tmp_path) -> None:
     session = _session(
         tmp_path,
         [
@@ -111,11 +111,14 @@ def test_file_comparator_requires_complete_review_set(tmp_path) -> None:
         )
 
     session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
-    with pytest.raises(FileAgentWorkflowError, match="review set"):
-        session.run_comparison()
+    assert session.run_comparison() == []
+    projected = json.loads(
+        (session.root / "comparison" / "comparison_pairs.json").read_text()
+    )
+    assert projected["comparison_validation_issues"][0]["code"] == "review_set_invalid"
 
 
-def test_file_comparator_requires_substantive_no_relation_reason(tmp_path) -> None:
+def test_file_comparator_records_generic_no_relation_reason_without_failing(tmp_path) -> None:
     session = _session(
         tmp_path,
         [
@@ -138,8 +141,47 @@ def test_file_comparator_requires_substantive_no_relation_reason(tmp_path) -> No
         )
 
     session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
-    with pytest.raises(FileAgentWorkflowError, match="no substantive relation decision"):
-        session.run_comparison()
+    assert session.run_comparison() == []
+    projected = json.loads(
+        (session.root / "comparison" / "comparison_pairs.json").read_text()
+    )
+    assert projected["comparison_validation_issues"][0]["code"] == "no_substantive_relation_decision"
+
+
+def test_file_comparator_salvages_original_output_when_repair_fails(tmp_path) -> None:
+    session = _session(
+        tmp_path,
+        [
+            _candidate("bronze:C01", "bronze", None, "Treatment reduced mortality."),
+            _candidate("miner:uid_9:C01", "miner", "uid_9", "No treatment effect was found."),
+        ],
+    )
+
+    def fake_stage(_self, **kwargs):
+        if kwargs["stage_key"] == "comparison_repair":
+            raise FileAgentWorkflowError("repair model unavailable")
+        return SimpleNamespace(
+            payload=ComparisonAgentOutput(
+                submission_reviews=[
+                    ComparisonSubmissionReview(
+                        submission_candidate_id="c1",
+                        reference_relations=[],
+                        no_actionable_relation_reason="No match was found for this candidate.",
+                    )
+                ],
+            )
+        )
+
+    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    assert session.run_comparison() == []
+    projected = json.loads(
+        (session.root / "comparison" / "comparison_pairs.json").read_text()
+    )
+    issue_codes = [issue["code"] for issue in projected["comparison_validation_issues"]]
+    assert issue_codes == [
+        "no_substantive_relation_decision",
+        "comparison_repair_failed",
+    ]
 
 
 def test_file_comparator_repairs_incomplete_review_set(tmp_path) -> None:
@@ -235,7 +277,7 @@ def test_file_comparator_targeted_repair_can_relate_an_unreviewed_candidate(tmp_
     assert projected["unmatched_candidate_ids"] == []
 
 
-def test_file_comparator_rejects_unknown_relation_endpoint(tmp_path) -> None:
+def test_file_comparator_ignores_unknown_relation_endpoint(tmp_path) -> None:
     session = _session(
         tmp_path,
         [
@@ -264,11 +306,14 @@ def test_file_comparator_rejects_unknown_relation_endpoint(tmp_path) -> None:
         )
 
     session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
-    with pytest.raises(FileAgentWorkflowError, match="unknown candidate alias"):
-        session.run_comparison()
+    assert session.run_comparison() == []
+    projected = json.loads(
+        (session.root / "comparison" / "comparison_pairs.json").read_text()
+    )
+    assert projected["comparison_validation_issues"][0]["code"] == "unknown_relation_endpoint"
 
 
-def test_file_comparator_requires_exact_restatement_pair(tmp_path) -> None:
+def test_file_comparator_synthesizes_exact_restatement_pair(tmp_path) -> None:
     session = _session(
         tmp_path,
         [
@@ -294,8 +339,14 @@ def test_file_comparator_requires_exact_restatement_pair(tmp_path) -> None:
         )
 
     session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
-    with pytest.raises(FileAgentWorkflowError, match="missed exact-restatement"):
-        session.run_comparison()
+    edges = session.run_comparison()
+    assert len(edges) == 1
+    assert edges[0].relation == "semantic_equivalent"
+    assert edges[0].metadata["synthesized_by_validator"] is True
+    projected = json.loads(
+        (session.root / "comparison" / "comparison_pairs.json").read_text()
+    )
+    assert projected["comparison_validation_issues"][0]["code"] == "missed_exact_restatement_pairs"
 
 
 def test_file_judges_run_concurrently_and_tiebreak_only_unresolved_cases(tmp_path) -> None:
@@ -853,6 +904,52 @@ def test_orchestrator_uses_file_workflow_without_legacy_relation_or_importance_c
     assert result.silver_record.metadata["file_agent_workflow"]["manifest_sha256"] == "test-hash"
 
 
+def test_orchestrator_falls_back_to_legacy_when_file_comparison_fails() -> None:
+    workflow = _FakeWorkflow(fail_comparison=True)
+
+    def relation_classifier(left, right):
+        return CandidatePairEdge(
+            edge_id="legacy_edge_1",
+            left_candidate_id=left.candidate_id,
+            right_candidate_id=right.candidate_id,
+            relation="semantic_equivalent",
+            confidence=0.95,
+            rationale="Legacy classifier matched the restated claim.",
+        )
+
+    result = run_paper_silver_pipeline(
+        paper_id="paper",
+        bronze_artifact=_artifact("paper", "C01", "Treatment reduced mortality."),
+        miner_artifacts=[
+            MinerArtifactSubmission(
+                miner_id="uid_9",
+                artifact=_artifact("paper", "C01", "Treatment reduced mortality."),
+            )
+        ],
+        silver_record_id="silver",
+        adjudication_passes=[
+            StaticAdjudicationPass(
+                pass_id="pass_a",
+                adjudication_profile_id="static",
+                model_runtime_id="static",
+                dispositions_by_case_id={},
+                default_disposition="both_valid",
+            )
+        ],
+        relation_classifier=relation_classifier,
+        consolidation_relation_classifier=relation_classifier,
+        file_agent_workflow=workflow,  # type: ignore[arg-type]
+    )
+
+    assert workflow.session.comparison_calls == 1
+    assert workflow.session.adjudication_calls == 1
+    assert result.scores[0].score == 1.0
+    assert (
+        "comparison:FileAgentWorkflowError"
+        in result.silver_record.metadata["file_agent_workflow"]["fallbacks"]
+    )
+
+
 def test_file_agent_process_writes_and_validates_the_required_output_file(tmp_path, monkeypatch) -> None:
     session = _session(
         tmp_path,
@@ -1020,8 +1117,8 @@ class _RecordingPass:
 
 
 class _FakeWorkflow:
-    def __init__(self) -> None:
-        self.session = _FakeSession()
+    def __init__(self, *, fail_comparison: bool = False) -> None:
+        self.session = _FakeSession(fail_comparison=fail_comparison)
 
     def start_session(self, **_kwargs):
         return self.session
@@ -1030,7 +1127,8 @@ class _FakeWorkflow:
 class _FakeSession:
     fallback_to_legacy = False
 
-    def __init__(self) -> None:
+    def __init__(self, *, fail_comparison: bool = False) -> None:
+        self.fail_comparison = fail_comparison
         self.candidates = []
         self.comparison_calls = 0
         self.adjudication_calls = 0
@@ -1038,6 +1136,8 @@ class _FakeSession:
 
     def run_comparison(self):
         self.comparison_calls += 1
+        if self.fail_comparison:
+            raise FileAgentWorkflowError("comparison model unavailable")
         return [
             CandidatePairEdge(
                 edge_id="edge_1",

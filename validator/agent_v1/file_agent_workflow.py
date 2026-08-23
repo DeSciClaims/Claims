@@ -47,6 +47,18 @@ class FileAgentWorkflowError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class _ComparisonOutputValidation:
+    issues: list[dict[str, Any]]
+    missing_reviewed_aliases: set[str]
+
+    @property
+    def repair_message(self) -> str:
+        if not self.issues:
+            return ""
+        return "; ".join(str(issue["message"]) for issue in self.issues[:8])
+
+
 class _StrictOutputModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -307,74 +319,86 @@ class FileAgentWorkflowSession:
         output = result.payload
         assert isinstance(output, ComparisonAgentOutput)
         comparison_repair_error = ""
-        try:
-            _validate_comparison_output(
-                output,
-                candidates_by_alias=candidates_by_alias,
-                mandatory_pairs=mandatory_pairs,
-            )
-        except FileAgentWorkflowError as exc:
-            comparison_repair_error = str(exc)
-            expected_submission_aliases = {
-                alias
-                for alias, candidate in candidates_by_alias.items()
-                if candidate.origin == "miner"
-            }
-            missing_aliases = expected_submission_aliases.difference(
-                _comparison_reviewed_aliases(output)
-            )
+        validation = _validate_comparison_output(
+            output,
+            candidates_by_alias=candidates_by_alias,
+            mandatory_pairs=mandatory_pairs,
+        )
+        if validation.issues:
+            comparison_repair_error = validation.repair_message
+            missing_aliases = validation.missing_reviewed_aliases
             targeted_repair = bool(missing_aliases) and "review set" in comparison_repair_error
             repair_task = (
                 _targeted_comparison_repair_task(task, missing_aliases)
                 if targeted_repair
                 else task
             )
-            repair_result = self._run_stage(
-                stage_key="comparison_repair",
-                stage_label="Comparison graph repair",
-                model=self.config.comparison_model,
-                task={
-                    **repair_task,
-                    "rejected_comparison_output": (
-                        {
-                            "preserved_by_validator": True,
-                            "relation_count": len(_comparison_proposals(output)),
-                            "reviewed_candidate_count": len(
-                                _comparison_reviewed_aliases(output)
-                            ),
-                        }
-                        if targeted_repair
-                        else output.model_dump(mode="json")
-                    ),
-                    "validator_rejection": comparison_repair_error,
-                    "repair_target_candidate_ids": sorted(missing_aliases) if targeted_repair else [],
-                    "repair_requirements": {
-                        "return_the_complete_corrected_output": not targeted_repair,
-                        "return_complete_decisions_for_repair_targets": targeted_repair,
-                        "fix_every_validator_rejection": True,
-                        "do_not_remove_valid_relations_to_hide_an_error": True,
-                        "targeted_repair": targeted_repair,
+            try:
+                repair_result = self._run_stage(
+                    stage_key="comparison_repair",
+                    stage_label="Comparison graph repair",
+                    model=self.config.comparison_model,
+                    task={
+                        **repair_task,
+                        "rejected_comparison_output": (
+                            {
+                                "preserved_by_validator": True,
+                                "relation_count": len(_comparison_proposals(output)),
+                                "reviewed_candidate_count": len(
+                                    _comparison_reviewed_aliases(output)
+                                ),
+                            }
+                            if targeted_repair
+                            else output.model_dump(mode="json")
+                        ),
+                        "validator_rejection": comparison_repair_error,
+                        "repair_target_candidate_ids": sorted(missing_aliases) if targeted_repair else [],
+                        "repair_requirements": {
+                            "return_the_complete_corrected_output": not targeted_repair,
+                            "return_complete_decisions_for_repair_targets": targeted_repair,
+                            "fix_every_validator_rejection": True,
+                            "do_not_remove_valid_relations_to_hide_an_error": True,
+                            "targeted_repair": targeted_repair,
+                        },
                     },
-                },
-                output_model=ComparisonAgentOutput,
-                skill_path=_skill_path("claims-silver-comparator"),
-            )
-            repaired_output = repair_result.payload
-            assert isinstance(repaired_output, ComparisonAgentOutput)
-            output = (
-                _merge_targeted_comparison_repair(
-                    output,
-                    repaired_output,
-                    target_aliases=missing_aliases,
+                    output_model=ComparisonAgentOutput,
+                    skill_path=_skill_path("claims-silver-comparator"),
                 )
-                if targeted_repair
-                else repaired_output
-            )
-            _validate_comparison_output(
-                output,
-                candidates_by_alias=candidates_by_alias,
-                mandatory_pairs=mandatory_pairs,
-            )
+                repaired_output = repair_result.payload
+                assert isinstance(repaired_output, ComparisonAgentOutput)
+                output = (
+                    _merge_targeted_comparison_repair(
+                        output,
+                        repaired_output,
+                        target_aliases=missing_aliases,
+                    )
+                    if targeted_repair
+                    else repaired_output
+                )
+                validation = _validate_comparison_output(
+                    output,
+                    candidates_by_alias=candidates_by_alias,
+                    mandatory_pairs=mandatory_pairs,
+                )
+            except Exception as exc:
+                validation.issues.append(
+                    {
+                        "code": "comparison_repair_failed",
+                        "severity": "warning",
+                        "message": f"Comparison repair failed: {type(exc).__name__}: {exc}",
+                    }
+                )
+                LOGGER.warning(
+                    "Comparison repair failed for paper=%s; continuing with original salvageable relations: %s",
+                    self.paper_id,
+                    exc,
+                )
+            if validation.issues:
+                LOGGER.warning(
+                    "Comparison output for paper=%s has %d validation issue(s); continuing with salvageable relations.",
+                    self.paper_id,
+                    len(validation.issues),
+                )
 
         edges: list[CandidatePairEdge] = []
         seen_pairs: set[tuple[str, str]] = set()
@@ -385,9 +409,9 @@ class FileAgentWorkflowSession:
             left = candidates_by_alias.get(proposal.reference_candidate_id)
             right = candidates_by_alias.get(proposal.submission_candidate_id)
             if left is None or right is None:
-                raise FileAgentWorkflowError("Comparison agent returned an unknown candidate alias.")
+                continue
             if left.origin != "bronze" or right.origin != "miner":
-                raise FileAgentWorkflowError("Comparison agent returned a pair with invalid candidate sides.")
+                continue
             pair_key = (left.candidate_id, right.candidate_id)
             if pair_key in seen_pairs:
                 continue
@@ -403,6 +427,40 @@ class FileAgentWorkflowSession:
                     rationale=proposal.rationale,
                     filter_sources=["file_agent_global_review"],
                     metadata={"workflow": "file_agent", "workspace_id": self.workspace_id},
+                )
+            )
+        for reference_alias, submission_alias in sorted(mandatory_pairs):
+            left = candidates_by_alias.get(reference_alias)
+            right = candidates_by_alias.get(submission_alias)
+            if left is None or right is None or left.origin != "bronze" or right.origin != "miner":
+                continue
+            pair_key = (left.candidate_id, right.candidate_id)
+            if pair_key in seen_pairs:
+                continue
+            seen_pairs.add(pair_key)
+            edge_id = _stable_id(
+                "file_edge",
+                self.paper_id,
+                *pair_key,
+                "mandatory_exact_restatement",
+            )
+            edges.append(
+                CandidatePairEdge(
+                    edge_id=edge_id,
+                    left_candidate_id=left.candidate_id,
+                    right_candidate_id=right.candidate_id,
+                    relation="semantic_equivalent",
+                    confidence=1.0,
+                    rationale=(
+                        "Validator synthesized this semantic-equivalent edge because the "
+                        "reference and submission statements are exact normalized restatements."
+                    ),
+                    filter_sources=["file_agent_global_review", "validator_mandatory_exact_restatement"],
+                    metadata={
+                        "workflow": "file_agent",
+                        "workspace_id": self.workspace_id,
+                        "synthesized_by_validator": True,
+                    },
                 )
             )
         self._write_json(
@@ -422,6 +480,7 @@ class FileAgentWorkflowSession:
                 ),
                 "comparison_repaired": bool(comparison_repair_error),
                 "comparison_initial_rejection": comparison_repair_error or None,
+                "comparison_validation_issues": validation.issues,
             },
         )
         return sorted(edges, key=lambda edge: (-edge.confidence, edge.edge_id))
@@ -1168,7 +1227,8 @@ def _validate_comparison_output(
     *,
     candidates_by_alias: dict[str, ComparisonCandidate],
     mandatory_pairs: set[tuple[str, str]],
-) -> None:
+) -> _ComparisonOutputValidation:
+    issues: list[dict[str, Any]] = []
     expected_submissions = {
         alias for alias, candidate in candidates_by_alias.items() if candidate.origin == "miner"
     }
@@ -1179,10 +1239,19 @@ def _validate_comparison_output(
         {alias for alias in reviewed_submissions if reviewed_submissions.count(alias) > 1}
     )
     if missing_reviewed or unknown_reviewed or duplicate_reviewed:
-        raise FileAgentWorkflowError(
-            "Comparison agent review set is incomplete or invalid; "
-            f"missing={missing_reviewed[:8]} unknown={unknown_reviewed[:8]} "
-            f"duplicate={duplicate_reviewed[:8]}"
+        issues.append(
+            {
+                "code": "review_set_invalid",
+                "severity": "warning",
+                "message": (
+                    "Comparison agent review set is incomplete or invalid; "
+                    f"missing={missing_reviewed[:8]} unknown={unknown_reviewed[:8]} "
+                    f"duplicate={duplicate_reviewed[:8]}"
+                ),
+                "missing": missing_reviewed,
+                "unknown": unknown_reviewed,
+                "duplicate": duplicate_reviewed,
+            }
         )
     generic_no_relation_reasons = {
         "no actionable relationship found",
@@ -1195,15 +1264,31 @@ def _validate_comparison_output(
             review.no_actionable_relation_reason.lower().replace("_", " ").split()
         ).rstrip(".")
         if review.reference_relations and reason:
-            raise FileAgentWorkflowError(
-                f"Comparison review {review.submission_candidate_id} has relations and a no-relation reason."
+            issues.append(
+                {
+                    "code": "relations_with_no_relation_reason",
+                    "severity": "warning",
+                    "message": (
+                        f"Comparison review {review.submission_candidate_id} has relations "
+                        "and a no-relation reason."
+                    ),
+                    "submission_candidate_id": review.submission_candidate_id,
+                }
             )
         if not review.reference_relations and (
             len(reason.split()) < 5
             or any(reason.startswith(generic) for generic in generic_no_relation_reasons)
         ):
-            raise FileAgentWorkflowError(
-                f"Comparison review {review.submission_candidate_id} has no substantive relation decision."
+            issues.append(
+                {
+                    "code": "no_substantive_relation_decision",
+                    "severity": "warning",
+                    "message": (
+                        f"Comparison review {review.submission_candidate_id} has no substantive "
+                        "relation decision."
+                    ),
+                    "submission_candidate_id": review.submission_candidate_id,
+                }
             )
 
     proposals: dict[tuple[str, str], ComparisonPairProposal] = {}
@@ -1211,14 +1296,51 @@ def _validate_comparison_output(
         left = candidates_by_alias.get(proposal.reference_candidate_id)
         right = candidates_by_alias.get(proposal.submission_candidate_id)
         if left is None or right is None:
-            raise FileAgentWorkflowError("Comparison agent returned an unknown candidate alias.")
+            issues.append(
+                {
+                    "code": "unknown_relation_endpoint",
+                    "severity": "warning",
+                    "message": "Comparison agent returned an unknown candidate alias.",
+                    "reference_candidate_id": proposal.reference_candidate_id,
+                    "submission_candidate_id": proposal.submission_candidate_id,
+                }
+            )
+            continue
         if left.origin != "bronze" or right.origin != "miner":
-            raise FileAgentWorkflowError("Comparison agent returned a pair with invalid candidate sides.")
+            issues.append(
+                {
+                    "code": "invalid_relation_sides",
+                    "severity": "warning",
+                    "message": "Comparison agent returned a pair with invalid candidate sides.",
+                    "reference_candidate_id": proposal.reference_candidate_id,
+                    "submission_candidate_id": proposal.submission_candidate_id,
+                }
+            )
+            continue
         if proposal.relation not in ACTIONABLE_RELATIONS:
-            raise FileAgentWorkflowError("Comparison agent emitted a non-actionable relation as a pair.")
+            issues.append(
+                {
+                    "code": "non_actionable_relation_pair",
+                    "severity": "warning",
+                    "message": "Comparison agent emitted a non-actionable relation as a pair.",
+                    "reference_candidate_id": proposal.reference_candidate_id,
+                    "submission_candidate_id": proposal.submission_candidate_id,
+                    "relation": proposal.relation,
+                }
+            )
+            continue
         key = (proposal.reference_candidate_id, proposal.submission_candidate_id)
         if key in proposals:
-            raise FileAgentWorkflowError(f"Comparison agent emitted duplicate relation {key}.")
+            issues.append(
+                {
+                    "code": "duplicate_relation",
+                    "severity": "warning",
+                    "message": f"Comparison agent emitted duplicate relation {key}.",
+                    "reference_candidate_id": proposal.reference_candidate_id,
+                    "submission_candidate_id": proposal.submission_candidate_id,
+                }
+            )
+            continue
         proposals[key] = proposal
 
     missing_mandatory = sorted(
@@ -1227,9 +1349,24 @@ def _validate_comparison_output(
         if pair not in proposals or proposals[pair].relation != "semantic_equivalent"
     )
     if missing_mandatory:
-        raise FileAgentWorkflowError(
-            f"Comparison agent missed exact-restatement pairs: {missing_mandatory[:8]}"
+        issues.append(
+            {
+                "code": "missed_exact_restatement_pairs",
+                "severity": "warning",
+                "message": f"Comparison agent missed exact-restatement pairs: {missing_mandatory[:8]}",
+                "pairs": [
+                    {
+                        "reference_candidate_id": reference_id,
+                        "submission_candidate_id": submission_id,
+                    }
+                    for reference_id, submission_id in missing_mandatory
+                ],
+            }
         )
+    return _ComparisonOutputValidation(
+        issues=issues,
+        missing_reviewed_aliases=set(missing_reviewed),
+    )
 
 
 def _comparison_reviewed_aliases(output: ComparisonAgentOutput) -> set[str]:
