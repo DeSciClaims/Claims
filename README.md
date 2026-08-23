@@ -61,11 +61,52 @@ Set at least:
 OPENROUTER_API_KEY=...
 ```
 
+### Ubuntu Installers
+
+The public installers set up system packages, Python, Claims dependencies,
+Hermes, and a role-specific `.env` template:
+
+```bash
+git clone https://github.com/DeSciClaims/Claims.git
+cd Claims
+
+./scripts/install-miner.sh
+# or
+./scripts/install-validator.sh
+```
+
+They do not create, copy, register, or fund Bittensor wallets. The `.env` file
+configures provider, backend, and runtime settings; it does not select a
+wallet. Create or restore and register the wallet separately, then pass its
+local names with `--wallet.name <WALLET_NAME>` and
+`--wallet.hotkey <HOTKEY_NAME>` in the command below. Bittensor normally reads
+them from `~/.bittensor/wallets/`.
+
+The validator also requires the private reference miner. Generate a unique key
+on that validator and send only its public half to a repository administrator:
+
+```bash
+./scripts/prepare-reference-access.sh
+```
+
+After the administrator adds it to `claims-reference-miner` as a read-only
+GitHub deploy key and the verified GitHub host key is present in
+`~/.ssh/known_hosts`, install the validator and reference package together:
+
+```bash
+./scripts/install-validator.sh \
+  --reference-repo-url git@github.com:DeSciClaims/claims-reference-miner.git \
+  --reference-key ~/.ssh/claims-reference-miner \
+  --reference-repo-version <PINNED_COMMIT>
+```
+
+Read-only access still allows the external validator operator to inspect the
+reference source.
+
 PDF inputs use `pdf-inspector` by default. `GROBID_URL` is only required when
 you explicitly choose `--pdf-extraction-method grobid`.
 
 ## Run The Miner Locally
-
 Use `agent_v1` for new miner runs. It mounts the ARA compiler skill, runs an
 agent loop, validates the structured agent JSON artifact, and records runtime
 metadata such as elapsed time, attempts, token usage, and cost when the backend
