@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .base import AgentRequest, AgentResult
@@ -25,6 +26,7 @@ class SubprocessAgentRuntime:
                 "The command receives --run-dir, --skill-dir, --request, and --output arguments."
             )
         started = time.time()
+        started_at = datetime.now(timezone.utc)
         output_path = run_dir / request.expected_output_path
         command = [
             *self.config.cli_command,
@@ -52,16 +54,24 @@ class SubprocessAgentRuntime:
             elapsed = round(time.time() - started, 3)
             stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else str(exc.stdout or "")
             stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else str(exc.stderr or "")
+            model = _model_from_agent_cli(command)
             manifest = {
                 "runtime": self.runtime_name,
                 "runtime_alias": self.config.runtime,
                 "harness": _harness_from_agent_cli(command),
                 "command": command,
-                "model": _model_from_agent_cli(command),
+                "model": model,
                 "returncode": "timeout",
                 "elapsed_seconds": elapsed,
                 "timeout_seconds": self.config.timeout_seconds,
-                "usage": usage_from_cli_process(command, stdout, stderr),
+                "usage": usage_from_cli_process(
+                    command,
+                    stdout,
+                    stderr,
+                    cwd=run_dir,
+                    started_at=started_at,
+                    model=model,
+                ),
                 "skill": skill_pack.manifest(),
                 "output_exists": output_path.exists(),
             }
@@ -110,7 +120,14 @@ class SubprocessAgentRuntime:
             "model": model,
             "returncode": completed.returncode,
             "elapsed_seconds": elapsed,
-            "usage": usage_from_cli_process(command, completed.stdout, completed.stderr),
+            "usage": usage_from_cli_process(
+                command,
+                completed.stdout,
+                completed.stderr,
+                cwd=run_dir,
+                started_at=started_at,
+                model=model,
+            ),
             "skill": skill_pack.manifest(),
             "output_exists": output_path.exists(),
         }

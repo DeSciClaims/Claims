@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import sqlite3
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -345,6 +347,54 @@ def test_agent_cli_runtime_recovers_valid_output_on_nonzero_exit(monkeypatch, tm
     assert manifest["returncode"] == 1
     assert manifest["output_recovered"] is True
     assert manifest["recovery_reason"] == "nonzero_exit_with_valid_output"
+
+
+def test_agent_cli_runtime_recovers_hermes_usage_from_session_store(monkeypatch, tmp_path: Path) -> None:
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir()
+    db_path = hermes_home / "state.db"
+    connection = sqlite3.connect(db_path)
+    connection.execute(
+        """
+        CREATE TABLE sessions (
+            cwd TEXT, started_at REAL, input_tokens INTEGER, output_tokens INTEGER,
+            cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER,
+            estimated_cost_usd REAL, actual_cost_usd REAL
+        )
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    config = AgentV1Config.from_env(Path.cwd())
+    config.runtime = "agent-cli"
+    config.cli_command = ["hermes", "--model", "openai/gpt-5.6-luna-pro"]
+    skill_pack = load_skill_pack(Path("miner/agent_v1/skills/compiler"))
+    request = AgentRequest(
+        paper={"paper_id": "paper_a"},
+        source_payload_path="source_payload.json",
+    )
+    payload = _valid_ara_payload()
+
+    def fake_run(command, **_kwargs):
+        (tmp_path / request.expected_output_path).write_text(json.dumps(payload), encoding="utf-8")
+        connection = sqlite3.connect(db_path)
+        connection.execute(
+            "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (str(tmp_path.resolve()), time.time(), 100, 25, 40, 5, 7, 0.071, None),
+        )
+        connection.commit()
+        connection.close()
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    monkeypatch.setattr("miner.agent_v1.runtime.subprocess_cli.subprocess.run", fake_run)
+
+    result = SubprocessAgentRuntime(config).run_skill(skill_pack=skill_pack, run_dir=tmp_path, request=request)
+
+    assert result.manifest["usage"]["cost_usd"] == 0.071
+    assert result.manifest["usage"]["source"] == "hermes_sessions_export"
+    assert result.manifest["usage"]["total_tokens"] == 177
 
 
 def test_langchain_structured_response_payload_accepts_artifact_dict() -> None:
