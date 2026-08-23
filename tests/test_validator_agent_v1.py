@@ -467,6 +467,44 @@ def test_local_cli_reference_miner_client_generates_missing_bronze(tmp_path: Pat
     assert Path(record.artifact_path).exists()
 
 
+def test_local_cli_reference_miner_attaches_subprocess_usage_to_bronze(tmp_path: Path) -> None:
+    fake_cli = (
+        "import argparse,json,pathlib,sys;"
+        "p=argparse.ArgumentParser();"
+        "p.add_argument('--artifact-json');p.add_argument('--output-dir');p.add_argument('--paper-id');p.add_argument('--reference-release-id');"
+        "a=p.parse_args();"
+        "o=pathlib.Path(a.output_dir);o.mkdir(parents=True,exist_ok=True);"
+        "artifact=json.loads(pathlib.Path(a.artifact_json).read_text());"
+        "(o/'agent_output.json').write_text(json.dumps(artifact));"
+        "(o/'source_payload.json').write_text(json.dumps({'spans': []}));"
+        "manifest={'bronze_record_id':'bronze_cli','paper_id':artifact['paper']['paper_id'],"
+        "'reference_release_id':a.reference_release_id,'reference_profile_id':'fake',"
+        "'model_runtime_id':'openai/gpt-5.6-luna-pro','artifact_sha256':'hash',"
+        "'artifact_path':'agent_output.json','source_payload_path':'source_payload.json',"
+        "'metadata':{'model':'openai/gpt-5.6-luna-pro','harness':'hermes-cli'}};"
+        "(o/'bronze_manifest.json').write_text(json.dumps(manifest));"
+        "print('CLAIMS_HERMES_USAGE_JSON='+json.dumps({'prompt_tokens':100,'completion_tokens':25,"
+        "'reasoning_tokens':5,'total_tokens':130,'estimated_cost_usd':0.071}), file=sys.stderr);"
+        "print(json.dumps(manifest))"
+    )
+    client = LocalCliReferenceMinerClient(
+        bronze_root=tmp_path / "bronze",
+        command=[sys.executable, "-c", fake_cli],
+    )
+
+    record = client.get_or_create_bronze(
+        request=ReferenceMinerInput(paper_id="paper", run_id="run_001", batch_id="batch_001", artifact=_valid_artifact()),
+        reference_release_id="reference-v0",
+    )
+
+    metrics = record.metadata["runtime_metrics"]
+    assert metrics["cost_usd"] == 0.071
+    assert metrics["cost_kind"] == "estimated"
+    assert metrics["usage_source"] == "hermes_oneshot"
+    assert metrics["token_usage"]["total_tokens"] == 130
+    assert record.metadata["generated_for_run_id"] == "run_001"
+
+
 def test_local_cli_reference_miner_resolves_python_to_current_interpreter() -> None:
     resolved = _resolve_executable(["python", "-m", "claims_reference_miner"])
 

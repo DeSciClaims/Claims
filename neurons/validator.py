@@ -4627,7 +4627,7 @@ def _model_id_or_empty(value: Any) -> str:
 
 
 def _provider_from_model_or_base(model: str, api_base: str = "") -> str:
-    if model.startswith("openrouter/") or "openrouter.ai/api" in api_base:
+    if model.startswith("openrouter/") or "/" in model or "openrouter.ai/api" in api_base:
         return "openrouter"
     if api_base:
         return api_base.rstrip("/").removeprefix("https://").removeprefix("http://")

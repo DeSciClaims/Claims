@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shlex
 import shutil
 import subprocess
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
+
+from miner.agent_v1.runtime.usage import usage_from_cli_process
 
 from .artifact_summary import summarize_agent_artifact_path
 
@@ -146,7 +152,10 @@ class LocalCliReferenceMinerClient:
             command.extend(["--claims-repo", str(self.claims_repo)])
         command = _resolve_executable(command)
         logger.info("Running private reference miner command: %s", " ".join(command))
+        started = time.time()
+        started_at = datetime.now(timezone.utc)
         completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=3600)
+        elapsed = round(time.time() - started, 3)
         if completed.stdout.strip():
             logger.info("private reference miner stdout: %s", completed.stdout.strip())
         if completed.stderr.strip():
@@ -157,11 +166,31 @@ class LocalCliReferenceMinerClient:
                 f"with exit={completed.returncode}: {completed.stderr.strip() or completed.stdout.strip()}"
             )
         record = self.get_bronze(paper_id=request.paper_id, reference_release_id=reference_release_id)
+        runtime_metrics = record.metadata.get("runtime_metrics") if isinstance(record.metadata.get("runtime_metrics"), dict) else {}
+        if not _runtime_metrics_has_usage(runtime_metrics):
+            model = _reference_model_from_record(record)
+            usage = usage_from_cli_process(
+                _reference_usage_probe_command(command),
+                completed.stdout,
+                completed.stderr,
+                cwd=output_dir,
+                started_at=started_at,
+                model=model,
+            )
+            if _usage_has_value(usage):
+                runtime_metrics = _runtime_metrics_from_usage(
+                    usage,
+                    elapsed_seconds=elapsed,
+                    model=model,
+                    harness=_reference_harness_from_record(record),
+                )
         record.metadata = {
             **record.metadata,
             "generated_for_run_id": request.run_id,
             "generated_for_batch_id": request.batch_id,
         }
+        if runtime_metrics:
+            record.metadata["runtime_metrics"] = runtime_metrics
         return record
 
     def _materialize_input(self, request: ReferenceMinerInput) -> tuple[Path, str]:
@@ -306,3 +335,92 @@ def _resolve_executable(command: list[str]) -> list[str]:
     if resolved:
         return [resolved, *command[1:]]
     return command
+
+
+def _reference_usage_probe_command(command: list[str]) -> list[str]:
+    for env_name in ("CLAIMS_REFERENCE_MINER_INNER_COMMAND", "CLAIMS_AGENT_INNER_COMMAND"):
+        env_command = os.getenv(env_name, "").strip()
+        if not env_command:
+            continue
+        try:
+            parsed = shlex.split(env_command)
+        except ValueError:
+            parsed = env_command.split()
+        if parsed:
+            return parsed
+    return command
+
+
+def _reference_model_from_record(record: BronzeRecord) -> str:
+    metadata = record.metadata if isinstance(record.metadata, dict) else {}
+    runtime_metrics = metadata.get("runtime_metrics") if isinstance(metadata.get("runtime_metrics"), dict) else {}
+    models = runtime_metrics.get("models") if isinstance(runtime_metrics.get("models"), list) else []
+    return (
+        str(metadata.get("model") or "")
+        or str(getattr(record, "model_runtime_id", "") or "")
+        or (str(models[0]) if len(models) == 1 else "")
+        or os.getenv("CLAIMS_REFERENCE_MINER_MODEL", "")
+        or os.getenv("SUBNET_CLAIMS_REFERENCE_MODEL", "")
+        or os.getenv("OPENROUTER_MODEL", "")
+    )
+
+
+def _reference_harness_from_record(record: BronzeRecord) -> str:
+    metadata = record.metadata if isinstance(record.metadata, dict) else {}
+    runtime_metrics = metadata.get("runtime_metrics") if isinstance(metadata.get("runtime_metrics"), dict) else {}
+    return str(metadata.get("harness") or runtime_metrics.get("harness") or metadata.get("runtime") or "unknown")
+
+
+def _runtime_metrics_has_usage(metrics: dict[str, Any]) -> bool:
+    token_usage = metrics.get("token_usage") if isinstance(metrics.get("token_usage"), dict) else {}
+    return any(
+        value is not None
+        for value in (
+            metrics.get("cost_usd"),
+            token_usage.get("prompt_tokens"),
+            token_usage.get("completion_tokens"),
+            token_usage.get("total_tokens"),
+        )
+    )
+
+
+def _usage_has_value(usage: dict[str, Any]) -> bool:
+    return any(
+        usage.get(key) is not None
+        for key in (
+            "prompt_tokens",
+            "completion_tokens",
+            "reasoning_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens",
+            "total_tokens",
+            "cost_usd",
+        )
+    )
+
+
+def _runtime_metrics_from_usage(
+    usage: dict[str, Any],
+    *,
+    elapsed_seconds: float,
+    model: str,
+    harness: str,
+) -> dict[str, Any]:
+    return {
+        "elapsed_seconds": elapsed_seconds,
+        "attempt_count": 1,
+        "harness": harness,
+        "harnesses": [harness] if harness and harness != "unknown" else [],
+        "models": [model] if model else [],
+        "token_usage": {
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "completion_tokens": usage.get("completion_tokens"),
+            "reasoning_tokens": usage.get("reasoning_tokens"),
+            "cache_read_tokens": usage.get("cache_read_tokens"),
+            "cache_write_tokens": usage.get("cache_write_tokens"),
+            "total_tokens": usage.get("total_tokens"),
+        },
+        "cost_usd": usage.get("cost_usd"),
+        "cost_kind": usage.get("cost_kind") or ("estimated" if usage.get("cost_usd") is not None else "unavailable"),
+        "usage_source": usage.get("source") or "unavailable",
+    }

@@ -20,6 +20,7 @@ from neurons.validator import (
     _is_agent_v1_artifact,
     _metadata_for_article,
     _parse_bool,
+    _provider_from_model_or_base,
     _run_config_snapshot,
     _scores_for_missing_submission_papers,
     _scores_with_missing_miners,
@@ -42,6 +43,10 @@ def test_protocol_can_carry_source_payload() -> None:
     synapse = ClaimExtractionSynapse(source_payload={"spans": [{"span_id": "s1", "text": "Grounded text."}]})
 
     assert synapse.source_payload == {"spans": [{"span_id": "s1", "text": "Grounded text."}]}
+
+
+def test_slash_style_model_id_is_classified_as_openrouter() -> None:
+    assert _provider_from_model_or_base("openai/gpt-5.6-luna-pro", "") == "openrouter"
 
 
 def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) -> None:
