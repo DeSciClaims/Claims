@@ -20,6 +20,8 @@ Options:
   -h, --help                    Show this help
 
 Run this script from a public Claims checkout on Ubuntu 22.04 or newer.
+Hermes is the only external CLI harness installed automatically. Install and
+authenticate Codex CLI or Claude CLI separately before selecting either harness.
 It never creates, copies, registers, or funds a Bittensor wallet.
 EOF
 }
@@ -165,7 +167,7 @@ if [[ "${skip_hermes}" != true ]]; then
     installer="$(mktemp "${TMPDIR:-/tmp}/claims-hermes-install.XXXXXX")"
     trap 'rm -f "${installer}"' EXIT
     curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o "${installer}"
-    bash "${installer}" --skip-setup
+    bash "${installer}" --skip-setup --skip-browser
     rm -f "${installer}"
     trap - EXIT
   fi
@@ -177,6 +179,50 @@ if [[ ! -f "${env_file}" ]]; then
   echo "Created ${env_file} from ${env_template}."
 else
   echo "Keeping existing environment file ${env_file}."
+fi
+
+if [[ "${skip_hermes}" != true ]]; then
+  hermes_path="$(command -v hermes || true)"
+  if [[ -z "${hermes_path}" ]]; then
+    hermes_path="${HOME}/.local/bin/hermes"
+  fi
+  mapfile -t hermes_settings < <(
+    "${venv_python}" - "${env_file}" "${role}" <<'PY'
+import sys
+
+from dotenv import dotenv_values
+
+values = {key: str(value or "").strip() for key, value in dotenv_values(sys.argv[1]).items()}
+role = sys.argv[2]
+provider = values.get("HERMES_PROVIDER")
+model = values.get("HERMES_MODEL")
+base_url = values.get("HERMES_BASE_URL")
+if role == "validator":
+    provider = provider or values.get("CLAIMS_RIGOR_PROVIDER") or values.get("CLAIMS_SILVER_FILE_AGENT_PROVIDER")
+    model = model or values.get("CLAIMS_RIGOR_MODEL") or values.get("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL")
+    base_url = base_url or values.get("CLAIMS_RIGOR_API_BASE") or values.get("OPENROUTER_API_BASE")
+else:
+    provider = provider or values.get("SUBNET_CLAIMS_AGENT_PROVIDER")
+    model = model or values.get("SUBNET_CLAIMS_AGENT_MODEL") or values.get("CLAIMS_AGENT_MODEL")
+    base_url = base_url or values.get("OPENROUTER_API_BASE")
+provider = provider or "openrouter"
+model = model or "deepseek/deepseek-v4-flash"
+if not base_url and provider == "openrouter":
+    base_url = "https://openrouter.ai/api/v1"
+print(provider)
+print(model)
+print(base_url or "")
+PY
+  )
+  hermes_provider="${hermes_settings[0]:-openrouter}"
+  hermes_model="${hermes_settings[1]:-deepseek/deepseek-v4-flash}"
+  hermes_base_url="${hermes_settings[2]:-}"
+  "${hermes_path}" config set model.provider "${hermes_provider}"
+  "${hermes_path}" config set model.default "${hermes_model}"
+  if [[ -n "${hermes_base_url}" ]]; then
+    "${hermes_path}" config set model.base_url "${hermes_base_url}"
+  fi
+  echo "Configured Hermes provider=${hermes_provider} model=${hermes_model}."
 fi
 
 mkdir -p "${repo_root}/outputs/${role}" "${repo_root}/.cache"

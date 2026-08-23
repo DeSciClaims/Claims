@@ -75,6 +75,12 @@ cd Claims
 ./scripts/install-validator.sh
 ```
 
+They configure Hermes non-interactively from `HERMES_PROVIDER`, `HERMES_MODEL`,
+and `HERMES_BASE_URL` in that role's `.env`; provider credentials remain in `.env`.
+Hermes is the only external CLI harness installed automatically. Install and
+authenticate Codex CLI or Claude CLI separately before selecting either one;
+the native DSPy and LangChain harnesses are included with the Python dependencies.
+
 They do not create, copy, register, or fund Bittensor wallets. The `.env` file
 configures provider, backend, and runtime settings; it does not select a
 wallet. Create or restore and register the wallet separately, then pass its
@@ -99,9 +105,6 @@ GitHub deploy key and the verified GitHub host key is present in
   --reference-key ~/.ssh/claims-reference-miner \
   --reference-repo-version <PINNED_COMMIT>
 ```
-
-Read-only access still allows the external validator operator to inspect the
-reference source.
 
 PDF inputs use `pdf-inspector` by default. `GROBID_URL` is only required when
 you explicitly choose `--pdf-extraction-method grobid`.
