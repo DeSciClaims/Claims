@@ -47,3 +47,14 @@ def test_hermes_install_configures_provider_without_interactive_setup() -> None:
         assert "HERMES_PROVIDER=openrouter" in template
         assert "HERMES_MODEL=deepseek/deepseek-v4-flash" in template
         assert "HERMES_BASE_URL=https://openrouter.ai/api/v1" in template
+
+
+def test_validator_template_uses_scheduled_weight_submitting_runs() -> None:
+    template = (ROOT / "examples" / "validator.env.example").read_text(encoding="utf-8")
+    assert "CLAIMS_AUDIT_ONLY=false" in template
+    assert "CLAIMS_MAX_STEPS=4" in template
+    assert "CLAIMS_QUERY_INTERVAL=21600" in template
+    assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in template
+    assert "CLAIMS_AUDIT_METHOD=llm" in template
+    assert "CLAIMS_SILVER_ADJUDICATION_HARNESS=hermes-cli" in template
+    assert "CLAIMS_SILVER_FILE_AGENT_FALLBACK=none" in template

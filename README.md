@@ -80,6 +80,8 @@ and `HERMES_BASE_URL` in that role's `.env`; provider credentials remain in `.en
 Hermes is the only external CLI harness installed automatically. Install and
 authenticate Codex CLI or Claude CLI separately before selecting either one;
 the native DSPy and LangChain harnesses are included with the Python dependencies.
+The validator template submits weights for four runs, waiting six hours after
+each completed run before starting the next one.
 
 They do not create, copy, register, or fund Bittensor wallets. The `.env` file
 configures provider, backend, and runtime settings; it does not select a
@@ -87,6 +89,10 @@ wallet. Create or restore and register the wallet separately, then pass its
 local names with `--wallet.name <WALLET_NAME>` and
 `--wallet.hotkey <HOTKEY_NAME>` in the command below. Bittensor normally reads
 them from `~/.bittensor/wallets/`.
+
+For ephemeral GPU/CPU rentals, use the separate miner and validator container
+targets with a persistent `/data` volume. The images support SSH-first manual
+operation and automatic neuron startup; see [Targon Container Deployment](docs/targon-containers.md).
 
 The validator also requires the private reference miner. Generate a unique key
 on that validator and send only its public half to a repository administrator:

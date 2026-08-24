@@ -5268,7 +5268,7 @@ def _runtime_snapshot() -> dict[str, Any]:
     global _CODE_STATE_CACHE
     if _CODE_STATE_CACHE is None:
         repo_root = Path(__file__).resolve().parents[1]
-        revision = ""
+        revision = str(os.getenv("CLAIMS_IMAGE_REVISION", "") or "").strip()
         dirty: bool | None = None
         try:
             revision_result = subprocess.run(
