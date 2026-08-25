@@ -62,6 +62,7 @@ from .backend_client import BackendClientError, ClaimsBackendClient
 from .harness_profiles import SUPPORTED_HARNESSES, quote_command, resolve_agent_harness
 from .memory_monitor import ValidatorMemorySampler
 from .miner_selection import ALGORITHM_VERSION as MINER_SELECTION_VERSION
+from .miner_selection import registration_block_for_neuron
 from .miner_selection import select_miners
 from .model_usage_upload import (
     pending_model_usage_backups,
@@ -321,14 +322,28 @@ class ClaimsValidator:
             dest="claims_miner_selection_mode",
             choices=("all", "adaptive"),
             default=os.getenv("CLAIMS_MINER_SELECTION_MODE", "all"),
-            help="Select all eligible miners or an adaptive performance/development/exploration sample.",
+            help="Select all eligible miners or the adaptive UID V0 qualification/performance/rotation sample.",
         )
         parser.add_argument(
             "--claims.miner-sample-size",
             dest="claims_miner_sample_size",
             type=int,
             default=max(1, int(os.getenv("CLAIMS_MINER_SAMPLE_SIZE", "10"))),
-            help="Number of miners selected in adaptive mode. CLAIMS_TARGET_UIDS remains an exact override.",
+            help="Number of miners selected in adaptive mode. UID V0 requires 10. CLAIMS_TARGET_UIDS remains an exact override.",
+        )
+        parser.add_argument(
+            "--claims.miner-immunity-period-blocks",
+            dest="claims_miner_immunity_period_blocks",
+            type=int,
+            default=max(0, int(os.getenv("CLAIMS_MINER_IMMUNITY_PERIOD_BLOCKS", "0"))),
+            help="Override the on-chain miner immunity period used for selection; 0 reads the current subnet value.",
+        )
+        parser.add_argument(
+            "--claims.miner-immunity-priority-blocks",
+            dest="claims_miner_immunity_priority_blocks",
+            type=int,
+            default=max(0, int(os.getenv("CLAIMS_MINER_IMMUNITY_PRIORITY_BLOCKS", "7200"))),
+            help="Prioritize under-vetted UIDs this many blocks before immunity expires (7200 is about 24 hours).",
         )
         parser.add_argument(
             "--claims.audit-method",
@@ -794,6 +809,8 @@ class ClaimsValidator:
         config.claims_target_uids = parsed_args.claims_target_uids
         config.claims_miner_selection_mode = parsed_args.claims_miner_selection_mode
         config.claims_miner_sample_size = parsed_args.claims_miner_sample_size
+        config.claims_miner_immunity_period_blocks = parsed_args.claims_miner_immunity_period_blocks
+        config.claims_miner_immunity_priority_blocks = parsed_args.claims_miner_immunity_priority_blocks
         config.claims_audit_method = parsed_args.claims_audit_method
         config.claims_agent_v1_validation_mode = parsed_args.claims_agent_v1_validation_mode
         config.claims_validator_pipeline = parsed_args.claims_validator_pipeline
@@ -905,13 +922,21 @@ class ClaimsValidator:
         self.bt_logging.info(f"Validator registered with uid {uid}")
         return int(uid)
 
-    def _load_target_neurons(self, *, selection_seed: str | None = None) -> list[Any]:
+    def _load_target_neurons(
+        self,
+        *,
+        selection_seed: str | None = None,
+        batch_id: str | None = None,
+    ) -> list[Any]:
         self._sync_metagraph()
         candidates = list(getattr(self.metagraph, "neurons", []) or [])
         if not candidates:
             candidates = self._load_neurons_by_uid()
         neurons = [neuron for neuron in candidates if self._is_eligible_miner(neuron)]
         eligible_candidate_count = len(neurons)
+        current_block = self._current_chain_block()
+        immunity_period_blocks = self._miner_immunity_period_blocks()
+        registration_blocks = _metagraph_registration_blocks(self.metagraph, neurons)
         target_uids = set(getattr(self.config, "claims_target_uids", []) or [])
         if target_uids:
             neurons = [neuron for neuron in neurons if int(getattr(neuron, "uid", -1)) in target_uids]
@@ -924,6 +949,9 @@ class ClaimsValidator:
                 sample_size=max(1, len(neurons)),
                 seed=selection_seed or "fixed-targets",
                 mode="all",
+                current_block=current_block,
+                immunity_period_blocks=immunity_period_blocks,
+                registration_blocks=registration_blocks,
             )
             assignments = [{**item.assignment(), "selection_lane": "override"} for item in selected]
             mode = "override"
@@ -932,9 +960,19 @@ class ClaimsValidator:
             history: list[dict[str, Any]] = []
             if mode == "adaptive" and self.backend_client is not None:
                 try:
-                    history = self.backend_client.list_miner_selection_history(period="month")
+                    history = self.backend_client.sync_miner_selection_state(
+                        netuid=int(self.config.netuid),
+                        current_block=current_block,
+                        candidates=[
+                            {
+                                "uid": int(neuron.uid),
+                                "registration_block": registration_blocks[int(neuron.uid)],
+                            }
+                            for neuron in neurons
+                        ],
+                    )
                 except (BackendClientError, ValueError) as exc:
-                    self.bt_logging.warning(f"Could not load miner selection history; using unscored candidates: {exc}")
+                    self.bt_logging.warning(f"Could not sync UID miner selection state; using new candidates: {exc}")
             seed = selection_seed or f"startup:{_metagraph_block(self.metagraph)}"
             selected = select_miners(
                 neurons,
@@ -942,16 +980,42 @@ class ClaimsValidator:
                 sample_size=int(getattr(self.config, "claims_miner_sample_size", 10) or 10),
                 seed=seed,
                 mode=mode,
+                current_block=current_block,
+                immunity_period_blocks=immunity_period_blocks,
+                immunity_priority_blocks=int(
+                    getattr(self.config, "claims_miner_immunity_priority_blocks", 7_200) or 0
+                ),
+                registration_blocks=registration_blocks,
             )
             neurons = [item.neuron for item in selected]
             assignments = [item.assignment() for item in selected]
+            if mode == "adaptive" and self.backend_client is not None and batch_id:
+                try:
+                    self.backend_client.record_miner_selections(
+                        netuid=int(self.config.netuid),
+                        batch_id=batch_id,
+                        selected_block=current_block,
+                        selections=[
+                            {
+                                "uid": item.uid,
+                                "registration_block": item.registration_block,
+                            }
+                            for item in selected
+                        ],
+                    )
+                except (BackendClientError, ValueError) as exc:
+                    self.bt_logging.warning(f"Could not record UID miner selections: {exc}")
 
         self._active_miner_selection = {
-            "schema": "claims_miner_selection_v1",
+            "schema": "claims_uid_miner_selection_v0",
             "algorithm": MINER_SELECTION_VERSION if mode == "adaptive" else mode,
             "mode": mode,
             "seed": selection_seed,
-            "metagraph_block": _metagraph_block(self.metagraph),
+            "metagraph_block": current_block,
+            "immunity_period_blocks": immunity_period_blocks,
+            "immunity_priority_blocks": int(
+                getattr(self.config, "claims_miner_immunity_priority_blocks", 7_200) or 0
+            ),
             "metagraph_neuron_count": len(candidates),
             "candidate_count": eligible_candidate_count,
             "selected_count": len(neurons),
@@ -959,6 +1023,31 @@ class ClaimsValidator:
         }
         self.bt_logging.info(f"Discovered target miner UIDs: {[int(neuron.uid) for neuron in neurons]}")
         return neurons
+
+    def _current_chain_block(self) -> int:
+        block = _metagraph_block(self.metagraph)
+        if block is not None:
+            return block
+        try:
+            return max(0, int(self.subtensor.get_current_block()))
+        except Exception:
+            return 0
+
+    def _miner_immunity_period_blocks(self) -> int:
+        configured = int(getattr(self.config, "claims_miner_immunity_period_blocks", 0) or 0)
+        if configured > 0:
+            return configured
+        try:
+            hyperparameters = self.subtensor.get_subnet_hyperparameters(netuid=self.config.netuid)
+            if isinstance(hyperparameters, dict):
+                value = hyperparameters.get("immunity_period")
+            else:
+                value = getattr(hyperparameters, "immunity_period", None)
+            if value is not None:
+                return max(0, int(value))
+        except Exception as exc:
+            self.bt_logging.warning(f"Could not read subnet immunity period; using 21600 blocks: {exc}")
+        return 21_600
 
     def _sync_metagraph(self) -> None:
         try:
@@ -983,9 +1072,17 @@ class ClaimsValidator:
             return False
         if str(getattr(neuron, "hotkey", "")) == self.wallet.hotkey.ss58_address:
             return False
+        if bool(getattr(neuron, "validator_permit", False)):
+            return False
         axon = getattr(neuron, "axon_info", None)
         axon_port = int(getattr(axon, "port", 0) or 0)
-        return axon_port > 0
+        axon_ip = str(getattr(axon, "ip", "") or "").strip()
+        is_serving = getattr(axon, "is_serving", None)
+        return (
+            axon_port > 0
+            and axon_ip not in {"", "0", "0.0.0.0", "::", "[::]"}
+            and is_serving is not False
+        )
 
     def _build_runner(self) -> JudgeV2Runner:
         base_dir = Path(__file__).resolve().parents[1]
@@ -1039,7 +1136,8 @@ class ClaimsValidator:
                     or getattr(task, "task_id", "")
                 )
                 self.target_neurons = self._load_target_neurons(
-                    selection_seed=f"{task_selection_seed}:{run_id}"
+                    selection_seed=f"{task_selection_seed}:{run_id}",
+                    batch_id=task.batch_id or task.task_id,
                 )
                 self._record_timing_stage(
                     target_refresh_timer,
@@ -1062,6 +1160,7 @@ class ClaimsValidator:
                 scoring_timer = _timing_start("scoring", "Validation and Silver scoring")
                 scores = self._score_responses(responses, task=task, run_id=run_id)
                 self._record_timing_stage(scoring_timer)
+                self._record_miner_selection_evaluations(task=task, scores=scores)
                 weight_timer = _timing_start("weights", "Weight update")
                 weight_event = self._set_weights(scores)
                 self._active_weight_event = dict(weight_event)
@@ -3410,6 +3509,45 @@ class ClaimsValidator:
         except BackendClientError as exc:
             self.bt_logging.warning(f"Could not post validator run to backend: {exc}")
 
+    def _record_miner_selection_evaluations(self, *, task: ClaimsTask, scores: dict[int, float]) -> None:
+        if self.backend_client is None:
+            return
+        selection = dict(getattr(self, "_active_miner_selection", {}) or {})
+        if selection.get("mode") != "adaptive":
+            return
+        assignments = [item for item in list(selection.get("assignments") or []) if isinstance(item, dict)]
+        evaluations = [
+            {
+                "uid": int(item["uid"]),
+                "registration_block": int(item.get("registration_block") or 0),
+                "score": max(0.0, min(1.0, float(scores.get(int(item["uid"]), 0.0)))),
+            }
+            for item in assignments
+            if item.get("uid") is not None
+        ]
+        if not evaluations:
+            return
+        try:
+            result = self.backend_client.record_miner_selection_evaluations(
+                netuid=int(self.config.netuid),
+                batch_id=task.batch_id or task.task_id,
+                evaluated_block=self._latest_chain_block(),
+                evaluations=evaluations,
+            )
+            self.bt_logging.info(
+                "Recorded UID miner evaluations "
+                f"batch={task.batch_id or task.task_id} recorded={int(result.get('recorded') or 0)} "
+                f"duplicate={int(result.get('duplicate') or 0)} stale={int(result.get('stale') or 0)}"
+            )
+        except (BackendClientError, ValueError) as exc:
+            self.bt_logging.warning(f"Could not record UID miner evaluations: {exc}")
+
+    def _latest_chain_block(self) -> int:
+        try:
+            return max(0, int(self.subtensor.get_current_block()))
+        except Exception:
+            return self._current_chain_block()
+
     def _start_run_heartbeat(self, run_id: str) -> None:
         self._stop_run_heartbeat()
         interval = float(getattr(self.config, "claims_run_heartbeat_interval", 60.0) or 0.0)
@@ -5082,6 +5220,26 @@ def _metagraph_block(metagraph: Any) -> int | None:
         return None
 
 
+def _metagraph_registration_blocks(metagraph: Any, neurons: list[Any]) -> dict[int, int]:
+    values = getattr(metagraph, "block_at_registration", None)
+    blocks: dict[int, int] = {}
+    for neuron in neurons:
+        uid = int(getattr(neuron, "uid", -1))
+        value = None
+        try:
+            if values is not None and 0 <= uid < len(values):
+                value = values[uid]
+                if hasattr(value, "item"):
+                    value = value.item()
+        except (TypeError, ValueError, IndexError):
+            value = None
+        try:
+            blocks[uid] = max(0, int(value)) if value is not None else registration_block_for_neuron(neuron)
+        except (TypeError, ValueError):
+            blocks[uid] = registration_block_for_neuron(neuron)
+    return blocks
+
+
 def _run_config_snapshot(config: Any) -> dict[str, Any]:
     """Return effective, replay-relevant validator settings without secrets or local paths."""
 
@@ -5098,6 +5256,12 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_allow_paper_reuse": bool(getattr(config, "claims_allow_paper_reuse", False)),
         "claims_miner_selection_mode": str(getattr(config, "claims_miner_selection_mode", "all") or "all"),
         "claims_miner_sample_size": int(getattr(config, "claims_miner_sample_size", 10) or 10),
+        "claims_miner_immunity_period_blocks": int(
+            getattr(config, "claims_miner_immunity_period_blocks", 0) or 0
+        ),
+        "claims_miner_immunity_priority_blocks": int(
+            getattr(config, "claims_miner_immunity_priority_blocks", 7_200) or 0
+        ),
         "claims_timeout": float(getattr(config, "claims_timeout", 0.0)),
         "claims_query_interval": float(getattr(config, "claims_query_interval", 0.0)),
         "claims_run_heartbeat_interval": float(getattr(config, "claims_run_heartbeat_interval", 60.0) or 0.0),

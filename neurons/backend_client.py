@@ -70,6 +70,65 @@ class ClaimsBackendClient:
         )
         return result if isinstance(result, list) else []
 
+    def sync_miner_selection_state(
+        self,
+        *,
+        netuid: int,
+        current_block: int,
+        candidates: list[dict[str, int]],
+    ) -> list[dict[str, Any]]:
+        result = self.post(
+            "/validator/miner-selection/state",
+            {
+                "network": self.network,
+                "netuid": int(netuid),
+                "current_block": int(current_block),
+                "candidates": candidates,
+            },
+        )
+        data = result.get("data") if isinstance(result, dict) else None
+        return data if isinstance(data, list) else []
+
+    def record_miner_selections(
+        self,
+        *,
+        netuid: int,
+        batch_id: str,
+        selected_block: int,
+        selections: list[dict[str, int]],
+    ) -> list[dict[str, Any]]:
+        result = self.post(
+            "/validator/miner-selection/selections",
+            {
+                "network": self.network,
+                "netuid": int(netuid),
+                "batch_id": batch_id,
+                "selected_block": int(selected_block),
+                "selections": selections,
+            },
+        )
+        data = result.get("data") if isinstance(result, dict) else None
+        return data if isinstance(data, list) else []
+
+    def record_miner_selection_evaluations(
+        self,
+        *,
+        netuid: int,
+        batch_id: str,
+        evaluated_block: int,
+        evaluations: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return self.post(
+            "/validator/miner-selection/evaluations",
+            {
+                "network": self.network,
+                "netuid": int(netuid),
+                "batch_id": batch_id,
+                "evaluated_block": int(evaluated_block),
+                "evaluations": evaluations,
+            },
+        )
+
     def post_bronze_record(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/bronze-records", payload)
 

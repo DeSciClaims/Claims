@@ -94,6 +94,50 @@ def test_model_usage_upload_chunks_and_verifies_stored_count(monkeypatch) -> Non
     assert result["complete"] is True
 
 
+def test_miner_selection_state_client_uses_signed_validator_endpoints(monkeypatch) -> None:
+    posted: list[tuple[str, dict]] = []
+
+    def fake_post(self, path, payload):
+        posted.append((path, payload))
+        if path.endswith("/state") or path.endswith("/selections"):
+            return {"data": [{"uid": 7, "registration_block": 100}]}
+        return {"recorded": 1, "duplicate": 0, "stale": 0}
+
+    monkeypatch.setattr(ClaimsBackendClient, "post", fake_post)
+    client = ClaimsBackendClient(
+        "https://api.example.test",
+        wallet=SimpleNamespace(hotkey=_FakeHotkey()),
+        network="testnet",
+    )
+
+    state = client.sync_miner_selection_state(
+        netuid=530,
+        current_block=1_000,
+        candidates=[{"uid": 7, "registration_block": 100}],
+    )
+    selected = client.record_miner_selections(
+        netuid=530,
+        batch_id="batch_1",
+        selected_block=1_001,
+        selections=[{"uid": 7, "registration_block": 100}],
+    )
+    result = client.record_miner_selection_evaluations(
+        netuid=530,
+        batch_id="batch_1",
+        evaluated_block=1_010,
+        evaluations=[{"uid": 7, "registration_block": 100, "score": 0.0}],
+    )
+
+    assert state[0]["uid"] == 7
+    assert selected[0]["uid"] == 7
+    assert result["recorded"] == 1
+    assert [path for path, _payload in posted] == [
+        "/validator/miner-selection/state",
+        "/validator/miner-selection/selections",
+        "/validator/miner-selection/evaluations",
+    ]
+
+
 def test_silver_pipeline_upload_uses_bounded_chunks(monkeypatch) -> None:
     posted: list[dict] = []
 
