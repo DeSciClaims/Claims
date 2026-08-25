@@ -89,3 +89,5 @@ def test_installation_docs_link_detailed_testnet_profile_and_docker_path() -> No
     assert "### Manual Installation" in main_readme
     assert "### Ubuntu Installers" in main_readme
     assert "### Docker" in main_readme
+    assert "CLAIMS_BACKEND_URL=https://apiclaims-eight.vercel.app" in main_readme
+    assert "CLAIMS_BACKEND_URL=https://claimssubmit.vercel.app" in main_readme

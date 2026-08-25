@@ -38,6 +38,26 @@ Claims/
 └── .env.example
 ```
 
+## Service URLs
+
+| Service | URL | Used by |
+|---|---|---|
+| Claims dashboard | [claims-dashboard-kappa.vercel.app](https://claims-dashboard-kappa.vercel.app) | Public network and miner views |
+| Validator/backend API | [apiclaims-eight.vercel.app](https://apiclaims-eight.vercel.app) | Validators, dashboard, and administrative data |
+| Validator/backend API docs | [apiclaims-eight.vercel.app/docs](https://apiclaims-eight.vercel.app/docs) | Interactive OpenAPI documentation |
+| Miner artifact-upload API | [claimssubmit.vercel.app](https://claimssubmit.vercel.app) | Signed miner artifact uploads |
+| Miner upload API docs | [claimssubmit.vercel.app/docs](https://claimssubmit.vercel.app/docs) | Interactive OpenAPI documentation |
+
+Set the role-specific backend URL as follows:
+
+```env
+# Validator
+CLAIMS_BACKEND_URL=https://apiclaims-eight.vercel.app
+
+# Miner
+CLAIMS_BACKEND_URL=https://claimssubmit.vercel.app
+```
+
 ## Installation
 
 Choose one installation path: manual Python setup, the Ubuntu installers, or
