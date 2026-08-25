@@ -19,6 +19,7 @@ RUN apt-get update \
         git \
         libgl1 \
         libglib2.0-0 \
+        nano \
         openssh-client \
         openssh-server \
         poppler-utils \

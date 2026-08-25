@@ -12,6 +12,34 @@ The first supported rigor backends are:
 - `agent-cli` with `validator.agent_v1.wrappers.codex_prompt`: external Codex
   agent loop with the same file contract.
 
+## Testnet Validator Profile
+
+[validator.testnet.env.example](./validator.testnet.env.example) is a complete
+50-paper, ten-miner SN111 testnet profile for the full Bittensor validator. Miners
+are selected adaptively unless `CLAIMS_TARGET_UIDS` is explicitly enabled. It configures
+paper-level diagnostics, Bronze generation, anonymous Silver judges, the
+file-agent comparator/canonicalizer/auditor, persistence limits, and one scoring
+cycle. It deliberately uses different models for independent pipeline roles.
+
+For a manual or Ubuntu installation:
+
+```bash
+cp validator/agent_v1/validator.testnet.env.example .env
+# Set OPENROUTER_API_KEY and review CLAIMS_TARGET_UIDS.
+
+python -m neurons.validator \
+  --netuid 530 \
+  --wallet.name claims-test-validator \
+  --wallet.hotkey default \
+  --subtensor.network test \
+  --logging.debug
+```
+
+The Docker entrypoint reads the same settings through `--env-file` or from
+`/data/env/validator.env`. Set `CLAIMS_BRONZE_ROOT=/data/bronze` and
+`CLAIMS_OUTPUT_DIR=/data/outputs/validator` so generated state remains on the
+persistent volume. Wallet files are never included in the profile or image.
+
 ## Outputs
 
 Each run writes:

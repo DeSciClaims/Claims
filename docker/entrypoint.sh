@@ -77,6 +77,30 @@ else
   env_file="${CLAIMS_ENV_FILE:-}"
 fi
 
+# Load host-local settings without evaluating the file as shell code. Explicit
+# container environment variables take precedence over values in the env file.
+if [[ -n "${env_file}" && -f "${env_file}" ]]; then
+  while IFS= read -r -d '' setting; do
+    key="${setting%%=*}"
+    value="${setting#*=}"
+    if [[ "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ && -z "${!key+x}" ]]; then
+      printf -v "${key}" '%s' "${value}"
+      export "${key}"
+    fi
+  done < <(
+    python - "${env_file}" <<'PY'
+import os
+import sys
+
+from dotenv import dotenv_values
+
+for key, value in dotenv_values(sys.argv[1]).items():
+    if key and value is not None:
+        os.write(1, f"{key}={value}".encode() + b"\0")
+PY
+  )
+fi
+
 export CLAIMS_DATA_ROOT="${data_root}"
 export HERMES_HOME="${data_root}/hermes"
 export HF_HOME="${HF_HOME:-${data_root}/cache/huggingface}"
@@ -205,4 +229,3 @@ case "${mode}" in
     exec "${mode}" "$@"
     ;;
 esac
-

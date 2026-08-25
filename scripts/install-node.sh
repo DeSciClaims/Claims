@@ -12,10 +12,8 @@ Options:
   --env-file FILE               Runtime environment file (default: .env)
   --skip-system-packages        Do not install Ubuntu packages
   --skip-hermes                 Do not install Hermes Agent
-  --reference-repo-url URL      Private reference repository SSH URL (validator only)
+  --reference-repo-url URL      Public reference repository URL (validator only)
   --reference-repo-version REF  Reference branch, tag, or commit (default: main)
-  --reference-key FILE          Approved read-only SSH deploy key (validator only)
-  --reference-known-hosts FILE  Pinned SSH known_hosts file
   --reference-dir DIR           Reference checkout (default: ../claims-reference-miner)
   -h, --help                    Show this help
 
@@ -43,11 +41,12 @@ python_command="python3"
 env_file="${repo_root}/.env"
 skip_system_packages=false
 skip_hermes=false
-reference_repo_url=""
+reference_repo_url="https://github.com/DeSciClaims/claims-reference-miner.git"
 reference_repo_version="main"
-reference_key=""
-reference_known_hosts="${HOME}/.ssh/known_hosts"
 reference_dir="$(cd "${repo_root}/.." && pwd)/claims-reference-miner"
+if [[ "${role}" == "miner" ]]; then
+  reference_repo_url=""
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -73,14 +72,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --reference-repo-version)
       reference_repo_version="$2"
-      shift 2
-      ;;
-    --reference-key)
-      reference_key="$2"
-      shift 2
-      ;;
-    --reference-known-hosts)
-      reference_known_hosts="$2"
       shift 2
       ;;
     --reference-dir)
@@ -228,25 +219,15 @@ fi
 mkdir -p "${repo_root}/outputs/${role}" "${repo_root}/.cache"
 
 if [[ "${role}" == "validator" && -n "${reference_repo_url}" ]]; then
-  if [[ ! -r "${reference_key}" ]]; then
-    echo "--reference-key must name an approved read-only deploy key." >&2
-    exit 2
-  fi
-  if [[ ! -r "${reference_known_hosts}" ]]; then
-    echo "Pinned known_hosts file is not readable: ${reference_known_hosts}" >&2
-    exit 2
-  fi
-  chmod 0600 "${reference_key}"
-  git_ssh_command="ssh -i ${reference_key} -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${reference_known_hosts}"
   if [[ -d "${reference_dir}/.git" ]]; then
-    GIT_SSH_COMMAND="${git_ssh_command}" git -C "${reference_dir}" fetch origin "${reference_repo_version}"
+    git -C "${reference_dir}" remote set-url origin "${reference_repo_url}"
+    git -C "${reference_dir}" fetch origin "${reference_repo_version}"
   elif [[ -e "${reference_dir}" ]]; then
     echo "Reference destination exists but is not a Git checkout: ${reference_dir}" >&2
     exit 1
   else
-    GIT_SSH_COMMAND="${git_ssh_command}" git clone --no-checkout \
-      "${reference_repo_url}" "${reference_dir}"
-    GIT_SSH_COMMAND="${git_ssh_command}" git -C "${reference_dir}" fetch origin "${reference_repo_version}"
+    git clone --no-checkout "${reference_repo_url}" "${reference_dir}"
+    git -C "${reference_dir}" fetch origin "${reference_repo_version}"
   fi
   git -C "${reference_dir}" checkout --detach FETCH_HEAD
   "${venv_python}" -m pip install "${reference_dir}"

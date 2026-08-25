@@ -21,15 +21,12 @@ def test_public_role_installers_expose_help_without_installing() -> None:
         assert "never creates, copies, registers, or funds" in result.stdout
 
 
-def test_reference_access_helper_exposes_public_key_contract() -> None:
-    result = subprocess.run(
-        ["bash", str(ROOT / "scripts" / "prepare-reference-access.sh"), "--help"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0
-    assert "Only the public key should be shared" in result.stdout
+def test_validator_installer_uses_public_reference_repository() -> None:
+    installer = (ROOT / "scripts" / "install-node.sh").read_text(encoding="utf-8")
+    assert "https://github.com/DeSciClaims/claims-reference-miner.git" in installer
+    assert "--reference-repo-version" in installer
+    assert "--reference-key" not in installer
+    assert "GIT_SSH_COMMAND" not in installer
 
 
 def test_hermes_install_skips_optional_browser_engine() -> None:
@@ -58,3 +55,37 @@ def test_validator_template_uses_scheduled_weight_submitting_runs() -> None:
     assert "CLAIMS_AUDIT_METHOD=llm" in template
     assert "CLAIMS_SILVER_ADJUDICATION_HARNESS=hermes-cli" in template
     assert "CLAIMS_SILVER_FILE_AGENT_FALLBACK=none" in template
+
+
+def test_detailed_testnet_profile_is_runnable_and_uses_distinct_models() -> None:
+    profile = (ROOT / "validator" / "agent_v1" / "validator.testnet.env.example").read_text(
+        encoding="utf-8"
+    )
+
+    assert "BT_WALLET_NAME=claims-test-validator" in profile
+    assert "CLAIMS_BACKEND_URL=https://apiclaims-eight.vercel.app" in profile
+    assert "CLAIMS_BATCH_SIZE=50" in profile
+    assert "CLAIMS_TIMEOUT=3600" in profile
+    assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in profile
+    assert "CLAIMS_MINER_SAMPLE_SIZE=10" in profile
+    assert "\nCLAIMS_TARGET_UIDS=" not in profile
+    assert "CLAIMS_MAX_STEPS=1" in profile
+    assert "CLAIMS_SILVER_WORKFLOW_MODE=file-agent" in profile
+    assert "CLAIMS_SILVER_ADJUDICATION_MAX_IN_FLIGHT=32" in profile
+    assert "CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true" in profile
+    assert "CLAIMS_RIGOR_MODEL=openai/gpt-4o-mini" in profile
+    assert "CLAIMS_SILVER_ADJUDICATION_MODEL_A=deepseek/deepseek-v4-flash" in profile
+    assert "CLAIMS_SILVER_ADJUDICATION_MODEL_B=qwen/qwen3.7-flash" in profile
+
+
+def test_installation_docs_link_detailed_testnet_profile_and_docker_path() -> None:
+    main_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    validator_readme = (ROOT / "validator" / "agent_v1" / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+    for content in (main_readme, validator_readme):
+        assert "validator.testnet.env.example" in content
+    assert "### Manual Installation" in main_readme
+    assert "### Ubuntu Installers" in main_readme
+    assert "### Docker" in main_readme

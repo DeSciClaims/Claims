@@ -38,28 +38,45 @@ Claims/
 └── .env.example
 ```
 
-## Install
+## Installation
 
-From the repository root:
+Choose one installation path: manual Python setup, the Ubuntu installers, or
+the published Docker images.
+
+### Manual Installation
+
+Clone Claims and create its Python environment:
 
 ```bash
+git clone https://github.com/DeSciClaims/Claims.git
+cd Claims
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
 python -m pip install -r requirements.txt
+python -m pip install --no-deps -e .
 ```
 
-Create your environment file:
+For a miner, start with the miner environment template:
 
 ```bash
-cp .env.example .env
+cp examples/miner.env.example .env
 ```
 
-Set at least:
+For a validator, install the public reference miner at a reviewed commit and
+use the configured testnet profile:
 
 ```bash
-OPENROUTER_API_KEY=...
+git clone https://github.com/DeSciClaims/claims-reference-miner.git ../claims-reference-miner
+git -C ../claims-reference-miner checkout <PINNED_COMMIT>
+python -m pip install ../claims-reference-miner
+cp validator/agent_v1/validator.testnet.env.example .env
 ```
+
+Edit `.env` and set `OPENROUTER_API_KEY`. The detailed validator profile is
+[validator.testnet.env.example](./validator/agent_v1/validator.testnet.env.example).
+Install and authenticate the CLI harness selected by the profile; the commands
+above install Python dependencies but do not install Hermes, Codex, or Claude.
 
 ### Ubuntu Installers
 
@@ -71,8 +88,12 @@ git clone https://github.com/DeSciClaims/Claims.git
 cd Claims
 
 ./scripts/install-miner.sh
-# or
-./scripts/install-validator.sh
+
+# Validator: copy the detailed profile before installation so Hermes is
+# configured from the selected provider and model.
+cp validator/agent_v1/validator.testnet.env.example .env
+./scripts/install-validator.sh \
+  --reference-repo-version <PINNED_COMMIT>
 ```
 
 They configure Hermes non-interactively from `HERMES_PROVIDER`, `HERMES_MODEL`,
@@ -80,37 +101,65 @@ and `HERMES_BASE_URL` in that role's `.env`; provider credentials remain in `.en
 Hermes is the only external CLI harness installed automatically. Install and
 authenticate Codex CLI or Claude CLI separately before selecting either one;
 the native DSPy and LangChain harnesses are included with the Python dependencies.
-The validator template submits weights for four runs, waiting six hours after
-each completed run before starting the next one.
+The detailed testnet profile runs one 50-paper cycle against ten adaptively
+selected miners. The generic
+installer template submits weights for four runs, waiting six hours after each
+completed run before starting the next one.
 
-They do not create, copy, register, or fund Bittensor wallets. The `.env` file
-configures provider, backend, and runtime settings; it does not select a
-wallet. Create or restore and register the wallet separately, then pass its
-local names with `--wallet.name <WALLET_NAME>` and
-`--wallet.hotkey <HOTKEY_NAME>` in the command below. Bittensor normally reads
-them from `~/.bittensor/wallets/`.
+They do not create, copy, register, or fund Bittensor wallets. The detailed
+profile contains wallet and hotkey names for the container entrypoint, but no
+wallet material; change those names for your validator. Create or restore and
+register the wallet separately. Manual neuron commands can pass the local names
+with `--wallet.name <WALLET_NAME>` and `--wallet.hotkey <HOTKEY_NAME>`.
+Bittensor normally reads their files from `~/.bittensor/wallets/`.
 
-For ephemeral GPU/CPU rentals, use the separate miner and validator container
-targets with a persistent `/data` volume. The images support SSH-first manual
-operation and automatic neuron startup; see [Targon Container Deployment](docs/targon-containers.md).
-
-The validator also requires the private reference miner. Generate a unique key
-on that validator and send only its public half to a repository administrator:
-
-```bash
-./scripts/prepare-reference-access.sh
-```
-
-After the administrator adds it to `claims-reference-miner` as a read-only
-GitHub deploy key and the verified GitHub host key is present in
-`~/.ssh/known_hosts`, install the validator and reference package together:
+The validator installer also checks out and installs the public reference miner.
+Pin its commit for a reproducible installation:
 
 ```bash
 ./scripts/install-validator.sh \
-  --reference-repo-url git@github.com:DeSciClaims/claims-reference-miner.git \
-  --reference-key ~/.ssh/claims-reference-miner \
   --reference-repo-version <PINNED_COMMIT>
 ```
+
+The default reference repository is
+`https://github.com/DeSciClaims/claims-reference-miner.git`. Use
+`--reference-repo-url` only when testing a different public fork.
+
+### Docker
+
+The public images already contain Claims, Python dependencies, Hermes, and the
+role-specific runtime. The validator image also contains the pinned public
+reference-miner package.
+
+Prepare a local validator environment and persistent data directory:
+
+```bash
+cp validator/agent_v1/validator.testnet.env.example .validator.testnet.env
+chmod 600 .validator.testnet.env
+mkdir -p .container-data/validator
+# Edit .validator.testnet.env and set OPENROUTER_API_KEY.
+```
+
+Run the validator with the local Bittensor wallets mounted read-only:
+
+```bash
+docker pull ghcr.io/desciclaims/claims-validator:edge
+
+docker run --rm -it \
+  --name claims-validator \
+  --env-file .validator.testnet.env \
+  -e CLAIMS_BRONZE_ROOT=/data/bronze \
+  -e CLAIMS_OUTPUT_DIR=/data/outputs/validator \
+  -v "$PWD/.container-data/validator:/data" \
+  -v "$HOME/.bittensor/wallets:/data/bittensor/wallets:ro" \
+  ghcr.io/desciclaims/claims-validator:edge \
+  validator --logging.debug
+```
+
+Use an immutable commit tag instead of `edge` for reproducible deployments.
+The miner image is `ghcr.io/desciclaims/claims-miner:<tag>`. For Targon and
+other ephemeral rentals, mount persistent storage at `/data`; see
+[Targon Container Deployment](docs/targon-containers.md).
 
 PDF inputs use `pdf-inspector` by default. `GROBID_URL` is only required when
 you explicitly choose `--pdf-extraction-method grobid`.
@@ -307,7 +356,7 @@ Useful validator flags:
 - `--claims.topic economics`: filter backend-selected papers by topic. May be passed more than once.
 - Silver batch score: mean across scoring-eligible papers. Miner misses count as zero; validator-failed papers are excluded for every miner.
 - `--claims.rigor-harness hermes-cli --claims.rigor-model <MODEL>`: choose the diagnostic validation harness/model.
-- `--claims.reference-harness codex-cli --claims.reference-model <MODEL>`: choose the private reference miner harness/model.
+- `--claims.reference-harness codex-cli --claims.reference-model <MODEL>`: choose the reference miner harness/model.
 - `--claims.adjudication-harness dspy`: call adjudicator models in-process through DSPy/OpenRouter; CLI harnesses remain available.
 - `--claims.adjudication-model-a/b/tiebreak-model <MODEL>`: choose the Silver adjudicator models.
 - `--claims.silver-adjudication-batch-size 8`: adjudicate several anonymous cases per model call; use `1` to disable batching.
