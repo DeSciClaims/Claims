@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 
-ALGORITHM_VERSION = "uid_v0_4_4_2"
+ALGORITHM_VERSION = "uid_v0_4_4_4"
 VETTED_EVALUATION_COUNT = 3
 QUALIFICATION_SLOTS = 4
 PERFORMANCE_SLOTS = 4
@@ -66,6 +66,7 @@ def select_miners(
     immunity_period_blocks: int = 0,
     immunity_priority_blocks: int = 7_200,
     registration_blocks: dict[int, int] | None = None,
+    recent_registration_block: int = 0,
 ) -> list[MinerSelection]:
     miners = [
         _candidate(
@@ -101,16 +102,37 @@ def select_miners(
         )
     )
     _take(selected, available, qualification[:QUALIFICATION_SLOTS], lane="qualification")
-    _fill_oldest(selected, available, QUALIFICATION_SLOTS, lane="qualification")
+    _fill_oldest(
+        selected,
+        available,
+        QUALIFICATION_SLOTS,
+        lane="qualification",
+        recent_registration_block=recent_registration_block,
+    )
 
     vetted = [item for item in available if item.evaluation_count >= VETTED_EVALUATION_COUNT]
     performance = _weighted_sample_without_replacement(vetted, PERFORMANCE_SLOTS, rng)
     _take(selected, available, performance, lane="performance")
-    _fill_oldest(selected, available, QUALIFICATION_SLOTS + PERFORMANCE_SLOTS, lane="performance")
+    _fill_oldest(
+        selected,
+        available,
+        QUALIFICATION_SLOTS + PERFORMANCE_SLOTS,
+        lane="performance",
+        recent_registration_block=recent_registration_block,
+    )
 
-    rotation = sorted(available, key=lambda item: (_oldest_first(item.last_evaluated_block), item.uid))
+    rotation = sorted(
+        available,
+        key=lambda item: _fallback_order(item, recent_registration_block=recent_registration_block),
+    )
     _take(selected, available, rotation[:ROTATION_SLOTS], lane="rotation")
-    _fill_oldest(selected, available, SELECTION_SIZE, lane="rotation")
+    _fill_oldest(
+        selected,
+        available,
+        SELECTION_SIZE,
+        lane="rotation",
+        recent_registration_block=recent_registration_block,
+    )
 
     return selected
 
@@ -197,10 +219,23 @@ def _fill_oldest(
     target_total: int,
     *,
     lane: str,
+    recent_registration_block: int,
 ) -> None:
     needed = min(max(0, target_total - len(selected)), len(available))
-    fillers = sorted(available, key=lambda item: (_oldest_first(item.last_evaluated_block), item.uid))[:needed]
+    fillers = sorted(
+        available,
+        key=lambda item: _fallback_order(item, recent_registration_block=recent_registration_block),
+    )[:needed]
     _take(selected, available, fillers, lane=lane)
+
+
+def _fallback_order(item: MinerSelection, *, recent_registration_block: int) -> tuple[int, int, int]:
+    cutoff = max(0, int(recent_registration_block))
+    return (
+        _oldest_first(item.last_evaluated_block),
+        0 if cutoff > 0 and item.registration_block >= cutoff else 1 if cutoff > 0 else 0,
+        item.uid,
+    )
 
 
 def _immunity_priority(item: MinerSelection, current_block: int, priority_blocks: int) -> bool:

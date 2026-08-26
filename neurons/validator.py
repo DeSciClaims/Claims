@@ -928,6 +928,7 @@ class ClaimsValidator:
         *,
         selection_seed: str | None = None,
         batch_id: str | None = None,
+        recent_registration_block: int = 0,
     ) -> list[Any]:
         self._sync_metagraph()
         candidates = list(getattr(self.metagraph, "neurons", []) or [])
@@ -953,6 +954,7 @@ class ClaimsValidator:
                 current_block=current_block,
                 immunity_period_blocks=immunity_period_blocks,
                 registration_blocks=registration_blocks,
+                recent_registration_block=recent_registration_block,
             )
             assignments = [{**item.assignment(), "selection_lane": "override"} for item in selected]
             mode = "override"
@@ -987,6 +989,7 @@ class ClaimsValidator:
                     getattr(self.config, "claims_miner_immunity_priority_blocks", 7_200) or 0
                 ),
                 registration_blocks=registration_blocks,
+                recent_registration_block=recent_registration_block,
             )
             neurons = [item.neuron for item in selected]
             assignments = [item.assignment() for item in selected]
@@ -1017,6 +1020,7 @@ class ClaimsValidator:
             "immunity_priority_blocks": int(
                 getattr(self.config, "claims_miner_immunity_priority_blocks", 7_200) or 0
             ),
+            "recent_registration_block": max(0, int(recent_registration_block)),
             "metagraph_neuron_count": len(candidates),
             "candidate_count": eligible_candidate_count,
             "selected_count": len(neurons),
@@ -1027,6 +1031,10 @@ class ClaimsValidator:
 
     def _load_task_target_neurons(self, task: ClaimsTask, *, fallback_seed: str) -> list[Any]:
         target_override = list(getattr(self.config, "claims_target_uids", []) or [])
+        recent_registration_block = max(
+            0,
+            int(getattr(task, "miner_selection_recent_registration_block", 0) or 0),
+        )
         canonical_enabled = (
             getattr(self, "backend_client", None) is not None
             and bool(task.batch_id)
@@ -1036,6 +1044,7 @@ class ClaimsValidator:
             return self._load_target_neurons(
                 selection_seed=fallback_seed,
                 batch_id=task.batch_id or task.task_id,
+                recent_registration_block=recent_registration_block,
             )
 
         if task.target_miners:
@@ -1055,11 +1064,13 @@ class ClaimsValidator:
                 selection_seed=task.selection_seed,
                 selected_block=task.metagraph_block,
                 algorithm=task.miner_selection_algorithm,
+                recent_registration_block=recent_registration_block,
             )
 
         proposed = self._load_target_neurons(
             selection_seed=task.selection_seed or fallback_seed,
             batch_id=None,
+            recent_registration_block=recent_registration_block,
         )
         proposal = dict(self._active_miner_selection)
         assignments = [dict(item) for item in list(proposal.get("assignments") or [])]
@@ -1092,6 +1103,7 @@ class ClaimsValidator:
             selection_seed=task.selection_seed,
             selected_block=claimed.get("metagraph_block"),
             algorithm=str(claimed.get("miner_selection_algorithm") or claimed.get("selection_algorithm") or ""),
+            recent_registration_block=recent_registration_block,
         )
 
     def _record_canonical_selection_state(
@@ -1126,6 +1138,7 @@ class ClaimsValidator:
         selection_seed: str,
         selected_block: Any,
         algorithm: str,
+        recent_registration_block: int = 0,
     ) -> list[Any]:
         self._sync_metagraph()
         candidates = list(getattr(self.metagraph, "neurons", []) or [])
@@ -1169,6 +1182,7 @@ class ClaimsValidator:
             "algorithm": algorithm or "canonical",
             "mode": "canonical",
             "seed": selection_seed,
+            "recent_registration_block": max(0, int(recent_registration_block)),
             "metagraph_block": int(selected_block) if selected_block is not None else self._current_chain_block(),
             "metagraph_neuron_count": len(candidates),
             "candidate_count": len(candidates),

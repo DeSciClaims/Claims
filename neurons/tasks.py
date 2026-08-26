@@ -65,6 +65,7 @@ class ClaimsTask:
     assignment_key: str = ""
     assignment_window_start: str = ""
     selection_seed: str = ""
+    miner_selection_recent_registration_block: int = 0
     task_version: str = "claims_task_v0"
     scoring_version: str = "agent_v1_pass4_deterministic_v0"
     task_type: str = "agent_v1_claim_extraction"
@@ -99,6 +100,10 @@ class ClaimsTask:
             assignment_key=str(payload.get("assignment_key") or "").strip(),
             assignment_window_start=str(payload.get("assignment_window_start") or "").strip(),
             selection_seed=str(payload.get("selection_seed") or "").strip(),
+            miner_selection_recent_registration_block=max(
+                0,
+                int(payload.get("miner_selection_recent_registration_block") or 0),
+            ),
             task_version=str(payload.get("task_version") or "claims_task_v0").strip(),
             scoring_version=str(payload.get("scoring_version") or "agent_v1_pass4_deterministic_v0").strip(),
             task_type=str(payload.get("task_type") or "agent_v1_claim_extraction").strip(),

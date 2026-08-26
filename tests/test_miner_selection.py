@@ -137,6 +137,75 @@ def test_lane_shortages_fill_by_oldest_evaluation() -> None:
     assert {item.lane for item in selected[:4]} == {"qualification"}
 
 
+def test_cold_start_fallback_prefers_post_update_registrations_then_smallest_uid() -> None:
+    candidates = [
+        *[_miner(uid, registration_block=100) for uid in range(1, 7)],
+        *[_miner(uid, registration_block=1_000 + uid) for uid in range(7, 15)],
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=[],
+        sample_size=10,
+        seed="cold-start",
+        recent_registration_block=1_000,
+    )
+
+    assert [item.uid for item in selected if item.lane == "qualification"] == [1, 2, 3, 4]
+    assert [item.uid for item in selected if item.lane == "performance"] == [7, 8, 9, 10]
+    assert [item.uid for item in selected if item.lane == "rotation"] == [11, 12]
+
+
+def test_cold_start_fallback_uses_pre_update_uids_only_after_recent_cohort() -> None:
+    candidates = [
+        *[_miner(uid, registration_block=100) for uid in range(1, 10)],
+        _miner(10, registration_block=1_010),
+        _miner(11, registration_block=1_011),
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=[],
+        sample_size=10,
+        seed="cold-start",
+        recent_registration_block=1_000,
+    )
+
+    assert [item.uid for item in selected if item.lane == "performance"][:2] == [10, 11]
+    assert [item.uid for item in selected if item.lane == "performance"][2:] == [5, 6]
+
+
+def test_fallback_keeps_oldest_evaluation_ahead_of_recent_registration() -> None:
+    candidates = [
+        _miner(1, registration_block=100),
+        *[_miner(uid, registration_block=1_000 + uid) for uid in range(2, 11)],
+    ]
+    history = [
+        _state(1, count=3, scores=[0.5] * 3, registration_block=100),
+        *[
+            _state(
+                uid,
+                count=3,
+                scores=[0.5] * 3,
+                registration_block=1_000 + uid,
+                last_evaluated_block=100 + uid,
+            )
+            for uid in range(2, 11)
+        ],
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=10,
+        seed="oldest-first",
+        recent_registration_block=1_000,
+    )
+
+    assert selected[0].lane == "qualification"
+    assert selected[0].uid == 1
+
+
 def test_all_mode_selects_every_candidate() -> None:
     selected = select_miners(
         [_miner(1), _miner(2)],
@@ -241,9 +310,10 @@ def test_task_selection_claims_one_canonical_miner_assignment() -> None:
     validator.bt_logging = SimpleNamespace(info=lambda *_args: None)
     validator._active_miner_selection = {}
 
-    def propose(*, selection_seed, batch_id):
+    def propose(*, selection_seed, batch_id, recent_registration_block):
         assert selection_seed == "canonical-seed"
         assert batch_id is None
+        assert recent_registration_block == 900
         validator._active_miner_selection = {
             "algorithm": "uid_v0",
             "metagraph_block": 850,
@@ -261,6 +331,7 @@ def test_task_selection_claims_one_canonical_miner_assignment() -> None:
         task_id="task_1",
         assignment_key="assignment_1",
         selection_seed="canonical-seed",
+        miner_selection_recent_registration_block=900,
         target_miners=(),
         metagraph_block=None,
         miner_selection_algorithm="",

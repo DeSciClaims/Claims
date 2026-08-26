@@ -14,6 +14,7 @@ def test_claims_task_round_trips_batch_fields_to_synapse() -> None:
             "assignment_key": "assignment_123",
             "assignment_window_start": "2026-08-25T06:00:00+00:00",
             "selection_seed": "seed_123",
+            "miner_selection_recent_registration_block": 987_654,
             "task_version": "claims_task_v0",
             "scoring_version": "agent_v1_pass4_deterministic_v0",
             "network": "testnet",
@@ -47,6 +48,8 @@ def test_claims_task_round_trips_batch_fields_to_synapse() -> None:
     assert task.assignment_key == "assignment_123"
     assert task.assignment_window_start == "2026-08-25T06:00:00+00:00"
     assert synapse.selection_seed == "seed_123"
+    assert task.miner_selection_recent_registration_block == 987_654
+    assert "miner_selection_recent_registration_block" not in task.to_synapse_kwargs()
     assert task.target_uids == (7, 8)
     assert [item["uid"] for item in task.target_miners] == [7, 8]
     assert task.metagraph_block == 1_000
