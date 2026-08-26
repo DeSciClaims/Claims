@@ -717,8 +717,8 @@ class ClaimsValidator:
             "--claims.timeout",
             dest="claims_timeout",
             type=float,
-            default=float(os.getenv("CLAIMS_TIMEOUT", "180")),
-            help="Dendrite query timeout in seconds.",
+            default=float(os.getenv("CLAIMS_TIMEOUT", "3600")),
+            help="Dendrite query timeout in seconds. Defaults to 3600 (one hour).",
         )
         parser.add_argument(
             "--claims.max-steps",
