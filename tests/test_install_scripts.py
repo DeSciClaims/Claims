@@ -78,7 +78,42 @@ def test_detailed_testnet_profile_is_runnable_and_uses_distinct_models() -> None
     assert "CLAIMS_SILVER_ADJUDICATION_MODEL_B=qwen/qwen3.7-flash" in profile
 
 
-def test_installation_docs_link_detailed_testnet_profile_and_docker_path() -> None:
+def test_mainnet_profile_has_production_policy_without_prescribed_models() -> None:
+    profile = (ROOT / "validator" / "agent_v1" / "validator.mainnet.env.example").read_text(
+        encoding="utf-8"
+    )
+
+    assert "BT_WALLET_NAME=\n" in profile
+    assert "BT_NETUID=111" in profile
+    assert "BT_SUBTENSOR_NETWORK=finney" in profile
+    assert "CLAIMS_NETWORK=mainnet" in profile
+    assert "CLAIMS_BATCH_SIZE=50" in profile
+    assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in profile
+    assert "CLAIMS_MINER_SAMPLE_SIZE=10" in profile
+    assert "CLAIMS_TIMEOUT=3600" in profile
+    assert "CLAIMS_MAX_STEPS=4" in profile
+    assert "CLAIMS_QUERY_INTERVAL=21600" in profile
+    assert "CLAIMS_AUDIT_ONLY=false" in profile
+    assert "CLAIMS_SILVER_WORKFLOW_MODE=file-agent" in profile
+    assert "CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true" in profile
+    assert "\nCLAIMS_TARGET_UIDS=" not in profile
+    for key in (
+        "HERMES_MODEL",
+        "CLAIMS_RIGOR_MODEL",
+        "CLAIMS_REFERENCE_MINER_MODEL",
+        "CLAIMS_SILVER_PAIRING_EMBEDDING_MODEL",
+        "CLAIMS_SILVER_ADJUDICATION_MODEL_A",
+        "CLAIMS_SILVER_ADJUDICATION_MODEL_B",
+        "CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL",
+        "CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL",
+        "CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL",
+        "CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL",
+        "CLAIMS_SILVER_IMPORTANCE_MODEL",
+    ):
+        assert f"{key}=\n" in profile
+
+
+def test_installation_docs_link_validator_profiles_and_docker_path() -> None:
     main_readme = (ROOT / "README.md").read_text(encoding="utf-8")
     validator_readme = (ROOT / "validator" / "agent_v1" / "README.md").read_text(
         encoding="utf-8"
@@ -86,6 +121,7 @@ def test_installation_docs_link_detailed_testnet_profile_and_docker_path() -> No
 
     for content in (main_readme, validator_readme):
         assert "validator.testnet.env.example" in content
+        assert "validator.mainnet.env.example" in content
     assert "### Manual Installation" in main_readme
     assert "### Ubuntu Installers" in main_readme
     assert "### Docker" in main_readme

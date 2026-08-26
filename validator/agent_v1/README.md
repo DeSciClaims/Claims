@@ -12,7 +12,7 @@ The first supported rigor backends are:
 - `agent-cli` with `validator.agent_v1.wrappers.codex_prompt`: external Codex
   agent loop with the same file contract.
 
-## Testnet Validator Profile
+## Validator Profiles
 
 [validator.testnet.env.example](./validator.testnet.env.example) is a complete
 50-paper, ten-miner SN111 testnet profile for the full Bittensor validator. Miners
@@ -20,6 +20,12 @@ are selected adaptively unless `CLAIMS_TARGET_UIDS` is explicitly enabled. It co
 paper-level diagnostics, Bronze generation, anonymous Silver judges, the
 file-agent comparator/canonicalizer/auditor, persistence limits, and one scoring
 cycle. It deliberately uses different models for independent pipeline roles.
+
+[validator.mainnet.env.example](./validator.mainnet.env.example) carries the
+current SN111 mainnet operating policy: 50 papers, ten adaptive miners, four
+cycles with a six-hour interval, one-hour miner timeout, file-agent Silver, and
+winner-takes-most payouts. Its model fields are intentionally blank. Mainnet
+validators must choose their own role-specific models and provider credentials.
 
 For a manual or Ubuntu installation:
 
@@ -35,10 +41,187 @@ python -m neurons.validator \
   --logging.debug
 ```
 
+For mainnet, copy the mainnet profile and fill every blank credential and model
+field before starting the command shown in the top-level README:
+
+```bash
+cp validator/agent_v1/validator.mainnet.env.example .env
+```
+
 The Docker entrypoint reads the same settings through `--env-file` or from
 `/data/env/validator.env`. Set `CLAIMS_BRONZE_ROOT=/data/bronze` and
 `CLAIMS_OUTPUT_DIR=/data/outputs/validator` so generated state remains on the
 persistent volume. Wallet files are never included in the profile or image.
+
+## Validator Neuron Configuration
+
+The top-level README intentionally shows only the normal launch arguments.
+Provider credentials, role-specific harnesses and models, concurrency, repair,
+and persistence controls belong in `.env`. Command-line arguments override the
+corresponding environment values.
+
+### Run Identity And Scheduling
+
+- `--netuid`, `--wallet.name`, and `--wallet.hotkey` identify the registered
+  validator hotkey. `--subtensor.network` selects `test`, `finney`, or another
+  configured Bittensor network; `--subtensor.chain_endpoint` may instead point
+  to a specific WebSocket endpoint.
+- `--claims.network testnet|mainnet` selects the Claims backend data partition.
+  It is independent of `--subtensor.network`.
+- `--claims.backend-url` enables signed batch selection, run records, canonical
+  miner assignments, artifact reuse, Silver persistence, and dashboard data.
+- `--claims.batch-size` is the number of papers requested from the backend.
+  `--claims.topic` and `--claims.paper-id` may be repeated to constrain paper
+  selection. `--claims.allow-paper-reuse` is intended for smoke tests.
+- `--claims.output-dir` stores validator-side artifacts. `--claims.timeout` is
+  the dendrite deadline for the complete miner batch response.
+- `--claims.max-steps N` exits after `N` scoring cycles; `0` runs indefinitely.
+  `--claims.query-interval` controls the delay after each completed cycle.
+- `--claims.run-heartbeat-interval` updates backend liveness while a cycle is
+  running. `--claims.require-validator-permit` fails startup when the selected
+  hotkey lacks a validator permit.
+- `--claims.audit-only` calculates and persists proposed scores and weights but
+  does not submit weights on chain.
+
+For local operation without the backend, pass exactly one of
+`--claims.paper-url`, `--claims.task-artifact`, or `--claims.task-manifest`.
+
+### Canonical Batches And Miner Selection
+
+The backend creates one immutable paper and miner assignment per configured
+assignment window. The first validator atomically proposes the miner set; later
+validators receive the same task ID, batch ID, papers, seed, and UID-to-hotkey
+snapshot. One validator owns a temporary collection lease and queries unfinished
+miners. Followers poll and reuse completed batch-scoped artifacts instead of
+repeating miner inference.
+
+- `--claims.target-uid UID` is an exact operator override and may be repeated.
+  If an existing canonical assignment contains different UIDs, the validator
+  refuses to diverge. Use a backend assignment window of `0` for isolated tests.
+- `--claims.miner-selection-mode adaptive --claims.miner-sample-size 10`
+  enables UID-only V0 selection: four qualification, four performance, and two
+  rotation slots. Performance sampling is seeded and weighted by
+  `0.10 + mean(last three scores)`.
+- Qualification covers UIDs with fewer than three evaluations. The normal order
+  is fewest evaluations, immunity urgency, oldest selection, then UID. When
+  fallback candidates have equally old evaluations, miners registered at or
+  after the backend-provided subnet update block are preferred by lowest UID;
+  older registrations fill only any remaining shortage.
+- `CLAIMS_MINER_IMMUNITY_PERIOD_BLOCKS=0` reads the subnet immunity period from
+  chain. `CLAIMS_MINER_IMMUNITY_PRIORITY_BLOCKS=7200` prioritizes under-vetted
+  UIDs during approximately their final 24 immunity hours.
+- Adaptive candidates must be registered, expose a serving Axon, and not be the
+  validator's own hotkey. Assigned miners are never substituted after selection.
+  Missing, invalid, offline, and timed-out miners remain in the batch and score
+  zero.
+- `CLAIMS_BATCH_COLLECTION_POLL_SECONDS=5` controls follower polling.
+  `CLAIMS_BATCH_COLLECTION_WAIT_SECONDS` bounds the wait and should exceed
+  `CLAIMS_TIMEOUT`; the default is at least the miner timeout plus 300 seconds.
+
+Selection state is stored by validator, network, netuid, and UID, then rebuilt
+from subnet-wide evaluation events. It records evaluation count, distinct batch
+count, the last three scores, last selection, and last evaluation. A changed
+registration block resets a UID's state.
+
+### Scoring Pipeline
+
+- `--claims.audit-method llm` and `--claims.agent-v1-validation-mode llm` enable
+  semantic diagnostic validation. `--claims.validator-pipeline auto` routes
+  ARA-shaped submissions to `agent_v1` while preserving legacy compatibility.
+- `--claims.silver-enable` runs Bronze lookup, comparison, adjudication,
+  canonicalization, and miner-vs-Silver scoring after diagnostics.
+- Silver batch scores are means over scoring-eligible papers. Miner misses count
+  as zero; validator-failed papers are excluded for every miner.
+- `--claims.payout-mode winner-takes-most` allocates 70% to rank 1 and
+  16/8/4/2% to ranks 2-5. Ties share the occupied rank slots. The related envs
+  are `CLAIMS_PAYOUT_WINNER_SHARE`, `CLAIMS_PAYOUT_RUNNER_UP_SLOTS`, and
+  `CLAIMS_PAYOUT_RUNNER_UP_DECAY`.
+- `--claims.batch-score-rule` controls legacy diagnostic aggregation. Final
+  Silver incentives use the mean regardless of that compatibility setting.
+
+### Harnesses And Models
+
+Set each role independently; production validators should not assume that the
+testnet example models are a recommended mainnet ensemble.
+
+- `--claims.rigor-harness` / `--claims.rigor-model`: semantic diagnostic role.
+- `--claims.reference-harness` / `--claims.reference-model`: Bronze reference
+  generation role. `CLAIMS_REFERENCE_MINER_COMMAND=python -m
+  claims_reference_miner` enables local reference generation.
+- `--claims.adjudication-harness`: Silver judge runtime. Supported modes include
+  DSPy/OpenAI-compatible calls and `hermes-cli`, `codex-cli`, or `claude-cli`.
+- `--claims.adjudication-model-a`, `--claims.adjudication-model-b`, and
+  `--claims.adjudication-tiebreak-model`: two direct judges and the conditional
+  tiebreaker.
+- `CLAIMS_SILVER_FILE_AGENT_HARNESS` and the comparison, canonicalization, and
+  canonical-audit model envs configure the remaining file-workspace roles.
+- `CLAIMS_MODEL_PRICING_JSON='{"model":{"input":1,"output":2}}'` supplies
+  optional USD-per-million-token rates when a CLI reports tokens without cost.
+
+### Diagnostics And Capacity
+
+- `--claims.diagnostic-miner-batch-size 10` enables one diagnostic file-agent
+  operation per paper that reviews all available miners; it is not a shard size.
+  Sparse claim assessments report only issues, and an empty map is valid. Set
+  the value to `1` for the original per-miner path.
+- `--claims.diagnostic-max-workers` controls concurrent paper diagnostics.
+  `--claims.diagnostic-miner-max-workers` controls per-miner fallback concurrency.
+- `--claims.skip-diagnostic-validation` omits diagnostic reports when only the
+  Silver path is required.
+- `--claims.silver-paper-max-workers` controls concurrent paper-level Silver
+  pipelines. `--claims.silver-adjudication-max-in-flight` is the global cap on
+  simultaneous Silver model calls; `0` removes that cap.
+- `--claims.silver-adjudication-batch-size` sets anonymous cases per judge call;
+  `1` disables batching. `CLAIMS_SILVER_ADJUDICATION_BATCH_INPUT_TOKENS` bounds
+  estimated input size before a batch is split.
+- `--claims.silver-max-eligible-claims-per-miner` bounds miner candidates entering
+  Silver. `--claims.silver-max-adjudication-cases-per-paper` bounds primary judge
+  cases and shares capacity fairly across miners.
+- `--claims.silver-filter-by-assessment true|false` controls whether diagnostic
+  issue assessments exclude miner claims downstream. The default is `false`;
+  findings can still affect diagnostic quality without filtering candidates.
+
+### Pairing, Repair, And Persistence
+
+- `CLAIMS_SILVER_PAIRING_EMBEDDING_MODE` and
+  `CLAIMS_SILVER_PAIRING_EMBEDDING_MODEL` enable embedding retrieval before
+  relation classification.
+- `CLAIMS_SILVER_PAIRING_TOP_K` controls candidate neighbors per retrieval
+  direction. `CLAIMS_SILVER_CONSOLIDATION_TOP_K` controls post-adjudication
+  consolidation neighbors; `0` is unbounded.
+- `CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS` enables dense pairing for candidate
+  sets at or below the configured size; `0` disables the dense addition.
+- `CLAIMS_SILVER_RELATION_BATCH_SIZE`, `CLAIMS_SILVER_RELATION_MAX_WORKERS`, and
+  `CLAIMS_SILVER_RELATION_BATCH_INPUT_TOKENS` control relation request packing
+  and concurrency.
+- `CLAIMS_SILVER_RELATION_BATCH_RETRIES` and
+  `CLAIMS_SILVER_ADJUDICATION_BATCH_RETRIES` retry a failed batch before
+  recursive splitting. The corresponding `*_WALL_TIMEOUT` and
+  `*_FALLBACK_MAX_CALLS` envs bound total time and split calls; `0` disables a
+  bound.
+- `CLAIMS_SILVER_PERSIST_CHUNK_SIZE` controls case, consensus, decision, and
+  score writes. `CLAIMS_SILVER_PERSIST_VOTE_CHUNK_SIZE` controls vote writes.
+
+### File-Workspace Silver
+
+`CLAIMS_SILVER_WORKFLOW_MODE=file-agent` runs one comparator, two anonymous
+judges plus a conditional tiebreaker, deterministic consensus, a canonical
+draft, and an independent canonical audit per paper. Agents use validator-owned
+short references; internal IDs are restored after validation.
+
+- `CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true` requires different
+  models for direct judges A and B.
+- `CLAIMS_SILVER_FILE_AGENT_TIMEOUT` is the deadline for each agent execution.
+  `CLAIMS_SILVER_FILE_AGENT_MAX_TURNS` and `MAX_TOKENS` bound its turn and output
+  budgets.
+- `CLAIMS_SILVER_FILE_AGENT_USAGE_GRACE_SECONDS` allows a completed CLI to emit
+  its usage footer before cleanup.
+- `CLAIMS_SILVER_FILE_AGENT_FALLBACK=none` fails that paper rather than silently
+  reverting to the legacy graph workflow.
+- Hermes adjudication uses skill-based artifact execution by default.
+  `CLAIMS_SILVER_ADJUDICATION_HERMES_EXECUTION_MODE=oneshot` enables the optional
+  tool-free mode; `CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE=append` exists only
+  for legacy CLI behavior.
 
 ## Outputs
 
@@ -147,7 +330,7 @@ feedback endpoint.
 
 ## File-Workspace Silver
 
-Set `CLAIMS_SILVER_WORKFLOW_MODE=file-agent` to run the experimental per-paper
+Set `CLAIMS_SILVER_WORKFLOW_MODE=file-agent` to run the current per-paper
 workspace pipeline: global comparison, anonymous parallel judges, conditional
 tiebreak, deterministic consensus, canonical draft, and independent canonical
 audit/revision. Exact restatements and adjudicated same-unit groups cannot be
