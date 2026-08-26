@@ -1,5 +1,5 @@
 ---
-name: claims_diagnostic_batch
+name: claims-diagnostic-batch
 description: Review all anonymized Claims miner artifacts for one paper and emit independent rigor findings plus compact claim assessments.
 argument-hint: "<diagnostic-paper-workspace>"
 allowed-tools: Read, Write, Glob, Grep
