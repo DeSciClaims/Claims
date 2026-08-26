@@ -23,6 +23,7 @@ class MinerSelection:
     registration_block: int
     immunity_expiry_block: int
     evaluation_count: int
+    distinct_batch_count: int
     recent_scores: tuple[float, ...]
     performance_score: float
     status: str
@@ -39,6 +40,7 @@ class MinerSelection:
             "registration_block": self.registration_block,
             "immunity_expiry_block": self.immunity_expiry_block,
             "evaluation_count": self.evaluation_count,
+            "distinct_batch_count": self.distinct_batch_count,
             "recent_scores": list(self.recent_scores),
             "performance_score": round(self.performance_score, 6),
             "selection_status": self.status,
@@ -132,6 +134,7 @@ def _candidate(
     if _uid(history.get("registration_block")) != registration_block:
         history = {}
     count = max(0, _uid(history.get("evaluation_count")))
+    distinct_batch_count = max(0, _uid(history.get("distinct_batch_count")))
     scores = tuple(_score(value) for value in list(history.get("recent_scores") or [])[-3:])
     performance_score = sum(scores) / len(scores) if scores else 0.0
     return MinerSelection(
@@ -143,6 +146,7 @@ def _candidate(
         registration_block=registration_block,
         immunity_expiry_block=registration_block + immunity_period_blocks,
         evaluation_count=count,
+        distinct_batch_count=distinct_batch_count,
         recent_scores=scores,
         performance_score=performance_score,
         status=_status(count),

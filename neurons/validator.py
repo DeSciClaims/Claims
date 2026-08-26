@@ -1072,8 +1072,6 @@ class ClaimsValidator:
             return False
         if str(getattr(neuron, "hotkey", "")) == self.wallet.hotkey.ss58_address:
             return False
-        if bool(getattr(neuron, "validator_permit", False)):
-            return False
         axon = getattr(neuron, "axon_info", None)
         axon_port = int(getattr(axon, "port", 0) or 0)
         axon_ip = str(getattr(axon, "ip", "") or "").strip()
@@ -3513,8 +3511,6 @@ class ClaimsValidator:
         if self.backend_client is None:
             return
         selection = dict(getattr(self, "_active_miner_selection", {}) or {})
-        if selection.get("mode") != "adaptive":
-            return
         assignments = [item for item in list(selection.get("assignments") or []) if isinstance(item, dict)]
         evaluations = [
             {

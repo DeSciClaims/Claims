@@ -23,11 +23,13 @@ def _state(
     registration_block: int = 100,
     last_selected_block: int | None = None,
     last_evaluated_block: int | None = None,
+    distinct_batch_count: int | None = None,
 ) -> dict:
     return {
         "uid": uid,
         "registration_block": registration_block,
         "evaluation_count": count,
+        "distinct_batch_count": count if distinct_batch_count is None else distinct_batch_count,
         "recent_scores": scores or [],
         "last_selected_batch": f"batch_{uid}" if last_selected_block is not None else None,
         "last_selected_block": last_selected_block,
@@ -106,6 +108,7 @@ def test_selection_is_reproducible_and_uses_uid_state_not_hotkey() -> None:
 
     assert [(item.uid, item.lane) for item in first] == [(item.uid, item.lane) for item in second]
     assert next(item for item in first if item.uid == 5).evaluation_count == 3
+    assert next(item for item in first if item.uid == 5).distinct_batch_count == 3
 
 
 def test_registration_block_change_discards_old_uid_state() -> None:
@@ -158,7 +161,8 @@ def test_metagraph_registration_blocks_are_mapped_by_uid() -> None:
     assert _metagraph_registration_blocks(metagraph, [_miner(2), _miner(0)]) == {2: 30, 0: 10}
 
 
-def test_completed_scores_record_every_selected_uid_including_zero() -> None:
+@pytest.mark.parametrize("mode", ["adaptive", "override", "all"])
+def test_completed_scores_record_every_selected_uid_including_zero(mode: str) -> None:
     calls: list[dict] = []
     backend = SimpleNamespace(
         record_miner_selection_evaluations=lambda **payload: calls.append(payload)
@@ -170,7 +174,7 @@ def test_completed_scores_record_every_selected_uid_including_zero() -> None:
     validator.bt_logging = SimpleNamespace(info=lambda *_args: None, warning=lambda *_args: None)
     validator._latest_chain_block = lambda: 50_000
     validator._active_miner_selection = {
-        "mode": "adaptive",
+        "mode": mode,
         "assignments": [
             {"uid": 7, "registration_block": 100},
             {"uid": 8, "registration_block": 200},
@@ -195,7 +199,7 @@ def test_completed_scores_record_every_selected_uid_including_zero() -> None:
     ]
 
 
-def test_eligible_miner_requires_non_validator_serving_axon() -> None:
+def test_eligible_miner_requires_serving_axon_but_not_absence_of_validator_permit() -> None:
     validator = ClaimsValidator.__new__(ClaimsValidator)
     validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="validator_hotkey"))
 
@@ -206,10 +210,12 @@ def test_eligible_miner_requires_non_validator_serving_axon() -> None:
         axon_info=SimpleNamespace(ip="203.0.113.10", port=8091, is_serving=True),
     )
     validator_uid = SimpleNamespace(**{**serving.__dict__, "validator_permit": True})
+    validator_self = SimpleNamespace(**{**serving.__dict__, "hotkey": "validator_hotkey"})
     missing_ip = SimpleNamespace(
         **{**serving.__dict__, "axon_info": SimpleNamespace(ip="0.0.0.0", port=8091, is_serving=False)}
     )
 
     assert validator._is_eligible_miner(serving) is True
-    assert validator._is_eligible_miner(validator_uid) is False
+    assert validator._is_eligible_miner(validator_uid) is True
+    assert validator._is_eligible_miner(validator_self) is False
     assert validator._is_eligible_miner(missing_ip) is False
