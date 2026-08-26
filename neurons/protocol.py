@@ -24,6 +24,8 @@ class ClaimExtractionSynapse(Synapse):
     task_id: str = ""
     run_id: str = ""
     batch_id: str = ""
+    assignment_key: str = ""
+    assignment_window_start: str = ""
     selection_seed: str = ""
     task_version: str = "claims_task_v0"
     scoring_version: str = "agent_v1_pass4_deterministic_v0"

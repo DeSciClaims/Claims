@@ -11,11 +11,20 @@ def test_claims_task_round_trips_batch_fields_to_synapse() -> None:
             "task_id": "task_abc",
             "run_id": "run_xyz",
             "batch_id": "batch_def",
+            "assignment_key": "assignment_123",
+            "assignment_window_start": "2026-08-25T06:00:00+00:00",
             "selection_seed": "seed_123",
             "task_version": "claims_task_v0",
             "scoring_version": "agent_v1_pass4_deterministic_v0",
             "network": "testnet",
             "netuid": 530,
+            "target_uids": [7, 8],
+            "target_miners": [
+                {"uid": 7, "hotkey": "hotkey_7", "registration_block": 100},
+                {"uid": 8, "hotkey": "hotkey_8", "registration_block": 100},
+            ],
+            "metagraph_block": 1_000,
+            "miner_selection_algorithm": "uid_v0",
             "papers": [
                 {
                     "paper_id": "paper_001",
@@ -33,7 +42,15 @@ def test_claims_task_round_trips_batch_fields_to_synapse() -> None:
     assert synapse.task_id == "task_abc"
     assert synapse.run_id == "run_xyz"
     assert synapse.batch_id == "batch_def"
+    assert synapse.assignment_key == "assignment_123"
+    assert synapse.assignment_window_start == "2026-08-25T06:00:00+00:00"
+    assert task.assignment_key == "assignment_123"
+    assert task.assignment_window_start == "2026-08-25T06:00:00+00:00"
     assert synapse.selection_seed == "seed_123"
+    assert task.target_uids == (7, 8)
+    assert [item["uid"] for item in task.target_miners] == [7, 8]
+    assert task.metagraph_block == 1_000
+    assert task.miner_selection_algorithm == "uid_v0"
     assert synapse.papers[0]["paper_id"] == "paper_001"
     assert synapse.papers[0]["source_url"] == "https://example.org/paper.pdf"
 

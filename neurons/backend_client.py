@@ -63,6 +63,75 @@ class ClaimsBackendClient:
     def select_batch(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/batches/select", payload)
 
+    def claim_batch_miner_selection(
+        self,
+        *,
+        batch_id: str,
+        netuid: int,
+        selected_block: int,
+        selection_algorithm: str,
+        target_miners: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return self.post(
+            f"/validator/batches/{quote(batch_id)}/miners",
+            {
+                "network": self.network,
+                "netuid": int(netuid),
+                "selected_block": int(selected_block),
+                "selection_algorithm": selection_algorithm,
+                "target_miners": target_miners,
+            },
+        )
+
+    def claim_batch_collection(self, *, batch_id: str, run_id: str) -> dict[str, Any]:
+        return self.post(
+            f"/validator/batches/{quote(batch_id)}/collection/claim",
+            {"network": self.network, "run_id": run_id},
+        )
+
+    def get_batch_collection(self, *, batch_id: str) -> dict[str, Any]:
+        result = self.get(
+            f"/validator/batches/{quote(batch_id)}/collection",
+            query={"network": self.network},
+        )
+        if not isinstance(result, dict):
+            raise BackendClientError("Backend batch collection lookup returned non-object response.")
+        return result
+
+    def finalize_batch_miner_submission(
+        self,
+        *,
+        batch_id: str,
+        run_id: str,
+        uid: int,
+        hotkey: str,
+        status: str,
+        expected_paper_ids: list[str],
+        completed_paper_ids: list[str],
+        failed_papers: list[dict[str, str]],
+        error: str | None = None,
+    ) -> dict[str, Any]:
+        return self.post(
+            f"/validator/batches/{quote(batch_id)}/submissions/{int(uid)}",
+            {
+                "network": self.network,
+                "run_id": run_id,
+                "uid": int(uid),
+                "hotkey": hotkey,
+                "status": status,
+                "expected_paper_ids": expected_paper_ids,
+                "completed_paper_ids": completed_paper_ids,
+                "failed_papers": failed_papers,
+                "error": error,
+            },
+        )
+
+    def complete_batch_collection(self, *, batch_id: str, run_id: str) -> dict[str, Any]:
+        return self.post(
+            f"/validator/batches/{quote(batch_id)}/collection/complete",
+            {"network": self.network, "run_id": run_id},
+        )
+
     def list_miner_selection_history(self, *, period: str = "month") -> list[dict[str, Any]]:
         result = self.get(
             "/validator/miner-selection-history",
@@ -150,8 +219,20 @@ class ClaimsBackendClient:
             raise BackendClientError("Backend miner artifact lookup returned non-object response.")
         return row
 
-    def list_miner_artifacts(self, *, run_id: str, uid: int | None = None) -> list[dict[str, Any]]:
-        query: dict[str, Any] = {"network": self.network, "run_id": run_id}
+    def list_miner_artifacts(
+        self,
+        *,
+        run_id: str | None = None,
+        batch_id: str | None = None,
+        uid: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if not run_id and not batch_id:
+            raise ValueError("run_id or batch_id is required")
+        query: dict[str, Any] = {"network": self.network}
+        if batch_id:
+            query["batch_id"] = batch_id
+        else:
+            query["run_id"] = run_id
         if uid is not None:
             query["uid"] = uid
         result = self.get("/validator/miner-artifacts", query=query)

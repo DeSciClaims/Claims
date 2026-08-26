@@ -189,7 +189,8 @@ class ClaimsValidator:
         self.backend_client = self._build_backend_client()
         if self.backend_client is not None:
             self.bt_logging.info(f"Claims backend enabled: {self.config.claims_backend_url}")
-        self.target_neurons = self._load_target_neurons()
+        self.target_neurons = []
+        self._active_unavailable_target_uids: dict[int, str] = {}
         self.runner = self._build_runner()
 
     def _get_config(self) -> Any:
@@ -1024,6 +1025,161 @@ class ClaimsValidator:
         self.bt_logging.info(f"Discovered target miner UIDs: {[int(neuron.uid) for neuron in neurons]}")
         return neurons
 
+    def _load_task_target_neurons(self, task: ClaimsTask, *, fallback_seed: str) -> list[Any]:
+        target_override = list(getattr(self.config, "claims_target_uids", []) or [])
+        canonical_enabled = (
+            getattr(self, "backend_client", None) is not None
+            and bool(task.batch_id)
+            and bool(getattr(task, "assignment_key", ""))
+        )
+        if not canonical_enabled:
+            return self._load_target_neurons(
+                selection_seed=fallback_seed,
+                batch_id=task.batch_id or task.task_id,
+            )
+
+        if task.target_miners:
+            canonical_uids = {int(item["uid"]) for item in task.target_miners}
+            if target_override and canonical_uids != set(int(uid) for uid in target_override):
+                raise RuntimeError(
+                    "CLAIMS_TARGET_UIDS does not match the canonical batch miner assignment; "
+                    "disable canonical windows on the backend for an isolated override run."
+                )
+            self._record_canonical_selection_state(
+                batch_id=task.batch_id,
+                selected_block=task.metagraph_block,
+                assignments=list(task.target_miners),
+            )
+            return self._resolve_canonical_target_neurons(
+                list(task.target_miners),
+                selection_seed=task.selection_seed,
+                selected_block=task.metagraph_block,
+                algorithm=task.miner_selection_algorithm,
+            )
+
+        proposed = self._load_target_neurons(
+            selection_seed=task.selection_seed or fallback_seed,
+            batch_id=None,
+        )
+        proposal = dict(self._active_miner_selection)
+        assignments = [dict(item) for item in list(proposal.get("assignments") or [])]
+        if not proposed or not assignments:
+            raise RuntimeError("No eligible miners were available for the canonical batch assignment.")
+        try:
+            claimed = self.backend_client.claim_batch_miner_selection(
+                batch_id=task.batch_id,
+                netuid=int(self.config.netuid),
+                selected_block=int(proposal.get("metagraph_block") or self._current_chain_block()),
+                selection_algorithm=str(proposal.get("algorithm") or "unknown"),
+                target_miners=assignments,
+            )
+        except (BackendClientError, ValueError) as exc:
+            raise RuntimeError(f"Could not claim canonical miner assignment for {task.batch_id}: {exc}") from exc
+        canonical = [dict(item) for item in list(claimed.get("target_miners") or []) if isinstance(item, dict)]
+        if not canonical:
+            raise RuntimeError(f"Backend returned no canonical miner assignment for {task.batch_id}.")
+        self.bt_logging.info(
+            f"Canonical miner assignment batch={task.batch_id} "
+            f"created={bool(claimed.get('created'))} uids={[int(item['uid']) for item in canonical]}"
+        )
+        self._record_canonical_selection_state(
+            batch_id=task.batch_id,
+            selected_block=claimed.get("metagraph_block"),
+            assignments=canonical,
+        )
+        return self._resolve_canonical_target_neurons(
+            canonical,
+            selection_seed=task.selection_seed,
+            selected_block=claimed.get("metagraph_block"),
+            algorithm=str(claimed.get("miner_selection_algorithm") or claimed.get("selection_algorithm") or ""),
+        )
+
+    def _record_canonical_selection_state(
+        self,
+        *,
+        batch_id: str,
+        selected_block: Any,
+        assignments: list[dict[str, Any]],
+    ) -> None:
+        if self.backend_client is None:
+            return
+        try:
+            self.backend_client.record_miner_selections(
+                netuid=int(self.config.netuid),
+                batch_id=batch_id,
+                selected_block=int(selected_block) if selected_block is not None else self._current_chain_block(),
+                selections=[
+                    {
+                        "uid": int(item["uid"]),
+                        "registration_block": int(item.get("registration_block") or 0),
+                    }
+                    for item in assignments
+                ],
+            )
+        except (BackendClientError, ValueError) as exc:
+            self.bt_logging.warning(f"Could not record canonical miner selection state: {exc}")
+
+    def _resolve_canonical_target_neurons(
+        self,
+        assignments: list[dict[str, Any]],
+        *,
+        selection_seed: str,
+        selected_block: Any,
+        algorithm: str,
+    ) -> list[Any]:
+        self._sync_metagraph()
+        candidates = list(getattr(self.metagraph, "neurons", []) or [])
+        if not candidates:
+            candidates = self._load_neurons_by_uid()
+        by_uid = {int(getattr(neuron, "uid", -1)): neuron for neuron in candidates}
+        selected: list[Any] = []
+        unavailable: dict[int, str] = {}
+        for assignment in assignments:
+            uid = int(assignment.get("uid", -1))
+            neuron = by_uid.get(uid)
+            if neuron is None:
+                unavailable[uid] = "absent from the metagraph"
+                selected.append(_unavailable_target_neuron(assignment))
+                continue
+            expected_hotkey = str(assignment.get("hotkey") or "")
+            actual_hotkey = str(getattr(neuron, "hotkey", "") or "")
+            if expected_hotkey and actual_hotkey != expected_hotkey:
+                unavailable[uid] = f"hotkey changed from {expected_hotkey} to {actual_hotkey}"
+                selected.append(_unavailable_target_neuron(assignment))
+                continue
+            expected_registration = assignment.get("registration_block")
+            actual_registration = _metagraph_registration_blocks(self.metagraph, [neuron])[uid]
+            if expected_registration is not None and int(expected_registration) != actual_registration:
+                unavailable[uid] = (
+                    f"registration block changed from {int(expected_registration)} to {actual_registration}"
+                )
+                selected.append(_unavailable_target_neuron(assignment))
+                continue
+            if not self._is_eligible_miner(neuron):
+                unavailable[uid] = "no longer has a usable serving Axon"
+            selected.append(neuron)
+        self._active_unavailable_target_uids = unavailable
+        for uid, reason in sorted(unavailable.items()):
+            self.bt_logging.warning(
+                f"Canonical miner uid={uid} is unavailable ({reason}); preserving assignment with zero score."
+            )
+
+        self._active_miner_selection = {
+            "schema": "claims_uid_miner_selection_v0",
+            "algorithm": algorithm or "canonical",
+            "mode": "canonical",
+            "seed": selection_seed,
+            "metagraph_block": int(selected_block) if selected_block is not None else self._current_chain_block(),
+            "metagraph_neuron_count": len(candidates),
+            "candidate_count": len(candidates),
+            "queryable_count": len(selected) - len(unavailable),
+            "unavailable": {str(uid): reason for uid, reason in unavailable.items()},
+            "selected_count": len(selected),
+            "assignments": assignments,
+        }
+        self.bt_logging.info(f"Using canonical target miner UIDs: {[int(neuron.uid) for neuron in selected]}")
+        return selected
+
     def _current_chain_block(self) -> int:
         block = _metagraph_block(self.metagraph)
         if block is not None:
@@ -1127,15 +1283,16 @@ class ClaimsValidator:
                 )
                 target_refresh_timer = _timing_start("target_refresh", "Target miner refresh")
                 self.target_neurons = []
+                self._active_unavailable_target_uids = {}
                 self._active_miner_selection = {}
                 task_selection_seed = str(
                     getattr(task, "selection_seed", "")
                     or getattr(task, "batch_id", "")
                     or getattr(task, "task_id", "")
                 )
-                self.target_neurons = self._load_target_neurons(
-                    selection_seed=f"{task_selection_seed}:{run_id}",
-                    batch_id=task.batch_id or task.task_id,
+                self.target_neurons = self._load_task_target_neurons(
+                    task,
+                    fallback_seed=f"{task_selection_seed}:{run_id}",
                 )
                 self._record_timing_stage(
                     target_refresh_timer,
@@ -1146,7 +1303,7 @@ class ClaimsValidator:
                 self._start_run_heartbeat(run_id)
                 self._record_timing_stage(run_open_timer)
                 miner_query_timer = _timing_start("miner_query", "Miner query")
-                responses = self._query_miners(task, run_id=run_id)
+                responses = self._collect_or_reuse_miner_responses(task, run_id=run_id)
                 self._record_timing_stage(
                     miner_query_timer,
                     metadata={
@@ -1301,17 +1458,203 @@ class ClaimsValidator:
             raise RuntimeError("Backend batch selection returned no papers.")
         return task
 
-    def _query_miners(self, task: ClaimsTask, *, run_id: str) -> list[Any]:
+    def _query_miners(
+        self,
+        task: ClaimsTask,
+        *,
+        run_id: str,
+        include_uids: set[int] | None = None,
+    ) -> list[Any]:
         synapse = ClaimExtractionSynapse(**task.to_synapse_kwargs())
         synapse.run_id = run_id
-        axons = [neuron.axon_info for neuron in self.target_neurons]
+        query_indices = [
+            index
+            for index, neuron in enumerate(self.target_neurons)
+            if int(neuron.uid) not in self._active_unavailable_target_uids
+            and (include_uids is None or int(neuron.uid) in include_uids)
+        ]
+        axons = [self.target_neurons[index].axon_info for index in query_indices]
         label = task.paper_id or task.paper_url or task.task_id
-        self.bt_logging.info(f"Querying {len(axons)} miner axons for task={label}")
-        return self.dendrite.query(
+        self.bt_logging.info(
+            f"Querying {len(axons)} miner axons for task={label}; "
+            f"assigned={len(self.target_neurons)} unavailable={len(self._active_unavailable_target_uids)}"
+        )
+        aligned: list[Any] = [None] * len(self.target_neurons)
+        if not axons:
+            return aligned
+        queried = self.dendrite.query(
             axons=axons,
             synapse=synapse,
             timeout=float(self.config.claims_timeout),
         )
+        queried = list(queried or [])
+        for result_index, target_index in enumerate(query_indices):
+            if result_index < len(queried):
+                aligned[target_index] = queried[result_index]
+        return aligned
+
+    def _collect_or_reuse_miner_responses(self, task: ClaimsTask, *, run_id: str) -> list[Any]:
+        canonical = bool(
+            self.backend_client is not None
+            and task.batch_id
+            and task.assignment_key
+            and hasattr(self.backend_client, "claim_batch_collection")
+        )
+        if not canonical:
+            return self._query_miners(task, run_id=run_id)
+
+        poll_seconds = max(0.25, float(os.getenv("CLAIMS_BATCH_COLLECTION_POLL_SECONDS", "5") or 5))
+        default_wait = max(float(self.config.claims_timeout) + 300.0, 3_900.0)
+        wait_seconds = max(
+            poll_seconds,
+            float(os.getenv("CLAIMS_BATCH_COLLECTION_WAIT_SECONDS", str(default_wait)) or default_wait),
+        )
+        deadline = time.monotonic() + wait_seconds
+        while True:
+            state = self.backend_client.claim_batch_collection(batch_id=task.batch_id, run_id=run_id)
+            if str(state.get("status") or "") == "complete":
+                self.bt_logging.info(
+                    f"Using completed canonical miner submissions batch={task.batch_id} "
+                    f"collector_run={state.get('owner_run_id')}"
+                )
+                return self._canonical_artifact_responses(task=task, run_id=run_id, collection=state)
+            if bool(state.get("acquired")):
+                finalized_uids = {
+                    int(item.get("uid"))
+                    for item in list(state.get("submissions") or [])
+                    if isinstance(item, dict) and item.get("uid") is not None
+                }
+                unfinished_uids = {
+                    int(neuron.uid) for neuron in self.target_neurons
+                }.difference(finalized_uids)
+                self.bt_logging.info(
+                    f"Validator run={run_id} owns canonical miner collection batch={task.batch_id}; "
+                    f"querying unfinished_uids={sorted(unfinished_uids)}"
+                )
+                queried = self._query_miners(task, run_id=run_id, include_uids=unfinished_uids)
+                self._finalize_canonical_submissions(
+                    task=task,
+                    run_id=run_id,
+                    responses=queried,
+                    finalized_uids=finalized_uids,
+                )
+                completed = self.backend_client.complete_batch_collection(
+                    batch_id=task.batch_id,
+                    run_id=run_id,
+                )
+                return self._canonical_artifact_responses(task=task, run_id=run_id, collection=completed)
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    f"Timed out waiting {wait_seconds:.0f}s for canonical miner collection batch={task.batch_id}."
+                )
+            self.bt_logging.info(
+                f"Waiting for canonical miner collection batch={task.batch_id} "
+                f"owner_run={state.get('owner_run_id')} lease_expires_at={state.get('lease_expires_at')}"
+            )
+            time.sleep(poll_seconds)
+
+    def _finalize_canonical_submissions(
+        self,
+        *,
+        task: ClaimsTask,
+        run_id: str,
+        responses: list[Any],
+        finalized_uids: set[int],
+    ) -> None:
+        if self.backend_client is None:
+            return
+        expected_paper_ids = [
+            paper.paper_id or f"paper_{index}"
+            for index, paper in enumerate(task.paper_tasks(), start=1)
+        ]
+        assignments = {
+            int(item.get("uid")): item
+            for item in list((self._active_miner_selection or {}).get("assignments") or [])
+            if isinstance(item, dict) and item.get("uid") is not None
+        }
+        artifact_rows = self.backend_client.list_miner_artifacts(batch_id=task.batch_id)
+        uploaded_by_uid: dict[int, set[str]] = {}
+        for row in artifact_rows:
+            if not isinstance(row, dict) or row.get("uid") is None:
+                continue
+            uploaded_by_uid.setdefault(int(row["uid"]), set()).add(str(row.get("paper_id") or ""))
+
+        for index, neuron in enumerate(self.target_neurons):
+            uid = int(neuron.uid)
+            if uid in finalized_uids:
+                continue
+            assignment = assignments.get(uid, {})
+            hotkey = str(assignment.get("hotkey") or getattr(neuron, "hotkey", "") or "")
+            response = responses[index] if index < len(responses) else None
+            articles = list(getattr(response, "articles", None) or []) if response is not None else []
+            completed_ids = set(uploaded_by_uid.get(uid, set()))
+            failed_by_paper: dict[str, str] = {}
+            for article in articles:
+                if not isinstance(article, dict):
+                    continue
+                paper_id = str(article.get("paper_id") or "")
+                if not paper_id:
+                    continue
+                if str(article.get("status") or "") == "completed":
+                    completed_ids.add(paper_id)
+                else:
+                    failed_by_paper[paper_id] = str(article.get("error") or "miner paper processing failed")
+            completed = [paper_id for paper_id in expected_paper_ids if paper_id in completed_ids]
+            failed = [
+                {"paper_id": paper_id, "reason": reason}
+                for paper_id, reason in failed_by_paper.items()
+                if paper_id not in completed_ids
+            ]
+            response_error = str(getattr(response, "error", "") or "") if response is not None else ""
+            if uid in self._active_unavailable_target_uids:
+                status = "unavailable"
+                error = self._active_unavailable_target_uids[uid]
+            elif len(completed) == len(expected_paper_ids):
+                status = "completed"
+                error = None
+            elif completed:
+                status = "partial"
+                error = response_error or None
+            elif response_error or failed:
+                status = "failed"
+                error = response_error or "all miner papers failed"
+            else:
+                status = "missing"
+                error = "miner did not return a batch response"
+            self.backend_client.finalize_batch_miner_submission(
+                batch_id=task.batch_id,
+                run_id=run_id,
+                uid=uid,
+                hotkey=hotkey,
+                status=status,
+                expected_paper_ids=expected_paper_ids,
+                completed_paper_ids=completed,
+                failed_papers=failed,
+                error=error,
+            )
+
+    def _canonical_artifact_responses(
+        self,
+        *,
+        task: ClaimsTask,
+        run_id: str,
+        collection: dict[str, Any],
+    ) -> list[Any]:
+        submissions = {
+            int(item.get("uid")): item
+            for item in list(collection.get("submissions") or [])
+            if isinstance(item, dict) and item.get("uid") is not None
+        }
+        return [
+            self._recover_backend_artifact_response(
+                run_id=run_id,
+                task=task,
+                uid=int(neuron.uid),
+                batch_scoped=True,
+                submission=submissions.get(int(neuron.uid)),
+            )
+            for neuron in self.target_neurons
+        ]
 
     def _score_responses(self, responses: list[Any], *, task: ClaimsTask, run_id: str) -> dict[int, float]:
         scores = {int(neuron.uid): 0.0 for neuron in self.target_neurons}
@@ -1332,7 +1675,13 @@ class ClaimsValidator:
                 and self._is_protocol_compatible(response)
                 and getattr(response, "articles", None)
             ):
-                self._hydrate_response_articles(response, uid=uid, run_id=run_id)
+                self._hydrate_response_articles(
+                    response,
+                    uid=uid,
+                    run_id=run_id,
+                    batch_id=task.batch_id,
+                    batch_scoped=bool(task.assignment_key),
+                )
 
         precomputed_rigor: dict[
             tuple[int, str], tuple[dict[str, Any], dict[str, Any]]
@@ -1682,38 +2031,78 @@ class ClaimsValidator:
                 }
             )
 
-    def _recover_backend_artifact_response(self, *, run_id: str, task: ClaimsTask, uid: int) -> Any | None:
+    def _recover_backend_artifact_response(
+        self,
+        *,
+        run_id: str,
+        task: ClaimsTask,
+        uid: int,
+        batch_scoped: bool = False,
+        submission: dict[str, Any] | None = None,
+    ) -> Any | None:
         if self.backend_client is None:
             return None
         try:
-            rows = self.backend_client.list_miner_artifacts(run_id=run_id, uid=uid)
+            if batch_scoped:
+                rows = self.backend_client.list_miner_artifacts(batch_id=task.batch_id, uid=uid)
+            else:
+                rows = self.backend_client.list_miner_artifacts(run_id=run_id, uid=uid)
         except Exception as exc:
-            self.bt_logging.warning(f"Could not recover backend miner artifacts uid={uid} run_id={run_id}: {exc}")
+            scope = f"batch_id={task.batch_id}" if batch_scoped else f"run_id={run_id}"
+            self.bt_logging.warning(f"Could not recover backend miner artifacts uid={uid} {scope}: {exc}")
             return None
-        if not rows:
+        if not rows and submission is None:
             return None
+        rows_by_paper = {
+            str(row.get("paper_id") or ""): row
+            for row in rows
+            if isinstance(row, dict) and row.get("paper_id")
+        }
+        failures = {
+            str(item.get("paper_id") or ""): str(item.get("reason") or "miner paper processing failed")
+            for item in list((submission or {}).get("failed_papers") or [])
+            if isinstance(item, dict) and item.get("paper_id")
+        }
         articles = []
-        for row in rows:
-            if not isinstance(row, dict):
+        paper_tasks = task.paper_tasks()
+        expected_paper_ids = [
+            paper.paper_id or f"paper_{index}"
+            for index, paper in enumerate(paper_tasks, start=1)
+        ]
+        for paper_id in expected_paper_ids:
+            row = rows_by_paper.get(paper_id)
+            if row is None:
+                articles.append(
+                    {
+                        "paper_id": paper_id,
+                        "status": "failed",
+                        "error": failures.get(
+                            paper_id,
+                            str((submission or {}).get("error") or "miner submission missing for canonical batch"),
+                        ),
+                        "transport": "backend_artifact_v1",
+                    }
+                )
                 continue
             article = {
-                "paper_id": str(row.get("paper_id") or ""),
+                "paper_id": paper_id,
                 "status": str(row.get("status") or "completed"),
                 "artifact_id": str(row.get("artifact_id") or ""),
                 "artifact_uri": f"claims-api:/miner-artifacts/{row.get('artifact_id')}",
                 "artifact_hash": str(row.get("artifact_hash") or ""),
                 "source_payload_hash": row.get("source_payload_hash"),
                 "transport": "backend_artifact_v1",
+                "artifact_origin_run_id": str(row.get("run_id") or ""),
+                "artifact_scope": "batch" if batch_scoped else "run",
             }
             if isinstance(row.get("agent_output"), dict):
                 article["agent_output"] = row["agent_output"]
             if isinstance(row.get("source_payload"), dict):
                 article["source_payload"] = row["source_payload"]
             articles.append(article)
-        if not articles:
-            return None
         self.bt_logging.info(
-            f"Recovered {len(articles)} backend miner artifact(s) uid={uid} run_id={run_id}"
+            f"Recovered {len(rows_by_paper)}/{len(expected_paper_ids)} backend miner artifact(s) "
+            f"uid={uid} batch_id={task.batch_id if batch_scoped else ''} run_id={run_id}"
         )
         return SimpleNamespace(
             task_id=task.task_id,
@@ -1729,7 +2118,15 @@ class ClaimsValidator:
             error="",
         )
 
-    def _hydrate_response_articles(self, response: Any, *, uid: int, run_id: str) -> None:
+    def _hydrate_response_articles(
+        self,
+        response: Any,
+        *,
+        uid: int,
+        run_id: str,
+        batch_id: str = "",
+        batch_scoped: bool = False,
+    ) -> None:
         articles = getattr(response, "articles", None)
         if not isinstance(articles, list):
             return
@@ -1747,7 +2144,10 @@ class ClaimsValidator:
                 continue
             try:
                 row = self.backend_client.get_miner_artifact(artifact_id=artifact_id)
-                if str(row.get("run_id") or "") != run_id:
+                if batch_scoped:
+                    if str(row.get("batch_id") or "") != batch_id:
+                        raise ValueError(f"artifact batch_id mismatch: {row.get('batch_id')} != {batch_id}")
+                elif str(row.get("run_id") or "") != run_id:
                     raise ValueError(f"artifact run_id mismatch: {row.get('run_id')} != {run_id}")
                 if row.get("uid") is not None and int(row.get("uid")) != int(uid):
                     raise ValueError(f"artifact uid mismatch: {row.get('uid')} != {uid}")
@@ -5234,6 +5634,16 @@ def _metagraph_registration_blocks(metagraph: Any, neurons: list[Any]) -> dict[i
         except (TypeError, ValueError):
             blocks[uid] = registration_block_for_neuron(neuron)
     return blocks
+
+
+def _unavailable_target_neuron(assignment: dict[str, Any]) -> Any:
+    return SimpleNamespace(
+        uid=int(assignment.get("uid", -1)),
+        hotkey=str(assignment.get("hotkey") or ""),
+        coldkey="",
+        is_null=False,
+        axon_info=SimpleNamespace(ip="0.0.0.0", port=0, is_serving=False),
+    )
 
 
 def _run_config_snapshot(config: Any) -> dict[str, Any]:

@@ -7,6 +7,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -221,6 +222,44 @@ def test_miner_backend_artifact_upload_returns_manifest_only() -> None:
     assert "agent_output" not in manifest
     assert miner.backend_client.payloads[0]["agent_output"]["paper"]["paper_id"] == "paper_001"
     assert miner.backend_client.payloads[0]["source_payload"]["spans"][0]["span_id"] == "paper_001-span-0001"
+
+
+def test_miner_uses_batch_scoped_artifact_id_for_canonical_task() -> None:
+    class FakeBackend:
+        def __init__(self) -> None:
+            self.payload = None
+
+        def post_miner_artifact(self, payload):
+            self.payload = payload
+            return payload
+
+    miner = object.__new__(ClaimsMiner)
+    miner.backend_client = FakeBackend()
+    miner.uid = 9
+    miner.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="hotkey_9"))
+    miner.config = SimpleNamespace(claims_pipeline="agent_v1", claims_subtensor_network_arg="test")
+    task = ClaimsTask.from_dict(
+        {
+            "task_id": "task_001",
+            "run_id": "run_002",
+            "batch_id": "batch_001",
+            "assignment_key": "assignment_001",
+            "network": "testnet",
+            "paper_id": "paper_001",
+        }
+    )
+
+    manifest = miner._post_batch_artifact(
+        task=task,
+        paper=SimpleNamespace(title="Paper", paper_url="https://example.test/paper.pdf", source_sha256="sha"),
+        paper_id="paper_001",
+        extraction={"paper": {"paper_id": "paper_001"}, "logic": {"claims": []}},
+        source_payload={"spans": []},
+    )
+
+    assert manifest["artifact_id"] == "artifact_batch_001_uid_9_paper_001"
+    assert miner.backend_client.payload["metadata"]["artifact_scope"] == "batch"
+    assert miner.backend_client.payload["metadata"]["collector_run_id"] == "run_002"
 
 
 def test_agent_v1_toolbox_validates_and_submits_artifact(tmp_path: Path) -> None:
@@ -567,6 +606,43 @@ def test_miner_batch_task_returns_one_article_per_paper(monkeypatch, tmp_path: P
     assert all("extraction" not in article for article in articles)
     assert all("source_payload" not in article for article in articles)
     assert sorted(calls) == ["paper_a", "paper_b"]
+
+
+def test_miner_coalesces_duplicate_in_flight_paper_work() -> None:
+    miner = ClaimsMiner.__new__(ClaimsMiner)
+    miner.config = SimpleNamespace(claims_pipeline="agent_v1", claims_timeout=2)
+    miner.bt_logging = SimpleNamespace(info=lambda *_args, **_kwargs: None)
+    cached: dict[str, dict] = {}
+    calls = 0
+
+    miner._read_cached_extraction = lambda cache_key: cached.get(cache_key)
+    miner._read_cached_source_payload = lambda _cache_key: {"spans": []}
+
+    def fake_run_task(task, *, cache_key, validator_hotkey):
+        nonlocal calls
+        calls += 1
+        time.sleep(0.05)
+        extraction = {"paper": {"paper_id": task.paper_id}, "logic": {"claims": []}}
+        cached[cache_key] = extraction
+        return extraction, {"spans": []}
+
+    miner._run_task = fake_run_task
+    task = ClaimsTask.from_dict({"task_id": "task_1", "paper_id": "paper_1", "paper_url": "https://example.test/1.pdf"})
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(
+            executor.map(
+                lambda _index: miner._run_task_coalesced(
+                    task,
+                    cache_key="same-cache-key",
+                    validator_hotkey="validator",
+                ),
+                range(2),
+            )
+        )
+
+    assert calls == 1
+    assert [result[0]["paper"]["paper_id"] for result in results] == ["paper_1", "paper_1"]
 
 
 def test_miner_batch_forward_keeps_top_level_payload_compact(monkeypatch) -> None:

@@ -104,15 +104,18 @@ python -m neurons.validator \
   --claims.timeout 1800
 ```
 
-The validator asks the backend for a random approved paper batch, sends the
-batch to registered miners, scores each paper response, aggregates the batch
-score with `--claims.batch-score-rule`, posts audit records back to the
-backend, and sets weights on the subnet from the current run scores. V0 batch
-scoring does not use an all-papers gate; missing or unscored assigned papers
-count as zero before aggregation.
-The backend records the selected batch immediately and excludes assigned papers
-from future selections unless the validator passes `--claims.allow-paper-reuse`
-for a smoke test.
+The validator asks the backend for the canonical approved paper batch for the
+current assignment window, claims or reuses its immutable miner assignment,
+then claims the batch's collection lease or waits for its canonical artifacts.
+Only the query owner sends the batch to miners. Every validator independently
+scores the shared paper responses, aggregates with
+`--claims.batch-score-rule`, posts run-specific audit records, and sets weights
+from its own scores. V0 batch scoring does not use an all-papers gate; missing
+or unscored assigned papers count as zero before aggregation.
+With `CLAIMS_BATCH_ASSIGNMENT_WINDOW_SECONDS=21600`, validators arriving in the
+same six-hour UTC window receive the same task ID, batch ID, papers, selection
+seed, and miner snapshot. The backend excludes those papers from later windows
+unless the validator passes `--claims.allow-paper-reuse` for a smoke test.
 By default `--claims.validator-pipeline auto` routes ARA-shaped responses to
 `validator.agent_v1` and legacy responses to `validator.v0`.
 Use `--claims.task-artifact` for local smoke tests with a prebuilt artifact, or

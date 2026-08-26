@@ -5,6 +5,7 @@ import logging
 import os
 import shlex
 import sys
+import threading
 import time
 import traceback
 import uuid
@@ -46,6 +47,7 @@ class ClaimsMiner:
         self._setup_logging()
         self._request_times_by_hotkey: dict[str, list[float]] = {}
         self._in_progress_keys: set[str] = set()
+        self._cache_condition = threading.Condition()
         if self.config.claims_dry_run:
             self.runner = self._build_runner()
             self.backend_client = None
@@ -349,6 +351,8 @@ class ClaimsMiner:
                     "task_id": synapse.task_id,
                     "run_id": getattr(synapse, "run_id", ""),
                     "batch_id": getattr(synapse, "batch_id", ""),
+                    "assignment_key": getattr(synapse, "assignment_key", ""),
+                    "assignment_window_start": getattr(synapse, "assignment_window_start", ""),
                     "selection_seed": getattr(synapse, "selection_seed", ""),
                     "task_version": getattr(synapse, "task_version", ""),
                     "scoring_version": getattr(synapse, "scoring_version", ""),
@@ -385,24 +389,13 @@ class ClaimsMiner:
                 miner_version=str(self.config.claims_pipeline),
                 model_config=self._model_config_fingerprint(),
             )
-            cached = self._read_cached_extraction(cache_key)
-            if cached is not None:
-                self.bt_logging.info(f"Serving cached Claims task={task_label} cache_key={cache_key[:12]}")
-                synapse.extraction = cached
-                synapse.source_payload = self._read_cached_source_payload(cache_key)
-                synapse.paper_id = str((cached.get("paper") or {}).get("paper_id") or task.paper_id)
-                synapse.miner_version = str(self.config.claims_pipeline)
-                synapse.error = ""
-                return synapse
-            if cache_key in self._in_progress_keys:
-                raise RuntimeError("Task is already being processed by this miner.")
-            self._in_progress_keys.add(cache_key)
-            try:
-                extraction, source_payload = self._run_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
-                synapse.extraction = extraction
-                synapse.source_payload = source_payload
-            finally:
-                self._in_progress_keys.discard(cache_key)
+            extraction, source_payload = self._run_task_coalesced(
+                task,
+                cache_key=cache_key,
+                validator_hotkey=validator_hotkey,
+            )
+            synapse.extraction = extraction
+            synapse.source_payload = source_payload
             synapse.paper_id = str((synapse.extraction.get("paper") or {}).get("paper_id") or task.paper_id)
             synapse.miner_version = str(self.config.claims_pipeline)
             synapse.error = ""
@@ -436,6 +429,40 @@ class ClaimsMiner:
         if self.config.claims_pipeline == "agent_v1":
             return self._run_agent_v1_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
         return self._run_v0_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
+
+    def _run_task_coalesced(
+        self,
+        task: ClaimsTask,
+        *,
+        cache_key: str,
+        validator_hotkey: str,
+    ) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        condition = getattr(self, "_cache_condition", None)
+        if condition is None:
+            condition = threading.Condition()
+            self._cache_condition = condition
+        if not hasattr(self, "_in_progress_keys"):
+            self._in_progress_keys = set()
+
+        while True:
+            cached = self._read_cached_extraction(cache_key)
+            if cached is not None:
+                return cached, self._read_cached_source_payload(cache_key)
+            with condition:
+                if cache_key not in self._in_progress_keys:
+                    self._in_progress_keys.add(cache_key)
+                    break
+                self.bt_logging.info(
+                    f"Waiting for in-flight Claims extraction cache_key={cache_key[:12]}"
+                )
+                condition.wait(timeout=max(1.0, float(getattr(self.config, "claims_timeout", 1800))))
+
+        try:
+            return self._run_task(task, cache_key=cache_key, validator_hotkey=validator_hotkey)
+        finally:
+            with condition:
+                self._in_progress_keys.discard(cache_key)
+                condition.notify_all()
 
     def _run_batch_task(self, task: ClaimsTask, *, validator_hotkey: str) -> list[dict[str, Any]]:
         indexed_papers = list(enumerate(task.papers, start=1))
@@ -474,6 +501,8 @@ class ClaimsMiner:
                 "task_id": task.task_id,
                 "run_id": task.run_id,
                 "batch_id": task.batch_id,
+                "assignment_key": task.assignment_key,
+                "assignment_window_start": task.assignment_window_start,
                 "selection_seed": task.selection_seed,
                 "task_version": task.task_version,
                 "scoring_version": task.scoring_version,
@@ -499,16 +528,11 @@ class ClaimsMiner:
         )
         paper_id = paper.paper_id or paper_task.paper_id or cache_key[:12]
         try:
-            cached = self._read_cached_extraction(cache_key)
-            if cached is not None:
-                extraction = cached
-                source_payload = self._read_cached_source_payload(cache_key)
-            else:
-                extraction, source_payload = self._run_task(
-                    paper_task,
-                    cache_key=cache_key,
-                    validator_hotkey=validator_hotkey,
-                )
+            extraction, source_payload = self._run_task_coalesced(
+                paper_task,
+                cache_key=cache_key,
+                validator_hotkey=validator_hotkey,
+            )
             article = {
                 "paper_id": paper_id,
                 "title": paper.title,
@@ -560,7 +584,8 @@ class ClaimsMiner:
             raise RuntimeError("Claims backend artifact upload requires the validator run_id in the task synapse.")
         artifact_hash = _json_hash(extraction)
         source_payload_hash = _json_hash(source_payload) if source_payload is not None else None
-        artifact_id = f"artifact_{safe_task_id(task.run_id)}_uid_{int(self.uid)}_{safe_task_id(paper_id)}"
+        artifact_scope = task.batch_id if task.assignment_key else task.run_id
+        artifact_id = f"artifact_{safe_task_id(artifact_scope)}_uid_{int(self.uid)}_{safe_task_id(paper_id)}"
         claim_count = _claim_count(extraction)
         evidence_count = _evidence_count(extraction)
         payload = {
@@ -578,6 +603,8 @@ class ClaimsMiner:
             "source_payload": source_payload,
             "metadata": {
                 "transport": "backend_artifact_v1",
+                "artifact_scope": "batch" if task.assignment_key else "run",
+                "collector_run_id": task.run_id,
                 "title": paper.title,
                 "source_url": paper.paper_url,
                 "source_sha256": paper.source_sha256,

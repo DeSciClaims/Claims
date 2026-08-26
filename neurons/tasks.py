@@ -62,12 +62,18 @@ class ClaimsTask:
     source_sha256: str = ""
     artifact: dict[str, Any] | None = None
     batch_id: str = ""
+    assignment_key: str = ""
+    assignment_window_start: str = ""
     selection_seed: str = ""
     task_version: str = "claims_task_v0"
     scoring_version: str = "agent_v1_pass4_deterministic_v0"
     task_type: str = "agent_v1_claim_extraction"
     network: str = "testnet"
     netuid: int | None = None
+    target_uids: tuple[int, ...] = ()
+    target_miners: tuple[dict[str, Any], ...] = ()
+    metagraph_block: int | None = None
+    miner_selection_algorithm: str = ""
     papers: tuple[ClaimsPaperTask, ...] = ()
     protocol_version: str = PROTOCOL_VERSION
     schema_version: str = SCHEMA_VERSION
@@ -90,12 +96,20 @@ class ClaimsTask:
             source_sha256=str(payload.get("source_sha256") or "").strip().lower(),
             artifact=artifact if isinstance(artifact, dict) else None,
             batch_id=safe_task_id(str(payload.get("batch_id") or "").strip()) if payload.get("batch_id") else "",
+            assignment_key=str(payload.get("assignment_key") or "").strip(),
+            assignment_window_start=str(payload.get("assignment_window_start") or "").strip(),
             selection_seed=str(payload.get("selection_seed") or "").strip(),
             task_version=str(payload.get("task_version") or "claims_task_v0").strip(),
             scoring_version=str(payload.get("scoring_version") or "agent_v1_pass4_deterministic_v0").strip(),
             task_type=str(payload.get("task_type") or "agent_v1_claim_extraction").strip(),
             network=str(payload.get("network") or "testnet").strip(),
             netuid=int(payload["netuid"]) if payload.get("netuid") is not None else None,
+            target_uids=tuple(int(uid) for uid in list(payload.get("target_uids") or [])),
+            target_miners=tuple(
+                dict(item) for item in list(payload.get("target_miners") or []) if isinstance(item, dict)
+            ),
+            metagraph_block=int(payload["metagraph_block"]) if payload.get("metagraph_block") is not None else None,
+            miner_selection_algorithm=str(payload.get("miner_selection_algorithm") or "").strip(),
             papers=papers,
             protocol_version=str(payload.get("protocol_version") or PROTOCOL_VERSION).strip(),
             schema_version=str(payload.get("schema_version") or SCHEMA_VERSION).strip(),
@@ -119,6 +133,8 @@ class ClaimsTask:
             "task_id": self.task_id,
             "run_id": self.run_id,
             "batch_id": self.batch_id,
+            "assignment_key": self.assignment_key,
+            "assignment_window_start": self.assignment_window_start,
             "selection_seed": self.selection_seed,
             "task_version": self.task_version,
             "scoring_version": self.scoring_version,

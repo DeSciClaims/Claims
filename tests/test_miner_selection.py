@@ -219,3 +219,81 @@ def test_eligible_miner_requires_serving_axon_but_not_absence_of_validator_permi
     assert validator._is_eligible_miner(validator_uid) is True
     assert validator._is_eligible_miner(validator_self) is False
     assert validator._is_eligible_miner(missing_ip) is False
+
+
+def test_task_selection_claims_one_canonical_miner_assignment() -> None:
+    calls: list[dict] = []
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        netuid=530,
+        claims_target_uids=[],
+    )
+    validator.backend_client = SimpleNamespace(
+        claim_batch_miner_selection=lambda **payload: calls.append(payload)
+        or {
+            "created": False,
+            "metagraph_block": 900,
+            "miner_selection_algorithm": "uid_v0",
+            "target_miners": [{"uid": 7, "hotkey": "hotkey_7", "registration_block": 100}],
+        },
+        record_miner_selections=lambda **_payload: [],
+    )
+    validator.bt_logging = SimpleNamespace(info=lambda *_args: None)
+    validator._active_miner_selection = {}
+
+    def propose(*, selection_seed, batch_id):
+        assert selection_seed == "canonical-seed"
+        assert batch_id is None
+        validator._active_miner_selection = {
+            "algorithm": "uid_v0",
+            "metagraph_block": 850,
+            "assignments": [{"uid": 8, "hotkey": "hotkey_8", "registration_block": 100}],
+        }
+        return [SimpleNamespace(uid=8)]
+
+    resolved: list[dict] = []
+    validator._load_target_neurons = propose
+    validator._resolve_canonical_target_neurons = lambda assignments, **_kwargs: resolved.extend(assignments) or [
+        SimpleNamespace(uid=7)
+    ]
+    task = SimpleNamespace(
+        batch_id="batch_1",
+        task_id="task_1",
+        assignment_key="assignment_1",
+        selection_seed="canonical-seed",
+        target_miners=(),
+        metagraph_block=None,
+        miner_selection_algorithm="",
+    )
+
+    selected = validator._load_task_target_neurons(task, fallback_seed="run-specific-seed")
+
+    assert [item.uid for item in selected] == [7]
+    assert resolved[0]["uid"] == 7
+    assert calls[0]["batch_id"] == "batch_1"
+    assert calls[0]["target_miners"][0]["uid"] == 8
+
+
+def test_canonical_assignment_preserves_unavailable_uid_for_zero_scoring() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="validator_hotkey"))
+    validator.metagraph = SimpleNamespace(neurons=[], hotkeys=[], block=1_000, block_at_registration=[])
+    validator._sync_metagraph = lambda: None
+    validator._load_neurons_by_uid = lambda: []
+    warnings: list[str] = []
+    validator.bt_logging = SimpleNamespace(
+        warning=warnings.append,
+        info=lambda *_args: None,
+    )
+
+    selected = validator._resolve_canonical_target_neurons(
+        [{"uid": 7, "hotkey": "hotkey_7", "registration_block": 100}],
+        selection_seed="seed",
+        selected_block=1_000,
+        algorithm="uid_v0",
+    )
+
+    assert [item.uid for item in selected] == [7]
+    assert validator._active_unavailable_target_uids == {7: "absent from the metagraph"}
+    assert selected[0].axon_info.is_serving is False
+    assert "preserving assignment with zero score" in warnings[0]

@@ -127,14 +127,23 @@ def test_miner_selection_state_client_uses_signed_validator_endpoints(monkeypatc
         evaluated_block=1_010,
         evaluations=[{"uid": 7, "registration_block": 100, "score": 0.0}],
     )
+    claimed = client.claim_batch_miner_selection(
+        batch_id="batch_1",
+        netuid=530,
+        selected_block=1_000,
+        selection_algorithm="uid_v0",
+        target_miners=[{"uid": 7, "hotkey": "hotkey_7"}],
+    )
 
     assert state[0]["uid"] == 7
     assert selected[0]["uid"] == 7
     assert result["recorded"] == 1
+    assert claimed["recorded"] == 1
     assert [path for path, _payload in posted] == [
         "/validator/miner-selection/state",
         "/validator/miner-selection/selections",
         "/validator/miner-selection/evaluations",
+        "/validator/batches/batch_1/miners",
     ]
 
 

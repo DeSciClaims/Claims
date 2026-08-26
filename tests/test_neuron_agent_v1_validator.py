@@ -275,6 +275,142 @@ def test_validator_recovers_backend_artifact_response_when_dendrite_missing() ->
     assert recovered.articles[0]["agent_output"]["paper"]["paper_id"] == "paper1"
 
 
+def test_follower_validator_reuses_completed_canonical_artifacts_without_querying() -> None:
+    artifact = _agent_v1_artifact()
+    artifact["paper"]["paper_id"] = "paper1"
+
+    class FakeBackend:
+        def claim_batch_collection(self, *, batch_id: str, run_id: str):
+            assert batch_id == "batch1"
+            assert run_id == "run2"
+            return {
+                "status": "complete",
+                "owner_run_id": "run1",
+                "submissions": [
+                    {
+                        "uid": 9,
+                        "status": "completed",
+                        "expected_paper_ids": ["paper1"],
+                        "completed_paper_ids": ["paper1"],
+                        "failed_papers": [],
+                    }
+                ],
+            }
+
+        def list_miner_artifacts(self, *, batch_id: str, uid: int):
+            assert batch_id == "batch1"
+            assert uid == 9
+            return [
+                {
+                    "artifact_id": "artifact_batch1_uid_9_paper1",
+                    "run_id": "run1",
+                    "batch_id": "batch1",
+                    "uid": 9,
+                    "paper_id": "paper1",
+                    "status": "completed",
+                    "artifact_hash": _stable_hash(artifact),
+                    "agent_output": artifact,
+                }
+            ]
+
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.backend_client = FakeBackend()
+    validator.target_neurons = [SimpleNamespace(uid=9, hotkey="hotkey_9")]
+    validator._active_unavailable_target_uids = {}
+    validator.bt_logging = _logger()
+    validator.config = SimpleNamespace(claims_timeout=30)
+    validator._query_miners = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("follower must not query miners")
+    )
+    task = ClaimsTask.from_dict(
+        {
+            "task_id": "task1",
+            "batch_id": "batch1",
+            "assignment_key": "assignment1",
+            "papers": [{"paper_id": "paper1"}],
+        }
+    )
+
+    responses = validator._collect_or_reuse_miner_responses(task, run_id="run2")
+
+    assert responses[0].articles[0]["agent_output"]["paper"]["paper_id"] == "paper1"
+    assert responses[0].articles[0]["artifact_origin_run_id"] == "run1"
+
+
+def test_query_owner_finalizes_canonical_submissions_then_reuses_uploaded_artifacts() -> None:
+    artifact = _agent_v1_artifact()
+    artifact["paper"]["paper_id"] = "paper1"
+
+    class FakeBackend:
+        def __init__(self):
+            self.finalized = []
+
+        def claim_batch_collection(self, *, batch_id: str, run_id: str):
+            assert (batch_id, run_id) == ("batch1", "run1")
+            return {"status": "collecting", "acquired": True, "submissions": []}
+
+        def list_miner_artifacts(self, *, batch_id: str, uid: int | None = None):
+            assert batch_id == "batch1"
+            row = {
+                "artifact_id": "artifact_batch1_uid_9_paper1",
+                "run_id": "run1",
+                "batch_id": "batch1",
+                "uid": 9,
+                "paper_id": "paper1",
+                "status": "completed",
+                "artifact_hash": _stable_hash(artifact),
+                "agent_output": artifact,
+            }
+            return [row] if uid in (None, 9) else []
+
+        def finalize_batch_miner_submission(self, **payload):
+            self.finalized.append(payload)
+
+        def complete_batch_collection(self, *, batch_id: str, run_id: str):
+            assert (batch_id, run_id) == ("batch1", "run1")
+            return {
+                "status": "complete",
+                "owner_run_id": "run1",
+                "submissions": [
+                    {
+                        "uid": 9,
+                        "status": "completed",
+                        "expected_paper_ids": ["paper1"],
+                        "completed_paper_ids": ["paper1"],
+                        "failed_papers": [],
+                    }
+                ],
+            }
+
+    backend = FakeBackend()
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.backend_client = backend
+    validator.target_neurons = [SimpleNamespace(uid=9, hotkey="hotkey_9")]
+    validator._active_miner_selection = {
+        "assignments": [{"uid": 9, "hotkey": "hotkey_9"}],
+    }
+    validator._active_unavailable_target_uids = {}
+    validator.bt_logging = _logger()
+    validator.config = SimpleNamespace(claims_timeout=30)
+    validator._query_miners = lambda *_args, **_kwargs: [
+        SimpleNamespace(articles=[{"paper_id": "paper1", "status": "completed"}], error=None)
+    ]
+    task = ClaimsTask.from_dict(
+        {
+            "task_id": "task1",
+            "batch_id": "batch1",
+            "assignment_key": "assignment1",
+            "papers": [{"paper_id": "paper1"}],
+        }
+    )
+
+    responses = validator._collect_or_reuse_miner_responses(task, run_id="run1")
+
+    assert backend.finalized[0]["status"] == "completed"
+    assert backend.finalized[0]["completed_paper_ids"] == ["paper1"]
+    assert responses[0].articles[0]["artifact_origin_run_id"] == "run1"
+
+
 def test_article_metadata_keeps_per_paper_runtime_metrics() -> None:
     artifact = _agent_v1_artifact()
     artifact["metadata"] = {
