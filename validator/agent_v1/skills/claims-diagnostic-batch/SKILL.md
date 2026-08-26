@@ -5,7 +5,7 @@ argument-hint: "<diagnostic-paper-workspace>"
 allowed-tools: Read, Write, Glob, Grep
 metadata:
   category: claims-validation
-  version: "3.0.0"
+  version: "4.0.0"
   tags: [claims, validator, diagnostics, batch]
 ---
 
@@ -17,8 +17,8 @@ structural findings, and grounding findings.
 
 Do not compare or rank submissions. Do not transfer a finding from one
 submission to another. The validator has already allocated every submission
-and claim identifier in `output_skeleton.json`. Preserve those object keys
-exactly. Never create, copy, rename, remove, or reorder identifiers.
+identifier in `output_skeleton.json`. Preserve every submission key exactly.
+Use only claim references provided in that submission's claim case file.
 
 This is one paper-level review operation. Do not create miner shards, child
 tasks, or additional agent sessions.
@@ -41,17 +41,19 @@ sources. Do not repair artifacts and do not calculate final scores.
 
 ## Claim Assessments
 
-Each submission row links to `claim_assessment_cases.json`. Read it and fill
-the matching null claim slot in `output_skeleton.json`. The references are
-local aliases such as `c0`; they remain object keys and must not be repeated in
-the assessment value. Do not emit or reconstruct the artifact's longer claim
+Each submission row links to `claim_assessment_cases.json`. Review every claim,
+but add an assessment only for claims with a concrete evidence or rigor issue.
+Omit supported claims from `claim_assessments`; an empty object means the
+submission was reviewed and no claim-level issue was found. Claim references
+are local aliases such as `c0`; they remain object keys and must not be repeated
+in the assessment value. Do not emit or reconstruct the artifact's longer claim
 IDs, evidence IDs, or span IDs. The validator owns that mapping.
 
-When `task.json` contains `repair_only_the_preallocated_missing_or_invalid_claim_slots`,
-review only the slots present in the repair skeleton. Do not regenerate any
-submission or claim absent from that skeleton.
+When `task.json` contains `repair_only_the_missing_submission_or_invalid_assessments`,
+review only the submissions and claim cases in the repair task. Do not
+regenerate a submission or claim absent from that task.
 
-For each claim assign:
+For each problematic claim assign:
 
 - `evidence_status`: `supported`, `partially_supported`, `unsupported`, or
   `unverifiable`.
@@ -61,11 +63,18 @@ For each claim assign:
 - `reason`: one short claim-specific explanation.
 - `unsupported_assertions`: only material unsupported parts of the claim.
 
-`supported` means every material assertion is supported by evidence owned by
-that claim and by the linked source spans. Evidence attached to another claim
-or submission cannot repair it. Boilerplate such as "as stated in the source"
-is not evidence. Use `unverifiable` when source material is absent or
-insufficient to decide.
+Do not emit `supported` assessments. Evidence attached to another claim or
+submission cannot repair a problematic claim. Boilerplate such as "as stated
+in the source" is not evidence.
+
+Use `unverifiable` only when the miner's claim-owned evidence is missing,
+unresolvable, or lacks source material needed to inspect it. If linked evidence
+and source spans are available, inspect them and use `partially_supported` or
+`unsupported` when they do not establish the claim. Never use `unverifiable`
+because you could not find a case, load a file, finish the review, or understand
+the task. Those are agent execution failures, not miner issues. Every reason
+must identify what is missing or which material assertion the evidence fails to
+support; generic lookup or availability messages are invalid.
 
 Use `central` for a paper's primary finding or contribution, `supporting` for a
 material result needed to understand or support it, and `peripheral` for a
@@ -87,8 +96,8 @@ importance metadata.
 
 ## Output Contract
 
-Write one strict JSON object by replacing every null assessment value in the
-provided skeleton. Keep `submission_ref` and `claim_ref` as object keys:
+Write one strict JSON object using the provided submission skeleton. Include
+every submission exactly once, and include only problematic claim references:
 
 ```json
 {
@@ -120,7 +129,8 @@ provided skeleton. Keep `submission_ref` and `claim_ref` as object keys:
 }
 ```
 
-Use an empty `findings` array when a submission has no concrete rigor issue,
-but always fill every claim slot in the supplied skeleton. The only allowed
-evidence status for partial support is exactly `partially_supported`. Validate
-the complete output against `output_schema.json` before writing it.
+Use empty `claim_assessments` and `findings` objects/arrays when a reviewed
+submission has no concrete issue. Omitting an entire submission does not mean
+"no issues" and is invalid. The only allowed evidence status for partial support
+is exactly `partially_supported`. Validate the complete output against
+`output_schema.json` before writing it.

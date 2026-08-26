@@ -40,18 +40,7 @@ def test_diagnostic_paper_reviews_all_submissions_in_one_operation(tmp_path: Pat
     assert result.error is None
     assert result.operation_id == "run-1:paper-1:diagnostic-paper"
     assert sorted(result.reports) == ["S0001", "S0002"]
-    assert result.reports["S0001"]["claim_assessments"] == [
-        {
-            "claim_id": "C01",
-            "evidence_status": "supported",
-            "paper_relevance": "central",
-            "priority_rank": 1,
-            "reason": "The deterministic fixture found claim-owned supporting evidence.",
-            "unsupported_assertions": [],
-            "evidence_ids": ["EV01"],
-            "source_span_ids": ["reader-span-1", "span-1"],
-        }
-    ]
+    assert result.reports["S0001"]["claim_assessments"] == []
     manifest = json.loads((result.workspace / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["submission_count"] == 2
     assert manifest["claim_count"] == 2
@@ -73,13 +62,13 @@ def test_diagnostic_paper_reviews_all_submissions_in_one_operation(tmp_path: Pat
     )
     assert skeleton == {
         "reports": {
-            "S0001": {"claim_assessments": {"c0": None}, "findings": []},
-            "S0002": {"claim_assessments": {"c0": None}, "findings": []},
+            "S0001": {"claim_assessments": {}, "findings": []},
+            "S0002": {"claim_assessments": {}, "findings": []},
         }
     }
 
 
-def test_diagnostic_paper_rejects_an_incomplete_claim_partition(
+def test_diagnostic_paper_accepts_sparse_problem_assessments(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -99,11 +88,11 @@ def test_diagnostic_paper_rejects_an_incomplete_claim_partition(
                             "claim_assessments": [
                                 {
                                     "claim_ref": "c0",
-                                    "evidence_status": "supported",
+                                    "evidence_status": "partially_supported",
                                     "paper_relevance": "central",
                                     "priority_rank": 1,
-                                    "reason": "Only one claim was reviewed.",
-                                    "unsupported_assertions": [],
+                                    "reason": "The evidence supports the result but not its causal wording.",
+                                    "unsupported_assertions": ["The result is causal."],
                                 }
                             ],
                             "findings": [],
@@ -124,9 +113,11 @@ def test_diagnostic_paper_rejects_an_incomplete_claim_partition(
         submissions=[submission],
     )
 
-    assert result.reports == {}
-    assert "missing or invalid claims=['c1']" in str(result.error)
-    assert len(result.usage_events) == 2
+    assert result.error is None
+    assert len(result.usage_events) == 1
+    assert [
+        row["claim_id"] for row in result.reports["S0001"]["claim_assessments"]
+    ] == ["C01"]
 
 
 def test_diagnostic_paper_repairs_only_missing_submission_slots(
@@ -259,7 +250,10 @@ def test_diagnostic_paper_preserves_valid_reports_when_repair_is_incomplete(
     assert calls == 2
 
 
-def test_supported_claim_without_owned_evidence_is_downgraded(tmp_path: Path) -> None:
+def test_unverifiable_claim_requires_missing_or_unresolvable_evidence(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     submission = DiagnosticBatchSubmission(
         submission_ref="S0001",
         artifact={
@@ -281,6 +275,28 @@ def test_supported_claim_without_owned_evidence_is_downgraded(tmp_path: Path) ->
         grounding_findings=[],
     )
 
+    def fake_agent(command, *, output_path, **_kwargs):
+        output_path.write_text(
+            json.dumps(
+                {
+                    "reports": {
+                        "S0001": {
+                            "claim_assessments": {
+                                "c0": _assessment(
+                                    status="unverifiable",
+                                    reason="The claim has no claim-owned evidence or source spans.",
+                                )
+                            },
+                            "findings": [],
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(diagnostic_batch_module, "_run_until_valid_output", fake_agent)
     result = run_diagnostic_batch(
         config=_config(tmp_path),
         run_id="run-no-evidence",
@@ -293,11 +309,97 @@ def test_supported_claim_without_owned_evidence_is_downgraded(tmp_path: Path) ->
     assert result.reports["S0001"]["findings"][0]["metadata"]["code"] == "claim_evidence_ineligible"
 
 
-def test_failed_diagnostic_report_excludes_claims_and_penalizes_quality() -> None:
+def test_operational_placeholder_does_not_become_a_miner_finding(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_agent(command, *, output_path, **_kwargs):
+        output_path.write_text(
+            json.dumps(
+                {
+                    "reports": {
+                        "S0001": {
+                            "claim_assessments": {
+                                "c0": _assessment(
+                                    status="unverifiable",
+                                    reason="No claim assessment case found for this claim ref.",
+                                )
+                            },
+                            "findings": [],
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(diagnostic_batch_module, "_run_until_valid_output", fake_agent)
+    result = run_diagnostic_batch(
+        config=_config(tmp_path),
+        run_id="run-placeholder",
+        paper_id="paper-1",
+        submissions=[
+            _submission("S0001", {"spans": [{"span_id": "span-1", "text": "Result."}]})
+        ],
+    )
+
+    assert result.error is not None
+    assert result.reports["S0001"]["claim_assessments"] == []
+    assert result.reports["S0001"]["findings"] == []
+    assert (
+        result.reports["S0001"]["pipeline_findings"][0]["code"]
+        == "diagnostic_claim_review_incomplete"
+    )
+    assert "lookup failure" in str(result.error)
+
+
+def test_unverifiable_is_rejected_when_claim_owned_evidence_is_reviewable(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_agent(command, *, output_path, **_kwargs):
+        output_path.write_text(
+            json.dumps(
+                {
+                    "reports": {
+                        "S0001": {
+                            "claim_assessments": {
+                                "c0": _assessment(
+                                    status="unverifiable",
+                                    reason="The available evidence was not enough to decide.",
+                                )
+                            },
+                            "findings": [],
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(diagnostic_batch_module, "_run_until_valid_output", fake_agent)
+    result = run_diagnostic_batch(
+        config=_config(tmp_path),
+        run_id="run-ambiguous-unverifiable",
+        paper_id="paper-1",
+        submissions=[
+            _submission("S0001", {"spans": [{"span_id": "span-1", "text": "Result."}]})
+        ],
+    )
+
+    assert result.error is not None
+    assert result.reports["S0001"]["claim_assessments"] == []
+    assert "unverifiable is reserved" in str(result.error)
+
+
+def test_failed_diagnostic_report_records_pipeline_failure_without_miner_penalty() -> None:
     report = failed_diagnostic_report("paper review failed")
 
     assert report["claim_assessments"] == []
-    assert report["findings"][0]["severity"] == "critical"
+    assert report["findings"] == []
+    assert report["pipeline_findings"][0]["code"] == "diagnostic_paper_review_failed"
 
 
 def _config(tmp_path: Path) -> DiagnosticBatchConfig:
@@ -317,13 +419,17 @@ def _config(tmp_path: Path) -> DiagnosticBatchConfig:
     )
 
 
-def _assessment() -> dict:
+def _assessment(
+    *,
+    status: str = "partially_supported",
+    reason: str = "The evidence supports the result but not its causal wording.",
+) -> dict:
     return {
-        "evidence_status": "supported",
+        "evidence_status": status,
         "paper_relevance": "central",
         "priority_rank": 1,
-        "reason": "The deterministic fixture found claim-owned supporting evidence.",
-        "unsupported_assertions": [],
+        "reason": reason,
+        "unsupported_assertions": ["The result is causal."],
     }
 
 

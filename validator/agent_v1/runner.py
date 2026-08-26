@@ -95,6 +95,9 @@ class AgentV1ValidatorRunner:
         claim_assessments = rigor_payload.get("claim_assessments")
         if not isinstance(claim_assessments, list):
             claim_assessments = None
+        pipeline_findings = rigor_payload.get("pipeline_findings")
+        if not isinstance(pipeline_findings, list):
+            pipeline_findings = None
         (run_dir / "grounding_reviewed_findings.json").write_text(
             json.dumps([f.model_dump(mode="json") for f in reviewed_grounding_findings], indent=2, ensure_ascii=False),
             encoding="utf-8",
@@ -119,6 +122,10 @@ class AgentV1ValidatorRunner:
         }
         if claim_assessments is not None:
             report_metadata["claim_assessments"] = claim_assessments
+        if pipeline_findings is not None:
+            report_metadata["pipeline_findings"] = [
+                row for row in pipeline_findings if isinstance(row, dict)
+            ]
         report = AgentV1ValidationReport(
             artifact_path=str(artifact_path),
             source_payload_path=str(source_payload_path) if source_payload_path else None,

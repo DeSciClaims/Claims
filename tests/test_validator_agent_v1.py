@@ -149,6 +149,13 @@ def test_validator_agent_v1_runner_accepts_precomputed_batched_rigor(monkeypatch
                     "priority_rank": 1,
                 }
             ],
+            "pipeline_findings": [
+                {
+                    "code": "diagnostic_paper_review_failed",
+                    "stage": "diagnostic_validation",
+                    "message": "One shared diagnostic report was unavailable.",
+                }
+            ],
         },
         precomputed_rigor_manifest={
             "runtime": "diagnostic-file-paper",
@@ -168,6 +175,7 @@ def test_validator_agent_v1_runner_accepts_precomputed_batched_rigor(monkeypatch
     assert report.metrics.rigor_agent_elapsed_seconds == 12.5
     assert report.metrics.usage_source == "shared_diagnostic_batch"
     assert report.metadata["claim_assessments"][0]["claim_id"] == "C01"
+    assert report.metadata["pipeline_findings"][0]["code"] == "diagnostic_paper_review_failed"
 
 
 def test_validator_agent_v1_llm_validation_reports_semantic_grounding_findings(monkeypatch, tmp_path: Path) -> None:

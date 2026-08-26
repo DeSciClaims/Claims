@@ -385,18 +385,18 @@ Useful validator flags:
 - `--claims.silver-adjudication-max-in-flight 32`: cap Silver model calls globally across papers and passes; use `0` for unlimited.
 - Hermes adjudication defaults to a skill-based agent workflow with mode-`0600` task/schema files and validated JSON output. Set `CLAIMS_SILVER_ADJUDICATION_HERMES_EXECUTION_MODE=oneshot` for the optional tool-free path; use `CLAIMS_SILVER_ADJUDICATION_CLI_PROMPT_MODE=append` only for legacy CLI behavior.
 - `CLAIMS_SILVER_WORKFLOW_MODE=file-agent`: use one file-workspace comparator, two anonymous judges plus a conditional tiebreaker, deterministic consensus, and one global Silver canonicalizer per paper. Agents receive short validator-owned `cN`, `kN`, and `uN` references; internal IDs are restored after validation. The legacy graph workflow remains the default.
-- `--claims.diagnostic-miner-batch-size 10`: enable one diagnostic file-agent operation per paper. It reviews all available miners together using validator-owned submission/claim slots; miners are not sharded. One targeted repair may fill invalid slots, while valid miner reports are preserved. `1` keeps the original per-miner path.
+- `--claims.diagnostic-miner-batch-size 10`: enable one diagnostic file-agent operation per paper. It reviews all available miners together using validator-owned submission/claim aliases; miners are not sharded. Claim assessments are sparse issue reports, so an empty assessment map means the submission was reviewed with no claim-level issue. One targeted repair may recover a missing report or malformed returned assessment while valid miner reports are preserved. `1` keeps the original per-miner path.
 - `--claims.diagnostic-max-workers 10`: run paper-level diagnostic operations concurrently.
 - `--claims.diagnostic-miner-max-workers 2`: control concurrent per-miner scoring when paper-level diagnostics are disabled.
 - `--claims.skip-diagnostic-validation`: skip diagnostic reports when Silver is the only scoring path for a large run.
 - `--claims.silver-paper-max-workers 10`: run Silver post-pass work for multiple batch papers concurrently.
-- `--claims.silver-max-eligible-claims-per-miner 6`: cap the number of miner claims passed into downstream Silver processing per miner and paper. Claims are ranked using diagnostic assessment before the cap is applied. When assessment filtering is enabled, only evidence-supported central or supporting claims are considered. When assessment filtering is disabled, all claims remain eligible, but higher-ranked claims are retained first if the cap is reached.
+- `--claims.silver-max-eligible-claims-per-miner 6`: cap the number of miner claims passed into downstream Silver processing per miner and paper. When assessment filtering is enabled, claims explicitly reported as partially supported, unsupported, or unverifiable are excluded. Omitted assessments mean no issue was reported. When filtering is disabled, assessments do not alter downstream selection.
 - `--claims.silver-max-adjudication-cases-per-paper 80`: bound primary adjudication cases before judge calls. Candidate capacity is shared fairly across miners.
 - `CLAIMS_SILVER_FILTER_BY_ASSESSMENT=false` / `--claims.silver-filter-by-assessment true|false`: control whether diagnostic
   claim assessment filters miner claims before downstream Silver processing.
-  Defaults to `false`. When `false`, diagnostic assessment still runs and can
-  affect miner scoring, but claims are not excluded from downstream Silver
-  tasks based on `evidence_status` or `paper_relevance`.
+  Defaults to `false`. When `false`, diagnostic assessment findings can still
+  affect diagnostic quality, but claims are not excluded from downstream Silver
+  tasks based on their issue assessments.
 - `--claims.silver-relation-mode dspy --claims.silver-relation-model <MODEL>`: classify comparison and consolidation edges with DSPy. `openai-compatible` and `cli` use the same batch contract; CLI requires `CLAIMS_SILVER_RELATION_CLI_COMMAND` and accepts prompts on stdin or through `{prompt_file}`.
 - `--claims.allow-paper-reuse`: allow already assigned backend papers to be selected again for local smoke tests.
 - `--claims.task-manifest /path/to/tasks.jsonl`: run a list of tasks.

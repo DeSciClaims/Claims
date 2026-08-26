@@ -2860,17 +2860,14 @@ def test_missing_from_miner_case_is_created_once_globally() -> None:
     assert len({case.case_id for case in missing_cases}) == 1
 
 
-def test_claim_assessments_filter_rank_and_cap_miner_candidates() -> None:
+def test_sparse_claim_assessments_filter_only_explicit_issues() -> None:
     candidates = [
         _candidate(f"m{index}", "miner", "uid_9", f"Claim {index}")
         for index in range(1, 6)
     ]
     assessments = [
-        {"claim_id": "m1", "evidence_status": "supported", "paper_relevance": "central", "priority_rank": 2},
         {"claim_id": "m2", "evidence_status": "unsupported", "paper_relevance": "central", "priority_rank": 1},
-        {"claim_id": "m3", "evidence_status": "supported", "paper_relevance": "peripheral", "priority_rank": 1},
-        {"claim_id": "m4", "evidence_status": "supported", "paper_relevance": "central", "priority_rank": 1},
-        {"claim_id": "m5", "evidence_status": "supported", "paper_relevance": "supporting", "priority_rank": 1},
+        {"claim_id": "m4", "evidence_status": "unverifiable", "paper_relevance": "central", "priority_rank": 1},
     ]
 
     selected = _select_assessed_candidates(
@@ -2880,19 +2877,16 @@ def test_claim_assessments_filter_rank_and_cap_miner_candidates() -> None:
         filter_by_assessment=True,
     )
 
-    assert [candidate.record_id for candidate in selected] == ["m4", "m1"]
-    assert selected[0].metadata["diagnostic_claim_assessment"]["priority_rank"] == 1
+    assert [candidate.record_id for candidate in selected] == ["m1", "m3"]
 
 
-def test_claim_assessments_rank_without_filtering_candidates() -> None:
+def test_sparse_claim_assessments_do_not_change_selection_when_filtering_is_off() -> None:
     candidates = [
         _candidate(f"m{index}", "miner", "uid_9", f"Claim {index}")
         for index in range(1, 4)
     ]
     assessments = [
-        {"claim_id": "m1", "evidence_status": "supported", "paper_relevance": "central", "priority_rank": 1},
         {"claim_id": "m2", "evidence_status": "unsupported", "paper_relevance": "central", "priority_rank": 1},
-        {"claim_id": "m3", "evidence_status": "supported", "paper_relevance": "minor", "priority_rank": 1},
     ]
 
     selected = _select_assessed_candidates(
@@ -2902,29 +2896,24 @@ def test_claim_assessments_rank_without_filtering_candidates() -> None:
         filter_by_assessment=False,
     )
 
-    assert [candidate.record_id for candidate in selected] == ["m1", "m3", "m2"]
-    assert all("diagnostic_claim_assessment" in candidate.metadata for candidate in selected)
+    assert [candidate.record_id for candidate in selected] == ["m1", "m2", "m3"]
+    assert "diagnostic_claim_assessment" not in selected[0].metadata
+    assert "diagnostic_claim_assessment" in selected[1].metadata
 
 
-def test_claim_assessment_filter_fails_closed_per_miner_when_assessments_are_missing() -> None:
+def test_claim_assessment_filter_does_not_penalize_missing_pipeline_output() -> None:
     candidates = [
         _candidate(f"m{index}", "miner", "uid_9", f"Claim {index}")
         for index in range(1, 4)
     ]
 
-    assert _select_assessed_candidates(
-        candidates,
-        None,
-        max_claims=2,
-        filter_by_assessment=True,
-    ) == []
     assert [
         candidate.record_id
         for candidate in _select_assessed_candidates(
             candidates,
             None,
             max_claims=2,
-            filter_by_assessment=False,
+            filter_by_assessment=True,
         )
     ] == ["m1", "m2"]
 

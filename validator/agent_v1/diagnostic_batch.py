@@ -263,8 +263,9 @@ def run_diagnostic_batch(
             "output_skeleton_path": str(skeleton_path),
             "requirements": {
                 "review_every_submission_independently": True,
-                "fill_every_preallocated_submission_and_claim_slot": True,
-                "do_not_add_remove_or_rename_identifier_keys": True,
+                "review_every_claim_but_emit_only_problematic_claim_assessments": True,
+                "empty_claim_assessments_means_reviewed_with_no_claim_issues": True,
+                "preserve_submission_keys_and_use_only_known_claim_refs": True,
                 "do_not_compare_rank_or_copy_findings_between_submissions": True,
                 "use_only_each_submission_artifact_and_its_linked_source_payload": True,
             },
@@ -389,9 +390,10 @@ def run_diagnostic_batch(
                 "output_skeleton_path": str(repair_skeleton_path),
                 "validator_rejection": list(validation.errors),
                 "requirements": {
-                    "repair_only_the_preallocated_missing_or_invalid_claim_slots": True,
-                    "fill_every_preallocated_submission_and_claim_slot": True,
-                    "do_not_add_remove_or_rename_identifier_keys": True,
+                    "repair_only_the_missing_submission_or_invalid_assessments": True,
+                    "emit_only_problematic_claim_assessments": True,
+                    "empty_claim_assessments_means_reviewed_with_no_claim_issues": True,
+                    "preserve_submission_keys_and_use_only_known_claim_refs": True,
                     "do_not_regenerate_already_valid_claim_assessments": True,
                 },
             },
@@ -403,7 +405,7 @@ def run_diagnostic_batch(
         )
         repair_query = "\n".join(
             [
-                "Repair only the missing or invalid Claims diagnostic assessment slots.",
+                "Repair only the missing submission report or invalid Claims diagnostic assessments.",
                 f"Read the complete skill instructions from {skill_path}.",
                 f"Read the targeted repair task from {repair_task_path}.",
                 f"Use the validator-owned repair skeleton at {repair_skeleton_path}.",
@@ -474,12 +476,27 @@ def run_diagnostic_batch(
             + "; ".join(validation.errors)
         )
     error = repair_error or unresolved_error
+    if validation.repair_claim_refs:
+        for submission_ref in validation.repair_claim_refs:
+            report = reports.get(submission_ref)
+            if report is None:
+                continue
+            report["pipeline_findings"] = [
+                {
+                    "code": "diagnostic_claim_review_incomplete",
+                    "stage": "diagnostic_validation",
+                    "message": (
+                        "Invalid diagnostic claim assessments remained after the "
+                        "bounded repair and were ignored."
+                    ),
+                }
+            ]
     duration = time.perf_counter() - overall_started
     usage = merge_usage([event["usage"] for event in usage_events])
     _write_json(
         root / "manifest.json",
         {
-            "schema": "claims_diagnostic_paper_v3",
+            "schema": "claims_diagnostic_paper_v4",
             "operation_id": operation_id,
             "paper_id": paper_id,
             "submission_count": len(submissions),
@@ -565,16 +582,12 @@ def precomputed_rigor_manifest(execution: DiagnosticBatchExecution) -> dict[str,
 def failed_diagnostic_report(message: str) -> dict[str, Any]:
     return {
         "claim_assessments": [],
-        "findings": [
+        "findings": [],
+        "pipeline_findings": [
             {
-                "dimension": "methodological_rigor",
-                "severity": "critical",
-                "target_type": "artifact",
-                "target_id": None,
+                "code": "diagnostic_paper_review_failed",
+                "stage": "diagnostic_validation",
                 "message": message,
-                "evidence_span": None,
-                "suggestion": "Retry diagnostic validation before allowing miner claims into Silver.",
-                "metadata": {"code": "diagnostic_paper_review_failed"},
             }
         ],
     }
@@ -586,12 +599,10 @@ def _output_skeleton(
     return {
         "reports": {
             submission_ref: {
-                "claim_assessments": {
-                    claim_ref: None for claim_ref in sorted(claim_cases)
-                },
+                "claim_assessments": {},
                 "findings": [],
             }
-            for submission_ref, claim_cases in sorted(claim_cases_by_submission.items())
+            for submission_ref in sorted(claim_cases_by_submission)
         }
     }
 
@@ -660,21 +671,32 @@ def _validate_agent_payload(
         raw_report = raw_reports.get(submission_ref)
         report_present = isinstance(raw_report, dict)
         if not report_present:
-            raw_report = {}
+            repair_claim_refs[submission_ref] = sorted(cases)
+            errors.append(f"submission={submission_ref} report missing")
+            continue
         raw_assessments = raw_report.get("claim_assessments")
+        invalid_refs: list[str] = []
         if not isinstance(raw_assessments, dict):
             raw_assessments = {}
+            invalid_refs.extend(sorted(cases))
+            errors.append(
+                f"submission={submission_ref} claim_assessments must be an object"
+            )
         accepted_assessments: dict[str, Any] = {}
-        invalid_refs: list[str] = []
         unexpected_claims = sorted(set(raw_assessments).difference(cases))
         if unexpected_claims:
             errors.append(
                 f"submission={submission_ref} unknown claims={unexpected_claims}"
             )
-        for claim_ref in sorted(cases):
-            raw_assessment = raw_assessments.get(claim_ref)
+            invalid_refs.extend(sorted(cases))
+        for claim_ref, raw_assessment in sorted(raw_assessments.items()):
+            if claim_ref not in cases:
+                continue
             if not isinstance(raw_assessment, dict):
                 invalid_refs.append(claim_ref)
+                errors.append(
+                    f"submission={submission_ref} claim={claim_ref} assessment must be an object"
+                )
                 continue
             normalized_assessment = _normalize_assessment_aliases(raw_assessment)
             try:
@@ -687,6 +709,15 @@ def _validate_agent_payload(
                     f"submission={submission_ref} claim={claim_ref} invalid: {exc}"
                 )
                 continue
+            semantic_error = _assessment_semantic_error(assessment, cases[claim_ref])
+            if semantic_error:
+                invalid_refs.append(claim_ref)
+                errors.append(
+                    f"submission={submission_ref} claim={claim_ref} invalid: {semantic_error}"
+                )
+                continue
+            if assessment.evidence_status == "supported":
+                continue
             accepted_assessments[claim_ref] = assessment.model_dump(mode="json")
 
         findings: list[DiagnosticFinding] = []
@@ -694,24 +725,27 @@ def _validate_agent_payload(
         if isinstance(raw_findings, list):
             for index, raw_finding in enumerate(raw_findings):
                 try:
-                    findings.append(DiagnosticFinding.model_validate(raw_finding))
+                    finding = DiagnosticFinding.model_validate(raw_finding)
                 except Exception as exc:
                     errors.append(
                         f"submission={submission_ref} finding={index} ignored: {exc}"
                     )
-        accepted_reports[submission_ref] = {
+                    continue
+                if _is_operational_reason(finding.message):
+                    invalid_refs.extend(sorted(cases))
+                    errors.append(
+                        f"submission={submission_ref} finding={index} describes an "
+                        "agent/case lookup failure"
+                    )
+                    continue
+                findings.append(finding)
+        accepted_report = {
             "claim_assessments": accepted_assessments,
             "findings": [finding.model_dump(mode="json") for finding in findings],
         }
-        if not report_present or invalid_refs:
-            repair_claim_refs[submission_ref] = invalid_refs or sorted(cases)
-            if not report_present:
-                errors.append(f"submission={submission_ref} report missing")
-            elif invalid_refs:
-                errors.append(
-                    f"submission={submission_ref} missing or invalid claims={invalid_refs}"
-                )
-            continue
+        accepted_reports[submission_ref] = accepted_report
+        if invalid_refs:
+            repair_claim_refs[submission_ref] = sorted(set(invalid_refs))
 
         assessments = [
             _materialize_claim_assessment(
@@ -721,7 +755,7 @@ def _validate_agent_payload(
                 ),
                 cases[claim_ref],
             )
-            for claim_ref in sorted(cases)
+            for claim_ref in sorted(accepted_assessments)
         ]
         report = DiagnosticSubmissionReport(
             submission_ref=submission_ref,
@@ -730,7 +764,7 @@ def _validate_agent_payload(
                     claim_ref=claim_ref,
                     **accepted_assessments[claim_ref],
                 )
-                for claim_ref in sorted(cases)
+                for claim_ref in sorted(accepted_assessments)
             ],
             findings=findings,
         )
@@ -755,6 +789,40 @@ def _normalize_assessment_aliases(payload: dict[str, Any]) -> dict[str, Any]:
         status = "partially_supported"
     normalized["evidence_status"] = status
     return normalized
+
+
+_OPERATIONAL_REASON_FRAGMENTS = (
+    "no claim assessment case",
+    "assessment case not found",
+    "could not find the claim",
+    "unable to find the claim",
+    "could not locate the claim",
+    "unable to locate the claim",
+    "claim was not provided",
+    "case was not provided",
+)
+
+
+def _assessment_semantic_error(
+    assessment: DiagnosticAgentClaimAssessment,
+    case: dict[str, Any],
+) -> str | None:
+    if _is_operational_reason(assessment.reason):
+        return "reason describes an agent/case lookup failure rather than a claim issue"
+
+    if assessment.evidence_status == "unverifiable":
+        if case.get("linked_evidence") and case.get("resolved_evidence_span_ids"):
+            return (
+                "unverifiable is reserved for missing or unresolvable claim-owned "
+                "evidence; use partially_supported or unsupported after reviewing "
+                "available evidence"
+            )
+    return None
+
+
+def _is_operational_reason(value: str) -> bool:
+    normalized = " ".join(value.lower().split())
+    return any(fragment in normalized for fragment in _OPERATIONAL_REASON_FRAGMENTS)
 
 
 def _merge_repair_payload(
@@ -857,6 +925,9 @@ def _claim_assessment_cases(
             if str(span_id).strip()
         }
         all_span_ids = sorted(set(source_span_ids) | evidence_span_ids)
+        resolved_evidence_span_ids = sorted(
+            span_id for span_id in evidence_span_ids if span_id in spans_by_id
+        )
         cases.append(
             {
                 "claim_ref": f"c{index}",
@@ -866,6 +937,7 @@ def _claim_assessment_cases(
                 "falsification_criteria": claim.get("falsification_criteria"),
                 "evidence_ids": evidence_ids,
                 "source_span_ids": all_span_ids,
+                "resolved_evidence_span_ids": resolved_evidence_span_ids,
                 "claim_source_refs": source_refs,
                 "linked_evidence": linked_evidence,
                 "source_spans": [

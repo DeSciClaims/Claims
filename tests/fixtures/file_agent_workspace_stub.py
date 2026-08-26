@@ -33,16 +33,7 @@ def _diagnostic_batch(task: dict[str, Any]) -> dict[str, Any]:
     return {
         "reports": {
             row["submission_ref"]: {
-                "claim_assessments": {
-                    claim_ref: {
-                        "evidence_status": "supported",
-                        "paper_relevance": "central" if index == 0 else "supporting",
-                        "priority_rank": index + 1,
-                        "reason": "The deterministic fixture found claim-owned supporting evidence.",
-                        "unsupported_assertions": [],
-                    }
-                    for index, claim_ref in enumerate(row.get("required_claim_refs", []))
-                },
+                "claim_assessments": {},
                 "findings": [],
             }
             for row in task.get("submissions", [])

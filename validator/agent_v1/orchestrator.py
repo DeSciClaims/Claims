@@ -480,144 +480,35 @@ def _select_assessed_candidates(
     max_claims: int,
     filter_by_assessment: bool = False,
 ) -> list[ComparisonCandidate]:
-    if assessments is None:
-        return [] if filter_by_assessment else candidates[:max_claims]
+    if not assessments:
+        return candidates[:max_claims]
 
     assessment_by_claim_id = {
         str(row.get("claim_id") or ""): row
         for row in assessments
         if isinstance(row, dict) and str(row.get("claim_id") or "")
     }
-
-    # Existing strict eligibility ranking.
-    strict_relevance_order = {"central": 0, "supporting": 1}
-
-    # Broader ranking used when filtering is disabled.
-    # This lets us keep ALL claims, while still preferring the
-    # most relevant / best-supported ones if max_claims is hit.
-    broad_relevance_order = {
-        "central": 0,
-        "supporting": 1,
-        "minor": 2,
-    }
-
-    if not filter_by_assessment:
-        selected: list[
-            tuple[tuple[int, int, int, str], ComparisonCandidate]
-        ] = []
-
-        for candidate in candidates:
-            assessment = assessment_by_claim_id.get(str(candidate.record_id))
-
-            if assessment:
-                evidence_status = str(assessment.get("evidence_status") or "")
-                paper_relevance = str(assessment.get("paper_relevance") or "")
-
-                try:
-                    priority_rank = max(
-                        1,
-                        int(assessment.get("priority_rank") or 1),
-                    )
-                except (TypeError, ValueError):
-                    priority_rank = 1
-
-                # Ranking in score-only mode:
-                # 1. supported before unsupported/other
-                # 2. central before supporting before minor before unknown
-                # 3. lower priority_rank first
-                evidence_rank = 0 if evidence_status == "supported" else 1
-                relevance_rank = broad_relevance_order.get(
-                    paper_relevance,
-                    3,
-                )
-
-                candidate = candidate.model_copy(
-                    update={
-                        "metadata": {
-                            **(candidate.metadata or {}),
-                            "diagnostic_claim_assessment": dict(assessment),
-                        }
-                    }
-                )
-
-            else:
-                # No assessment: keep candidate, but rank it after assessed ones.
-                evidence_rank = 2
-                relevance_rank = 3
-                priority_rank = 1
-
-            selected.append(
-                (
-                    (
-                        evidence_rank,
-                        relevance_rank,
-                        priority_rank,
-                        str(candidate.record_id),
-                    ),
-                    candidate,
-                )
-            )
-
-        selected.sort(key=lambda item: item[0])
-
-        return [
-            candidate
-            for _key, candidate in selected[:max_claims]
-        ]
-
-    # Existing behavior:
-    # only evidence-supported central/supporting claims are eligible.
-    selected: list[
-        tuple[tuple[int, int, str], ComparisonCandidate]
-    ] = []
-
+    ineligible_statuses = {"partially_supported", "unsupported", "unverifiable"}
+    selected: list[ComparisonCandidate] = []
     for candidate in candidates:
         assessment = assessment_by_claim_id.get(str(candidate.record_id))
-
-        if not assessment:
+        if assessment and filter_by_assessment and str(
+            assessment.get("evidence_status") or ""
+        ) in ineligible_statuses:
             continue
-
-        evidence_status = str(assessment.get("evidence_status") or "")
-        paper_relevance = str(assessment.get("paper_relevance") or "")
-
-        if (
-            evidence_status != "supported"
-            or paper_relevance not in strict_relevance_order
-        ):
-            continue
-
-        try:
-            priority_rank = max(
-                1,
-                int(assessment.get("priority_rank") or 1),
-            )
-        except (TypeError, ValueError):
-            priority_rank = 1
-
-        selected.append(
-            (
-                (
-                    strict_relevance_order[paper_relevance],
-                    priority_rank,
-                    str(candidate.record_id),
-                ),
-                candidate.model_copy(
-                    update={
-                        "metadata": {
-                            **(candidate.metadata or {}),
-                            "diagnostic_claim_assessment": dict(assessment),
-                        }
+        if assessment:
+            candidate = candidate.model_copy(
+                update={
+                    "metadata": {
+                        **(candidate.metadata or {}),
+                        "diagnostic_claim_assessment": dict(assessment),
                     }
-                ),
+                }
             )
-        )
-
-    selected.sort(key=lambda item: item[0])
-
-    return [
-        candidate
-        for _key, candidate in selected[:max_claims]
-    ]
+        selected.append(candidate)
+        if len(selected) >= max_claims:
+            break
+    return selected
 
 
 def _apply_case_budget(
