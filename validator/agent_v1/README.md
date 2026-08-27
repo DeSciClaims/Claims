@@ -88,16 +88,17 @@ For local operation without the backend, pass exactly one of
 
 ### Canonical Batches And Miner Selection
 
-The backend creates one immutable paper and miner assignment per configured
-assignment window. The first validator atomically proposes the miner set; later
-validators receive the same task ID, batch ID, papers, seed, and UID-to-hotkey
-snapshot. One validator owns a temporary collection lease and queries unfinished
-miners. Followers poll and reuse completed batch-scoped artifacts instead of
-repeating miner inference.
+The backend keeps each immutable paper and miner assignment current for the
+configured rolling reuse lifetime. The first validator creates the batch and
+atomically proposes the miner set; later validators receive the same task ID,
+batch ID, papers, seed, and UID-to-hotkey snapshot. At or after expiry, the first
+new request creates the successor. One validator owns a temporary collection
+lease and queries unfinished miners. Followers poll and reuse completed
+batch-scoped artifacts instead of repeating miner inference.
 
 - `--claims.target-uid UID` is an exact operator override and may be repeated.
   If an existing canonical assignment contains different UIDs, the validator
-  refuses to diverge. Use a backend assignment window of `0` for isolated tests.
+  refuses to diverge. Use a backend assignment lifetime of `0` for isolated tests.
 - `--claims.miner-selection-mode adaptive --claims.miner-sample-size 10`
   enables UID-only V0 selection: four qualification, four performance, and two
   rotation slots. Performance sampling is seeded and weighted by
