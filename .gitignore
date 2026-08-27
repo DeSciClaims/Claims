@@ -34,6 +34,9 @@ pip-wheel-metadata/
 # Local environment files
 .env
 .env.*
+.miner.*.env
+.validator.*.env
+.runtime-wallets/
 
 # Editor and OS files
 .DS_Store

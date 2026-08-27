@@ -97,8 +97,151 @@ def test_targon_bootstrap_exposes_help_without_network_access() -> None:
 
     assert "--wallet-dir" in completed.stdout
     assert "--volume-uid" in completed.stdout
+    assert "--workload-uid" in completed.stdout
     assert "--role" in completed.stdout
+    assert "--leave-idle" in completed.stdout
     assert "automatic node startup" in completed.stdout
+
+
+def test_targon_bootstrap_can_leave_configured_workload_idle() -> None:
+    module = _load_targon_bootstrap()
+
+    args = module.build_parser().parse_args(
+        [
+            "--role",
+            "validator",
+            "--name",
+            "claims-validator-mainnet",
+            "--image",
+            "ghcr.io/desciclaims/claims-validator:abc1234",
+            "--resource-name",
+            "cpu-large",
+            "--env-file",
+            ".validator.mainnet.env",
+            "--wallet-dir",
+            ".runtime-wallets/claims-owner-vali",
+            "--ssh-private-key",
+            "~/.ssh/id_ed25519",
+            "--leave-idle",
+        ]
+    )
+
+    assert args.leave_idle is True
+
+
+def test_targon_bootstrap_reuses_only_compatible_inactive_rental() -> None:
+    module = _load_targon_bootstrap()
+    args = type(
+        "Args",
+        (),
+        {"workload_uid": "wrk-existing", "resource_name": "cpu-large"},
+    )()
+
+    module.validate_reusable_workload(
+        args,
+        {
+            "type": "RENTAL",
+            "state": {"status": "suspended"},
+            "resource": {"name": "cpu-large"},
+        },
+    )
+
+    for workload in (
+        {
+            "type": "RENTAL",
+            "state": {"status": "running"},
+            "resource": {"name": "cpu-large"},
+        },
+        {
+            "type": "RENTAL",
+            "state": {"status": "suspended"},
+            "resource": {"name": "cpu-medium"},
+        },
+        {
+            "type": "VM",
+            "state": {"status": "suspended"},
+            "resource": {"name": "cpu-large"},
+        },
+    ):
+        try:
+            module.validate_reusable_workload(args, workload)
+        except module.BootstrapError:
+            pass
+        else:
+            raise AssertionError(f"unsafe workload was accepted: {workload}")
+
+
+def test_targon_reuse_update_clears_old_command_and_starts_idle() -> None:
+    module = _load_targon_bootstrap()
+    payload = {
+        "name": "claims-validator-mainnet",
+        "image": "ghcr.io/desciclaims/claims-validator:abc1234",
+        "resource_name": "cpu-large",
+        "type": "RENTAL",
+        "args": ["idle"],
+        "envs": [{"name": "CLAIMS_BRONZE_ROOT", "value": "/data/bronze"}],
+        "ports": [],
+        "ssh_keys": ["shk-123"],
+        "volumes": [{"uid": "vol-123", "mount_path": "/data", "read_only": False}],
+    }
+
+    update = module.build_idle_workload_update(payload)
+
+    assert update["commands"] == []
+    assert update["args"] == ["idle"]
+    assert update["volumes"] == payload["volumes"]
+    assert "resource_name" not in update
+    assert "type" not in update
+
+
+def test_targon_reuse_detects_attached_data_volume() -> None:
+    module = _load_targon_bootstrap()
+
+    assert module.attached_data_volume_uid(
+        {
+            "volumes": [
+                {
+                    "uid": "vol-existing",
+                    "name": "claims-validator-mainnet-data",
+                    "mount_path": "/data",
+                }
+            ]
+        }
+    ) == "vol-existing"
+    assert module.attached_data_volume_uid({"volumes": None}) == ""
+
+
+def test_targon_ssh_key_discovery_uses_org_scoped_v3_endpoint(tmp_path) -> None:
+    module = _load_targon_bootstrap()
+    public_key = tmp_path / "claims-deploy.pub"
+    public_key.write_text("ssh-rsa existing-key claims-deploy\n")
+    inputs = module.LocalInputs(
+        env_file=tmp_path / "validator.env",
+        wallet_dir=tmp_path / "wallet",
+        wallet_name="claims-owner-vali",
+        hotkey_name="owner-hk-01",
+        ssh_private_key=tmp_path / "claims-deploy",
+        ssh_public_key=public_key,
+    )
+
+    class FakeApi:
+        def org_path(self, suffix: str) -> str:
+            return f"/tha/v3/orgs/claims/{suffix}"
+
+        def request(self, method: str, path: str, payload=None):
+            assert method == "GET"
+            assert path == "/tha/v3/orgs/claims/ssh-keys?limit=1000"
+            assert payload is None
+            return {
+                "items": [
+                    {
+                        "uid": "shk-existing",
+                        "public_key_raw": "ssh-rsa existing-key claims-deploy",
+                    }
+                ]
+            }
+
+    assert module.ensure_ssh_key(FakeApi(), inputs, "") == "shk-existing"
 
 
 def test_targon_workload_payloads_contain_no_private_node_material() -> None:

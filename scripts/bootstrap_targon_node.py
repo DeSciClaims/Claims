@@ -233,13 +233,68 @@ def build_runtime_update(
     }
 
 
+def validate_reusable_workload(
+    args: argparse.Namespace,
+    workload: dict[str, Any],
+) -> None:
+    workload_type = str(workload.get("type") or "RENTAL").upper()
+    if workload_type != "RENTAL":
+        raise BootstrapError(
+            f"existing workload {args.workload_uid} is {workload_type}, not RENTAL"
+        )
+
+    state = workload.get("state") if isinstance(workload.get("state"), dict) else {}
+    status = str(state.get("status") or workload.get("status") or "").lower()
+    if status not in {"registered", "suspended", "error"}:
+        raise BootstrapError(
+            f"existing workload {args.workload_uid} is {status or 'unknown'}; "
+            "suspend it before reconfiguration"
+        )
+
+    resource = workload.get("resource") if isinstance(workload.get("resource"), dict) else {}
+    resource_name = str(resource.get("name") or workload.get("resource_name") or "").strip()
+    if resource_name != args.resource_name:
+        raise BootstrapError(
+            f"existing workload {args.workload_uid} uses resource "
+            f"{resource_name or 'unknown'}, not {args.resource_name}"
+        )
+
+
+def build_idle_workload_update(workload_payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": workload_payload["name"],
+        "image": workload_payload["image"],
+        "commands": [],
+        "args": ["idle"],
+        "envs": workload_payload["envs"],
+        "ports": workload_payload["ports"],
+        "ssh_keys": workload_payload["ssh_keys"],
+        "volumes": workload_payload["volumes"],
+    }
+
+
+def attached_data_volume_uid(workload: dict[str, Any]) -> str:
+    volumes = workload.get("volumes")
+    if not isinstance(volumes, list):
+        return ""
+    matches = [
+        str(volume.get("uid") or "").strip()
+        for volume in volumes
+        if isinstance(volume, dict) and volume.get("mount_path") == "/data"
+    ]
+    matches = [uid for uid in matches if uid]
+    if len(matches) > 1:
+        raise BootstrapError("existing workload has multiple volumes mounted at /data")
+    return matches[0] if matches else ""
+
+
 def ensure_ssh_key(api: TargonApi, inputs: LocalInputs, requested_uid: str) -> str:
     if requested_uid:
         return requested_uid
     public_key = inputs.ssh_public_key.read_text(encoding="utf-8").strip()
     if not public_key.startswith(("ssh-ed25519 ", "ssh-rsa ", "ecdsa-sha2-")):
         raise BootstrapError(f"unsupported SSH public key: {inputs.ssh_public_key}")
-    listed = api.request("GET", "/tha/v2/ssh-keys?limit=1000")
+    listed = api.request("GET", api.org_path("ssh-keys?limit=1000"))
     for item in listed.get("items", []):
         if isinstance(item, dict) and item.get("public_key_raw", "").strip() == public_key:
             uid = str(item.get("uid", "")).strip()
@@ -248,7 +303,7 @@ def ensure_ssh_key(api: TargonApi, inputs: LocalInputs, requested_uid: str) -> s
                 return uid
     created = api.request(
         "POST",
-        "/tha/v2/ssh-keys",
+        api.org_path("ssh-keys"),
         {"name": argsafe_name(inputs.ssh_public_key.stem), "ssh_key": public_key},
     )
     uid = str(created.get("uid", "")).strip()
@@ -462,7 +517,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Create a Targon miner or validator rental, securely copy its environment "
-            "and wallet over SSH, and enable automatic node startup."
+            "and wallet over SSH, and optionally enable automatic node startup."
         )
     )
     parser.add_argument("--role", choices=("miner", "validator"), required=True)
@@ -478,6 +533,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="defaults to SSH_PRIVATE_KEY.pub",
     )
     parser.add_argument("--ssh-key-uid", default="", help="reuse an existing Targon SSH key")
+    parser.add_argument(
+        "--workload-uid",
+        default="",
+        help="reuse a suspended or registered Targon rental instead of creating one",
+    )
     parser.add_argument("--volume-uid", default="", help="reuse an existing empty volume")
     parser.add_argument("--volume-name", default="")
     parser.add_argument("--volume-size-gb", type=int, default=20)
@@ -491,6 +551,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--replace-existing",
         action="store_true",
         help="replace wallet and environment files on an existing volume",
+    )
+    parser.add_argument(
+        "--leave-idle",
+        action="store_true",
+        help=(
+            "leave the configured workload in idle mode instead of starting the "
+            "miner or validator"
+        ),
     )
     parser.add_argument(
         "--allow-missing-provider-key",
@@ -520,21 +588,42 @@ def main(argv: list[str] | None = None) -> int:
     try:
         inputs = validate_local_inputs(args)
         api = TargonApi(base_url=args.api_base, token=token, org=args.org)
+        existing_workload: dict[str, Any] | None = None
+        if args.workload_uid:
+            existing_workload = api.request(
+                "GET",
+                api.org_path(f"workloads/{args.workload_uid}"),
+            )
+            validate_reusable_workload(args, existing_workload)
+            if not args.volume_uid:
+                args.volume_uid = attached_data_volume_uid(existing_workload)
+                if args.volume_uid:
+                    print(f"Reusing attached persistent volume {args.volume_uid}.")
         ssh_key_uid = ensure_ssh_key(api, inputs, args.ssh_key_uid)
         volume_uid, new_volume = ensure_volume(api, args)
-        workload = api.request(
-            "POST",
-            api.org_path("workloads"),
-            build_workload_payload(
-                args,
-                volume_uid=volume_uid,
-                ssh_key_uid=ssh_key_uid,
-            ),
+        workload_payload = build_workload_payload(
+            args,
+            volume_uid=volume_uid,
+            ssh_key_uid=ssh_key_uid,
         )
-        workload_uid = str(workload.get("uid", "")).strip()
-        if not workload_uid:
-            raise BootstrapError("Targon did not return a workload UID")
-        print(f"Registered idle workload {workload_uid}.")
+        if existing_workload is not None:
+            workload_uid = args.workload_uid
+            api.request(
+                "PATCH",
+                api.org_path(f"workloads/{workload_uid}"),
+                build_idle_workload_update(workload_payload),
+            )
+            print(f"Reconfigured existing workload {workload_uid} in idle mode.")
+        else:
+            workload = api.request(
+                "POST",
+                api.org_path("workloads"),
+                workload_payload,
+            )
+            workload_uid = str(workload.get("uid", "")).strip()
+            if not workload_uid:
+                raise BootstrapError("Targon did not return a workload UID")
+            print(f"Registered idle workload {workload_uid}.")
         api.request(
             "POST",
             api.org_path(f"workloads/{workload_uid}/deploy"),
@@ -547,26 +636,22 @@ def main(argv: list[str] | None = None) -> int:
             destination,
             new_volume=new_volume,
         )
-        runtime_payload = build_workload_payload(
-            args,
-            volume_uid=volume_uid,
-            ssh_key_uid=ssh_key_uid,
-        )
-        runtime_update = build_runtime_update(
-            args,
-            state=state,
-            workload_payload=runtime_payload,
-        )
-        if args.role == "miner":
-            print(
-                f"Configured miner Axon at {state['public_ip']}:{args.axon_port}."
+        if not args.leave_idle:
+            runtime_update = build_runtime_update(
+                args,
+                state=state,
+                workload_payload=workload_payload,
             )
-        api.request(
-            "PATCH",
-            api.org_path(f"workloads/{workload_uid}"),
-            runtime_update,
-        )
-        wait_for_workload(api, workload_uid, timeout_seconds=args.wait_timeout)
+            if args.role == "miner":
+                print(
+                    f"Configured miner Axon at {state['public_ip']}:{args.axon_port}."
+                )
+            api.request(
+                "PATCH",
+                api.org_path(f"workloads/{workload_uid}"),
+                runtime_update,
+            )
+            wait_for_workload(api, workload_uid, timeout_seconds=args.wait_timeout)
     except BootstrapError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -575,7 +660,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Targon {args.role} bootstrap complete.")
     print(f"Workload: {workload_uid}")
     print(f"Volume:   {volume_uid}")
-    print(f"The {args.role} is now the container's main process and starts automatically.")
+    if args.leave_idle:
+        print(
+            "The workload remains idle; its environment and wallet are ready on "
+            "the persistent volume."
+        )
+    else:
+        print(f"The {args.role} is now the container's main process and starts automatically.")
     return 0
 
 

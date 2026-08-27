@@ -141,6 +141,13 @@ creates a 20 GB volume using Targon's `storage-rentals` volume resource. Supply
 `--volume-resource-name <NAME>` when your organization uses a different storage
 resource.
 
+Use `--workload-uid <UID>` to repurpose an existing suspended or registered
+rental instead of allocating another server. The helper verifies that the
+rental uses the requested resource, refuses to modify a running workload,
+clears any previous command override, and configures the Claims image in idle
+mode before uploading private state. Unless `--volume-uid` is also supplied, a
+new persistent volume is created for the reused workload.
+
 The helper performs these operations:
 
 1. Validate the environment, wallet name, and configured hotkey file locally.
@@ -155,6 +162,14 @@ The helper performs these operations:
 If a step fails, the workload and volume are left in place for inspection. The
 helper refuses to replace wallet files on an existing volume unless
 `--replace-existing` is explicitly supplied.
+
+Add `--leave-idle` to prepare the rental, persistent volume, environment, and
+wallet without starting the miner or validator. The workload remains in idle
+mode and continues to be billable. To start it later as a persistent service,
+edit its Targon arguments to `validator`, `--logging.debug` or `miner`,
+`--logging.debug`; Targon will redeploy it with that role as the container's
+main process. You can also connect over SSH and run `claims-node validator
+--logging.debug` or `claims-node miner --logging.debug` interactively.
 
 ### Manual Bootstrap
 
