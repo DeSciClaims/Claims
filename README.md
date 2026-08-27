@@ -42,20 +42,20 @@ Claims/
 
 | Service | URL | Used by |
 |---|---|---|
-| Claims dashboard | [claims-dashboard-kappa.vercel.app](https://claims-dashboard-kappa.vercel.app) | Public network and miner views |
-| Validator/backend API | [apiclaims-eight.vercel.app](https://apiclaims-eight.vercel.app) | Validators, dashboard, and administrative data |
-| Validator/backend API docs | [apiclaims-eight.vercel.app/docs](https://apiclaims-eight.vercel.app/docs) | Interactive OpenAPI documentation |
-| Miner artifact-upload API | [claimssubmit.vercel.app](https://claimssubmit.vercel.app) | Signed miner artifact uploads |
-| Miner upload API docs | [claimssubmit.vercel.app/docs](https://claimssubmit.vercel.app/docs) | Interactive OpenAPI documentation |
+| Claims dashboard | [dashboard.claims111.ai](https://dashboard.claims111.ai) | Public network and miner views |
+| Validator/backend API | [api.claims111.ai](https://api.claims111.ai) | Validators, dashboard, and administrative data |
+| Validator/backend API docs | [api.claims111.ai/docs](https://api.claims111.ai/docs) | Interactive OpenAPI documentation |
+| Miner artifact-upload API | [artifacts.claims111.ai](https://artifacts.claims111.ai) | Signed miner artifact uploads |
+| Miner upload API docs | [artifacts.claims111.ai/docs](https://artifacts.claims111.ai/docs) | Interactive OpenAPI documentation |
 
 Set the role-specific backend URL as follows:
 
 ```env
 # Validator
-CLAIMS_BACKEND_URL=https://apiclaims-eight.vercel.app
+CLAIMS_BACKEND_URL=https://api.claims111.ai
 
 # Miner
-CLAIMS_BACKEND_URL=https://claimssubmit.vercel.app
+CLAIMS_BACKEND_URL=https://artifacts.claims111.ai
 ```
 
 ## Installation
@@ -361,7 +361,7 @@ python -m dotenv -f .env run --override -- python -m neurons.validator \
   --wallet.hotkey <HOTKEY> \
   --subtensor.network test \
   --claims.network testnet \
-  --claims.backend-url https://apiclaims-eight.vercel.app \
+  --claims.backend-url https://api.claims111.ai \
   --claims.batch-size 3 \
   --claims.target-uid <MINER_UID> \
   --claims.audit-method llm \
@@ -408,7 +408,7 @@ python -m dotenv -f .env run --override -- python -m neurons.validator \
   --wallet.hotkey <HOTKEY> \
   --subtensor.network finney \
   --claims.network mainnet \
-  --claims.backend-url https://apiclaims-eight.vercel.app \
+  --claims.backend-url https://api.claims111.ai \
   --claims.batch-size 50 \
   --claims.miner-selection-mode adaptive \
   --claims.miner-sample-size 10 \

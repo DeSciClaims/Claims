@@ -63,7 +63,7 @@ def test_detailed_testnet_profile_is_runnable_and_uses_distinct_models() -> None
     )
 
     assert "BT_WALLET_NAME=claims-test-validator" in profile
-    assert "CLAIMS_BACKEND_URL=https://apiclaims-eight.vercel.app" in profile
+    assert "CLAIMS_BACKEND_URL=https://api.claims111.ai" in profile
     assert "CLAIMS_BATCH_SIZE=50" in profile
     assert "CLAIMS_TIMEOUT=3600" in profile
     assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in profile
@@ -125,5 +125,5 @@ def test_installation_docs_link_validator_profiles_and_docker_path() -> None:
     assert "### Manual Installation" in main_readme
     assert "### Ubuntu Installers" in main_readme
     assert "### Docker" in main_readme
-    assert "CLAIMS_BACKEND_URL=https://apiclaims-eight.vercel.app" in main_readme
-    assert "CLAIMS_BACKEND_URL=https://claimssubmit.vercel.app" in main_readme
+    assert "CLAIMS_BACKEND_URL=https://api.claims111.ai" in main_readme
+    assert "CLAIMS_BACKEND_URL=https://artifacts.claims111.ai" in main_readme
