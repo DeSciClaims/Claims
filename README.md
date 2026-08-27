@@ -178,8 +178,10 @@ docker run --rm -it \
 
 Use an immutable commit tag instead of `edge` for reproducible deployments.
 The miner image is `ghcr.io/desciclaims/claims-miner:<tag>`. For Targon and
-other ephemeral rentals, mount persistent storage at `/data`; see
-[Targon Container Deployment](docs/targon-containers.md).
+other ephemeral rentals, mount persistent storage at `/data`. The
+[Targon Container Deployment](docs/0016-targon-container-deployment.md) guide includes a
+one-command API-assisted miner and validator bootstrap, a manual first-time setup, and
+image update and rollback instructions.
 
 PDF inputs use `pdf-inspector` by default. `GROBID_URL` is only required when
 you explicitly choose `--pdf-extraction-method grobid`.

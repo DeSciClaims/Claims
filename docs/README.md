@@ -18,6 +18,7 @@
 - [Agent v1 Validator, ARA Seal, and Benchmarks](./0013-agent-v1-validator-seal-and-benchmarks.md)
 - [agent_v1 Miner System](./0014-agent-v1-miner-system.md)
 - [agent_v1 Validator System](./0015-agent-v1-validator-system.md)
+- [Targon Container Deployment](./0016-targon-container-deployment.md)
 
 ## Purpose
 
