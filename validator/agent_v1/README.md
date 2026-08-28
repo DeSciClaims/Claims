@@ -72,7 +72,9 @@ corresponding environment values.
   miner assignments, artifact reuse, Silver persistence, and dashboard data.
 - `--claims.batch-size` is the number of papers requested from the backend.
   `--claims.topic` and `--claims.paper-id` may be repeated to constrain paper
-  selection. `--claims.allow-paper-reuse` is intended for smoke tests.
+  selection. `--claims.allow-paper-reuse` lets the backend select approved
+  papers that were assigned to earlier batches. The supplied validator profiles
+  currently enable it while the production paper catalog is still growing.
 - `--claims.output-dir` stores validator-side artifacts. `--claims.timeout` is
   the dendrite deadline for the complete miner batch response.
 - `--claims.max-steps N` exits after `N` scoring cycles; `0` runs indefinitely.

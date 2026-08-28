@@ -348,6 +348,11 @@ The testnet profile includes an illustrative diverse model set. Mainnet model
 fields are deliberately blank and must be selected independently by each
 validator operator.
 
+Both profiles currently set `CLAIMS_ALLOW_PAPER_REUSE=true` so the backend may
+draw from approved papers that appeared in earlier batches while the paper
+catalog is still growing. Canonical task IDs, paper assignments, miner
+assignments, and uploaded artifacts remain isolated to their canonical batch.
+
 ### Testnet
 
 This focused testnet command requests three papers and one specific miner. Add

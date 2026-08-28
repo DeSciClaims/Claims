@@ -116,9 +116,9 @@ or unscored assigned papers count as zero before aggregation.
 With backend `CLAIMS_BATCH_ASSIGNMENT_WINDOW_SECONDS=21600`, validators arriving
 within six hours of the canonical batch's creation receive the same task ID,
 batch ID, papers, selection seed, and miner snapshot. The first request at or
-after expiry creates the successor atomically. The backend excludes previously
-assigned papers unless the validator passes `--claims.allow-paper-reuse` for a
-smoke test.
+after expiry creates the successor atomically. The current validator profiles
+pass `--claims.allow-paper-reuse` through `CLAIMS_ALLOW_PAPER_REUSE=true`, so
+approved papers may appear in later canonical batches while the catalog grows.
 By default `--claims.validator-pipeline auto` routes ARA-shaped responses to
 `validator.agent_v1` and legacy responses to `validator.v0`.
 Use `--claims.task-artifact` for local smoke tests with a prebuilt artifact, or
