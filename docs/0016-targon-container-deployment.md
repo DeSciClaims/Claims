@@ -91,7 +91,7 @@ For an unattended long-running validator, use:
 
 ```env
 CLAIMS_MAX_STEPS=0
-CLAIMS_QUERY_INTERVAL=21600
+CLAIMS_QUERY_INTERVAL=10800
 ```
 
 `CLAIMS_MAX_STEPS=0` means unlimited cycles. A positive value makes the

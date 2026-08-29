@@ -50,7 +50,7 @@ def test_validator_template_uses_scheduled_weight_submitting_runs() -> None:
     template = (ROOT / "examples" / "validator.env.example").read_text(encoding="utf-8")
     assert "CLAIMS_AUDIT_ONLY=false" in template
     assert "CLAIMS_MAX_STEPS=4" in template
-    assert "CLAIMS_QUERY_INTERVAL=21600" in template
+    assert "CLAIMS_QUERY_INTERVAL=10800" in template
     assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in template
     assert "CLAIMS_AUDIT_METHOD=llm" in template
     assert "CLAIMS_SILVER_ADJUDICATION_HARNESS=hermes-cli" in template
@@ -92,7 +92,7 @@ def test_mainnet_profile_has_production_policy_without_prescribed_models() -> No
     assert "CLAIMS_MINER_SAMPLE_SIZE=10" in profile
     assert "CLAIMS_TIMEOUT=3600" in profile
     assert "CLAIMS_MAX_STEPS=4" in profile
-    assert "CLAIMS_QUERY_INTERVAL=21600" in profile
+    assert "CLAIMS_QUERY_INTERVAL=10800" in profile
     assert "CLAIMS_AUDIT_ONLY=false" in profile
     assert "CLAIMS_SILVER_WORKFLOW_MODE=file-agent" in profile
     assert "CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true" in profile

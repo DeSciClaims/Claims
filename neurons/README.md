@@ -113,8 +113,8 @@ scores the shared paper responses, aggregates with
 `--claims.batch-score-rule`, posts run-specific audit records, and sets weights
 from its own scores. V0 batch scoring does not use an all-papers gate; missing
 or unscored assigned papers count as zero before aggregation.
-With backend `CLAIMS_BATCH_ASSIGNMENT_WINDOW_SECONDS=21600`, validators arriving
-within six hours of the canonical batch's creation receive the same task ID,
+With backend `CLAIMS_BATCH_ASSIGNMENT_WINDOW_SECONDS=14400`, validators arriving
+within four hours of the canonical batch's creation receive the same task ID,
 batch ID, papers, selection seed, and miner snapshot. The first request at or
 after expiry creates the successor atomically. The current validator profiles
 pass `--claims.allow-paper-reuse` through `CLAIMS_ALLOW_PAPER_REUSE=true`, so

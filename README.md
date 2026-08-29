@@ -123,7 +123,7 @@ authenticate Codex CLI or Claude CLI separately before selecting either one;
 the native DSPy and LangChain harnesses are included with the Python dependencies.
 The detailed testnet profile runs one 50-paper cycle against ten adaptively
 selected miners. The generic
-installer template submits weights for four runs, waiting six hours after each
+installer template submits weights for four runs, waiting three hours after each
 completed run before starting the next one.
 
 They do not create, copy, register, or fund Bittensor wallets. The detailed
@@ -401,8 +401,8 @@ Primary arguments:
 ### Mainnet Baseline
 
 The current SN111 baseline is 50 papers, ten adaptively selected miners, four
-cycles separated by six hours, a one-hour miner deadline, mean batch scoring,
-and winner-takes-most weights. Model IDs are intentionally omitted: validators
+cycles separated by a three-hour post-completion delay, a one-hour miner deadline,
+mean batch scoring, and winner-takes-most weights. Model IDs are intentionally omitted: validators
 and miners should configure independent models and credentials privately rather than
 converging on a published validator model set.
 
@@ -426,7 +426,7 @@ python -m dotenv -f .env run --override -- python -m neurons.validator \
   --claims.output-dir validator/agent_v1/outputs/neuron/mainnet \
   --claims.timeout 3600 \
   --claims.max-steps 4 \
-  --claims.query-interval 21600 \
+  --claims.query-interval 10800 \
   --claims.require-validator-permit \
   --logging.info
 ```
