@@ -1356,6 +1356,10 @@ class ClaimsValidator:
                 if self.config.claims_max_steps and step >= self.config.claims_max_steps:
                     self.bt_logging.info("Reached configured max steps; exiting.")
                     return
+                task = None
+                run_id = None
+                run_started_at = None
+                self._active_run_timing = None
                 sleep_timer = _timing_start("query_interval_sleep", "Query interval sleep")
                 time.sleep(float(self.config.claims_query_interval))
                 self._record_timing_stage(sleep_timer)

@@ -1552,6 +1552,52 @@ def test_validator_failed_cycle_counts_toward_max_steps_and_records_error() -> N
     assert posted[0]["error_summary"] == "RuntimeError: target refresh failed"
 
 
+def test_validator_interrupt_during_post_run_sleep_does_not_cancel_completed_run(monkeypatch) -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_dry_run=False,
+        claims_max_steps=0,
+        claims_query_interval=1.0,
+        claims_network="testnet",
+        claims_backend_url="https://api.example.test",
+        claims_timeout=1.0,
+    )
+    validator.bt_logging = SimpleNamespace(
+        error=lambda *_args: None,
+        info=lambda *_args: None,
+        success=lambda *_args: None,
+    )
+    validator.target_neurons = []
+    validator._active_run_timing = None
+    validator._resume_pending_model_usage_uploads = lambda: None
+    validator._start_memory_sampler = lambda: None
+    validator._stop_memory_sampler = lambda: None
+    validator._start_run_heartbeat = lambda _run_id: None
+    validator._stop_run_heartbeat = lambda: None
+    validator._flush_model_usage_events = lambda: None
+    validator._record_timing_stage = lambda *_args, **_kwargs: None
+    validator._next_task = lambda _step: SimpleNamespace(
+        network="testnet",
+        task_id="task_test",
+        batch_id="batch_test",
+        selection_seed="selection_test",
+        paper_tasks=lambda: [],
+    )
+    validator._load_task_target_neurons = lambda *_args, **_kwargs: []
+    validator._collect_or_reuse_miner_responses = lambda *_args, **_kwargs: []
+    validator._score_responses = lambda *_args, **_kwargs: {}
+    validator._record_miner_selection_evaluations = lambda *_args, **_kwargs: None
+    validator._set_weights = lambda _scores: {"status": "success"}
+    validator._post_weight_event = lambda *_args, **_kwargs: None
+    posted: list[dict] = []
+    validator._post_validator_run = lambda *_args, **kwargs: posted.append(kwargs)
+    monkeypatch.setattr("neurons.validator.time.sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt()))
+
+    validator.run()
+
+    assert [item["status"] for item in posted] == ["running", "completed"]
+
+
 def test_trace_refs_may_point_to_claims_evidence_experiments_or_concepts(tmp_path) -> None:
     path = tmp_path / "agent_output.json"
     path.write_text(__import__("json").dumps(_agent_v1_artifact()), encoding="utf-8")
