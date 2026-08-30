@@ -121,7 +121,7 @@ and `HERMES_BASE_URL` in that role's `.env`; provider credentials remain in `.en
 Hermes is the only external CLI harness installed automatically. Install and
 authenticate Codex CLI or Claude CLI separately before selecting either one;
 the native DSPy and LangChain harnesses are included with the Python dependencies.
-The detailed testnet profile runs one 50-paper cycle against ten adaptively
+The detailed testnet profile runs one 50-paper cycle against fifteen adaptively
 selected miners. The generic
 installer template submits weights for four runs, waiting three hours after each
 completed run before starting the next one.
@@ -388,7 +388,7 @@ Primary arguments:
   reuse, run persistence, and dashboard records.
 - `--claims.batch-size` controls papers per batch. `--claims.target-uid` is an
   exact smoke-test override; production uses `--claims.miner-selection-mode
-  adaptive --claims.miner-sample-size 10`.
+  adaptive --claims.miner-sample-size 15`.
 - `--claims.audit-method llm`, `--claims.validator-pipeline auto`, and
   `--claims.silver-enable` enable the current diagnostic and Silver scoring path.
 - `--claims.output-dir` stores local run artifacts. `--claims.timeout` is the
@@ -400,7 +400,7 @@ Primary arguments:
 
 ### Mainnet Baseline
 
-The current SN111 baseline is 50 papers, ten adaptively selected miners, four
+The current SN111 baseline is 50 papers, fifteen adaptively selected miners, four
 cycles separated by a three-hour post-completion delay, a one-hour miner deadline,
 mean batch scoring, and winner-takes-most weights. Model IDs are intentionally omitted: validators
 and miners should configure independent models and credentials privately rather than
@@ -416,7 +416,7 @@ python -m dotenv -f .env run --override -- python -m neurons.validator \
   --claims.backend-url https://api.claims111.ai \
   --claims.batch-size 50 \
   --claims.miner-selection-mode adaptive \
-  --claims.miner-sample-size 10 \
+  --claims.miner-sample-size 15 \
   --claims.batch-score-rule mean \
   --claims.audit-method llm \
   --claims.agent-v1-validation-mode llm \

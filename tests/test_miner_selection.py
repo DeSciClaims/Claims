@@ -37,30 +37,30 @@ def _state(
     }
 
 
-def test_uid_v0_selection_uses_exact_four_four_two_lanes() -> None:
-    candidates = [_miner(uid) for uid in range(1, 11)]
+def test_uid_v0_selection_uses_exact_six_six_three_lanes() -> None:
+    candidates = [_miner(uid) for uid in range(1, 16)]
     history = [
-        *[_state(uid, count=uid - 1, last_selected_block=uid) for uid in range(1, 5)],
+        *[_state(uid, count=(uid - 1) // 2, last_selected_block=uid) for uid in range(1, 7)],
         *[
             _state(uid, count=3, scores=[uid / 20, uid / 20, uid / 20], last_evaluated_block=uid * 10)
-            for uid in range(5, 11)
+            for uid in range(7, 16)
         ],
     ]
 
     selected = select_miners(
         candidates,
         history_rows=history,
-        sample_size=10,
+        sample_size=15,
         seed="batch-001",
         current_block=1_000,
         immunity_period_blocks=21_600,
     )
 
-    assert len(selected) == 10
-    assert len({item.uid for item in selected}) == 10
-    assert [item.uid for item in selected if item.lane == "qualification"] == [1, 2, 3, 4]
-    assert sum(item.lane == "performance" for item in selected) == 4
-    assert sum(item.lane == "rotation" for item in selected) == 2
+    assert len(selected) == 15
+    assert len({item.uid for item in selected}) == 15
+    assert [item.uid for item in selected if item.lane == "qualification"] == [1, 2, 3, 4, 5, 6]
+    assert sum(item.lane == "performance" for item in selected) == 6
+    assert sum(item.lane == "rotation" for item in selected) == 3
     rotation = [item for item in selected if item.lane == "rotation"]
     assert rotation == sorted(rotation, key=lambda item: (item.last_evaluated_block, item.uid))
 
@@ -72,18 +72,20 @@ def test_immunity_deadline_overrides_normal_qualification_order() -> None:
         _miner(3, registration_block=20_000),
         _miner(4, registration_block=20_000),
         _miner(5, registration_block=20_000),
-        *[_miner(uid) for uid in range(6, 12)],
+        _miner(6, registration_block=20_000),
+        _miner(7, registration_block=20_000),
+        *[_miner(uid) for uid in range(8, 19)],
     ]
     history = [
         _state(1, count=2, registration_block=9_500),
-        *[_state(uid, count=0, registration_block=20_000) for uid in range(2, 6)],
-        *[_state(uid, count=3, scores=[0.5, 0.5, 0.5]) for uid in range(6, 12)],
+        *[_state(uid, count=0, registration_block=20_000) for uid in range(2, 8)],
+        *[_state(uid, count=3, scores=[0.5, 0.5, 0.5]) for uid in range(8, 19)],
     ]
 
     selected = select_miners(
         candidates,
         history_rows=history,
-        sample_size=10,
+        sample_size=15,
         seed="immunity",
         current_block=24_000,
         immunity_period_blocks=21_600,
@@ -92,30 +94,30 @@ def test_immunity_deadline_overrides_normal_qualification_order() -> None:
 
     qualification = [item.uid for item in selected if item.lane == "qualification"]
     assert qualification[0] == 1
-    assert len(qualification) == 4
+    assert len(qualification) == 6
 
 
 def test_selection_is_reproducible_and_uses_uid_state_not_hotkey() -> None:
-    candidates = [_miner(uid) for uid in range(1, 11)]
+    candidates = [_miner(uid) for uid in range(1, 16)]
     history = [
-        _state(uid, count=0 if uid <= 4 else 3, scores=[uid / 20] * 3)
-        for uid in range(1, 11)
+        _state(uid, count=0 if uid <= 6 else 3, scores=[uid / 20] * 3)
+        for uid in range(1, 16)
     ]
-    history[4]["hotkey"] = "an_unrelated_hotkey"
+    history[6]["hotkey"] = "an_unrelated_hotkey"
 
-    first = select_miners(candidates, history_rows=history, sample_size=10, seed="stable-seed")
-    second = select_miners(candidates, history_rows=history, sample_size=10, seed="stable-seed")
+    first = select_miners(candidates, history_rows=history, sample_size=15, seed="stable-seed")
+    second = select_miners(candidates, history_rows=history, sample_size=15, seed="stable-seed")
 
     assert [(item.uid, item.lane) for item in first] == [(item.uid, item.lane) for item in second]
-    assert next(item for item in first if item.uid == 5).evaluation_count == 3
-    assert next(item for item in first if item.uid == 5).distinct_batch_count == 3
+    assert next(item for item in first if item.uid == 7).evaluation_count == 3
+    assert next(item for item in first if item.uid == 7).distinct_batch_count == 3
 
 
 def test_registration_block_change_discards_old_uid_state() -> None:
     selected = select_miners(
         [_miner(1, registration_block=200)],
         history_rows=[_state(1, count=20, scores=[1.0, 1.0, 1.0], registration_block=100)],
-        sample_size=10,
+        sample_size=15,
         seed="registration-reset",
     )
 
@@ -125,60 +127,124 @@ def test_registration_block_change_discards_old_uid_state() -> None:
 
 
 def test_lane_shortages_fill_by_oldest_evaluation() -> None:
-    candidates = [_miner(uid) for uid in range(1, 11)]
+    candidates = [_miner(uid) for uid in range(1, 16)]
     history = [
         _state(uid, count=3, scores=[0.5] * 3, last_evaluated_block=100 + uid)
-        for uid in range(1, 11)
+        for uid in range(1, 16)
     ]
 
-    selected = select_miners(candidates, history_rows=history, sample_size=10, seed="fill")
+    selected = select_miners(candidates, history_rows=history, sample_size=15, seed="fill")
 
-    assert [item.uid for item in selected[:4]] == [1, 2, 3, 4]
-    assert {item.lane for item in selected[:4]} == {"qualification"}
+    assert [item.uid for item in selected[:6]] == [1, 2, 3, 4, 5, 6]
+    assert {item.lane for item in selected[:6]} == {"qualification"}
+
+
+def test_positive_under_vetted_history_fills_provisional_performance_slots() -> None:
+    candidates = [_miner(uid) for uid in range(1, 19)]
+    history = [
+        *[_state(uid, count=0) for uid in range(1, 7)],
+        *[_state(uid, count=1, scores=[uid / 20]) for uid in range(7, 13)],
+        *[_state(uid, count=0) for uid in range(13, 19)],
+    ]
+
+    selected = select_miners(candidates, history_rows=history, sample_size=15, seed="provisional")
+
+    assert {item.uid for item in selected if item.lane == "performance-provisional"} == {
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+    }
+    assert not [item for item in selected if item.lane == "performance"]
+    assert all(item.status == "under-vetted" for item in selected if item.lane == "performance-provisional")
+
+
+def test_zero_only_under_vetted_history_is_not_provisional_performance() -> None:
+    candidates = [_miner(uid) for uid in range(1, 16)]
+    history = [
+        *[_state(uid, count=0) for uid in range(1, 7)],
+        *[_state(uid, count=1, scores=[0.0]) for uid in range(7, 16)],
+    ]
+
+    selected = select_miners(candidates, history_rows=history, sample_size=15, seed="zero-only")
+
+    assert not [item for item in selected if item.lane == "performance-provisional"]
+    assert sum(item.lane == "performance-fallback" for item in selected) == 6
+
+
+def test_zero_vetted_miners_mix_provisional_performance_with_fallback() -> None:
+    candidates = [_miner(uid) for uid in range(1, 19)]
+    history = [
+        *[_state(uid, count=0) for uid in range(1, 7)],
+        *[_state(uid, count=1, scores=[0.5]) for uid in range(7, 11)],
+        *[_state(uid, count=0) for uid in range(11, 19)],
+    ]
+
+    selected = select_miners(candidates, history_rows=history, sample_size=15, seed="mixed")
+
+    assert {item.uid for item in selected if item.lane == "performance-provisional"} == {7, 8, 9, 10}
+    assert [item.uid for item in selected if item.lane == "performance-fallback"] == [11, 12]
+
+
+def test_provisional_history_does_not_displace_six_vetted_performers() -> None:
+    candidates = [_miner(uid) for uid in range(1, 21)]
+    history = [
+        *[_state(uid, count=0) for uid in range(1, 7)],
+        *[_state(uid, count=3, scores=[0.4, 0.5, 0.6]) for uid in range(7, 13)],
+        *[_state(uid, count=1, scores=[0.9]) for uid in range(13, 21)],
+    ]
+
+    selected = select_miners(candidates, history_rows=history, sample_size=15, seed="vetted-first")
+
+    assert {item.uid for item in selected if item.lane == "performance"} == {7, 8, 9, 10, 11, 12}
+    assert not [item for item in selected if item.lane == "performance-provisional"]
 
 
 def test_cold_start_fallback_prefers_post_update_registrations_then_smallest_uid() -> None:
     candidates = [
         *[_miner(uid, registration_block=100) for uid in range(1, 7)],
-        *[_miner(uid, registration_block=1_000 + uid) for uid in range(7, 15)],
+        *[_miner(uid, registration_block=1_000 + uid) for uid in range(7, 21)],
     ]
 
     selected = select_miners(
         candidates,
         history_rows=[],
-        sample_size=10,
+        sample_size=15,
         seed="cold-start",
         recent_registration_block=1_000,
     )
 
-    assert [item.uid for item in selected if item.lane == "qualification"] == [1, 2, 3, 4]
-    assert [item.uid for item in selected if item.lane == "performance"] == [7, 8, 9, 10]
-    assert [item.uid for item in selected if item.lane == "rotation"] == [11, 12]
+    assert [item.uid for item in selected if item.lane == "qualification"] == [1, 2, 3, 4, 5, 6]
+    assert [item.uid for item in selected if item.lane == "performance-fallback"] == [7, 8, 9, 10, 11, 12]
+    assert [item.uid for item in selected if item.lane == "rotation"] == [13, 14, 15]
 
 
 def test_cold_start_fallback_uses_pre_update_uids_only_after_recent_cohort() -> None:
     candidates = [
-        *[_miner(uid, registration_block=100) for uid in range(1, 10)],
-        _miner(10, registration_block=1_010),
-        _miner(11, registration_block=1_011),
+        *[_miner(uid, registration_block=100) for uid in range(1, 15)],
+        _miner(15, registration_block=1_015),
+        _miner(16, registration_block=1_016),
     ]
 
     selected = select_miners(
         candidates,
         history_rows=[],
-        sample_size=10,
+        sample_size=15,
         seed="cold-start",
         recent_registration_block=1_000,
     )
 
-    assert [item.uid for item in selected if item.lane == "performance"][:2] == [10, 11]
-    assert [item.uid for item in selected if item.lane == "performance"][2:] == [5, 6]
+    performance_fallback = [item.uid for item in selected if item.lane == "performance-fallback"]
+    assert performance_fallback[:2] == [15, 16]
+    assert performance_fallback[2:] == [7, 8, 9, 10]
 
 
 def test_fallback_keeps_oldest_evaluation_ahead_of_recent_registration() -> None:
     candidates = [
         _miner(1, registration_block=100),
-        *[_miner(uid, registration_block=1_000 + uid) for uid in range(2, 11)],
+        *[_miner(uid, registration_block=1_000 + uid) for uid in range(2, 16)],
     ]
     history = [
         _state(1, count=3, scores=[0.5] * 3, registration_block=100),
@@ -190,14 +256,14 @@ def test_fallback_keeps_oldest_evaluation_ahead_of_recent_registration() -> None
                 registration_block=1_000 + uid,
                 last_evaluated_block=100 + uid,
             )
-            for uid in range(2, 11)
+            for uid in range(2, 16)
         ],
     ]
 
     selected = select_miners(
         candidates,
         history_rows=history,
-        sample_size=10,
+        sample_size=15,
         seed="oldest-first",
         recent_registration_block=1_000,
     )
@@ -219,9 +285,9 @@ def test_all_mode_selects_every_candidate() -> None:
     assert {item.lane for item in selected} == {"all"}
 
 
-def test_adaptive_mode_rejects_non_v0_sample_size() -> None:
-    with pytest.raises(ValueError, match="sample_size=10"):
-        select_miners([_miner(1)], history_rows=[], sample_size=8, seed="invalid")
+def test_adaptive_mode_rejects_non_policy_sample_size() -> None:
+    with pytest.raises(ValueError, match="sample_size=15"):
+        select_miners([_miner(1)], history_rows=[], sample_size=10, seed="invalid")
 
 
 def test_metagraph_registration_blocks_are_mapped_by_uid() -> None:

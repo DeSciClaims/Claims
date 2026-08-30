@@ -5,11 +5,11 @@ from dataclasses import dataclass
 from typing import Any
 
 
-ALGORITHM_VERSION = "uid_v0_4_4_4"
+ALGORITHM_VERSION = "uid_v0_6_6_3_provisional_v1"
 VETTED_EVALUATION_COUNT = 3
-QUALIFICATION_SLOTS = 4
-PERFORMANCE_SLOTS = 4
-ROTATION_SLOTS = 2
+QUALIFICATION_SLOTS = 6
+PERFORMANCE_SLOTS = 6
+ROTATION_SLOTS = 3
 SELECTION_SIZE = QUALIFICATION_SLOTS + PERFORMANCE_SLOTS + ROTATION_SLOTS
 
 
@@ -113,11 +113,24 @@ def select_miners(
     vetted = [item for item in available if item.evaluation_count >= VETTED_EVALUATION_COUNT]
     performance = _weighted_sample_without_replacement(vetted, PERFORMANCE_SLOTS, rng)
     _take(selected, available, performance, lane="performance")
+
+    provisional = [
+        item
+        for item in available
+        if 0 < item.evaluation_count < VETTED_EVALUATION_COUNT
+        and any(score > 0.0 for score in item.recent_scores)
+    ]
+    provisional_performance = _weighted_sample_without_replacement(
+        provisional,
+        max(0, QUALIFICATION_SLOTS + PERFORMANCE_SLOTS - len(selected)),
+        rng,
+    )
+    _take(selected, available, provisional_performance, lane="performance-provisional")
     _fill_oldest(
         selected,
         available,
         QUALIFICATION_SLOTS + PERFORMANCE_SLOTS,
-        lane="performance",
+        lane="performance-fallback",
         recent_registration_block=recent_registration_block,
     )
 

@@ -67,7 +67,7 @@ def test_detailed_testnet_profile_is_runnable_and_uses_distinct_models() -> None
     assert "CLAIMS_BATCH_SIZE=50" in profile
     assert "CLAIMS_TIMEOUT=3600" in profile
     assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in profile
-    assert "CLAIMS_MINER_SAMPLE_SIZE=10" in profile
+    assert "CLAIMS_MINER_SAMPLE_SIZE=15" in profile
     assert "\nCLAIMS_TARGET_UIDS=" not in profile
     assert "CLAIMS_MAX_STEPS=1" in profile
     assert "CLAIMS_SILVER_WORKFLOW_MODE=file-agent" in profile
@@ -89,7 +89,7 @@ def test_mainnet_profile_has_production_policy_without_prescribed_models() -> No
     assert "CLAIMS_NETWORK=mainnet" in profile
     assert "CLAIMS_BATCH_SIZE=50" in profile
     assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in profile
-    assert "CLAIMS_MINER_SAMPLE_SIZE=10" in profile
+    assert "CLAIMS_MINER_SAMPLE_SIZE=15" in profile
     assert "CLAIMS_TIMEOUT=3600" in profile
     assert "CLAIMS_MAX_STEPS=4" in profile
     assert "CLAIMS_QUERY_INTERVAL=10800" in profile

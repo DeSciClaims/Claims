@@ -329,8 +329,11 @@ class ClaimsValidator:
             "--claims.miner-sample-size",
             dest="claims_miner_sample_size",
             type=int,
-            default=max(1, int(os.getenv("CLAIMS_MINER_SAMPLE_SIZE", "10"))),
-            help="Number of miners selected in adaptive mode. UID V0 requires 10. CLAIMS_TARGET_UIDS remains an exact override.",
+            default=max(1, int(os.getenv("CLAIMS_MINER_SAMPLE_SIZE", "15"))),
+            help=(
+                "Number of miners selected in adaptive mode. The current UID V0 policy requires 15. "
+                "CLAIMS_TARGET_UIDS remains an exact override."
+            ),
         )
         parser.add_argument(
             "--claims.miner-immunity-period-blocks",
@@ -980,7 +983,7 @@ class ClaimsValidator:
             selected = select_miners(
                 neurons,
                 history_rows=history,
-                sample_size=int(getattr(self.config, "claims_miner_sample_size", 10) or 10),
+                sample_size=int(getattr(self.config, "claims_miner_sample_size", 15) or 15),
                 seed=seed,
                 mode=mode,
                 current_block=current_block,
@@ -5679,7 +5682,7 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_batch_score_rule": str(getattr(config, "claims_batch_score_rule", "mean") or "mean"),
         "claims_allow_paper_reuse": bool(getattr(config, "claims_allow_paper_reuse", False)),
         "claims_miner_selection_mode": str(getattr(config, "claims_miner_selection_mode", "all") or "all"),
-        "claims_miner_sample_size": int(getattr(config, "claims_miner_sample_size", 10) or 10),
+        "claims_miner_sample_size": int(getattr(config, "claims_miner_sample_size", 15) or 15),
         "claims_miner_immunity_period_blocks": int(
             getattr(config, "claims_miner_immunity_period_blocks", 0) or 0
         ),

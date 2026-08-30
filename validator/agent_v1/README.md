@@ -15,15 +15,15 @@ The first supported rigor backends are:
 ## Validator Profiles
 
 [validator.testnet.env.example](./validator.testnet.env.example) is a complete
-50-paper, ten-miner SN111 testnet profile for the full Bittensor validator. Miners
+50-paper, fifteen-miner SN111 testnet profile for the full Bittensor validator. Miners
 are selected adaptively unless `CLAIMS_TARGET_UIDS` is explicitly enabled. It configures
 paper-level diagnostics, Bronze generation, anonymous Silver judges, the
 file-agent comparator/canonicalizer/auditor, persistence limits, and one scoring
 cycle. It deliberately uses different models for independent pipeline roles.
 
 [validator.mainnet.env.example](./validator.mainnet.env.example) carries the
-current SN111 mainnet operating policy: 50 papers, ten adaptive miners, four
-cycles with a six-hour interval, one-hour miner timeout, file-agent Silver, and
+current SN111 mainnet operating policy: 50 papers, fifteen adaptive miners, four
+cycles with a three-hour post-completion delay, one-hour miner timeout, file-agent Silver, and
 winner-takes-most payouts. Its model fields are intentionally blank. Mainnet
 validators must choose their own role-specific models and provider credentials.
 
@@ -101,10 +101,17 @@ batch-scoped artifacts instead of repeating miner inference.
 - `--claims.target-uid UID` is an exact operator override and may be repeated.
   If an existing canonical assignment contains different UIDs, the validator
   refuses to diverge. Use a backend assignment lifetime of `0` for isolated tests.
-- `--claims.miner-selection-mode adaptive --claims.miner-sample-size 10`
-  enables UID-only V0 selection: four qualification, four performance, and two
+- `--claims.miner-selection-mode adaptive --claims.miner-sample-size 15`
+  enables UID-only V0 selection: six qualification, six performance, and three
   rotation slots. Performance sampling is seeded and weighted by
   `0.10 + mean(last three scores)`.
+- A miner remains fully vetted only after three evaluations. Until six vetted
+  miners are available, under-vetted miners with at least one positive stored
+  score may fill otherwise-empty performance slots. They are recorded as
+  `performance-provisional`; zero-only histories do not qualify. This fallback
+  stops being used automatically whenever six vetted candidates are available.
+  Any performance seats still vacant after that use the normal oldest-evaluation
+  fallback and are recorded as `performance-fallback`.
 - Qualification covers UIDs with fewer than three evaluations. The normal order
   is fewest evaluations, immunity urgency, oldest selection, then UID. When
   fallback candidates have equally old evaluations, miners registered at or
