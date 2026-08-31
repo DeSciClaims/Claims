@@ -58,6 +58,25 @@ CLAIMS_BACKEND_URL=https://api.claims111.ai
 CLAIMS_BACKEND_URL=https://artifacts.claims111.ai
 ```
 
+## System Prerequisites
+
+The default production validator profile processes 50 papers across 15 miners
+and runs diagnostic, reference, and Silver work concurrently. The smaller
+requirements below are suitable for installation checks and reduced-concurrency
+testing; use the production recommendation for sustained subnet operation.
+
+| Component | Requirement | Notes |
+|---|---|---|
+| OS | Ubuntu 22.04+ recommended; macOS 13+ for manual development | The Ubuntu installers support Debian-family Linux. Published containers use Ubuntu 24.04. |
+| Validator CPU/RAM | 8 cores / 32 GB minimum; 16 cores / 64 GB recommended | The production 50-paper, 15-miner profile runs multiple agent and PDF-processing subprocesses. Reduce worker counts on the minimum configuration. |
+| Miner CPU/RAM | 4 cores / 16 GB minimum; 8 cores / 32 GB recommended | Higher paper concurrency starts additional agent and PDF-processing subprocesses. The example miner profile uses two paper workers. |
+| Persistent disk | 50 GB miner; 100 GB validator | Allow additional space when retaining many outputs, Bronze references, PDFs, model caches, or logs. Container deployments must persist `/data`. |
+| Docker | Docker Engine 24.0+ recommended | Required only for the published container workflow; manual and Ubuntu-installer deployments do not require Docker. |
+| Python | 3.10+ | The project enforces Python 3.10 or newer. Published Ubuntu 24.04 images use Python 3.12. |
+| Bittensor SDK | `10.5.0` | Installed from `requirements.txt`. Other SDK versions are not supported unless the repository pin is updated and tested. |
+| Network | Stable broadband; public TCP port for miners | Miners must expose a reachable Axon. Both roles need outbound access to Bittensor, Claims APIs, PDF storage, and configured inference providers. |
+| GPU | Not required with hosted inference providers | Operators using local models must size GPU memory and runtime dependencies for those models separately. |
+
 ## Installation
 
 Choose one installation path: manual Python setup, the Ubuntu installers, or
