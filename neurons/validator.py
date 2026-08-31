@@ -332,7 +332,8 @@ class ClaimsValidator:
             type=int,
             default=max(1, int(os.getenv("CLAIMS_MINER_SAMPLE_SIZE", "15"))),
             help=(
-                "Number of miners selected in adaptive mode. The current UID V0 policy requires 15. "
+                "Number of miners selected in adaptive mode. UID V0 apportions the total across "
+                "qualification, performance, and rotation lanes using a 40/40/20 split. "
                 "CLAIMS_TARGET_UIDS remains an exact override."
             ),
         )

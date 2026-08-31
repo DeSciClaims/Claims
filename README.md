@@ -388,7 +388,9 @@ Primary arguments:
   reuse, run persistence, and dashboard records.
 - `--claims.batch-size` controls papers per batch. `--claims.target-uid` is an
   exact smoke-test override; production uses `--claims.miner-selection-mode
-  adaptive --claims.miner-sample-size 15`.
+  adaptive --claims.miner-sample-size 15`. The sample size is configurable;
+  adaptive selection divides it 40/40/20 across qualification, performance,
+  and rotation (`10` gives `4/4/2`, `15` gives `6/6/3`, and `20` gives `8/8/4`).
 - `--claims.audit-method llm`, `--claims.validator-pipeline auto`, and
   `--claims.silver-enable` enable the current diagnostic and Silver scoring path.
 - `--claims.output-dir` stores local run artifacts. `--claims.timeout` is the

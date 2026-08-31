@@ -105,15 +105,17 @@ batch-scoped artifacts instead of repeating miner inference.
 - `--claims.target-uid UID` is an exact operator override and may be repeated.
   If an existing canonical assignment contains different UIDs, the validator
   refuses to diverge. Use a backend assignment lifetime of `0` for isolated tests.
-- `--claims.miner-selection-mode adaptive --claims.miner-sample-size 15`
-  enables UID-only V0 selection: six qualification, six performance, and three
-  rotation slots. Performance sampling is seeded and weighted by
-  `0.10 + mean(last three scores)`.
-- A miner remains fully vetted only after three evaluations. Until six vetted
-  miners are available, under-vetted miners with at least one positive stored
-  score may fill otherwise-empty performance slots. They are recorded as
-  `performance-provisional`; zero-only histories do not qualify. This fallback
-  stops being used automatically whenever six vetted candidates are available.
+- `--claims.miner-selection-mode adaptive --claims.miner-sample-size N`
+  enables UID-only V0 selection. The configured total is apportioned 40% to
+  qualification, 40% to performance, and 20% to rotation. For example, `10`
+  produces `4/4/2`, `15` produces `6/6/3`, and `20` produces `8/8/4`.
+  Performance sampling is seeded and weighted by `0.10 + mean(last three scores)`.
+- A miner remains fully vetted only after three evaluations. Until the configured
+  performance lane can be filled with vetted miners, under-vetted miners with at
+  least one positive stored score may fill otherwise-empty performance slots.
+  They are recorded as `performance-provisional`; zero-only histories do not
+  qualify. This fallback stops being used automatically whenever enough vetted
+  candidates are available.
   Any performance seats still vacant after that use the normal oldest-evaluation
   fallback and are recorded as `performance-fallback`.
 - Qualification covers UIDs with fewer than three evaluations. The normal order

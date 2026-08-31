@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from neurons.miner_selection import select_miners
+from neurons.miner_selection import select_miners, selection_lane_slots
 from neurons.validator import ClaimsValidator, _metagraph_registration_blocks
 
 
@@ -285,9 +285,45 @@ def test_all_mode_selects_every_candidate() -> None:
     assert {item.lane for item in selected} == {"all"}
 
 
-def test_adaptive_mode_rejects_non_policy_sample_size() -> None:
-    with pytest.raises(ValueError, match="sample_size=15"):
-        select_miners([_miner(1)], history_rows=[], sample_size=10, seed="invalid")
+@pytest.mark.parametrize(
+    ("sample_size", "expected_slots"),
+    [
+        (10, (4, 4, 2)),
+        (15, (6, 6, 3)),
+        (20, (8, 8, 4)),
+        (7, (3, 3, 1)),
+    ],
+)
+def test_adaptive_lane_slots_scale_with_sample_size(
+    sample_size: int,
+    expected_slots: tuple[int, int, int],
+) -> None:
+    assert selection_lane_slots(sample_size) == expected_slots
+
+
+@pytest.mark.parametrize("sample_size", [10, 20])
+def test_adaptive_mode_accepts_configured_sample_size(sample_size: int) -> None:
+    qualification_slots, performance_slots, rotation_slots = selection_lane_slots(sample_size)
+    candidates = [_miner(uid) for uid in range(1, sample_size + 1)]
+    history = [
+        *[_state(uid, count=0) for uid in range(1, qualification_slots + 1)],
+        *[
+            _state(uid, count=3, scores=[0.5, 0.5, 0.5], last_evaluated_block=uid)
+            for uid in range(qualification_slots + 1, sample_size + 1)
+        ],
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=sample_size,
+        seed=f"sample-{sample_size}",
+    )
+
+    assert len(selected) == sample_size
+    assert sum(item.lane == "qualification" for item in selected) == qualification_slots
+    assert sum(item.lane == "performance" for item in selected) == performance_slots
+    assert sum(item.lane == "rotation" for item in selected) == rotation_slots
 
 
 def test_metagraph_registration_blocks_are_mapped_by_uid() -> None:

@@ -5,12 +5,9 @@ from dataclasses import dataclass
 from typing import Any
 
 
-ALGORITHM_VERSION = "uid_v0_6_6_3_provisional_v1"
+ALGORITHM_VERSION = "uid_v0_proportional_provisional_v1"
 VETTED_EVALUATION_COUNT = 3
-QUALIFICATION_SLOTS = 6
-PERFORMANCE_SLOTS = 6
-ROTATION_SLOTS = 3
-SELECTION_SIZE = QUALIFICATION_SLOTS + PERFORMANCE_SLOTS + ROTATION_SLOTS
+_LANE_WEIGHTS = (2, 2, 1)
 
 
 @dataclass(frozen=True)
@@ -84,8 +81,9 @@ def select_miners(
     requested = max(1, int(sample_size))
     if mode == "all":
         return [_with_lane(item, "all") for item in miners]
-    if requested != SELECTION_SIZE:
-        raise ValueError(f"UID V0 adaptive selection requires sample_size={SELECTION_SIZE}, got {requested}")
+
+    qualification_slots, performance_slots, rotation_slots = selection_lane_slots(requested)
+    performance_target = qualification_slots + performance_slots
 
     rng = random.Random(seed)
     selected: list[MinerSelection] = []
@@ -101,17 +99,17 @@ def select_miners(
             item.uid,
         )
     )
-    _take(selected, available, qualification[:QUALIFICATION_SLOTS], lane="qualification")
+    _take(selected, available, qualification[:qualification_slots], lane="qualification")
     _fill_oldest(
         selected,
         available,
-        QUALIFICATION_SLOTS,
+        qualification_slots,
         lane="qualification",
         recent_registration_block=recent_registration_block,
     )
 
     vetted = [item for item in available if item.evaluation_count >= VETTED_EVALUATION_COUNT]
-    performance = _weighted_sample_without_replacement(vetted, PERFORMANCE_SLOTS, rng)
+    performance = _weighted_sample_without_replacement(vetted, performance_slots, rng)
     _take(selected, available, performance, lane="performance")
 
     provisional = [
@@ -122,14 +120,14 @@ def select_miners(
     ]
     provisional_performance = _weighted_sample_without_replacement(
         provisional,
-        max(0, QUALIFICATION_SLOTS + PERFORMANCE_SLOTS - len(selected)),
+        max(0, performance_target - len(selected)),
         rng,
     )
     _take(selected, available, provisional_performance, lane="performance-provisional")
     _fill_oldest(
         selected,
         available,
-        QUALIFICATION_SLOTS + PERFORMANCE_SLOTS,
+        performance_target,
         lane="performance-fallback",
         recent_registration_block=recent_registration_block,
     )
@@ -138,16 +136,29 @@ def select_miners(
         available,
         key=lambda item: _fallback_order(item, recent_registration_block=recent_registration_block),
     )
-    _take(selected, available, rotation[:ROTATION_SLOTS], lane="rotation")
+    _take(selected, available, rotation[:rotation_slots], lane="rotation")
     _fill_oldest(
         selected,
         available,
-        SELECTION_SIZE,
+        requested,
         lane="rotation",
         recent_registration_block=recent_registration_block,
     )
 
     return selected
+
+
+def selection_lane_slots(sample_size: int) -> tuple[int, int, int]:
+    """Apportion the configured total across 40/40/20 V0 lanes."""
+    requested = max(1, int(sample_size))
+    weight_total = sum(_LANE_WEIGHTS)
+    slots = [requested * weight // weight_total for weight in _LANE_WEIGHTS]
+    remainders = [requested * weight % weight_total for weight in _LANE_WEIGHTS]
+    for index in sorted(range(len(slots)), key=lambda item: (-remainders[item], item))[
+        : requested - sum(slots)
+    ]:
+        slots[index] += 1
+    return slots[0], slots[1], slots[2]
 
 
 def _candidate(
