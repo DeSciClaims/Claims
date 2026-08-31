@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from typing import Any
 
 
-ALGORITHM_VERSION = "uid_v0_proportional_provisional_v1"
+ALGORITHM_VERSION = "uid_v0_hotkey_history_diverse_v3"
 VETTED_EVALUATION_COUNT = 3
+PERFORMANCE_EVALUATION_COUNT = 1
 _LANE_WEIGHTS = (2, 2, 1)
 
 
@@ -16,6 +17,7 @@ class MinerSelection:
     uid: int
     hotkey: str
     coldkey: str | None
+    axon_ip: str | None
     lane: str
     registration_block: int
     immunity_expiry_block: int
@@ -33,6 +35,7 @@ class MinerSelection:
             "uid": self.uid,
             "hotkey": self.hotkey,
             "coldkey": self.coldkey,
+            "axon_ip": self.axon_ip,
             "selection_lane": self.lane,
             "registration_block": self.registration_block,
             "immunity_expiry_block": self.immunity_expiry_block,
@@ -99,7 +102,13 @@ def select_miners(
             item.uid,
         )
     )
-    _take(selected, available, qualification[:qualification_slots], lane="qualification")
+    _take_until(
+        selected,
+        available,
+        qualification,
+        target_total=qualification_slots,
+        lane="qualification",
+    )
     _fill_oldest(
         selected,
         available,
@@ -108,22 +117,17 @@ def select_miners(
         recent_registration_block=recent_registration_block,
     )
 
-    vetted = [item for item in available if item.evaluation_count >= VETTED_EVALUATION_COUNT]
-    performance = _weighted_sample_without_replacement(vetted, performance_slots, rng)
+    performance_candidates = [
+        item for item in available if item.evaluation_count >= PERFORMANCE_EVALUATION_COUNT
+    ]
+    performance = _weighted_sample_without_replacement(
+        performance_candidates,
+        performance_slots,
+        rng,
+        already_selected=selected,
+    )
     _take(selected, available, performance, lane="performance")
 
-    provisional = [
-        item
-        for item in available
-        if 0 < item.evaluation_count < VETTED_EVALUATION_COUNT
-        and any(score > 0.0 for score in item.recent_scores)
-    ]
-    provisional_performance = _weighted_sample_without_replacement(
-        provisional,
-        max(0, performance_target - len(selected)),
-        rng,
-    )
-    _take(selected, available, provisional_performance, lane="performance-provisional")
     _fill_oldest(
         selected,
         available,
@@ -136,7 +140,13 @@ def select_miners(
         available,
         key=lambda item: _fallback_order(item, recent_registration_block=recent_registration_block),
     )
-    _take(selected, available, rotation[:rotation_slots], lane="rotation")
+    _take_until(
+        selected,
+        available,
+        rotation,
+        target_total=min(requested, len(selected) + rotation_slots),
+        lane="rotation",
+    )
     _fill_oldest(
         selected,
         available,
@@ -171,14 +181,32 @@ def _candidate(
     uid = int(getattr(neuron, "uid", -1))
     hotkey = str(getattr(neuron, "hotkey", "") or "")
     coldkey = str(getattr(neuron, "coldkey", "") or "") or None
+    axon = getattr(neuron, "axon_info", None)
+    axon_ip = _normalized_ip(getattr(axon, "ip", None))
     registration_block = (
         registration_block_for_neuron(neuron)
         if registration_block is None
         else max(0, int(registration_block))
     )
-    history = next((row for row in history_rows if _uid(row.get("uid")) == uid), {})
-    if _uid(history.get("registration_block")) != registration_block:
-        history = {}
+    history = next(
+        (
+            row
+            for row in history_rows
+            if _history_hotkey(row) and _history_hotkey(row) == hotkey
+        ),
+        {},
+    )
+    if not history:
+        history = next(
+            (
+                row
+                for row in history_rows
+                if not _history_hotkey(row)
+                and _uid(row.get("uid")) == uid
+                and _uid(row.get("registration_block")) == registration_block
+            ),
+            {},
+        )
     count = max(0, _uid(history.get("evaluation_count")))
     distinct_batch_count = max(0, _uid(history.get("distinct_batch_count")))
     scores = tuple(_score(value) for value in list(history.get("recent_scores") or [])[-3:])
@@ -188,6 +216,7 @@ def _candidate(
         uid=uid,
         hotkey=hotkey,
         coldkey=coldkey,
+        axon_ip=axon_ip,
         lane="candidate",
         registration_block=registration_block,
         immunity_expiry_block=registration_block + immunity_period_blocks,
@@ -206,8 +235,14 @@ def _weighted_sample_without_replacement(
     candidates: list[MinerSelection],
     count: int,
     rng: random.Random,
+    *,
+    already_selected: list[MinerSelection] | None = None,
 ) -> list[MinerSelection]:
-    pool = sorted(candidates, key=lambda item: item.uid)
+    selected = list(already_selected or [])
+    pool = sorted(
+        (item for item in candidates if not _diversity_conflict(item, selected)),
+        key=lambda item: item.uid,
+    )
     chosen: list[MinerSelection] = []
     while pool and len(chosen) < count:
         weights = [0.10 + item.performance_score for item in pool]
@@ -219,7 +254,10 @@ def _weighted_sample_without_replacement(
             if pick <= cumulative:
                 index = candidate_index
                 break
-        chosen.append(pool.pop(index))
+        picked = pool.pop(index)
+        chosen.append(picked)
+        selected.append(picked)
+        pool = [item for item in pool if not _diversity_conflict(item, selected)]
     return chosen
 
 
@@ -231,10 +269,24 @@ def _take(
     lane: str,
 ) -> None:
     for item in candidates:
-        if item not in available:
+        if item not in available or _diversity_conflict(item, selected):
             continue
         selected.append(_with_lane(item, lane))
         available.remove(item)
+
+
+def _take_until(
+    selected: list[MinerSelection],
+    available: list[MinerSelection],
+    candidates: list[MinerSelection],
+    *,
+    target_total: int,
+    lane: str,
+) -> None:
+    for item in candidates:
+        if len(selected) >= target_total:
+            break
+        _take(selected, available, [item], lane=lane)
 
 
 def _fill_oldest(
@@ -245,12 +297,17 @@ def _fill_oldest(
     lane: str,
     recent_registration_block: int,
 ) -> None:
-    needed = min(max(0, target_total - len(selected)), len(available))
     fillers = sorted(
         available,
         key=lambda item: _fallback_order(item, recent_registration_block=recent_registration_block),
-    )[:needed]
-    _take(selected, available, fillers, lane=lane)
+    )
+    _take_until(
+        selected,
+        available,
+        fillers,
+        target_total=target_total,
+        lane=lane,
+    )
 
 
 def _fallback_order(item: MinerSelection, *, recent_registration_block: int) -> tuple[int, int, int]:
@@ -271,6 +328,31 @@ def _immunity_priority(item: MinerSelection, current_block: int, priority_blocks
 
 def _with_lane(item: MinerSelection, lane: str) -> MinerSelection:
     return MinerSelection(**{**item.__dict__, "lane": lane})
+
+
+def _diversity_conflict(item: MinerSelection, selected: list[MinerSelection]) -> bool:
+    coldkey = _normalized_identity(item.coldkey)
+    axon_ip = _normalized_ip(item.axon_ip)
+    for existing in selected:
+        if coldkey and coldkey == _normalized_identity(existing.coldkey):
+            return True
+        if axon_ip and axon_ip == _normalized_ip(existing.axon_ip):
+            return True
+    return False
+
+
+def _history_hotkey(row: dict[str, Any]) -> str:
+    return str(row.get("miner_hotkey") or row.get("hotkey") or "").strip()
+
+
+def _normalized_identity(value: Any) -> str | None:
+    normalized = str(value or "").strip()
+    return normalized or None
+
+
+def _normalized_ip(value: Any) -> str | None:
+    normalized = str(value or "").strip().lower().strip("[]")
+    return normalized or None
 
 
 def registration_block_for_neuron(neuron: Any) -> int:

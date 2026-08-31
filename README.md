@@ -410,6 +410,11 @@ Primary arguments:
   adaptive --claims.miner-sample-size 15`. The sample size is configurable;
   adaptive selection divides it 40/40/20 across qualification, performance,
   and rotation (`10` gives `4/4/2`, `15` gives `6/6/3`, and `20` gives `8/8/4`).
+  The performance lane starts after a miner has one completed evaluation and is
+  weighted by `0.10 + mean(last three scores)`.
+  Adaptive draws allow at most one UID per coldkey and one UID per Axon IP. If
+  the eligible pool lacks enough distinct identities, the batch has fewer miners
+  rather than relaxing either cap.
 - `--claims.audit-method llm`, `--claims.validator-pipeline auto`, and
   `--claims.silver-enable` enable the current diagnostic and Silver scoring path.
 - `--claims.output-dir` stores local run artifacts. `--claims.timeout` is the

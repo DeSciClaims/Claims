@@ -6,12 +6,20 @@ from neurons.miner_selection import select_miners, selection_lane_slots
 from neurons.validator import ClaimsValidator, _metagraph_registration_blocks
 
 
-def _miner(uid: int, *, registration_block: int = 100):
+def _miner(
+    uid: int,
+    *,
+    registration_block: int = 100,
+    hotkey: str | None = None,
+    coldkey: str | None = None,
+    axon_ip: str | None = None,
+):
     return SimpleNamespace(
         uid=uid,
-        hotkey=f"hotkey_{uid}",
-        coldkey=f"coldkey_{uid}",
+        hotkey=hotkey or f"hotkey_{uid}",
+        coldkey=coldkey or f"coldkey_{uid}",
         block_at_registration=registration_block,
+        axon_info=SimpleNamespace(ip=axon_ip or f"203.0.113.{uid}"),
     )
 
 
@@ -24,9 +32,11 @@ def _state(
     last_selected_block: int | None = None,
     last_evaluated_block: int | None = None,
     distinct_batch_count: int | None = None,
+    hotkey: str | None = None,
 ) -> dict:
     return {
         "uid": uid,
+        "hotkey": hotkey or f"hotkey_{uid}",
         "registration_block": registration_block,
         "evaluation_count": count,
         "distinct_batch_count": count if distinct_batch_count is None else distinct_batch_count,
@@ -97,14 +107,12 @@ def test_immunity_deadline_overrides_normal_qualification_order() -> None:
     assert len(qualification) == 6
 
 
-def test_selection_is_reproducible_and_uses_uid_state_not_hotkey() -> None:
+def test_selection_is_reproducible_and_uses_hotkey_state() -> None:
     candidates = [_miner(uid) for uid in range(1, 16)]
     history = [
         _state(uid, count=0 if uid <= 6 else 3, scores=[uid / 20] * 3)
         for uid in range(1, 16)
     ]
-    history[6]["hotkey"] = "an_unrelated_hotkey"
-
     first = select_miners(candidates, history_rows=history, sample_size=15, seed="stable-seed")
     second = select_miners(candidates, history_rows=history, sample_size=15, seed="stable-seed")
 
@@ -113,17 +121,100 @@ def test_selection_is_reproducible_and_uses_uid_state_not_hotkey() -> None:
     assert next(item for item in first if item.uid == 7).distinct_batch_count == 3
 
 
-def test_registration_block_change_discards_old_uid_state() -> None:
+def test_registration_block_change_preserves_same_hotkey_state() -> None:
     selected = select_miners(
         [_miner(1, registration_block=200)],
         history_rows=[_state(1, count=20, scores=[1.0, 1.0, 1.0], registration_block=100)],
         sample_size=15,
-        seed="registration-reset",
+        seed="hotkey-history",
+    )
+
+    assert selected[0].status == "vetted"
+    assert selected[0].evaluation_count == 20
+    assert selected[0].recent_scores == (1.0, 1.0, 1.0)
+
+
+def test_new_hotkey_on_reused_uid_does_not_inherit_history() -> None:
+    selected = select_miners(
+        [_miner(1, registration_block=200, hotkey="replacement_hotkey")],
+        history_rows=[_state(1, count=20, scores=[1.0, 1.0, 1.0], registration_block=100)],
+        sample_size=15,
+        seed="hotkey-replacement",
     )
 
     assert selected[0].status == "new"
     assert selected[0].evaluation_count == 0
     assert selected[0].recent_scores == ()
+
+
+def test_adaptive_draw_caps_each_coldkey_and_axon_ip_to_one_seat() -> None:
+    candidates = [
+        _miner(1, coldkey="shared_coldkey", axon_ip="198.51.100.1"),
+        _miner(2, coldkey="shared_coldkey", axon_ip="198.51.100.2"),
+        _miner(3, coldkey="coldkey_3", axon_ip="198.51.100.1"),
+        *[
+            _miner(uid, coldkey=f"coldkey_{uid}", axon_ip=f"198.51.100.{uid}")
+            for uid in range(4, 19)
+        ],
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=[],
+        sample_size=15,
+        seed="diversity-cap",
+    )
+
+    assert len(selected) == 15
+    assert len({item.coldkey for item in selected}) == 15
+    assert len({item.axon_ip for item in selected}) == 15
+    assert len({item.uid for item in selected}.intersection({1, 2})) == 1
+    assert len({item.uid for item in selected}.intersection({1, 3})) == 1
+
+
+def test_adaptive_draw_returns_fewer_miners_when_diversity_cap_exhausts_pool() -> None:
+    candidates = [
+        _miner(uid, coldkey=f"coldkey_{uid % 2}", axon_ip=f"198.51.100.{uid % 2}")
+        for uid in range(1, 11)
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=[],
+        sample_size=10,
+        seed="limited-diversity",
+    )
+
+    assert len(selected) == 2
+    assert len({item.coldkey for item in selected}) == 2
+    assert len({item.axon_ip for item in selected}) == 2
+
+
+def test_performance_draw_enforces_coldkey_and_axon_ip_caps() -> None:
+    candidates = [
+        _miner(1, coldkey="shared_coldkey", axon_ip="198.51.100.1"),
+        _miner(2, coldkey="shared_coldkey", axon_ip="198.51.100.2"),
+        _miner(3, coldkey="coldkey_3", axon_ip="198.51.100.1"),
+        *[
+            _miner(uid, coldkey=f"coldkey_{uid}", axon_ip=f"198.51.100.{uid}")
+            for uid in range(4, 19)
+        ],
+    ]
+    history = [
+        _state(uid, count=3, scores=[0.9, 0.8, 0.7])
+        for uid in range(1, 19)
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="performance-diversity-cap",
+    )
+
+    assert len(selected) == 15
+    assert len({item.coldkey for item in selected}) == 15
+    assert len({item.axon_ip for item in selected}) == 15
 
 
 def test_lane_shortages_fill_by_oldest_evaluation() -> None:
@@ -139,7 +230,7 @@ def test_lane_shortages_fill_by_oldest_evaluation() -> None:
     assert {item.lane for item in selected[:6]} == {"qualification"}
 
 
-def test_positive_under_vetted_history_fills_provisional_performance_slots() -> None:
+def test_one_evaluation_history_enters_performance_lane() -> None:
     candidates = [_miner(uid) for uid in range(1, 19)]
     history = [
         *[_state(uid, count=0) for uid in range(1, 7)],
@@ -147,9 +238,9 @@ def test_positive_under_vetted_history_fills_provisional_performance_slots() -> 
         *[_state(uid, count=0) for uid in range(13, 19)],
     ]
 
-    selected = select_miners(candidates, history_rows=history, sample_size=15, seed="provisional")
+    selected = select_miners(candidates, history_rows=history, sample_size=15, seed="one-eval-performance")
 
-    assert {item.uid for item in selected if item.lane == "performance-provisional"} == {
+    assert {item.uid for item in selected if item.lane == "performance"} == {
         7,
         8,
         9,
@@ -157,11 +248,10 @@ def test_positive_under_vetted_history_fills_provisional_performance_slots() -> 
         11,
         12,
     }
-    assert not [item for item in selected if item.lane == "performance"]
-    assert all(item.status == "under-vetted" for item in selected if item.lane == "performance-provisional")
+    assert all(item.status == "under-vetted" for item in selected if item.lane == "performance")
 
 
-def test_zero_only_under_vetted_history_is_not_provisional_performance() -> None:
+def test_zero_score_evaluation_can_enter_performance_with_floor_weight() -> None:
     candidates = [_miner(uid) for uid in range(1, 16)]
     history = [
         *[_state(uid, count=0) for uid in range(1, 7)],
@@ -170,11 +260,14 @@ def test_zero_only_under_vetted_history_is_not_provisional_performance() -> None
 
     selected = select_miners(candidates, history_rows=history, sample_size=15, seed="zero-only")
 
-    assert not [item for item in selected if item.lane == "performance-provisional"]
-    assert sum(item.lane == "performance-fallback" for item in selected) == 6
+    assert [item.uid for item in selected if item.lane == "qualification"] == [1, 2, 3, 4, 5, 6]
+    performance = [item for item in selected if item.lane == "performance"]
+    assert len(performance) == 6
+    assert all(item.evaluation_count == 1 for item in performance)
+    assert all(item.performance_score == 0.0 for item in performance)
 
 
-def test_zero_vetted_miners_mix_provisional_performance_with_fallback() -> None:
+def test_performance_shortage_still_fills_by_oldest_evaluation() -> None:
     candidates = [_miner(uid) for uid in range(1, 19)]
     history = [
         *[_state(uid, count=0) for uid in range(1, 7)],
@@ -184,11 +277,11 @@ def test_zero_vetted_miners_mix_provisional_performance_with_fallback() -> None:
 
     selected = select_miners(candidates, history_rows=history, sample_size=15, seed="mixed")
 
-    assert {item.uid for item in selected if item.lane == "performance-provisional"} == {7, 8, 9, 10}
+    assert {item.uid for item in selected if item.lane == "performance"} == {7, 8, 9, 10}
     assert [item.uid for item in selected if item.lane == "performance-fallback"] == [11, 12]
 
 
-def test_provisional_history_does_not_displace_six_vetted_performers() -> None:
+def test_one_and_three_evaluation_miners_share_performance_pool() -> None:
     candidates = [_miner(uid) for uid in range(1, 21)]
     history = [
         *[_state(uid, count=0) for uid in range(1, 7)],
@@ -198,8 +291,11 @@ def test_provisional_history_does_not_displace_six_vetted_performers() -> None:
 
     selected = select_miners(candidates, history_rows=history, sample_size=15, seed="vetted-first")
 
-    assert {item.uid for item in selected if item.lane == "performance"} == {7, 8, 9, 10, 11, 12}
-    assert not [item for item in selected if item.lane == "performance-provisional"]
+    performance = [item for item in selected if item.lane == "performance"]
+    assert len(performance) == 6
+    assert {item.uid for item in performance}.issubset(set(range(7, 21)))
+    assert any(item.status == "under-vetted" for item in performance)
+    assert any(item.status == "vetted" for item in performance)
 
 
 def test_cold_start_fallback_prefers_post_update_registrations_then_smallest_uid() -> None:
@@ -347,8 +443,8 @@ def test_completed_scores_record_every_selected_uid_including_zero(mode: str) ->
     validator._active_miner_selection = {
         "mode": mode,
         "assignments": [
-            {"uid": 7, "registration_block": 100},
-            {"uid": 8, "registration_block": 200},
+            {"uid": 7, "hotkey": "hotkey_7", "registration_block": 100},
+            {"uid": 8, "hotkey": "hotkey_8", "registration_block": 200},
         ],
     }
 
@@ -363,8 +459,8 @@ def test_completed_scores_record_every_selected_uid_including_zero(mode: str) ->
             "batch_id": "batch_1",
             "evaluated_block": 50_000,
             "evaluations": [
-                {"uid": 7, "registration_block": 100, "score": 0.75},
-                {"uid": 8, "registration_block": 200, "score": 0.0},
+                {"uid": 7, "hotkey": "hotkey_7", "registration_block": 100, "score": 0.75},
+                {"uid": 8, "hotkey": "hotkey_8", "registration_block": 200, "score": 0.0},
             ],
         }
     ]

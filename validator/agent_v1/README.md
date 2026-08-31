@@ -106,18 +106,25 @@ batch-scoped artifacts instead of repeating miner inference.
   If an existing canonical assignment contains different UIDs, the validator
   refuses to diverge. Use a backend assignment lifetime of `0` for isolated tests.
 - `--claims.miner-selection-mode adaptive --claims.miner-sample-size N`
-  enables UID-only V0 selection. The configured total is apportioned 40% to
+  enables V0 selection. The configured total is apportioned 40% to
   qualification, 40% to performance, and 20% to rotation. For example, `10`
   produces `4/4/2`, `15` produces `6/6/3`, and `20` produces `8/8/4`.
-  Performance sampling is seeded and weighted by `0.10 + mean(last three scores)`.
-- A miner remains fully vetted only after three evaluations. Until the configured
-  performance lane can be filled with vetted miners, under-vetted miners with at
-  least one positive stored score may fill otherwise-empty performance slots.
-  They are recorded as `performance-provisional`; zero-only histories do not
-  qualify. This fallback stops being used automatically whenever enough vetted
-  candidates are available.
-  Any performance seats still vacant after that use the normal oldest-evaluation
-  fallback and are recorded as `performance-fallback`.
+  The performance lane samples from remaining miners with at least one completed
+  evaluation. Sampling is seeded and weighted by `0.10 + mean(last three scores)`.
+  Every adaptive draw is capped at one UID per coldkey and one UID per Axon IP.
+  These caps are strict, so fewer than `N` miners may be selected when fewer than
+  `N` distinct coldkeys or IPs are available.
+- Selection history is rooted at the miner hotkey, while UID and registration
+  block remain assignment metadata. A hotkey keeps its evaluations if it moves
+  UID or re-registers; a replacement hotkey does not inherit the previous
+  miner's history. A zero score is a completed evaluation and increments the
+  evaluation count, so a failed miner does not remain permanently new.
+- Status labels remain `new`, `under-vetted`, and `vetted`: a miner becomes
+  fully vetted after three evaluations. This label is for visibility; the
+  performance draw starts after one completed evaluation. A zero score counts as
+  an evaluation and receives only the `0.10` floor weight.
+  Any performance seats still vacant after the evaluated pool is exhausted use
+  the normal oldest-evaluation fallback and are recorded as `performance-fallback`.
 - Qualification covers UIDs with fewer than three evaluations. The normal order
   is fewest evaluations, immunity urgency, oldest selection, then UID. When
   fallback candidates have equally old evaluations, miners registered at or

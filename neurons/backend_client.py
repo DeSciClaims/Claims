@@ -144,7 +144,7 @@ class ClaimsBackendClient:
         *,
         netuid: int,
         current_block: int,
-        candidates: list[dict[str, int]],
+        candidates: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         result = self.post(
             "/validator/miner-selection/state",
@@ -164,7 +164,7 @@ class ClaimsBackendClient:
         netuid: int,
         batch_id: str,
         selected_block: int,
-        selections: list[dict[str, int]],
+        selections: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         result = self.post(
             "/validator/miner-selection/selections",

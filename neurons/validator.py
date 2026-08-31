@@ -984,6 +984,7 @@ class ClaimsValidator:
                         candidates=[
                             {
                                 "uid": int(neuron.uid),
+                                "hotkey": str(getattr(neuron, "hotkey", "") or ""),
                                 "registration_block": registration_blocks[int(neuron.uid)],
                             }
                             for neuron in neurons
@@ -1006,6 +1007,13 @@ class ClaimsValidator:
                 registration_blocks=registration_blocks,
                 recent_registration_block=recent_registration_block,
             )
+            requested_sample_size = int(getattr(self.config, "claims_miner_sample_size", 15) or 15)
+            if mode == "adaptive" and len(selected) < min(requested_sample_size, len(neurons)):
+                self.bt_logging.warning(
+                    "Adaptive miner diversity cap left seats unfilled: "
+                    f"requested={requested_sample_size} selected={len(selected)}; "
+                    "each coldkey and Axon IP may occupy at most one seat."
+                )
             neurons = [item.neuron for item in selected]
             assignments = [item.assignment() for item in selected]
             if mode == "adaptive" and self.backend_client is not None and batch_id:
@@ -1017,6 +1025,7 @@ class ClaimsValidator:
                         selections=[
                             {
                                 "uid": item.uid,
+                                "hotkey": item.hotkey,
                                 "registration_block": item.registration_block,
                             }
                             for item in selected
@@ -1138,6 +1147,7 @@ class ClaimsValidator:
                 selections=[
                     {
                         "uid": int(item["uid"]),
+                        "hotkey": str(item.get("hotkey") or ""),
                         "registration_block": int(item.get("registration_block") or 0),
                     }
                     for item in assignments
@@ -3968,6 +3978,7 @@ class ClaimsValidator:
         evaluations = [
             {
                 "uid": int(item["uid"]),
+                "hotkey": str(item.get("hotkey") or ""),
                 "registration_block": int(item.get("registration_block") or 0),
                 "score": max(0.0, min(1.0, float(scores.get(int(item["uid"]), 0.0)))),
             }
