@@ -51,7 +51,11 @@ cp validator/agent_v1/validator.mainnet.env.example .env
 The Docker entrypoint reads the same settings through `--env-file` or from
 `/data/env/validator.env`. Set `CLAIMS_BRONZE_ROOT=/data/bronze` and
 `CLAIMS_OUTPUT_DIR=/data/outputs/validator` so generated state remains on the
-persistent volume. Wallet files are never included in the profile or image.
+persistent volume. Set `CLAIMS_OUTPUT_RETENTION_RUNS=5` to keep the newest five
+local `run_*` outputs after each successful run. The current run, reusable
+Bronze records, model-usage recovery files, wallets, and backend records are
+not removed. Set it to `0` to disable cleanup. Wallet files are never included
+in the profile or image.
 
 ## Validator Neuron Configuration
 

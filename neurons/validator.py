@@ -5,6 +5,7 @@ import math
 import os
 import re
 import shlex
+import shutil
 import statistics
 import subprocess
 import sys
@@ -710,6 +711,13 @@ class ClaimsValidator:
             help="Directory for validator audit outputs.",
         )
         parser.add_argument(
+            "--claims.output-retention-runs",
+            dest="claims_output_retention_runs",
+            type=int,
+            default=int(os.getenv("CLAIMS_OUTPUT_RETENTION_RUNS", "0")),
+            help="Number of newest local run-output directories to retain. Zero disables cleanup.",
+        )
+        parser.add_argument(
             "--claims.query-interval",
             dest="claims_query_interval",
             type=float,
@@ -878,6 +886,9 @@ class ClaimsValidator:
         config.claims_silver_importance_api_base = parsed_args.claims_silver_importance_api_base
         config.claims_silver_importance_api_key_env = parsed_args.claims_silver_importance_api_key_env
         config.claims_output_dir = parsed_args.claims_output_dir
+        config.claims_output_retention_runs = parsed_args.claims_output_retention_runs
+        if config.claims_output_retention_runs < 0:
+            raise SystemExit("--claims.output-retention-runs must be non-negative.")
         config.claims_query_interval = parsed_args.claims_query_interval
         config.claims_timeout = parsed_args.claims_timeout
         config.claims_max_steps = parsed_args.claims_max_steps
@@ -1355,6 +1366,7 @@ class ClaimsValidator:
                 )
                 self._flush_model_usage_events()
                 self._record_timing_stage(run_close_timer)
+                self._cleanup_local_run_outputs(current_run_id=run_id)
                 step += 1
                 if self.config.claims_max_steps and step >= self.config.claims_max_steps:
                     self.bt_logging.info("Reached configured max steps; exiting.")
@@ -1404,6 +1416,25 @@ class ClaimsValidator:
                     self.bt_logging.info("Reached configured max steps after failed cycle; exiting.")
                     return
                 time.sleep(float(self.config.claims_query_interval))
+
+    def _cleanup_local_run_outputs(self, *, current_run_id: str) -> None:
+        retain_runs = int(getattr(self.config, "claims_output_retention_runs", 0) or 0)
+        if retain_runs <= 0:
+            return
+        try:
+            removed = _prune_local_run_outputs(
+                Path(self.config.claims_output_dir),
+                current_run_id=current_run_id,
+                retain_runs=retain_runs,
+            )
+        except Exception as exc:
+            self.bt_logging.warning(f"Could not clean old local validator run outputs: {exc}")
+            return
+        if removed:
+            self.bt_logging.info(
+                f"Cleaned {len(removed)} old local validator run output(s); "
+                f"retaining newest {retain_runs}."
+            )
 
     def _load_tasks(self) -> list[ClaimsTask]:
         if getattr(self.config, "claims_backend_url", ""):
@@ -5617,6 +5648,51 @@ def _make_run_id() -> str:
     return f"run_{stamp}_{uuid.uuid4().hex[:6]}"
 
 
+def _prune_local_run_outputs(
+    output_root: Path,
+    *,
+    current_run_id: str,
+    retain_runs: int,
+) -> list[Path]:
+    if retain_runs <= 0:
+        return []
+    if not output_root.is_dir():
+        return []
+
+    candidates: list[Path] = []
+    for task_dir in output_root.iterdir():
+        if not task_dir.is_dir() or task_dir.is_symlink():
+            continue
+        for run_dir in task_dir.iterdir():
+            if (
+                run_dir.is_dir()
+                and not run_dir.is_symlink()
+                and re.fullmatch(r"run_\d{8}_\d{6}_[A-Za-z0-9]+", run_dir.name)
+            ):
+                candidates.append(run_dir)
+
+    if len(candidates) <= retain_runs:
+        return []
+
+    ordered = sorted(candidates, key=lambda path: (path.name, path.parent.name), reverse=True)
+    retained = {path for path in ordered if path.name == current_run_id}
+    for path in ordered:
+        if len(retained) >= retain_runs:
+            break
+        retained.add(path)
+
+    removed: list[Path] = []
+    for run_dir in reversed(ordered):
+        if run_dir in retained:
+            continue
+        task_dir = run_dir.parent
+        shutil.rmtree(run_dir)
+        if not any(task_dir.iterdir()):
+            task_dir.rmdir()
+        removed.append(run_dir)
+    return removed
+
+
 def _compact_silver_batch_outcome(payload: dict[str, Any]) -> dict[str, Any]:
     compact = {key: value for key, value in payload.items() if key != "miners"}
     compact["miners"] = [
@@ -5691,6 +5767,9 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         ),
         "claims_timeout": float(getattr(config, "claims_timeout", 0.0)),
         "claims_query_interval": float(getattr(config, "claims_query_interval", 0.0)),
+        "claims_output_retention_runs": int(
+            getattr(config, "claims_output_retention_runs", 0) or 0
+        ),
         "claims_run_heartbeat_interval": float(getattr(config, "claims_run_heartbeat_interval", 60.0) or 0.0),
         "claims_max_steps": int(getattr(config, "claims_max_steps", 0) or 0),
         "claims_audit_only": bool(getattr(config, "claims_audit_only", False)),

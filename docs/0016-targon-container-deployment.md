@@ -246,7 +246,9 @@ file `/data/env/miner.env` or `/data/env/validator.env`. The image creates that
 file from the matching public example on first boot. Container profiles should
 set `CLAIMS_BRONZE_ROOT=/data/bronze` and
 `CLAIMS_OUTPUT_DIR=/data/outputs/validator` so generated state survives rental
-replacement.
+replacement. Set `CLAIMS_OUTPUT_RETENTION_RUNS=5` to retain the newest five
+local run outputs and prune older ones after each successful run. This does not
+delete the Bronze cache or backend records; set it to `0` to disable cleanup.
 
 ## Start Modes
 

@@ -20,6 +20,7 @@ from neurons.validator import (
     _is_agent_v1_artifact,
     _metadata_for_article,
     _parse_bool,
+    _prune_local_run_outputs,
     _provider_from_model_or_base,
     _run_config_snapshot,
     _scores_for_missing_submission_papers,
@@ -43,6 +44,53 @@ def test_protocol_can_carry_source_payload() -> None:
     synapse = ClaimExtractionSynapse(source_payload={"spans": [{"span_id": "s1", "text": "Grounded text."}]})
 
     assert synapse.source_payload == {"spans": [{"span_id": "s1", "text": "Grounded text."}]}
+
+
+def test_prune_local_run_outputs_does_nothing_until_retention_is_exceeded(tmp_path) -> None:
+    output_root = tmp_path / "outputs"
+    runs = [
+        output_root / f"task_{index}" / f"run_202608{25 + index:02d}_010000_aaaaa{index}"
+        for index in range(5)
+    ]
+    for run_dir in runs:
+        run_dir.mkdir(parents=True)
+        (run_dir / "result.json").write_text("{}", encoding="utf-8")
+    model_usage = output_root / "model_usage" / "run_20260827_010000_dddddd.json"
+    model_usage.parent.mkdir(parents=True)
+    model_usage.write_text("{}", encoding="utf-8")
+
+    removed = _prune_local_run_outputs(
+        output_root,
+        current_run_id=runs[-1].name,
+        retain_runs=5,
+    )
+
+    assert removed == []
+    assert all(run_dir.exists() for run_dir in runs)
+    assert model_usage.exists()
+
+
+def test_prune_local_run_outputs_keeps_newest_five_and_non_run_data(tmp_path) -> None:
+    output_root = tmp_path / "outputs"
+    runs = [
+        output_root / f"task_{index}" / f"run_202608{20 + index:02d}_010000_bbbbb{index}"
+        for index in range(7)
+    ]
+    for run_dir in runs:
+        run_dir.mkdir(parents=True)
+    unrelated = output_root / "task_unrelated" / "notes"
+    unrelated.mkdir(parents=True)
+
+    removed = _prune_local_run_outputs(
+        output_root,
+        current_run_id=runs[-1].name,
+        retain_runs=5,
+    )
+
+    assert removed == runs[:2]
+    assert all(not run_dir.exists() for run_dir in runs[:2])
+    assert all(run_dir.exists() for run_dir in runs[2:])
+    assert unrelated.exists()
 
 
 def test_slash_style_model_id_is_classified_as_openrouter() -> None:
@@ -88,6 +136,7 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
         claims_payout_winner_share=0.7,
         claims_payout_runner_up_slots=4,
         claims_payout_runner_up_decay=0.5,
+        claims_output_retention_runs=5,
     )
 
     snapshot = _run_config_snapshot(config)
@@ -113,6 +162,7 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_silver_consolidation_top_k"] == 7
     assert snapshot["claims_diagnostic_miner_batch_size"] == 10
     assert snapshot["claims_silver_max_eligible_claims_per_miner"] == 6
+    assert snapshot["claims_output_retention_runs"] == 5
     assert snapshot["claims_silver_filter_by_assessment"] is True
     assert snapshot["claims_silver_max_adjudication_cases_per_paper"] == 80
     assert snapshot["claims_run_heartbeat_interval"] == 60.0

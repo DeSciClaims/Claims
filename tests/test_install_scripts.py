@@ -51,6 +51,7 @@ def test_validator_template_uses_scheduled_weight_submitting_runs() -> None:
     assert "CLAIMS_AUDIT_ONLY=false" in template
     assert "CLAIMS_MAX_STEPS=4" in template
     assert "CLAIMS_QUERY_INTERVAL=10800" in template
+    assert "CLAIMS_OUTPUT_RETENTION_RUNS=5" in template
     assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in template
     assert "CLAIMS_AUDIT_METHOD=llm" in template
     assert "CLAIMS_SILVER_ADJUDICATION_HARNESS=hermes-cli" in template
@@ -66,6 +67,7 @@ def test_detailed_testnet_profile_is_runnable_and_uses_distinct_models() -> None
     assert "CLAIMS_BACKEND_URL=https://api.claims111.ai" in profile
     assert "CLAIMS_BATCH_SIZE=50" in profile
     assert "CLAIMS_TIMEOUT=3600" in profile
+    assert "CLAIMS_OUTPUT_RETENTION_RUNS=5" in profile
     assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in profile
     assert "CLAIMS_MINER_SAMPLE_SIZE=15" in profile
     assert "\nCLAIMS_TARGET_UIDS=" not in profile
@@ -91,6 +93,7 @@ def test_mainnet_profile_has_production_policy_without_prescribed_models() -> No
     assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in profile
     assert "CLAIMS_MINER_SAMPLE_SIZE=15" in profile
     assert "CLAIMS_TIMEOUT=3600" in profile
+    assert "CLAIMS_OUTPUT_RETENTION_RUNS=5" in profile
     assert "CLAIMS_MAX_STEPS=4" in profile
     assert "CLAIMS_QUERY_INTERVAL=10800" in profile
     assert "CLAIMS_AUDIT_ONLY=false" in profile
