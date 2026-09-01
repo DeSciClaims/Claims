@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from ipaddress import IPv4Address, IPv6Address, ip_address, ip_network
 from typing import Any
 
 
-ALGORITHM_VERSION = "uid_v0_hotkey_history_diverse_v3"
+ALGORITHM_VERSION = "uid_v0_hotkey_history_diverse_v6"
 VETTED_EVALUATION_COUNT = 3
 PERFORMANCE_EVALUATION_COUNT = 1
 _LANE_WEIGHTS = (2, 2, 1)
@@ -29,6 +30,8 @@ class MinerSelection:
     last_selected_batch: str | None
     last_selected_block: int | None
     last_evaluated_block: int | None
+    ipv4_proximity_addresses: int
+    ipv6_prefix_bits: int
 
     def assignment(self) -> dict[str, Any]:
         return {
@@ -65,14 +68,20 @@ def select_miners(
     current_block: int = 0,
     immunity_period_blocks: int = 0,
     immunity_priority_blocks: int = 7_200,
+    zero_score_cooldown_blocks: int = 0,
+    ipv4_proximity_addresses: int = 1_024,
+    ipv6_prefix_bits: int = 64,
     registration_blocks: dict[int, int] | None = None,
     recent_registration_block: int = 0,
+    selection_diagnostics: list[dict[str, Any]] | None = None,
 ) -> list[MinerSelection]:
     miners = [
         _candidate(
             neuron,
             history_rows or [],
             immunity_period_blocks=max(0, int(immunity_period_blocks)),
+            ipv4_proximity_addresses=max(0, int(ipv4_proximity_addresses)),
+            ipv6_prefix_bits=max(0, min(128, int(ipv6_prefix_bits))),
             registration_block=(registration_blocks or {}).get(int(getattr(neuron, "uid", -1))),
         )
         for neuron in candidates
@@ -90,7 +99,15 @@ def select_miners(
 
     rng = random.Random(seed)
     selected: list[MinerSelection] = []
-    available = list(miners)
+    available = [
+        item
+        for item in miners
+        if not _zero_score_cooldown_active(
+            item,
+            current_block=current_block,
+            cooldown_blocks=zero_score_cooldown_blocks,
+        )
+    ]
 
     qualification = [item for item in available if item.evaluation_count < VETTED_EVALUATION_COUNT]
     qualification.sort(
@@ -118,7 +135,10 @@ def select_miners(
     )
 
     performance_candidates = [
-        item for item in available if item.evaluation_count >= PERFORMANCE_EVALUATION_COUNT
+        item
+        for item in available
+        if item.evaluation_count >= PERFORMANCE_EVALUATION_COUNT
+        and _latest_score_positive(item)
     ]
     performance = _weighted_sample_without_replacement(
         performance_candidates,
@@ -155,6 +175,15 @@ def select_miners(
         recent_registration_block=recent_registration_block,
     )
 
+    if selection_diagnostics is not None:
+        _record_selection_diagnostics(
+            selection_diagnostics,
+            miners=miners,
+            selected=selected,
+            current_block=current_block,
+            zero_score_cooldown_blocks=zero_score_cooldown_blocks,
+        )
+
     return selected
 
 
@@ -176,6 +205,8 @@ def _candidate(
     history_rows: list[dict[str, Any]],
     *,
     immunity_period_blocks: int,
+    ipv4_proximity_addresses: int,
+    ipv6_prefix_bits: int,
     registration_block: int | None,
 ) -> MinerSelection:
     uid = int(getattr(neuron, "uid", -1))
@@ -228,6 +259,8 @@ def _candidate(
         last_selected_batch=str(history.get("last_selected_batch") or "") or None,
         last_selected_block=_optional_int(history.get("last_selected_block")),
         last_evaluated_block=_optional_int(history.get("last_evaluated_block")),
+        ipv4_proximity_addresses=ipv4_proximity_addresses,
+        ipv6_prefix_bits=ipv6_prefix_bits,
     )
 
 
@@ -310,9 +343,10 @@ def _fill_oldest(
     )
 
 
-def _fallback_order(item: MinerSelection, *, recent_registration_block: int) -> tuple[int, int, int]:
+def _fallback_order(item: MinerSelection, *, recent_registration_block: int) -> tuple[int, int, int, int]:
     cutoff = max(0, int(recent_registration_block))
     return (
+        0 if item.evaluation_count == 0 else 1,
         _oldest_first(item.last_evaluated_block),
         0 if cutoff > 0 and item.registration_block >= cutoff else 1 if cutoff > 0 else 0,
         item.uid,
@@ -322,8 +356,28 @@ def _fallback_order(item: MinerSelection, *, recent_registration_block: int) -> 
 def _immunity_priority(item: MinerSelection, current_block: int, priority_blocks: int) -> bool:
     return (
         item.evaluation_count < VETTED_EVALUATION_COUNT
+        and (item.evaluation_count == 0 or _latest_score_positive(item))
         and item.immunity_expiry_block - max(0, int(current_block)) <= max(0, int(priority_blocks))
     )
+
+
+def _latest_score_positive(item: MinerSelection) -> bool:
+    return bool(item.recent_scores) and item.recent_scores[-1] > 0.0
+
+
+def _zero_score_cooldown_active(
+    item: MinerSelection,
+    *,
+    current_block: int,
+    cooldown_blocks: int,
+) -> bool:
+    if not item.recent_scores or item.recent_scores[-1] > 0.0:
+        return False
+    cooldown = max(0, int(cooldown_blocks))
+    anchor = item.last_evaluated_block
+    if anchor is None:
+        anchor = item.last_selected_block
+    return cooldown > 0 and anchor is not None and max(0, int(current_block)) < int(anchor) + cooldown
 
 
 def _with_lane(item: MinerSelection, lane: str) -> MinerSelection:
@@ -331,14 +385,106 @@ def _with_lane(item: MinerSelection, lane: str) -> MinerSelection:
 
 
 def _diversity_conflict(item: MinerSelection, selected: list[MinerSelection]) -> bool:
+    return _diversity_conflict_reason(item, selected) is not None
+
+
+def _diversity_conflict_reason(
+    item: MinerSelection,
+    selected: list[MinerSelection],
+) -> dict[str, Any] | None:
     coldkey = _normalized_identity(item.coldkey)
     axon_ip = _normalized_ip(item.axon_ip)
+    parsed_ip = _parsed_ip(axon_ip)
     for existing in selected:
         if coldkey and coldkey == _normalized_identity(existing.coldkey):
-            return True
-        if axon_ip and axon_ip == _normalized_ip(existing.axon_ip):
-            return True
-    return False
+            return {
+                "reason": "coldkey_conflict",
+                "conflicting_uid": existing.uid,
+                "conflicting_hotkey": existing.hotkey,
+                "coldkey": coldkey,
+                "conflicting_coldkey": _normalized_identity(existing.coldkey),
+            }
+        existing_ip = _normalized_ip(existing.axon_ip)
+        if axon_ip and axon_ip == existing_ip:
+            return {
+                "reason": "axon_ip_exact_conflict",
+                "conflicting_uid": existing.uid,
+                "conflicting_hotkey": existing.hotkey,
+                "axon_ip": axon_ip,
+                "conflicting_coldkey": _normalized_identity(existing.coldkey),
+            }
+        parsed_existing = _parsed_ip(existing_ip)
+        if isinstance(parsed_ip, IPv4Address) and isinstance(parsed_existing, IPv4Address):
+            distance = abs(int(parsed_ip) - int(parsed_existing))
+            if item.ipv4_proximity_addresses > 0 and distance <= item.ipv4_proximity_addresses:
+                return {
+                    "reason": "axon_ipv4_proximity_conflict",
+                    "conflicting_uid": existing.uid,
+                    "conflicting_hotkey": existing.hotkey,
+                    "axon_ip": axon_ip,
+                    "conflicting_axon_ip": existing_ip,
+                    "conflicting_coldkey": _normalized_identity(existing.coldkey),
+                    "address_distance": distance,
+                }
+        if isinstance(parsed_ip, IPv6Address) and isinstance(parsed_existing, IPv6Address):
+            prefix_bits = max(0, min(128, item.ipv6_prefix_bits))
+            network = ip_network((parsed_ip, prefix_bits), strict=False)
+            existing_network = ip_network((parsed_existing, prefix_bits), strict=False)
+            if network == existing_network:
+                return {
+                    "reason": "axon_ipv6_prefix_conflict",
+                    "conflicting_uid": existing.uid,
+                    "conflicting_hotkey": existing.hotkey,
+                    "axon_ip": axon_ip,
+                    "conflicting_axon_ip": existing_ip,
+                    "conflicting_coldkey": _normalized_identity(existing.coldkey),
+                    "network": str(network),
+                }
+    return None
+
+
+def _record_selection_diagnostics(
+    diagnostics: list[dict[str, Any]],
+    *,
+    miners: list[MinerSelection],
+    selected: list[MinerSelection],
+    current_block: int,
+    zero_score_cooldown_blocks: int,
+) -> None:
+    selected_uids = {item.uid for item in selected}
+    for item in miners:
+        if item.uid in selected_uids:
+            continue
+        if _zero_score_cooldown_active(
+            item,
+            current_block=current_block,
+            cooldown_blocks=zero_score_cooldown_blocks,
+        ):
+            anchor = item.last_evaluated_block
+            if anchor is None:
+                anchor = item.last_selected_block
+            diagnostics.append(
+                {
+                    "uid": item.uid,
+                    "hotkey": item.hotkey,
+                    "coldkey": item.coldkey,
+                    "axon_ip": item.axon_ip,
+                    "reason": "zero_score_cooldown",
+                    "eligible_after_block": int(anchor or 0) + max(0, int(zero_score_cooldown_blocks)),
+                }
+            )
+            continue
+        conflict = _diversity_conflict_reason(item, selected)
+        if conflict is not None:
+            diagnostics.append(
+                {
+                    "uid": item.uid,
+                    "hotkey": item.hotkey,
+                    "coldkey": item.coldkey,
+                    "axon_ip": item.axon_ip,
+                    **conflict,
+                }
+            )
 
 
 def _history_hotkey(row: dict[str, Any]) -> str:
@@ -352,7 +498,21 @@ def _normalized_identity(value: Any) -> str | None:
 
 def _normalized_ip(value: Any) -> str | None:
     normalized = str(value or "").strip().lower().strip("[]")
-    return normalized or None
+    parsed = _parsed_ip(normalized)
+    return str(parsed) if parsed is not None else normalized or None
+
+
+def _parsed_ip(value: Any) -> IPv4Address | IPv6Address | None:
+    normalized = str(value or "").strip().lower().strip("[]")
+    if not normalized:
+        return None
+    try:
+        parsed = ip_address(normalized)
+    except ValueError:
+        return None
+    if isinstance(parsed, IPv6Address) and parsed.ipv4_mapped is not None:
+        return parsed.ipv4_mapped
+    return parsed
 
 
 def registration_block_for_neuron(neuron: Any) -> int:

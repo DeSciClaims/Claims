@@ -17,6 +17,7 @@ from neurons.validator import (
     ClaimsValidator,
     _bronze_artifact_from_record,
     _compact_silver_batch_outcome,
+    _dspy_relation_model,
     _is_agent_v1_artifact,
     _metadata_for_article,
     _parse_bool,
@@ -34,7 +35,7 @@ from validator.agent_v1.config import AgentV1ValidatorConfig
 from validator.agent_v1.adjudication_passes import CLIAdjudicationPass, OpenAICompatibleAdjudicationPass, StaticAdjudicationPass
 from validator.agent_v1.comparison_models import SilverRecord, SilverScoreBreakdown, SilverUnit
 from validator.agent_v1.diagnostic_batch import DiagnosticBatchExecution
-from validator.agent_v1.model_usage import ModelUsageCollector
+from validator.agent_v1.model_usage import ModelUsageCollector, provider_from_model_or_base
 from validator.agent_v1.orchestrator import PaperSilverPipelineResult
 from validator.agent_v1.relation_classifier import CLIRelationClassifier, OpenAICompatibleRelationClassifier
 from validator.agent_v1.structural import run_structural_checks
@@ -44,6 +45,13 @@ def test_protocol_can_carry_source_payload() -> None:
     synapse = ClaimExtractionSynapse(source_payload={"spans": [{"span_id": "s1", "text": "Grounded text."}]})
 
     assert synapse.source_payload == {"spans": [{"span_id": "s1", "text": "Grounded text."}]}
+
+
+def test_dspy_relation_model_routes_chutes_catalog_ids() -> None:
+    assert _dspy_relation_model(
+        "deepseek-ai/DeepSeek-V3.2-TEE",
+        api_base="https://llm.chutes.ai/v1",
+    ) == "openai/deepseek-ai/DeepSeek-V3.2-TEE"
 
 
 def test_prune_local_run_outputs_does_nothing_until_retention_is_exceeded(tmp_path) -> None:
@@ -97,6 +105,23 @@ def test_slash_style_model_id_is_classified_as_openrouter() -> None:
     assert _provider_from_model_or_base("openai/gpt-5.6-luna-pro", "") == "openrouter"
 
 
+def test_chutes_api_base_takes_precedence_over_slash_style_model_id() -> None:
+    assert (
+        _provider_from_model_or_base(
+            "deepseek-ai/DeepSeek-V4-Flash-0731-TEE",
+            "https://llm.chutes.ai/v1",
+        )
+        == "chutes"
+    )
+    assert (
+        provider_from_model_or_base(
+            "deepseek-ai/DeepSeek-V4-Flash-0731-TEE",
+            "https://llm.chutes.ai/v1",
+        )
+        == "chutes"
+    )
+
+
 def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "must-not-be-persisted")
     monkeypatch.setenv("CLAIMS_SILVER_RELATION_BATCH_SIZE", "12")
@@ -137,6 +162,9 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
         claims_payout_runner_up_slots=4,
         claims_payout_runner_up_decay=0.5,
         claims_output_retention_runs=5,
+        claims_miner_zero_score_cooldown_blocks=1_234,
+        claims_miner_ipv4_proximity_addresses=2_048,
+        claims_miner_ipv6_prefix_bits=56,
     )
 
     snapshot = _run_config_snapshot(config)
@@ -161,6 +189,9 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_silver_file_agent_require_distinct_judges"] is True
     assert snapshot["claims_silver_consolidation_top_k"] == 7
     assert snapshot["claims_diagnostic_miner_batch_size"] == 10
+    assert snapshot["claims_miner_zero_score_cooldown_blocks"] == 1_234
+    assert snapshot["claims_miner_ipv4_proximity_addresses"] == 2_048
+    assert snapshot["claims_miner_ipv6_prefix_bits"] == 56
     assert snapshot["claims_silver_max_eligible_claims_per_miner"] == 6
     assert snapshot["claims_output_retention_runs"] == 5
     assert snapshot["claims_silver_filter_by_assessment"] is True
@@ -1423,6 +1454,22 @@ def test_validator_rigor_harness_sets_wrapper_and_inner_command(monkeypatch, tmp
     ]
 
 
+def test_validator_rigor_harness_uses_chutes_provider(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("CLAIMS_RIGOR_PROVIDER", "chutes")
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_rigor_harness="hermes-cli",
+        claims_rigor_model="deepseek-ai/DeepSeek-V4-Flash-0731-TEE",
+        claims_agent_v1_runtime=None,
+    )
+    config = AgentV1ValidatorConfig.from_env(tmp_path)
+
+    validator._apply_rigor_harness_config(config)
+
+    inner_command = shlex.split(os.environ["CLAIMS_VALIDATOR_AGENT_INNER_COMMAND"])
+    assert inner_command[1:5] == ["chat", "--provider", "chutes", "-m"]
+
+
 def test_validator_native_harness_clears_stage_inner_command(monkeypatch, tmp_path) -> None:
     monkeypatch.setenv("CLAIMS_VALIDATOR_AGENT_INNER_COMMAND", "hermes chat --provider openrouter -m stale/model -q")
     validator = ClaimsValidator.__new__(ClaimsValidator)
@@ -1457,6 +1504,20 @@ def test_validator_reference_harness_sets_reference_env(monkeypatch) -> None:
     inner_command = shlex.split(os.environ["CLAIMS_REFERENCE_MINER_INNER_COMMAND"])
     assert Path(inner_command[0]).name == "codex"
     assert inner_command[1:] == ["exec", "--model", "gpt-5.5", "--json", "--sandbox", "workspace-write", "--skip-git-repo-check"]
+
+
+def test_validator_reference_harness_uses_chutes_provider(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_REFERENCE_MINER_PROVIDER", "chutes")
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_reference_harness="hermes-cli",
+        claims_reference_model="deepseek-ai/DeepSeek-V4-Flash-0731-TEE",
+    )
+
+    validator._apply_reference_harness_env()
+
+    inner_command = shlex.split(os.environ["CLAIMS_REFERENCE_MINER_INNER_COMMAND"])
+    assert inner_command[1:5] == ["chat", "--provider", "chutes", "-m"]
 
 
 def test_validator_builds_model_backed_silver_relation_classifier(monkeypatch) -> None:

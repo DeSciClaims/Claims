@@ -352,6 +352,27 @@ class ClaimsValidator:
             help="Prioritize under-vetted UIDs this many blocks before immunity expires (7200 is about 24 hours).",
         )
         parser.add_argument(
+            "--claims.miner-zero-score-cooldown-blocks",
+            dest="claims_miner_zero_score_cooldown_blocks",
+            type=int,
+            default=max(0, int(os.getenv("CLAIMS_MINER_ZERO_SCORE_COOLDOWN_BLOCKS", "7200"))),
+            help="Exclude a miner from adaptive selection for this many blocks after its latest evaluation scores zero.",
+        )
+        parser.add_argument(
+            "--claims.miner-ipv4-proximity-addresses",
+            dest="claims_miner_ipv4_proximity_addresses",
+            type=int,
+            default=max(0, int(os.getenv("CLAIMS_MINER_IPV4_PROXIMITY_ADDRESSES", "1024"))),
+            help="Allow at most one selected Axon within this IPv4 address distance; 0 uses exact-IP matching only.",
+        )
+        parser.add_argument(
+            "--claims.miner-ipv6-prefix-bits",
+            dest="claims_miner_ipv6_prefix_bits",
+            type=int,
+            default=max(0, min(128, int(os.getenv("CLAIMS_MINER_IPV6_PREFIX_BITS", "64")))),
+            help="Allow at most one selected Axon per IPv6 prefix of this length.",
+        )
+        parser.add_argument(
             "--claims.audit-method",
             dest="claims_audit_method",
             choices=("deterministic", "llm"),
@@ -824,6 +845,9 @@ class ClaimsValidator:
         config.claims_miner_sample_size = parsed_args.claims_miner_sample_size
         config.claims_miner_immunity_period_blocks = parsed_args.claims_miner_immunity_period_blocks
         config.claims_miner_immunity_priority_blocks = parsed_args.claims_miner_immunity_priority_blocks
+        config.claims_miner_zero_score_cooldown_blocks = parsed_args.claims_miner_zero_score_cooldown_blocks
+        config.claims_miner_ipv4_proximity_addresses = parsed_args.claims_miner_ipv4_proximity_addresses
+        config.claims_miner_ipv6_prefix_bits = parsed_args.claims_miner_ipv6_prefix_bits
         config.claims_audit_method = parsed_args.claims_audit_method
         config.claims_agent_v1_validation_mode = parsed_args.claims_agent_v1_validation_mode
         config.claims_validator_pipeline = parsed_args.claims_validator_pipeline
@@ -993,6 +1017,7 @@ class ClaimsValidator:
                 except (BackendClientError, ValueError) as exc:
                     self.bt_logging.warning(f"Could not sync UID miner selection state; using new candidates: {exc}")
             seed = selection_seed or f"startup:{_metagraph_block(self.metagraph)}"
+            selection_diagnostics: list[dict[str, Any]] = []
             selected = select_miners(
                 neurons,
                 history_rows=history,
@@ -1004,15 +1029,25 @@ class ClaimsValidator:
                 immunity_priority_blocks=int(
                     getattr(self.config, "claims_miner_immunity_priority_blocks", 7_200) or 0
                 ),
+                zero_score_cooldown_blocks=int(
+                    getattr(self.config, "claims_miner_zero_score_cooldown_blocks", 7_200) or 0
+                ),
+                ipv4_proximity_addresses=int(
+                    getattr(self.config, "claims_miner_ipv4_proximity_addresses", 1_024) or 0
+                ),
+                ipv6_prefix_bits=int(
+                    getattr(self.config, "claims_miner_ipv6_prefix_bits", 64)
+                ),
                 registration_blocks=registration_blocks,
                 recent_registration_block=recent_registration_block,
+                selection_diagnostics=selection_diagnostics,
             )
             requested_sample_size = int(getattr(self.config, "claims_miner_sample_size", 15) or 15)
             if mode == "adaptive" and len(selected) < min(requested_sample_size, len(neurons)):
                 self.bt_logging.warning(
-                    "Adaptive miner diversity cap left seats unfilled: "
+                    "Adaptive miner constraints left seats unfilled: "
                     f"requested={requested_sample_size} selected={len(selected)}; "
-                    "each coldkey and Axon IP may occupy at most one seat."
+                    "zero-score cooldowns and coldkey/Axon IP proximity caps remain strict."
                 )
             neurons = [item.neuron for item in selected]
             assignments = [item.assignment() for item in selected]
@@ -1044,11 +1079,19 @@ class ClaimsValidator:
             "immunity_priority_blocks": int(
                 getattr(self.config, "claims_miner_immunity_priority_blocks", 7_200) or 0
             ),
+            "zero_score_cooldown_blocks": int(
+                getattr(self.config, "claims_miner_zero_score_cooldown_blocks", 7_200) or 0
+            ),
+            "ipv4_proximity_addresses": int(
+                getattr(self.config, "claims_miner_ipv4_proximity_addresses", 1_024) or 0
+            ),
+            "ipv6_prefix_bits": int(getattr(self.config, "claims_miner_ipv6_prefix_bits", 64)),
             "recent_registration_block": max(0, int(recent_registration_block)),
             "metagraph_neuron_count": len(candidates),
             "candidate_count": eligible_candidate_count,
             "selected_count": len(neurons),
             "assignments": assignments,
+            "exclusions": selection_diagnostics if mode == "adaptive" else [],
         }
         self.bt_logging.info(f"Discovered target miner UIDs: {[int(neuron.uid) for neuron in neurons]}")
         return neurons
@@ -1122,12 +1165,21 @@ class ClaimsValidator:
             selected_block=claimed.get("metagraph_block"),
             assignments=canonical,
         )
+        proposal_identities = {
+            (int(item.get("uid", -1)), str(item.get("hotkey") or ""))
+            for item in assignments
+        }
+        canonical_identities = {
+            (int(item.get("uid", -1)), str(item.get("hotkey") or ""))
+            for item in canonical
+        }
         return self._resolve_canonical_target_neurons(
             canonical,
             selection_seed=task.selection_seed,
             selected_block=claimed.get("metagraph_block"),
             algorithm=str(claimed.get("miner_selection_algorithm") or claimed.get("selection_algorithm") or ""),
             recent_registration_block=recent_registration_block,
+            selection_context=proposal if proposal_identities == canonical_identities else None,
         )
 
     def _record_canonical_selection_state(
@@ -1164,6 +1216,7 @@ class ClaimsValidator:
         selected_block: Any,
         algorithm: str,
         recent_registration_block: int = 0,
+        selection_context: dict[str, Any] | None = None,
     ) -> list[Any]:
         self._sync_metagraph()
         candidates = list(getattr(self.metagraph, "neurons", []) or [])
@@ -1202,11 +1255,27 @@ class ClaimsValidator:
                 f"Canonical miner uid={uid} is unavailable ({reason}); preserving assignment with zero score."
             )
 
+        config = getattr(self, "config", None)
         self._active_miner_selection = {
             "schema": "claims_uid_miner_selection_v0",
             "algorithm": algorithm or "canonical",
             "mode": "canonical",
             "seed": selection_seed,
+            "zero_score_cooldown_blocks": int(
+                (selection_context or {}).get("zero_score_cooldown_blocks")
+                or getattr(config, "claims_miner_zero_score_cooldown_blocks", 7_200)
+                or 0
+            ),
+            "ipv4_proximity_addresses": int(
+                (selection_context or {}).get("ipv4_proximity_addresses")
+                or getattr(config, "claims_miner_ipv4_proximity_addresses", 1_024)
+                or 0
+            ),
+            "ipv6_prefix_bits": int(
+                (selection_context or {}).get("ipv6_prefix_bits")
+                if (selection_context or {}).get("ipv6_prefix_bits") is not None
+                else getattr(config, "claims_miner_ipv6_prefix_bits", 64)
+            ),
             "recent_registration_block": max(0, int(recent_registration_block)),
             "metagraph_block": int(selected_block) if selected_block is not None else self._current_chain_block(),
             "metagraph_neuron_count": len(candidates),
@@ -1215,6 +1284,7 @@ class ClaimsValidator:
             "unavailable": {str(uid): reason for uid, reason in unavailable.items()},
             "selected_count": len(selected),
             "assignments": assignments,
+            "exclusions": list((selection_context or {}).get("exclusions") or []),
         }
         self.bt_logging.info(f"Using canonical target miner UIDs: {[int(neuron.uid) for neuron in selected]}")
         return selected
@@ -2791,6 +2861,13 @@ class ClaimsValidator:
                 harness=str(self.config.claims_reference_harness),
                 model=str(getattr(self.config, "claims_reference_model", "") or ""),
                 wrapper_namespace="miner.agent_v1.wrappers",
+                provider=str(
+                    os.getenv(
+                        "CLAIMS_REFERENCE_MINER_PROVIDER",
+                        os.getenv("HERMES_PROVIDER", "openrouter"),
+                    )
+                    or "openrouter"
+                ),
                 max_turns=int(os.getenv("CLAIMS_REFERENCE_MINER_MAX_TURNS", "30")),
             )
             os.environ["CLAIMS_REFERENCE_MINER_RUNTIME"] = profile.runtime
@@ -4338,6 +4415,13 @@ class ClaimsValidator:
                 harness=str(self.config.claims_rigor_harness),
                 model=str(getattr(self.config, "claims_rigor_model", "") or config.model),
                 wrapper_namespace="validator.agent_v1.wrappers",
+                provider=str(
+                    os.getenv(
+                        "CLAIMS_RIGOR_PROVIDER",
+                        os.getenv("HERMES_PROVIDER", "openrouter"),
+                    )
+                    or "openrouter"
+                ),
                 max_turns=int(os.getenv("CLAIMS_RIGOR_MAX_TURNS", "30")),
             )
             config.runtime = profile.runtime
@@ -5225,6 +5309,8 @@ def _model_id_or_empty(value: Any) -> str:
 
 
 def _provider_from_model_or_base(model: str, api_base: str = "") -> str:
+    if "chutes.ai" in api_base:
+        return "chutes"
     if model.startswith("openrouter/") or "/" in model or "openrouter.ai/api" in api_base:
         return "openrouter"
     if api_base:
@@ -5233,6 +5319,8 @@ def _provider_from_model_or_base(model: str, api_base: str = "") -> str:
 
 
 def _provider_from_api_base(api_base: str) -> str:
+    if "chutes.ai" in api_base:
+        return "chutes"
     if "openrouter.ai/api" in api_base:
         return "openrouter"
     return api_base.rstrip("/").removeprefix("https://").removeprefix("http://") if api_base else ""
@@ -5777,6 +5865,13 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_miner_immunity_priority_blocks": int(
             getattr(config, "claims_miner_immunity_priority_blocks", 7_200) or 0
         ),
+        "claims_miner_zero_score_cooldown_blocks": int(
+            getattr(config, "claims_miner_zero_score_cooldown_blocks", 7_200) or 0
+        ),
+        "claims_miner_ipv4_proximity_addresses": int(
+            getattr(config, "claims_miner_ipv4_proximity_addresses", 1_024) or 0
+        ),
+        "claims_miner_ipv6_prefix_bits": int(getattr(config, "claims_miner_ipv6_prefix_bits", 64)),
         "claims_timeout": float(getattr(config, "claims_timeout", 0.0)),
         "claims_query_interval": float(getattr(config, "claims_query_interval", 0.0)),
         "claims_output_retention_runs": int(
@@ -6022,12 +6117,14 @@ def _subtensor_network_arg(parsed_args: argparse.Namespace) -> str | None:
 
 
 def _dspy_relation_model(model: str, *, api_base: str) -> str:
+    from miner.agent_v1.provider import dspy_model_id
+
     normalized = model.strip()
     if not normalized:
         return "openrouter/openai/gpt-5-mini"
     if "openrouter.ai" in api_base and "/" in normalized and not normalized.startswith("openrouter/"):
         return f"openrouter/{normalized}"
-    return normalized
+    return dspy_model_id(normalized, api_base=api_base)
 
 
 def main() -> int:

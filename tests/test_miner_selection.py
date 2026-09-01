@@ -19,7 +19,7 @@ def _miner(
         hotkey=hotkey or f"hotkey_{uid}",
         coldkey=coldkey or f"coldkey_{uid}",
         block_at_registration=registration_block,
-        axon_info=SimpleNamespace(ip=axon_ip or f"203.0.113.{uid}"),
+        axon_info=SimpleNamespace(ip=axon_ip or f"198.{uid}.0.1"),
     )
 
 
@@ -75,7 +75,7 @@ def test_uid_v0_selection_uses_exact_six_six_three_lanes() -> None:
     assert rotation == sorted(rotation, key=lambda item: (item.last_evaluated_block, item.uid))
 
 
-def test_immunity_deadline_overrides_normal_qualification_order() -> None:
+def test_positive_history_immunity_deadline_overrides_normal_qualification_order() -> None:
     candidates = [
         _miner(1, registration_block=9_500),
         _miner(2, registration_block=20_000),
@@ -87,7 +87,7 @@ def test_immunity_deadline_overrides_normal_qualification_order() -> None:
         *[_miner(uid) for uid in range(8, 19)],
     ]
     history = [
-        _state(1, count=2, registration_block=9_500),
+        _state(1, count=2, scores=[0.5, 0.5], registration_block=9_500),
         *[_state(uid, count=0, registration_block=20_000) for uid in range(2, 8)],
         *[_state(uid, count=3, scores=[0.5, 0.5, 0.5]) for uid in range(8, 19)],
     ]
@@ -105,6 +105,99 @@ def test_immunity_deadline_overrides_normal_qualification_order() -> None:
     qualification = [item.uid for item in selected if item.lane == "qualification"]
     assert qualification[0] == 1
     assert len(qualification) == 6
+
+
+def test_all_zero_history_ranks_behind_never_evaluated_despite_immunity_deadline() -> None:
+    candidates = [
+        _miner(1, registration_block=9_500),
+        *[_miner(uid, registration_block=20_000) for uid in range(2, 8)],
+        *[_miner(uid) for uid in range(8, 19)],
+    ]
+    history = [
+        _state(1, count=2, scores=[0.0, 0.0], registration_block=9_500),
+        *[_state(uid, count=0, registration_block=20_000) for uid in range(2, 8)],
+        *[_state(uid, count=3, scores=[0.5, 0.5, 0.5]) for uid in range(8, 19)],
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="zero-immunity",
+        current_block=24_000,
+        immunity_period_blocks=21_600,
+        immunity_priority_blocks=7_200,
+    )
+
+    qualification = [item.uid for item in selected if item.lane == "qualification"]
+    assert qualification == [2, 3, 4, 5, 6, 7]
+    assert 1 not in {item.uid for item in selected if item.lane == "performance"}
+
+
+def test_latest_zero_score_enforces_cooldown_across_all_lanes() -> None:
+    candidates = [_miner(uid) for uid in range(1, 16)]
+    history = [
+        _state(1, count=2, scores=[0.8, 0.0], last_evaluated_block=900),
+        *[
+            _state(uid, count=3, scores=[0.5, 0.5, 0.5], last_evaluated_block=800 + uid)
+            for uid in range(2, 16)
+        ],
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="zero-cooldown",
+        current_block=1_000,
+        zero_score_cooldown_blocks=200,
+    )
+
+    assert len(selected) == 14
+    assert 1 not in {item.uid for item in selected}
+
+
+def test_latest_zero_score_can_return_after_cooldown_but_not_through_performance() -> None:
+    candidates = [_miner(uid) for uid in range(1, 16)]
+    history = [
+        _state(1, count=2, scores=[0.8, 0.0], last_evaluated_block=900),
+        *[
+            _state(uid, count=3, scores=[0.5, 0.5, 0.5], last_evaluated_block=800 + uid)
+            for uid in range(2, 16)
+        ],
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="zero-cooldown-expired",
+        current_block=1_100,
+        zero_score_cooldown_blocks=200,
+    )
+
+    recovered = next(item for item in selected if item.uid == 1)
+    assert recovered.lane != "performance"
+
+
+def test_latest_positive_score_restores_performance_eligibility() -> None:
+    candidates = [_miner(uid) for uid in range(1, 16)]
+    history = [
+        *[_state(uid, count=0) for uid in range(1, 7)],
+        *[_state(uid, count=2, scores=[0.0, 0.5], last_evaluated_block=900) for uid in range(7, 13)],
+        *[_state(uid, count=0) for uid in range(13, 16)],
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="positive-recovery",
+        current_block=1_000,
+        zero_score_cooldown_blocks=7_200,
+    )
+
+    assert {item.uid for item in selected if item.lane == "performance"} == set(range(7, 13))
 
 
 def test_selection_is_reproducible_and_uses_hotkey_state() -> None:
@@ -163,6 +256,7 @@ def test_adaptive_draw_caps_each_coldkey_and_axon_ip_to_one_seat() -> None:
         history_rows=[],
         sample_size=15,
         seed="diversity-cap",
+        ipv4_proximity_addresses=0,
     )
 
     assert len(selected) == 15
@@ -183,6 +277,7 @@ def test_adaptive_draw_returns_fewer_miners_when_diversity_cap_exhausts_pool() -
         history_rows=[],
         sample_size=10,
         seed="limited-diversity",
+        ipv4_proximity_addresses=0,
     )
 
     assert len(selected) == 2
@@ -210,11 +305,89 @@ def test_performance_draw_enforces_coldkey_and_axon_ip_caps() -> None:
         history_rows=history,
         sample_size=15,
         seed="performance-diversity-cap",
+        ipv4_proximity_addresses=0,
     )
 
     assert len(selected) == 15
     assert len({item.coldkey for item in selected}) == 15
     assert len({item.axon_ip for item in selected}) == 15
+
+
+def test_adaptive_draw_rejects_nearby_ipv4_axons_across_adjacent_ranges() -> None:
+    candidates = [
+        _miner(1, axon_ip="95.133.252.10"),
+        _miner(2, axon_ip="95.133.253.20"),
+        _miner(3, axon_ip="95.133.254.30"),
+        _miner(4, axon_ip="95.140.0.1"),
+    ]
+    diagnostics: list[dict] = []
+
+    selected = select_miners(
+        candidates,
+        history_rows=[],
+        sample_size=4,
+        seed="adjacent-ip-ranges",
+        ipv4_proximity_addresses=1_024,
+        selection_diagnostics=diagnostics,
+    )
+
+    assert [item.uid for item in selected] == [1, 4]
+    proximity_exclusions = {
+        item["uid"]: item
+        for item in diagnostics
+        if item["reason"] == "axon_ipv4_proximity_conflict"
+    }
+    assert set(proximity_exclusions) == {2, 3}
+    assert all(item["conflicting_uid"] == 1 for item in proximity_exclusions.values())
+    assert proximity_exclusions[2]["coldkey"] == "coldkey_2"
+    assert proximity_exclusions[2]["conflicting_hotkey"] == "hotkey_1"
+    assert proximity_exclusions[2]["conflicting_coldkey"] == "coldkey_1"
+
+
+def test_zero_ipv4_proximity_uses_exact_ip_cap_only() -> None:
+    candidates = [
+        _miner(1, axon_ip="95.133.252.10"),
+        _miner(2, axon_ip="95.133.253.20"),
+        _miner(3, axon_ip="95.133.254.30"),
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=[],
+        sample_size=3,
+        seed="exact-ip-only",
+        ipv4_proximity_addresses=0,
+    )
+
+    assert [item.uid for item in selected] == [1, 2, 3]
+
+
+def test_adaptive_draw_caps_ipv6_prefix_and_normalizes_addresses() -> None:
+    candidates = [
+        _miner(1, axon_ip="2001:0db8:0001:0002::1"),
+        _miner(2, axon_ip="2001:db8:1:2::2"),
+        _miner(3, axon_ip="2001:db8:1:3::1"),
+    ]
+    diagnostics: list[dict] = []
+
+    selected = select_miners(
+        candidates,
+        history_rows=[],
+        sample_size=3,
+        seed="ipv6-prefix",
+        ipv6_prefix_bits=64,
+        selection_diagnostics=diagnostics,
+    )
+
+    assert [(item.uid, item.axon_ip) for item in selected] == [
+        (1, "2001:db8:1:2::1"),
+        (3, "2001:db8:1:3::1"),
+    ]
+    exclusion = next(item for item in diagnostics if item["uid"] == 2)
+    assert exclusion["reason"] == "axon_ipv6_prefix_conflict"
+    assert exclusion["coldkey"] == "coldkey_2"
+    assert exclusion["conflicting_coldkey"] == "coldkey_1"
+    assert exclusion["network"] == "2001:db8:1:2::/64"
 
 
 def test_lane_shortages_fill_by_oldest_evaluation() -> None:
@@ -251,20 +424,31 @@ def test_one_evaluation_history_enters_performance_lane() -> None:
     assert all(item.status == "under-vetted" for item in selected if item.lane == "performance")
 
 
-def test_zero_score_evaluation_can_enter_performance_with_floor_weight() -> None:
-    candidates = [_miner(uid) for uid in range(1, 16)]
+def test_zero_score_evaluation_is_excluded_from_performance() -> None:
+    candidates = [_miner(uid) for uid in range(1, 22)]
     history = [
-        *[_state(uid, count=0) for uid in range(1, 7)],
-        *[_state(uid, count=1, scores=[0.0]) for uid in range(7, 16)],
+        *[_state(uid, count=0) for uid in range(1, 13)],
+        *[_state(uid, count=1, scores=[0.0]) for uid in range(13, 22)],
     ]
 
     selected = select_miners(candidates, history_rows=history, sample_size=15, seed="zero-only")
 
     assert [item.uid for item in selected if item.lane == "qualification"] == [1, 2, 3, 4, 5, 6]
-    performance = [item for item in selected if item.lane == "performance"]
-    assert len(performance) == 6
-    assert all(item.evaluation_count == 1 for item in performance)
-    assert all(item.performance_score == 0.0 for item in performance)
+    assert [item for item in selected if item.lane == "performance"] == []
+    assert [item.uid for item in selected if item.lane == "performance-fallback"] == [7, 8, 9, 10, 11, 12]
+
+
+def test_positive_score_miners_are_preferred_over_zero_score_miners_for_performance() -> None:
+    candidates = [_miner(uid) for uid in range(1, 19)]
+    history = [
+        *[_state(uid, count=0) for uid in range(1, 7)],
+        *[_state(uid, count=1, scores=[0.0]) for uid in range(7, 13)],
+        *[_state(uid, count=1, scores=[0.5]) for uid in range(13, 19)],
+    ]
+
+    selected = select_miners(candidates, history_rows=history, sample_size=15, seed="positive-only")
+
+    assert {item.uid for item in selected if item.lane == "performance"} == set(range(13, 19))
 
 
 def test_performance_shortage_still_fills_by_oldest_evaluation() -> None:
