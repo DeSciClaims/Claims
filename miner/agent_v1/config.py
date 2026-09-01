@@ -6,6 +6,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from .provider import normalize_provider, provider_api_base, provider_api_key_env
+
 
 class AgentV1Config(BaseModel):
     base_dir: Path
@@ -22,6 +24,8 @@ class AgentV1Config(BaseModel):
     grobid_retries: int = 3
     grobid_retry_wait_s: int = 2
     model: str = "openrouter/google/gemma-4-27b-it"
+    provider: str = "openrouter"
+    api_key_env: str = "OPENROUTER_API_KEY"
     api_key: str | None = None
     api_base: str = "https://openrouter.ai/api/v1"
     temperature: float = 0.2
@@ -34,6 +38,15 @@ class AgentV1Config(BaseModel):
     def from_env(cls, base_dir: Path | None = None) -> "AgentV1Config":
         resolved_base_dir = base_dir or Path(__file__).resolve().parents[2]
         package_dir = Path(__file__).resolve().parent
+        provider = normalize_provider(os.getenv("SUBNET_CLAIMS_AGENT_PROVIDER"))
+        api_key_env = provider_api_key_env(
+            provider,
+            os.getenv("SUBNET_CLAIMS_AGENT_API_KEY_ENV"),
+        )
+        api_base = provider_api_base(
+            provider,
+            os.getenv("SUBNET_CLAIMS_AGENT_API_BASE"),
+        )
         return cls(
             base_dir=resolved_base_dir,
             package_dir=package_dir,
@@ -52,8 +65,10 @@ class AgentV1Config(BaseModel):
                 "SUBNET_CLAIMS_AGENT_MODEL",
                 os.getenv("OPENROUTER_MODEL", "openrouter/google/gemma-4-27b-it"),
             ),
-            api_key=os.getenv("OPENROUTER_API_KEY"),
-            api_base=os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"),
+            provider=provider,
+            api_key_env=api_key_env,
+            api_key=os.getenv(api_key_env),
+            api_base=api_base,
             temperature=float(os.getenv("SUBNET_CLAIMS_AGENT_TEMPERATURE", "0.2")),
             max_tokens=int(os.getenv("SUBNET_CLAIMS_AGENT_MAX_TOKENS", "32768")),
             max_agent_iters=int(os.getenv("SUBNET_CLAIMS_AGENT_MAX_ITERS", "4")),
@@ -63,7 +78,7 @@ class AgentV1Config(BaseModel):
 
     def require_api_key(self) -> str:
         if not self.api_key:
-            raise SystemExit("OPENROUTER_API_KEY is required for agent_v1 model runtimes.")
+            raise SystemExit(f"{self.api_key_env} is required for agent_v1 model runtimes.")
         return self.api_key
 
 

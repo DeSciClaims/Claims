@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 from miner.agent_v1.artifact import materialize_agent_artifact
 from miner.agent_v1.config import AgentV1Config
+from miner.agent_v1.provider import dspy_model_id
 from miner.agent_v1.ingest import (
     SOURCE_PAYLOAD_SCHEMA_VERSION,
     apply_paper_metadata_override,
@@ -109,6 +110,36 @@ def test_agent_v1_config_defaults_to_pdf_inspector(monkeypatch) -> None:
     config = AgentV1Config.from_env(Path.cwd())
 
     assert config.pdf_reader == "pdf-inspector"
+
+
+def test_agent_v1_config_resolves_chutes_credentials(monkeypatch) -> None:
+    monkeypatch.setenv("SUBNET_CLAIMS_AGENT_PROVIDER", "chutes")
+    monkeypatch.setenv("SUBNET_CLAIMS_AGENT_MODEL", "deepseek-ai/DeepSeek-V3.1")
+    monkeypatch.setenv("CHUTES_API_KEY", "test-chutes-key")
+    monkeypatch.setenv("OPENROUTER_API_BASE", "https://wrong.example/v1")
+    monkeypatch.delenv("SUBNET_CLAIMS_AGENT_API_BASE", raising=False)
+    monkeypatch.delenv("SUBNET_CLAIMS_AGENT_API_KEY_ENV", raising=False)
+
+    config = AgentV1Config.from_env(Path.cwd())
+
+    assert config.provider == "chutes"
+    assert config.api_key_env == "CHUTES_API_KEY"
+    assert config.api_key == "test-chutes-key"
+    assert config.api_base == "https://llm.chutes.ai/v1"
+    assert dspy_model_id(config.model, provider=config.provider, api_base=config.api_base) == (
+        "openai/deepseek-ai/DeepSeek-V3.1"
+    )
+
+
+def test_dspy_chutes_model_keeps_explicit_litellm_route() -> None:
+    assert dspy_model_id(
+        "openai/deepseek-ai/DeepSeek-V3.1",
+        provider="chutes",
+    ) == "openai/deepseek-ai/DeepSeek-V3.1"
+    assert dspy_model_id(
+        "openai/gpt-oss-120b",
+        provider="chutes",
+    ) == "openai/openai/gpt-oss-120b"
 
 
 def test_agent_v1_pdf_inspector_reader_outputs_markdown_page_spans(monkeypatch, tmp_path: Path) -> None:

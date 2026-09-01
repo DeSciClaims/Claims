@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from miner.agent_v1.runtime.usage import usage_from_dspy_lm
+from miner.agent_v1.provider import dspy_model_id
 from miner.agent_v1.skillpack import SkillPack
 
 from ..config import AgentV1ValidatorConfig
@@ -31,7 +32,11 @@ class DspyRigorRuntime:
         toolbox = RigorToolbox(run_dir=run_dir, skill_pack=skill_pack)
         tools = [_to_dspy_tool(dspy_module, spec) for spec in toolbox.specs()]
         lm = dspy_module.LM(
-            model=self.config.model,
+            model=dspy_model_id(
+                self.config.model,
+                provider=self.config.provider,
+                api_base=self.config.api_base,
+            ),
             api_key=self.config.require_api_key(),
             api_base=self.config.api_base,
             temperature=self.config.temperature,

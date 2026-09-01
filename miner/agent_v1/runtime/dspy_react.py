@@ -8,6 +8,7 @@ from typing import Any
 from .base import AgentRequest, AgentResult
 from .usage import usage_from_dspy_lm
 from ..config import AgentV1Config
+from ..provider import dspy_model_id
 from ..skillpack import SkillPack
 from ..tools import AgentToolbox
 
@@ -30,7 +31,11 @@ class DspyReActRuntime:
         toolbox = AgentToolbox(run_dir=run_dir, skill_pack=skill_pack)
         tools = [_to_dspy_tool(dspy_module, spec) for spec in toolbox.specs()]
         lm = dspy_module.LM(
-            model=self.config.model,
+            model=dspy_model_id(
+                self.config.model,
+                provider=self.config.provider,
+                api_base=self.config.api_base,
+            ),
             api_key=self.config.require_api_key(),
             api_base=self.config.api_base,
             temperature=self.config.temperature,

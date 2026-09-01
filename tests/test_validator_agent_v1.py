@@ -519,6 +519,24 @@ def test_local_cli_reference_miner_resolves_python_to_current_interpreter() -> N
     assert resolved == [sys.executable, "-m", "claims_reference_miner"]
 
 
+def test_validator_agent_config_resolves_chutes_credentials(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_RIGOR_PROVIDER", "chutes")
+    monkeypatch.setenv("CHUTES_API_KEY", "test-chutes-key")
+    monkeypatch.setenv("OPENROUTER_API_BASE", "https://wrong.example/v1")
+    monkeypatch.setenv("HERMES_BASE_URL", "https://also-wrong.example/v1")
+    monkeypatch.delenv("CLAIMS_RIGOR_API_BASE", raising=False)
+    monkeypatch.delenv("CLAIMS_RIGOR_API_KEY_ENV", raising=False)
+    monkeypatch.delenv("SUBNET_CLAIMS_VALIDATOR_AGENT_API_BASE", raising=False)
+    monkeypatch.delenv("SUBNET_CLAIMS_VALIDATOR_AGENT_API_KEY_ENV", raising=False)
+
+    config = AgentV1ValidatorConfig.from_env(Path.cwd())
+
+    assert config.provider == "chutes"
+    assert config.api_key_env == "CHUTES_API_KEY"
+    assert config.api_key == "test-chutes-key"
+    assert config.api_base == "https://llm.chutes.ai/v1"
+
+
 def _config(tmp_path: Path) -> AgentV1ValidatorConfig:
     config = AgentV1ValidatorConfig.from_env(Path.cwd())
     config.output_dir = tmp_path / "outputs"

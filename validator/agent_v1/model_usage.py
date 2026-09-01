@@ -95,6 +95,8 @@ class ModelUsageCollector:
 
 
 def provider_from_model_or_base(model: str, api_base: str = "") -> str:
+    if "chutes.ai" in api_base:
+        return "chutes"
     if "openrouter.ai" in api_base or model.startswith("openrouter/") or "/" in model:
         return "openrouter"
     if "api.openai.com" in api_base or model.startswith(("gpt-", "o1", "o3", "o4")):

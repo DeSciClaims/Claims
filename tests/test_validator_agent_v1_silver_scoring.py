@@ -985,6 +985,22 @@ def test_silver_adjudication_factory_builds_dspy_passes_with_shared_limit(monkey
     assert passes[1].model == "qwen/qwen3.7-flash"
 
 
+def test_silver_adjudication_factory_routes_chutes_through_openai_compatible_dspy(monkeypatch) -> None:
+    monkeypatch.setenv("CHUTES_API_KEY", "test-chutes-key")
+    passes, _ = build_silver_adjudication_passes(
+        SilverAdjudicationConfig(
+            mode="dspy",
+            api_base="https://llm.chutes.ai/v1",
+            api_key_env="CHUTES_API_KEY",
+            model_a="deepseek-ai/DeepSeek-V3.1",
+            model_b="openai/gpt-oss-120b",
+        )
+    )
+
+    assert passes[0].model == "openai/deepseek-ai/DeepSeek-V3.1"
+    assert passes[1].model == "openai/openai/gpt-oss-120b"
+
+
 def test_silver_adjudication_factory_disables_shared_limit_with_zero(monkeypatch) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
     passes, tiebreak = build_silver_adjudication_passes(

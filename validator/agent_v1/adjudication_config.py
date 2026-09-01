@@ -7,6 +7,8 @@ import threading
 from dataclasses import dataclass
 from typing import Literal
 
+from miner.agent_v1.provider import dspy_model_id
+
 from .adjudication_passes import (
     CLIAdjudicationPass,
     DSPyAdjudicationPass,
@@ -231,7 +233,7 @@ def _dspy_passes(
             pass_id=pass_id,
             adjudication_profile_id=f"dspy:{model}",
             model_runtime_id="dspy-predict",
-            model=model,
+            model=dspy_model_id(model, api_base=config.api_base),
             api_key=api_key,
             api_base=config.api_base,
             temperature=config.temperature,
