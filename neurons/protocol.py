@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION
+from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, SCORING_VERSION
 
 try:
     from bittensor import Synapse
@@ -28,7 +28,7 @@ class ClaimExtractionSynapse(Synapse):
     assignment_window_start: str = ""
     selection_seed: str = ""
     task_version: str = "claims_task_v0"
-    scoring_version: str = "agent_v1_pass4_deterministic_v0"
+    scoring_version: str = SCORING_VERSION
     task_type: str = "agent_v1_claim_extraction"
     network: str = "testnet"
     netuid: int | None = None

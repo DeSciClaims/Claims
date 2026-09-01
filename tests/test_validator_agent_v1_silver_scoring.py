@@ -39,7 +39,7 @@ from validator.agent_v1.adjudication_queue import (
     enqueue_adjudication_jobs,
 )
 from validator.agent_v1.batch_scoring import score_batch, winner_takes_most_weights
-from validator.agent_v1.comparison_models import BronzeDiffCase, ComparisonCandidate, SilverRecord, SilverScoreBreakdown
+from validator.agent_v1.comparison_models import BronzeDiffCase, ComparisonCandidate, SilverRecord, SilverScoreBreakdown, SilverUnit
 from validator.agent_v1.miner_consensus import MinerConsensusRule, MinerConsensusVote, aggregate_miner_consensus_votes
 from validator.agent_v1.orchestrator import (
     MinerArtifactSubmission,
@@ -66,7 +66,7 @@ from validator.agent_v1.relation_classifier import (
 )
 from validator.agent_v1.silver_builder import build_silver_record
 from validator.agent_v1.silver_importance import OpenAICompatibleSilverImportanceClassifier, apply_silver_importance
-from validator.agent_v1.silver_scoring import score_miner_against_silver
+from validator.agent_v1.silver_scoring import MINOR_TIER_CAP, _coverage, score_miner_against_silver
 from validator.agent_v1.models import AgentV1ValidationFinding
 from validator.agent_v1.wrappers.hermes_adjudication_agent import (
     _is_valid_payload as is_valid_hermes_adjudication_payload,
@@ -188,6 +188,55 @@ def test_silver_scoring_zero_coverage_scores_zero() -> None:
     assert score.coverage == 0.0
     assert score.quality == 1.0
     assert score.score == 0.0
+
+
+def test_silver_coverage_caps_saturated_minor_tier_at_five_percent() -> None:
+    units = [
+        SilverUnit(silver_unit_id="central", paper_id="paper", statement="Central", importance="central"),
+        *[
+            SilverUnit(
+                silver_unit_id=f"minor_{index}",
+                paper_id="paper",
+                statement=f"Minor {index}",
+                importance="minor",
+            )
+            for index in range(100)
+        ],
+    ]
+    minor_ids = [unit.silver_unit_id for unit in units if unit.importance == "minor"]
+
+    assert _coverage(units, minor_ids) == MINOR_TIER_CAP
+    assert _coverage(units, ["central"]) == 1.0 - MINOR_TIER_CAP
+    assert _coverage(units, ["central", *minor_ids]) == 1.0
+
+
+def test_silver_coverage_preserves_unsaturated_minor_weight() -> None:
+    units = [
+        *[
+            SilverUnit(
+                silver_unit_id=f"central_{index}",
+                paper_id="paper",
+                statement=f"Central {index}",
+                importance="central",
+            )
+            for index in range(3)
+        ],
+        SilverUnit(silver_unit_id="minor", paper_id="paper", statement="Minor", importance="minor"),
+    ]
+
+    assert _coverage(units, ["minor"]) == round(0.1 / 2.2, 4)
+    assert _coverage(units, [unit.silver_unit_id for unit in units]) == 1.0
+
+
+def test_silver_coverage_minor_only_paper_uses_flat_coverage() -> None:
+    units = [
+        SilverUnit(silver_unit_id="minor_1", paper_id="paper", statement="Minor 1", importance="minor"),
+        SilverUnit(silver_unit_id="minor_2", paper_id="paper", statement="Minor 2", importance="minor"),
+    ]
+
+    assert _coverage(units, ["minor_1"]) == 0.5
+    assert _coverage(units, []) == 0.0
+    assert _coverage([], []) == 1.0
 
 
 def test_silver_scoring_multiplies_diagnostic_quality() -> None:

@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 
 PROTOCOL_VERSION = "claims.v0"
 SCHEMA_VERSION = "miner.v0.section_context_compat"
+SCORING_VERSION = "agent_v1_pass4_minor_cap_v1"
 DEFAULT_MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024
 
 
@@ -67,7 +68,7 @@ class ClaimsTask:
     selection_seed: str = ""
     miner_selection_recent_registration_block: int = 0
     task_version: str = "claims_task_v0"
-    scoring_version: str = "agent_v1_pass4_deterministic_v0"
+    scoring_version: str = SCORING_VERSION
     task_type: str = "agent_v1_claim_extraction"
     network: str = "testnet"
     netuid: int | None = None
@@ -105,7 +106,7 @@ class ClaimsTask:
                 int(payload.get("miner_selection_recent_registration_block") or 0),
             ),
             task_version=str(payload.get("task_version") or "claims_task_v0").strip(),
-            scoring_version=str(payload.get("scoring_version") or "agent_v1_pass4_deterministic_v0").strip(),
+            scoring_version=str(payload.get("scoring_version") or SCORING_VERSION).strip(),
             task_type=str(payload.get("task_type") or "agent_v1_claim_extraction").strip(),
             network=str(payload.get("network") or "testnet").strip(),
             netuid=int(payload["netuid"]) if payload.get("netuid") is not None else None,

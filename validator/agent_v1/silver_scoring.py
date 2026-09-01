@@ -10,6 +10,7 @@ IMPORTANCE_WEIGHTS = {
     "supporting": 0.30,
     "minor": 0.10,
 }
+MINOR_TIER_CAP = 0.05
 
 
 def score_miner_against_silver(
@@ -129,11 +130,28 @@ def _scored_units(units: list[SilverUnit]) -> list[SilverUnit]:
 
 
 def _coverage(scored_units: list[SilverUnit], covered_unit_ids: list[str]) -> float:
-    denominator = sum(IMPORTANCE_WEIGHTS[unit.importance] for unit in scored_units)
-    if denominator <= 0:
-        return 1.0
     covered = set(covered_unit_ids)
-    numerator = sum(IMPORTANCE_WEIGHTS[unit.importance] for unit in scored_units if unit.silver_unit_id in covered)
+    central_supporting_total = 0.0
+    central_supporting_covered = 0.0
+    minor_total = 0.0
+    minor_covered = 0.0
+    for unit in scored_units:
+        weight = IMPORTANCE_WEIGHTS[unit.importance]
+        if unit.importance == "minor":
+            minor_total += weight
+            if unit.silver_unit_id in covered:
+                minor_covered += weight
+        else:
+            central_supporting_total += weight
+            if unit.silver_unit_id in covered:
+                central_supporting_covered += weight
+
+    if central_supporting_total <= 0:
+        return 1.0 if minor_total <= 0 else round(minor_covered / minor_total, 4)
+
+    minor_weight_cap = (MINOR_TIER_CAP / (1.0 - MINOR_TIER_CAP)) * central_supporting_total
+    denominator = central_supporting_total + min(minor_total, minor_weight_cap)
+    numerator = central_supporting_covered + min(minor_covered, minor_weight_cap)
     return round(numerator / denominator, 4)
 
 

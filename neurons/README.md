@@ -29,7 +29,7 @@ batch task:
 - `selection_seed`: backend sampling seed recorded for auditability
 - `miner_selection_recent_registration_block`: backend-persisted subnet update block used to prefer post-update fallback miners, ordered by lowest UID
 - `task_version`: task contract version, currently `claims_task_v0`
-- `scoring_version`: scoring contract version, currently `agent_v1_pass4_deterministic_v0`
+- `scoring_version`: scoring contract version, currently `agent_v1_pass4_minor_cap_v1`
 - `papers`: backend-selected paper list for batch tasks
 - `paper_id`: source paper identifier
 - `paper_url`: downloadable PDF URL for network tasks

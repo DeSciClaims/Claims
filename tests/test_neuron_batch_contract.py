@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from neurons.protocol import ClaimExtractionSynapse
-from neurons.tasks import ClaimsTask, task_cache_key
+from neurons.tasks import SCORING_VERSION, ClaimsTask, task_cache_key
 from neurons.validator import _aggregate_scores
 
 
@@ -56,6 +56,12 @@ def test_claims_task_round_trips_batch_fields_to_synapse() -> None:
     assert task.miner_selection_algorithm == "uid_v0"
     assert synapse.papers[0]["paper_id"] == "paper_001"
     assert synapse.papers[0]["source_url"] == "https://example.org/paper.pdf"
+
+
+def test_claims_task_uses_current_scoring_version_by_default() -> None:
+    task = ClaimsTask.from_dict({"task_id": "task_current"})
+
+    assert task.scoring_version == SCORING_VERSION == "agent_v1_pass4_minor_cap_v1"
 
 
 def test_batch_score_rule_supports_min_mean_and_median() -> None:
