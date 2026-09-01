@@ -15,25 +15,32 @@ The first supported rigor backends are:
 ## Validator Profiles
 
 [validator.testnet.env.example](./validator.testnet.env.example) is a complete
-50-paper, fifteen-miner SN111 testnet profile for the full Bittensor validator. Miners
-are selected adaptively unless `CLAIMS_TARGET_UIDS` is explicitly enabled. It configures
+50-paper SN111 testnet profile for the full Bittensor validator. Bucket selection
+chooses 10-13 miners unless `CLAIMS_TARGET_UIDS` is explicitly enabled. It configures
 paper-level diagnostics, Bronze generation, anonymous Silver judges, the
 file-agent comparator/canonicalizer/auditor, persistence limits, and one scoring
 cycle. It deliberately uses different models for independent pipeline roles.
 
 [validator.mainnet.env.example](./validator.mainnet.env.example) carries the
-current SN111 mainnet operating policy: 50 papers, fifteen adaptive miners, four
+current SN111 mainnet operating policy: 50 papers, 10-13 bucket-selected miners, four
 cycles with a three-hour post-completion delay, one-hour miner timeout, file-agent Silver, and
-winner-takes-most payouts. Its model fields are intentionally blank. Mainnet
+bucket-aware payouts. Its model fields are intentionally blank. Mainnet
 validators must choose their own role-specific models and provider credentials.
 
 For a manual or Ubuntu installation:
 
 ```bash
 cp validator/agent_v1/validator.testnet.env.example .env
-# Set OPENROUTER_API_KEY and review CLAIMS_TARGET_UIDS.
+# Set the provider credential and review the configured models.
 
-python -m neurons.validator \
+.venv/bin/python -c 'import claims_reference_miner; print("Reference miner runtime OK")'
+HERMES_BIN="$(command -v hermes || printf '%s/.local/bin/hermes' "$HOME")"
+"$HERMES_BIN" --help >/dev/null && echo "Hermes runtime OK"
+# Add the absolute path printed here to .env as HERMES_CMD.
+printf 'HERMES_CMD=%s\n' "$HERMES_BIN"
+
+.venv/bin/python -m dotenv -f .env run --override -- \
+  .venv/bin/python -m neurons.validator \
   --netuid 530 \
   --wallet.name claims-test-validator \
   --wallet.hotkey default \
@@ -47,6 +54,12 @@ field before starting the command shown in the top-level README:
 ```bash
 cp validator/agent_v1/validator.mainnet.env.example .env
 ```
+
+PM2 and systemd must invoke this repository's `.venv/bin/python` and load
+`.env` explicitly. If Hermes is installed outside the service's `PATH`, set an
+absolute `HERMES_CMD` in the service environment. Run the dependency and wallet
+preflight in the top-level manual installation guide before starting a full
+batch.
 
 The Docker entrypoint reads the same settings through `--env-file` or from
 `/data/env/validator.env`. Set `CLAIMS_BRONZE_ROOT=/data/bronze` and
@@ -105,8 +118,26 @@ batch-scoped artifacts instead of repeating miner inference.
 - `--claims.target-uid UID` is an exact operator override and may be repeated.
   If an existing canonical assignment contains different UIDs, the validator
   refuses to diverge. Use a backend assignment lifetime of `0` for isolated tests.
+- `--claims.force-new-canonical-batch` asks the backend for an immediate
+  successor to the active canonical batch. It is consumed after the first
+  successful selection and succeeds only when the signing hotkey appears in
+  the backend's `CLAIMS_BATCH_OVERRIDE_HOTKEY_ALLOWLIST`. The previous batch is
+  preserved.
+- `--claims.miner-selection-mode bucket` enables the production bucket policy.
+  The validator groups operational miners by coldkey, excludes coldkeys with a
+  completed evaluation, selects the earliest registered serving hotkey as each
+  representative, and takes up to `CLAIMS_BUCKET_MAX_NEWCOMERS_PER_BATCH`
+  (default `5`) in FIFO registration-block order.
+  A stored canonical qualification assignment counts as that coldkey's
+  newcomer opportunity even if the run stops before recording a score.
+  The core established set contains
+  four weighted performance draws and four oldest-evaluation rotation seats.
+  Established miners fill any shortage below
+  ten, so a batch contains 10-13 miners when 0-5 newcomers are selected. The
+  assignment and policy snapshot are canonical: every validator scoring the
+  same batch receives the same miners and payout parameters.
 - `--claims.miner-selection-mode adaptive --claims.miner-sample-size N`
-  enables V0 selection. The configured total is apportioned 40% to
+  keeps the earlier V0 selector available. The configured total is apportioned 40% to
   qualification, 40% to performance, and 20% to rotation. For example, `10`
   produces `4/4/2`, `15` produces `6/6/3`, and `20` produces `8/8/4`.
   The performance lane samples from remaining miners whose latest completed
@@ -158,10 +189,10 @@ batch-scoped artifacts instead of repeating miner inference.
   `CLAIMS_BATCH_COLLECTION_WAIT_SECONDS` bounds the wait and should exceed
   `CLAIMS_TIMEOUT`; the default is at least the miner timeout plus 300 seconds.
 
-Selection state is stored by validator, network, netuid, and UID, then rebuilt
-from subnet-wide evaluation events. It records evaluation count, distinct batch
-count, the last three scores, last selection, and last evaluation. A changed
-registration block resets a UID's state.
+Selection state is stored by validator, network, netuid, and miner hotkey, then
+rebuilt from subnet-wide evaluation events. It records evaluation count,
+distinct batch count, the last three scores, last selection, and last
+evaluation. Moving UID does not erase a hotkey's history.
 
 ### Scoring Pipeline
 
@@ -176,6 +207,13 @@ registration block resets a UID's state.
   16/8/4/2% to ranks 2-5. Ties share the occupied rank slots. The related envs
   are `CLAIMS_PAYOUT_WINNER_SHARE`, `CLAIMS_PAYOUT_RUNNER_UP_SLOTS`, and
   `CLAIMS_PAYOUT_RUNNER_UP_DECAY`.
+- `--claims.payout-mode bucket` preserves that overall rank curve and reserves
+  `b = min(0.40, 0.5 * median_registration_price * newcomers / round_reward)`
+  for the highest-scoring valid newcomer. The overall component receives
+  `1-b`; a newcomer may earn both components. If no newcomer submits valid work
+  above the configured minimum, the reserved share returns to the overall
+  ranking. `NeuronBurnCost` is read from chain; use
+  `CLAIMS_BUCKET_REGISTRATION_PRICE_TAO` only as an outage fallback.
 - `--claims.batch-score-rule` controls legacy diagnostic aggregation. Final
   Silver incentives use the mean regardless of that compatibility setting.
 
@@ -410,7 +448,8 @@ The Silver path includes Bronze lookup, adjudication cases, Silver record
 construction, miner-vs-Silver scoring, backend persistence, and public feedback.
 Batch scores are means across scoring-eligible papers. Miner misses remain zero;
 validator-side paper failures are excluded for every miner and mark the completed
-run degraded. Weights default to the 70/30 winner-takes-most rank curve.
+run degraded. Production bucket mode combines the overall rank curve with the
+registration-price-derived newcomer share described above.
 
 ```bash
 /Users/ogbanugot/miniconda3/bin/conda run -n claims_subnet \

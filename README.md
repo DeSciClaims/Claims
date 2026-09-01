@@ -84,6 +84,19 @@ the published Docker images.
 
 ### Manual Installation
 
+On Ubuntu or Debian, install the native build and PDF tools first:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential ca-certificates curl git \
+  libgl1 libglib2.0-0 poppler-utils \
+  python3 python3-dev python3-pip python3-venv
+```
+
+On macOS, install Python 3.10 or newer and Poppler before continuing. The
+Ubuntu installer is the supported automated path for production Linux hosts.
+
 Clone Claims and create its Python environment:
 
 ```bash
@@ -103,19 +116,86 @@ cp examples/miner.env.example .env
 ```
 
 For a validator, install the public reference miner at a reviewed commit and
-use the configured testnet profile:
+use the profile for the network you will validate. Install the reference miner
+with the same interpreter that will run the validator:
 
 ```bash
 git clone https://github.com/DeSciClaims/claims-reference-miner.git ../claims-reference-miner
 git -C ../claims-reference-miner checkout <PINNED_COMMIT>
-python -m pip install ../claims-reference-miner
-cp validator/agent_v1/validator.testnet.env.example .env
+.venv/bin/python -m pip install ../claims-reference-miner
+
+# SN111 mainnet profile. Use validator.testnet.env.example for testnet instead.
+cp validator/agent_v1/validator.mainnet.env.example .env
 ```
 
-Edit `.env` and set `OPENROUTER_API_KEY`. The detailed validator profile is
-[validator.testnet.env.example](./validator/agent_v1/validator.testnet.env.example).
-Install and authenticate the CLI harness selected by the profile; the commands
-above install Python dependencies but do not install Hermes, Codex, or Claude.
+The default profiles use Hermes. Install it explicitly for a manual setup:
+
+```bash
+curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/hermes-install.sh
+bash /tmp/hermes-install.sh --skip-setup --skip-browser
+
+HERMES_BIN="$(command -v hermes || true)"
+HERMES_BIN="${HERMES_BIN:-$HOME/.local/bin/hermes}"
+"$HERMES_BIN" --help >/dev/null
+printf 'Add this line to .env: HERMES_CMD=%s\n' "$HERMES_BIN"
+```
+
+Add the printed `HERMES_CMD` line to `.env`; dotenv does not expand `$HOME`, so
+use the absolute path printed by the command. Edit `.env`, set the provider
+credential, wallet names, and every model field used by the selected profile.
+The production profile is
+[validator.mainnet.env.example](./validator/agent_v1/validator.mainnet.env.example);
+use
+[validator.testnet.env.example](./validator/agent_v1/validator.testnet.env.example)
+for testnet. The mainnet template deliberately leaves model fields blank. Each
+validator stage passes its provider and model from `.env`; the Ubuntu installer
+also writes the corresponding persistent Hermes defaults. Follow the
+[Chutes provider configuration](./validator/agent_v1/README.md#chutes-provider)
+when using Chutes. Codex and Claude must be installed and authenticated
+separately when selected. Protect the completed environment with
+`chmod 600 .env`.
+
+Manual installation does not create, fund, or register a Bittensor wallet.
+Before launching, create or restore the role's wallet, register its hotkey on
+the selected subnet, and set `BT_WALLET_NAME` and `BT_WALLET_HOTKEY` to the
+local wallet directory and hotkey filename. Claims reads the wallet from
+`~/.bittensor/wallets/`; never place a coldkey in `.env` or in the repository.
+
+Verify the exact runtime and wallet before starting a run. These checks must
+all succeed; do not launch a production batch if one fails:
+
+```bash
+.venv/bin/python -c 'import claims_reference_miner; print("Reference miner runtime OK")'
+"$HERMES_BIN" --help >/dev/null && echo "Hermes runtime OK"
+
+.venv/bin/python -m dotenv -f .env run --override -- sh -c '
+  test -n "$BT_WALLET_NAME"
+  test -n "$BT_WALLET_HOTKEY"
+  test -s "$HOME/.bittensor/wallets/$BT_WALLET_NAME/coldkeypub.txt"
+  test -s "$HOME/.bittensor/wallets/$BT_WALLET_NAME/hotkeys/$BT_WALLET_HOTKEY"
+  test -x "$HERMES_CMD"
+  echo "Validator environment and wallet OK"
+'
+```
+
+Always load `.env` explicitly and use the same virtual-environment interpreter
+for the outer dotenv command and the validator process:
+
+```bash
+.venv/bin/python -m dotenv -f .env run --override -- \
+  .venv/bin/python -m neurons.validator \
+    --netuid <NETUID> \
+    --wallet.name <VALIDATOR_WALLET> \
+    --wallet.hotkey <HOTKEY> \
+    --subtensor.network <NETWORK> \
+    --logging.info
+```
+
+This requirement also applies to PM2 and systemd. Activating `.venv` in an
+interactive shell does not change a service manager's interpreter or `PATH`.
+Set the service working directory to the Claims checkout, point it at
+`.venv/bin/python`, load `.env` through `python-dotenv`, and set `HERMES_CMD`
+to the absolute Hermes path when it is not on the service `PATH`.
 
 ### Ubuntu Installers
 
@@ -142,8 +222,8 @@ Chutes is supported as a named OpenAI-compatible provider; see
 Hermes is the only external CLI harness installed automatically. Install and
 authenticate Codex CLI or Claude CLI separately before selecting either one;
 the native DSPy and LangChain harnesses are included with the Python dependencies.
-The detailed testnet profile runs one 50-paper cycle against fifteen adaptively
-selected miners. The generic
+The detailed testnet profile runs one 50-paper bucket-policy cycle against
+10-13 miners. The generic
 installer template submits weights for four runs, waiting three hours after each
 completed run before starting the next one.
 
@@ -377,7 +457,7 @@ assignments, and uploaded artifacts remain isolated to their canonical batch.
 ### Testnet
 
 This focused testnet command requests three papers and one specific miner. Add
-`--claims.target-uid` again to include more UIDs, or replace it with adaptive
+`--claims.target-uid` again to include more UIDs, or replace it with bucket
 selection as shown in the mainnet command.
 
 ```bash
@@ -409,9 +489,17 @@ Primary arguments:
   reuse, run persistence, and dashboard records.
 - `--claims.batch-size` controls papers per batch. `--claims.target-uid` is an
   exact smoke-test override; production uses `--claims.miner-selection-mode
-  adaptive --claims.miner-sample-size 15`. The sample size is configurable;
-  adaptive selection divides it 40/40/20 across qualification, performance,
-  and rotation (`10` gives `4/4/2`, `15` gives `6/6/3`, and `20` gives `8/8/4`).
+  bucket`. Bucket selection combines eight established-miner seats with up to
+  five FIFO newcomers derived from the live metagraph and backend evaluation
+  history. A newcomer is an operational coldkey with neither a completed
+  evaluation under any hotkey nor a prior canonical qualification assignment;
+  its earliest registered serving hotkey represents it.
+  `--claims.bucket-max-newcomers-per-batch` controls the newcomer cap and
+  defaults to `5`. The established seats are four
+  weighted performance draws and four oldest-evaluation rotation seats;
+  established miners fill any shortage below ten.
+  The legacy `adaptive` mode remains available and uses
+  `--claims.miner-sample-size` with a 40/40/20 split.
   The performance lane requires a positive latest evaluation and is weighted
   by `0.10 + mean(last three scores)`. A miner whose latest score is zero is
   excluded from performance and ranks behind miners not yet evaluated.
@@ -427,14 +515,18 @@ Primary arguments:
   miner-response deadline in seconds.
 - `--claims.max-steps` limits completed scoring cycles; `0` runs indefinitely.
   `--claims.query-interval` is the delay between cycles.
+- `--claims.force-new-canonical-batch` is a one-shot operator override that
+  creates an immediate canonical successor. It requires the signing hotkey in
+  the backend's `CLAIMS_BATCH_OVERRIDE_HOTKEY_ALLOWLIST` and does not cancel
+  the previous batch.
 - `--claims.audit-only` persists proposed scores without setting on-chain
   weights. Omit it for a weight-setting validator.
 
 ### Mainnet Baseline
 
-The current SN111 baseline is 50 papers, fifteen adaptively selected miners, four
+The current SN111 baseline is 50 papers, 10-13 bucket-selected miners, four
 cycles separated by a three-hour post-completion delay, a one-hour miner deadline,
-mean batch scoring, and winner-takes-most weights. Model IDs are intentionally omitted: validators
+mean batch scoring, and bucket-aware weights. Model IDs are intentionally omitted: validators
 and miners should configure independent models and credentials privately rather than
 converging on a published validator model set.
 
@@ -447,14 +539,13 @@ python -m dotenv -f .env run --override -- python -m neurons.validator \
   --claims.network mainnet \
   --claims.backend-url https://api.claims111.ai \
   --claims.batch-size 50 \
-  --claims.miner-selection-mode adaptive \
-  --claims.miner-sample-size 15 \
+  --claims.miner-selection-mode bucket \
   --claims.batch-score-rule mean \
   --claims.audit-method llm \
   --claims.agent-v1-validation-mode llm \
   --claims.validator-pipeline auto \
   --claims.silver-enable \
-  --claims.payout-mode winner-takes-most \
+  --claims.payout-mode bucket \
   --claims.output-dir validator/agent_v1/outputs/neuron/mainnet \
   --claims.timeout 3600 \
   --claims.max-steps 4 \

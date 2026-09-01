@@ -70,7 +70,8 @@ def test_validator_template_uses_scheduled_weight_submitting_runs() -> None:
     assert "CLAIMS_MAX_STEPS=4" in template
     assert "CLAIMS_QUERY_INTERVAL=10800" in template
     assert "CLAIMS_OUTPUT_RETENTION_RUNS=5" in template
-    assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in template
+    assert "CLAIMS_MINER_SELECTION_MODE=bucket" in template
+    assert "CLAIMS_PAYOUT_MODE=bucket" in template
     assert "CLAIMS_AUDIT_METHOD=llm" in template
     assert "CLAIMS_SILVER_ADJUDICATION_HARNESS=hermes-cli" in template
     assert "CLAIMS_SILVER_FILE_AGENT_FALLBACK=none" in template
@@ -86,7 +87,8 @@ def test_detailed_testnet_profile_is_runnable_and_uses_distinct_models() -> None
     assert "CLAIMS_BATCH_SIZE=50" in profile
     assert "CLAIMS_TIMEOUT=3600" in profile
     assert "CLAIMS_OUTPUT_RETENTION_RUNS=5" in profile
-    assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in profile
+    assert "CLAIMS_MINER_SELECTION_MODE=bucket" in profile
+    assert "CLAIMS_PAYOUT_MODE=bucket" in profile
     assert "CLAIMS_MINER_SAMPLE_SIZE=15" in profile
     assert "\nCLAIMS_TARGET_UIDS=" not in profile
     assert "CLAIMS_MAX_STEPS=1" in profile
@@ -108,7 +110,8 @@ def test_mainnet_profile_has_production_policy_without_prescribed_models() -> No
     assert "BT_SUBTENSOR_NETWORK=finney" in profile
     assert "CLAIMS_NETWORK=mainnet" in profile
     assert "CLAIMS_BATCH_SIZE=50" in profile
-    assert "CLAIMS_MINER_SELECTION_MODE=adaptive" in profile
+    assert "CLAIMS_MINER_SELECTION_MODE=bucket" in profile
+    assert "CLAIMS_PAYOUT_MODE=bucket" in profile
     assert "CLAIMS_MINER_SAMPLE_SIZE=15" in profile
     assert "CLAIMS_TIMEOUT=3600" in profile
     assert "CLAIMS_OUTPUT_RETENTION_RUNS=5" in profile
@@ -148,3 +151,14 @@ def test_installation_docs_link_validator_profiles_and_docker_path() -> None:
     assert "### Docker" in main_readme
     assert "CLAIMS_BACKEND_URL=https://api.claims111.ai" in main_readme
     assert "CLAIMS_BACKEND_URL=https://artifacts.claims111.ai" in main_readme
+    for content in (main_readme, validator_readme):
+        assert ".venv/bin/python -c 'import claims_reference_miner" in content
+        assert ".venv/bin/python -m dotenv -f .env run --override" in content
+        assert "HERMES_CMD" in content
+        assert "PM2" in content
+    assert 'test -s "$HOME/.bittensor/wallets/$BT_WALLET_NAME/coldkeypub.txt"' in main_readme
+    assert 'test -s "$HOME/.bittensor/wallets/$BT_WALLET_NAME/hotkeys/$BT_WALLET_HOTKEY"' in main_readme
+    assert "poppler-utils" in main_readme
+    assert "Manual installation does not create, fund, or register a Bittensor wallet" in main_readme
+    manual_install = main_readme.split("### Manual Installation", 1)[1].split("### Ubuntu Installers", 1)[0]
+    assert "cp validator/agent_v1/validator.mainnet.env.example .env" in manual_install

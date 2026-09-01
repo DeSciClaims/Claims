@@ -113,12 +113,27 @@ scores the shared paper responses, aggregates with
 `--claims.batch-score-rule`, posts run-specific audit records, and sets weights
 from its own scores. V0 batch scoring does not use an all-papers gate; missing
 or unscored assigned papers count as zero before aggregation.
+In bucket mode the validator derives newcomers from the live metagraph,
+backend evaluation history, and prior canonical qualification assignments. It
+groups miners by coldkey, excludes coldkeys that already received an evaluation
+or qualification opportunity, and uses the
+earliest registered serving hotkey as each coldkey's representative, and takes
+up to `CLAIMS_BUCKET_MAX_NEWCOMERS_PER_BATCH` (default `5`) in FIFO
+registration-block order. The core batch has
+four weighted performance seats and four oldest-evaluation rotation seats. All
+selected miners share the same scientific scoring;
+the final payout adds the registration-price-derived newcomer bonus to the
+ordinary 70/16/8/4/2 overall rank weight.
 With backend `CLAIMS_BATCH_ASSIGNMENT_WINDOW_SECONDS=14400`, validators arriving
 within four hours of the canonical batch's creation receive the same task ID,
 batch ID, papers, selection seed, and miner snapshot. The first request at or
 after expiry creates the successor atomically. The current validator profiles
 pass `--claims.allow-paper-reuse` through `CLAIMS_ALLOW_PAPER_REUSE=true`, so
 approved papers may appear in later canonical batches while the catalog grows.
+An operator hotkey explicitly authorized by the backend can force one immediate
+successor with `--claims.force-new-canonical-batch`. The backend must list that
+exact hotkey in `CLAIMS_BATCH_OVERRIDE_HOTKEY_ALLOWLIST`. The one-shot flag is
+consumed after a successful batch selection and does not cancel the old batch.
 By default `--claims.validator-pipeline auto` routes ARA-shaped responses to
 `validator.agent_v1` and legacy responses to `validator.v0`.
 Use `--claims.task-artifact` for local smoke tests with a prebuilt artifact, or
