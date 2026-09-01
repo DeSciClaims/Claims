@@ -191,15 +191,16 @@ base_url = values.get("HERMES_BASE_URL")
 if role == "validator":
     provider = provider or values.get("CLAIMS_RIGOR_PROVIDER") or values.get("CLAIMS_SILVER_FILE_AGENT_PROVIDER")
     model = model or values.get("CLAIMS_RIGOR_MODEL") or values.get("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL")
-    base_url = base_url or values.get("CLAIMS_RIGOR_API_BASE") or values.get("OPENROUTER_API_BASE")
+    base_url = base_url or values.get("CLAIMS_RIGOR_API_BASE")
 else:
     provider = provider or values.get("SUBNET_CLAIMS_AGENT_PROVIDER")
     model = model or values.get("SUBNET_CLAIMS_AGENT_MODEL") or values.get("CLAIMS_AGENT_MODEL")
-    base_url = base_url or values.get("OPENROUTER_API_BASE")
 provider = provider or "openrouter"
 model = model or "deepseek/deepseek-v4-flash"
 if not base_url and provider == "openrouter":
-    base_url = "https://openrouter.ai/api/v1"
+    base_url = values.get("OPENROUTER_API_BASE") or "https://openrouter.ai/api/v1"
+if not base_url and provider == "chutes":
+    base_url = values.get("CHUTES_API_BASE") or "https://llm.chutes.ai/v1"
 print(provider)
 print(model)
 print(base_url or "")
@@ -208,6 +209,12 @@ PY
   hermes_provider="${hermes_settings[0]:-openrouter}"
   hermes_model="${hermes_settings[1]:-deepseek/deepseek-v4-flash}"
   hermes_base_url="${hermes_settings[2]:-}"
+  if [[ "${hermes_provider}" == "chutes" ]]; then
+    "${hermes_path}" config set providers.chutes.name "Chutes"
+    "${hermes_path}" config set providers.chutes.base_url "${hermes_base_url:-https://llm.chutes.ai/v1}"
+    "${hermes_path}" config set providers.chutes.key_env "CHUTES_API_KEY"
+    "${hermes_path}" config set providers.chutes.transport "openai_chat"
+  fi
   "${hermes_path}" config set model.provider "${hermes_provider}"
   "${hermes_path}" config set model.default "${hermes_model}"
   if [[ -n "${hermes_base_url}" ]]; then

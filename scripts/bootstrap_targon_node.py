@@ -145,9 +145,13 @@ def validate_local_inputs(args: argparse.Namespace) -> LocalInputs:
         raise BootstrapError(
             f"configured hotkey file does not exist: {hotkey_file}"
         )
-    if not values.get("OPENROUTER_API_KEY", "").strip() and not args.allow_missing_provider_key:
+    has_provider_key = any(
+        values.get(name, "").strip()
+        for name in ("OPENROUTER_API_KEY", "CHUTES_API_KEY")
+    )
+    if not has_provider_key and not args.allow_missing_provider_key:
         raise BootstrapError(
-            f"{args.role} environment has no OPENROUTER_API_KEY; use "
+            f"{args.role} environment has no supported provider API key; use "
             "--allow-missing-provider-key only when another configured provider supplies credentials"
         )
     return LocalInputs(
@@ -563,7 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allow-missing-provider-key",
         action="store_true",
-        help="allow a profile without OPENROUTER_API_KEY",
+        help="allow a profile without OPENROUTER_API_KEY or CHUTES_API_KEY",
     )
     return parser
 

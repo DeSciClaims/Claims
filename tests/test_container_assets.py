@@ -4,7 +4,7 @@ import importlib.util
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,6 +33,21 @@ def test_container_entrypoint_is_valid_bash() -> None:
     )
     assert "idle" in completed.stdout
     assert "validator" in completed.stdout
+
+
+def test_container_entrypoint_configures_chutes_without_persisting_its_key() -> None:
+    entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+
+    assert (
+        'config set providers.chutes.base_url "${hermes_base_url:-https://llm.chutes.ai/v1}"'
+        in entrypoint
+    )
+    assert 'config set providers.chutes.key_env "CHUTES_API_KEY"' in entrypoint
+    assert "providers.chutes.api_key" not in entrypoint
+    assert (
+        'base_url = base_url or setting("CLAIMS_RIGOR_API_BASE") or setting("OPENROUTER_API_BASE")'
+        not in entrypoint
+    )
 
 
 def test_container_entrypoint_loads_role_env_without_shell_evaluation() -> None:
@@ -101,6 +116,38 @@ def test_targon_bootstrap_exposes_help_without_network_access() -> None:
     assert "--role" in completed.stdout
     assert "--leave-idle" in completed.stdout
     assert "automatic node startup" in completed.stdout
+
+
+def test_targon_bootstrap_accepts_chutes_as_the_provider_key(tmp_path) -> None:
+    module = _load_targon_bootstrap()
+    wallet_dir = tmp_path / "validator-wallet"
+    hotkey_dir = wallet_dir / "hotkeys"
+    hotkey_dir.mkdir(parents=True)
+    (hotkey_dir / "default").write_text("encrypted-hotkey", encoding="utf-8")
+    env_file = tmp_path / "validator.env"
+    env_file.write_text(
+        "BT_WALLET_NAME=validator-wallet\n"
+        "BT_WALLET_HOTKEY=default\n"
+        "CHUTES_API_KEY=test-chutes-key\n",
+        encoding="utf-8",
+    )
+    private_key = tmp_path / "deploy-key"
+    public_key = tmp_path / "deploy-key.pub"
+    private_key.write_text("private", encoding="utf-8")
+    public_key.write_text("public", encoding="utf-8")
+
+    inputs = module.validate_local_inputs(
+        SimpleNamespace(
+            env_file=str(env_file),
+            wallet_dir=str(wallet_dir),
+            ssh_private_key=str(private_key),
+            ssh_public_key=str(public_key),
+            role="validator",
+            allow_missing_provider_key=False,
+        )
+    )
+
+    assert inputs.wallet_name == "validator-wallet"
 
 
 def test_targon_bootstrap_can_leave_configured_workload_idle() -> None:
