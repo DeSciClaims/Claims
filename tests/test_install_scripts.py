@@ -39,11 +39,29 @@ def test_hermes_install_configures_provider_without_interactive_setup() -> None:
     assert 'config set model.provider "${hermes_provider}"' in installer
     assert 'config set model.default "${hermes_model}"' in installer
     assert 'config set model.base_url "${hermes_base_url}"' in installer
+    assert 'config set providers.chutes.key_env "CHUTES_API_KEY"' in installer
+    assert "https://llm.chutes.ai/v1" in installer
+    assert (
+        'base_url = base_url or values.get("CLAIMS_RIGOR_API_BASE") or values.get("OPENROUTER_API_BASE")'
+        not in installer
+    )
     for role in ("miner", "validator"):
         template = (ROOT / "examples" / f"{role}.env.example").read_text(encoding="utf-8")
         assert "HERMES_PROVIDER=openrouter" in template
         assert "HERMES_MODEL=deepseek/deepseek-v4-flash" in template
         assert "HERMES_BASE_URL=https://openrouter.ai/api/v1" in template
+
+
+def test_validator_templates_document_chutes_provider() -> None:
+    for relative_path in (
+        "examples/validator.env.example",
+        "validator/agent_v1/validator.testnet.env.example",
+        "validator/agent_v1/validator.mainnet.env.example",
+    ):
+        template = (ROOT / relative_path).read_text(encoding="utf-8")
+        assert "CHUTES_API_KEY=" in template
+        assert "CHUTES_API_BASE=https://llm.chutes.ai/v1" in template
+        assert "CLAIMS_REFERENCE_MINER_PROVIDER=openrouter" in template
 
 
 def test_validator_template_uses_scheduled_weight_submitting_runs() -> None:

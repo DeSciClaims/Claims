@@ -109,11 +109,13 @@ batch-scoped artifacts instead of repeating miner inference.
   enables V0 selection. The configured total is apportioned 40% to
   qualification, 40% to performance, and 20% to rotation. For example, `10`
   produces `4/4/2`, `15` produces `6/6/3`, and `20` produces `8/8/4`.
-  The performance lane samples from remaining miners with at least one completed
-  evaluation. Sampling is seeded and weighted by `0.10 + mean(last three scores)`.
-  Every adaptive draw is capped at one UID per coldkey and one UID per Axon IP.
-  These caps are strict, so fewer than `N` miners may be selected when fewer than
-  `N` distinct coldkeys or IPs are available.
+  The performance lane samples from remaining miners whose latest completed
+  evaluation has a positive score.
+  Sampling is seeded and weighted by `0.10 + mean(last three scores)`.
+  Every adaptive draw is capped at one UID per coldkey. IPv4 Axons within
+  `CLAIMS_MINER_IPV4_PROXIMITY_ADDRESSES` addresses of a selected Axon conflict;
+  IPv6 Axons in the same configured prefix conflict. These caps are strict, so
+  fewer than `N` miners may be selected when diversity is insufficient.
 - Selection history is rooted at the miner hotkey, while UID and registration
   block remain assignment metadata. A hotkey keeps its evaluations if it moves
   UID or re-registers; a replacement hotkey does not inherit the previous
@@ -121,18 +123,33 @@ batch-scoped artifacts instead of repeating miner inference.
   evaluation count, so a failed miner does not remain permanently new.
 - Status labels remain `new`, `under-vetted`, and `vetted`: a miner becomes
   fully vetted after three evaluations. This label is for visibility; the
-  performance draw starts after one completed evaluation. A zero score counts as
-  an evaluation and receives only the `0.10` floor weight.
+  performance draw starts after one completed evaluation with a positive score.
+  A zero score still counts as an evaluation for qualification and rotation
+  history. When the latest score is zero, the miner is excluded from all lanes
+  for `CLAIMS_MINER_ZERO_SCORE_COOLDOWN_BLOCKS` (default `7200`, approximately
+  24 hours), then ranks behind miners that have never been evaluated and remains
+  outside performance until a later positive score. Immunity priority cannot
+  bypass this cooldown or move that miner ahead of an unevaluated miner.
   Any performance seats still vacant after the evaluated pool is exhausted use
   the normal oldest-evaluation fallback and are recorded as `performance-fallback`.
 - Qualification covers UIDs with fewer than three evaluations. The normal order
-  is fewest evaluations, immunity urgency, oldest selection, then UID. When
+  is fewest evaluations, immunity urgency, oldest selection, then UID. Immunity
+  urgency applies to untouched miners and to under-vetted miners whose latest
+  score is positive; it cannot revive a latest-zero history ahead of them. When
   fallback candidates have equally old evaluations, miners registered at or
   after the backend-provided subnet update block are preferred by lowest UID;
   older registrations fill only any remaining shortage.
 - `CLAIMS_MINER_IMMUNITY_PERIOD_BLOCKS=0` reads the subnet immunity period from
   chain. `CLAIMS_MINER_IMMUNITY_PRIORITY_BLOCKS=7200` prioritizes under-vetted
   UIDs during approximately their final 24 immunity hours.
+- `CLAIMS_MINER_ZERO_SCORE_COOLDOWN_BLOCKS=7200` removes a miner from adaptive
+  selection for approximately 24 hours after its latest evaluation scores zero.
+  Set it to `0` only to disable this penalty.
+- `CLAIMS_MINER_IPV4_PROXIMITY_ADDRESSES=1024` allows at most one Axon in a
+  sliding 1,024-address IPv4 neighborhood. Set it to `0` for exact-IP matching.
+  `CLAIMS_MINER_IPV6_PREFIX_BITS=64` allows at most one Axon per IPv6 `/64`.
+  Selected-run metadata records excluded and conflicting UIDs, hotkeys,
+  coldkeys, IPs, and proximity details for auditing.
 - Adaptive candidates must be registered, expose a serving Axon, and not be the
   validator's own hotkey. Assigned miners are never substituted after selection.
   Missing, invalid, offline, and timed-out miners remain in the batch and score
@@ -180,6 +197,59 @@ testnet example models are a recommended mainnet ensemble.
   canonical-audit model envs configure the remaining file-workspace roles.
 - `CLAIMS_MODEL_PRICING_JSON='{"model":{"input":1,"output":2}}'` supplies
   optional USD-per-million-token rates when a CLI reports tokens without cost.
+
+#### Chutes Provider
+
+Hermes stages can use Chutes without a separate validator runtime because
+Chutes exposes an OpenAI-compatible API:
+
+```env
+CHUTES_API_KEY=...
+CHUTES_API_BASE=https://llm.chutes.ai/v1
+HERMES_PROVIDER=chutes
+HERMES_MODEL=<CHUTES_MODEL_ID>
+HERMES_BASE_URL=https://llm.chutes.ai/v1
+CLAIMS_RIGOR_PROVIDER=chutes
+CLAIMS_REFERENCE_MINER_PROVIDER=chutes
+CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER=chutes
+CLAIMS_SILVER_FILE_AGENT_PROVIDER=chutes
+```
+
+Use model IDs from the Chutes catalog rather than OpenRouter aliases. The
+installer and container entrypoint persist only the Chutes endpoint and the
+name of the key environment variable in Hermes configuration; the secret stays
+in the validator `.env`. Models used by Hermes file agents must support tool
+calling and the required context and output limits.
+
+For the native DSPy rigor runtime, use the same catalog model ID and set:
+
+```env
+CLAIMS_RIGOR_HARNESS=dspy-react
+CLAIMS_RIGOR_PROVIDER=chutes
+CLAIMS_RIGOR_MODEL=<CHUTES_MODEL_ID>
+CLAIMS_RIGOR_API_BASE=https://llm.chutes.ai/v1
+CLAIMS_RIGOR_API_KEY_ENV=CHUTES_API_KEY
+```
+
+DSPy Silver adjudication uses its stage-specific endpoint and key variables:
+
+```env
+CLAIMS_SILVER_ADJUDICATION_HARNESS=dspy
+CLAIMS_SILVER_ADJUDICATION_API_BASE=https://llm.chutes.ai/v1
+CLAIMS_SILVER_ADJUDICATION_API_KEY_ENV=CHUTES_API_KEY
+```
+
+The runtime automatically adds DSPy/LiteLLM's OpenAI-compatible routing prefix
+to the Chutes catalog model ID. Do not change the model ID merely because DSPy
+is selected.
+
+Direct OpenAI-compatible stages are configured separately. To run importance
+scoring through Chutes, set
+`CLAIMS_SILVER_IMPORTANCE_API_BASE=https://llm.chutes.ai/v1` and
+`CLAIMS_SILVER_IMPORTANCE_API_KEY_ENV=CHUTES_API_KEY`. Pairing embeddings can
+use `CLAIMS_SILVER_PAIRING_EMBEDDING_API_BASE` and
+`CLAIMS_SILVER_PAIRING_EMBEDDING_API_KEY_ENV` when the selected Chutes model
+exposes an embeddings endpoint.
 
 ### Diagnostics And Capacity
 

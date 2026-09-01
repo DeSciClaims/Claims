@@ -137,6 +137,8 @@ cp validator/agent_v1/validator.testnet.env.example .env
 
 They configure Hermes non-interactively from `HERMES_PROVIDER`, `HERMES_MODEL`,
 and `HERMES_BASE_URL` in that role's `.env`; provider credentials remain in `.env`.
+Chutes is supported as a named OpenAI-compatible provider; see
+[Chutes provider configuration](./validator/agent_v1/README.md#chutes-provider).
 Hermes is the only external CLI harness installed automatically. Install and
 authenticate Codex CLI or Claude CLI separately before selecting either one;
 the native DSPy and LangChain harnesses are included with the Python dependencies.
@@ -410,11 +412,15 @@ Primary arguments:
   adaptive --claims.miner-sample-size 15`. The sample size is configurable;
   adaptive selection divides it 40/40/20 across qualification, performance,
   and rotation (`10` gives `4/4/2`, `15` gives `6/6/3`, and `20` gives `8/8/4`).
-  The performance lane starts after a miner has one completed evaluation and is
-  weighted by `0.10 + mean(last three scores)`.
-  Adaptive draws allow at most one UID per coldkey and one UID per Axon IP. If
-  the eligible pool lacks enough distinct identities, the batch has fewer miners
-  rather than relaxing either cap.
+  The performance lane requires a positive latest evaluation and is weighted
+  by `0.10 + mean(last three scores)`. A miner whose latest score is zero is
+  excluded from performance and ranks behind miners not yet evaluated.
+  A latest score of zero excludes the miner from every lane for
+  `CLAIMS_MINER_ZERO_SCORE_COOLDOWN_BLOCKS` (default `7200`, about 24 hours).
+  Adaptive draws allow at most one UID per coldkey and reject Axons within
+  `CLAIMS_MINER_IPV4_PROXIMITY_ADDRESSES` (default `1024`) IPv4 addresses or the
+  same IPv6 `/64`. If the eligible pool lacks enough distinct identities, the
+  batch has fewer miners rather than relaxing these caps.
 - `--claims.audit-method llm`, `--claims.validator-pipeline auto`, and
   `--claims.silver-enable` enable the current diagnostic and Silver scoring path.
 - `--claims.output-dir` stores local run artifacts. `--claims.timeout` is the
