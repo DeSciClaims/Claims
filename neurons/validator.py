@@ -63,6 +63,7 @@ from .backend_client import BackendClientError, ClaimsBackendClient
 from .harness_profiles import SUPPORTED_HARNESSES, quote_command, resolve_agent_harness
 from .memory_monitor import ValidatorMemorySampler
 from .miner_selection import ALGORITHM_VERSION as MINER_SELECTION_VERSION
+from .miner_selection import BUCKET_ALGORITHM_VERSION
 from .miner_selection import registration_block_for_neuron
 from .miner_selection import select_miners
 from .model_usage_upload import (
@@ -169,6 +170,12 @@ class ClaimsValidator:
         self._active_silver_batch_outcome: dict[str, Any] = {}
         self._active_weight_event: dict[str, Any] = {}
         self._active_miner_selection: dict[str, Any] = {}
+        self._force_new_canonical_batch_pending = bool(
+            getattr(self.config, "claims_force_new_canonical_batch", False)
+        )
+        self._canonical_batch_override_request_id = (
+            f"override_{uuid.uuid4().hex}" if self._force_new_canonical_batch_pending else ""
+        )
         if self.config.claims_dry_run:
             self.wallet = None
             self.subtensor = None
@@ -312,6 +319,17 @@ class ClaimsValidator:
             help="Allow backend batch selection to reuse papers already assigned to prior batches. Intended for smoke tests.",
         )
         parser.add_argument(
+            "--claims.force-new-canonical-batch",
+            dest="claims_force_new_canonical_batch",
+            action="store_true",
+            default=_env_flag("CLAIMS_FORCE_NEW_CANONICAL_BATCH"),
+            help=(
+                "Ask the backend to create a canonical successor before the current batch expires. "
+                "The signed hotkey must be explicitly authorized by the backend; this applies only "
+                "to the first successful batch selection after startup."
+            ),
+        )
+        parser.add_argument(
             "--claims.target-uid",
             dest="claims_target_uids",
             action="append",
@@ -322,9 +340,9 @@ class ClaimsValidator:
         parser.add_argument(
             "--claims.miner-selection-mode",
             dest="claims_miner_selection_mode",
-            choices=("all", "adaptive"),
+            choices=("all", "adaptive", "bucket"),
             default=os.getenv("CLAIMS_MINER_SELECTION_MODE", "all"),
-            help="Select all eligible miners or the adaptive UID V0 qualification/performance/rotation sample.",
+            help="Select all miners, adaptive UID V0 lanes, or the FIFO newcomer bucket policy.",
         )
         parser.add_argument(
             "--claims.miner-sample-size",
@@ -371,6 +389,20 @@ class ClaimsValidator:
             type=int,
             default=max(0, min(128, int(os.getenv("CLAIMS_MINER_IPV6_PREFIX_BITS", "64")))),
             help="Allow at most one selected Axon per IPv6 prefix of this length.",
+        )
+        parser.add_argument(
+            "--claims.bucket-max-newcomers-per-batch",
+            dest="claims_bucket_max_newcomers_per_batch",
+            type=int,
+            default=max(1, int(os.getenv("CLAIMS_BUCKET_MAX_NEWCOMERS_PER_BATCH", "5"))),
+            help="Maximum unevaluated coldkeys selected before performance and rotation in bucket mode.",
+        )
+        parser.add_argument(
+            "--claims.bucket-registration-price-tao",
+            dest="claims_bucket_registration_price_tao",
+            type=float,
+            default=max(0.0, float(os.getenv("CLAIMS_BUCKET_REGISTRATION_PRICE_TAO", "0"))),
+            help="Fallback miner registration price in TAO when NeuronBurnCost cannot be read on-chain.",
         )
         parser.add_argument(
             "--claims.audit-method",
@@ -770,7 +802,7 @@ class ClaimsValidator:
         parser.add_argument(
             "--claims.payout-mode",
             dest="claims_payout_mode",
-            choices=("winner-takes-most", "proportional"),
+            choices=("winner-takes-most", "proportional", "bucket"),
             default=os.getenv("CLAIMS_PAYOUT_MODE", "winner-takes-most"),
             help="Convert final Silver batch scores into validator weights.",
         )
@@ -840,6 +872,7 @@ class ClaimsValidator:
         config.claims_paper_ids = parsed_args.claims_paper_ids
         config.claims_batch_score_rule = parsed_args.claims_batch_score_rule
         config.claims_allow_paper_reuse = parsed_args.claims_allow_paper_reuse
+        config.claims_force_new_canonical_batch = parsed_args.claims_force_new_canonical_batch
         config.claims_target_uids = parsed_args.claims_target_uids
         config.claims_miner_selection_mode = parsed_args.claims_miner_selection_mode
         config.claims_miner_sample_size = parsed_args.claims_miner_sample_size
@@ -848,6 +881,8 @@ class ClaimsValidator:
         config.claims_miner_zero_score_cooldown_blocks = parsed_args.claims_miner_zero_score_cooldown_blocks
         config.claims_miner_ipv4_proximity_addresses = parsed_args.claims_miner_ipv4_proximity_addresses
         config.claims_miner_ipv6_prefix_bits = parsed_args.claims_miner_ipv6_prefix_bits
+        config.claims_bucket_max_newcomers_per_batch = parsed_args.claims_bucket_max_newcomers_per_batch
+        config.claims_bucket_registration_price_tao = parsed_args.claims_bucket_registration_price_tao
         config.claims_audit_method = parsed_args.claims_audit_method
         config.claims_agent_v1_validation_mode = parsed_args.claims_agent_v1_validation_mode
         config.claims_validator_pipeline = parsed_args.claims_validator_pipeline
@@ -979,6 +1014,7 @@ class ClaimsValidator:
         immunity_period_blocks = self._miner_immunity_period_blocks()
         registration_blocks = _metagraph_registration_blocks(self.metagraph, neurons)
         target_uids = set(getattr(self.config, "claims_target_uids", []) or [])
+        selection_policy: dict[str, Any] = {}
         if target_uids:
             neurons = [neuron for neuron in neurons if int(getattr(neuron, "uid", -1)) in target_uids]
             missing_uids = sorted(target_uids.difference({int(neuron.uid) for neuron in neurons}))
@@ -1000,7 +1036,7 @@ class ClaimsValidator:
         else:
             mode = str(getattr(self.config, "claims_miner_selection_mode", "all") or "all")
             history: list[dict[str, Any]] = []
-            if mode == "adaptive" and self.backend_client is not None:
+            if mode in {"adaptive", "bucket"} and self.backend_client is not None:
                 try:
                     history = self.backend_client.sync_miner_selection_state(
                         netuid=int(self.config.netuid),
@@ -1009,13 +1045,23 @@ class ClaimsValidator:
                             {
                                 "uid": int(neuron.uid),
                                 "hotkey": str(getattr(neuron, "hotkey", "") or ""),
+                                "coldkey": str(getattr(neuron, "coldkey", "") or "").strip() or None,
                                 "registration_block": registration_blocks[int(neuron.uid)],
                             }
                             for neuron in neurons
                         ],
                     )
                 except (BackendClientError, ValueError) as exc:
+                    if mode == "bucket":
+                        raise RuntimeError(
+                            "Bucket miner selection requires backend evaluation history; "
+                            f"state sync failed: {exc}"
+                        ) from exc
                     self.bt_logging.warning(f"Could not sync UID miner selection state; using new candidates: {exc}")
+            if mode == "bucket":
+                if self.backend_client is None or not batch_id:
+                    raise RuntimeError("Bucket miner selection requires a canonical backend batch.")
+                selection_policy = {"version": BUCKET_ALGORITHM_VERSION}
             seed = selection_seed or f"startup:{_metagraph_block(self.metagraph)}"
             selection_diagnostics: list[dict[str, Any]] = []
             selected = select_miners(
@@ -1041,6 +1087,9 @@ class ClaimsValidator:
                 registration_blocks=registration_blocks,
                 recent_registration_block=recent_registration_block,
                 selection_diagnostics=selection_diagnostics,
+                bucket_max_newcomers_per_batch=int(
+                    getattr(self.config, "claims_bucket_max_newcomers_per_batch", 5) or 5
+                ),
             )
             requested_sample_size = int(getattr(self.config, "claims_miner_sample_size", 15) or 15)
             if mode == "adaptive" and len(selected) < min(requested_sample_size, len(neurons)):
@@ -1051,6 +1100,15 @@ class ClaimsValidator:
                 )
             neurons = [item.neuron for item in selected]
             assignments = [item.assignment() for item in selected]
+            if mode == "bucket":
+                newcomer_count = sum(item.lane == "qualification" for item in selected)
+                selection_policy = {
+                    **selection_policy,
+                    "newcomer_count": newcomer_count,
+                    "max_newcomers_per_batch": int(
+                        getattr(self.config, "claims_bucket_max_newcomers_per_batch", 5) or 5
+                    ),
+                }
             if mode == "adaptive" and self.backend_client is not None and batch_id:
                 try:
                     self.backend_client.record_miner_selections(
@@ -1071,7 +1129,11 @@ class ClaimsValidator:
 
         self._active_miner_selection = {
             "schema": "claims_uid_miner_selection_v0",
-            "algorithm": MINER_SELECTION_VERSION if mode == "adaptive" else mode,
+            "algorithm": (
+                MINER_SELECTION_VERSION
+                if mode == "adaptive"
+                else BUCKET_ALGORITHM_VERSION if mode == "bucket" else mode
+            ),
             "mode": mode,
             "seed": selection_seed,
             "metagraph_block": current_block,
@@ -1091,7 +1153,8 @@ class ClaimsValidator:
             "candidate_count": eligible_candidate_count,
             "selected_count": len(neurons),
             "assignments": assignments,
-            "exclusions": selection_diagnostics if mode == "adaptive" else [],
+            "selection_policy": selection_policy if mode == "bucket" else {},
+            "exclusions": selection_diagnostics if mode in {"adaptive", "bucket"} else [],
         }
         self.bt_logging.info(f"Discovered target miner UIDs: {[int(neuron.uid) for neuron in neurons]}")
         return neurons
@@ -1121,22 +1184,24 @@ class ClaimsValidator:
                     "CLAIMS_TARGET_UIDS does not match the canonical batch miner assignment; "
                     "disable canonical windows on the backend for an isolated override run."
                 )
-            self._record_canonical_selection_state(
-                batch_id=task.batch_id,
-                selected_block=task.metagraph_block,
-                assignments=list(task.target_miners),
-            )
+            if task.miner_selection_algorithm != BUCKET_ALGORITHM_VERSION:
+                self._record_canonical_selection_state(
+                    batch_id=task.batch_id,
+                    selected_block=task.metagraph_block,
+                    assignments=list(task.target_miners),
+                )
             return self._resolve_canonical_target_neurons(
                 list(task.target_miners),
                 selection_seed=task.selection_seed,
                 selected_block=task.metagraph_block,
                 algorithm=task.miner_selection_algorithm,
                 recent_registration_block=recent_registration_block,
+                selection_policy=dict(task.miner_selection_policy or {}),
             )
 
         proposed = self._load_target_neurons(
             selection_seed=task.selection_seed or fallback_seed,
-            batch_id=None,
+            batch_id=task.batch_id,
             recent_registration_block=recent_registration_block,
         )
         proposal = dict(self._active_miner_selection)
@@ -1150,6 +1215,12 @@ class ClaimsValidator:
                 selected_block=int(proposal.get("metagraph_block") or self._current_chain_block()),
                 selection_algorithm=str(proposal.get("algorithm") or "unknown"),
                 target_miners=assignments,
+                selection_policy=dict(proposal.get("selection_policy") or {}),
+                registration_price_tao=(
+                    self._miner_registration_price_tao()
+                    if str(proposal.get("algorithm") or "") == BUCKET_ALGORITHM_VERSION
+                    else None
+                ),
             )
         except (BackendClientError, ValueError) as exc:
             raise RuntimeError(f"Could not claim canonical miner assignment for {task.batch_id}: {exc}") from exc
@@ -1160,11 +1231,15 @@ class ClaimsValidator:
             f"Canonical miner assignment batch={task.batch_id} "
             f"created={bool(claimed.get('created'))} uids={[int(item['uid']) for item in canonical]}"
         )
-        self._record_canonical_selection_state(
-            batch_id=task.batch_id,
-            selected_block=claimed.get("metagraph_block"),
-            assignments=canonical,
+        claimed_algorithm = str(
+            claimed.get("miner_selection_algorithm") or claimed.get("selection_algorithm") or ""
         )
+        if claimed_algorithm != BUCKET_ALGORITHM_VERSION:
+            self._record_canonical_selection_state(
+                batch_id=task.batch_id,
+                selected_block=claimed.get("metagraph_block"),
+                assignments=canonical,
+            )
         proposal_identities = {
             (int(item.get("uid", -1)), str(item.get("hotkey") or ""))
             for item in assignments
@@ -1180,6 +1255,7 @@ class ClaimsValidator:
             algorithm=str(claimed.get("miner_selection_algorithm") or claimed.get("selection_algorithm") or ""),
             recent_registration_block=recent_registration_block,
             selection_context=proposal if proposal_identities == canonical_identities else None,
+            selection_policy=dict(claimed.get("miner_selection_policy") or {}),
         )
 
     def _record_canonical_selection_state(
@@ -1217,6 +1293,7 @@ class ClaimsValidator:
         algorithm: str,
         recent_registration_block: int = 0,
         selection_context: dict[str, Any] | None = None,
+        selection_policy: dict[str, Any] | None = None,
     ) -> list[Any]:
         self._sync_metagraph()
         candidates = list(getattr(self.metagraph, "neurons", []) or [])
@@ -1284,6 +1361,7 @@ class ClaimsValidator:
             "unavailable": {str(uid): reason for uid, reason in unavailable.items()},
             "selected_count": len(selected),
             "assignments": assignments,
+            "selection_policy": dict(selection_policy or (selection_context or {}).get("selection_policy") or {}),
             "exclusions": list((selection_context or {}).get("exclusions") or []),
         }
         self.bt_logging.info(f"Using canonical target miner UIDs: {[int(neuron.uid) for neuron in selected]}")
@@ -1313,6 +1391,28 @@ class ClaimsValidator:
         except Exception as exc:
             self.bt_logging.warning(f"Could not read subnet immunity period; using 21600 blocks: {exc}")
         return 21_600
+
+    def _miner_registration_price_tao(self) -> float | None:
+        configured = float(getattr(self.config, "claims_bucket_registration_price_tao", 0.0) or 0.0)
+        try:
+            value = self.subtensor.get_hyperparameter(
+                param_name="NeuronBurnCost",
+                netuid=int(self.config.netuid),
+            )
+            if hasattr(value, "tao"):
+                price = float(value.tao)
+            else:
+                price = float(value)
+                if price >= 1_000_000:
+                    price /= 1_000_000_000
+            if price >= 0.0:
+                return price
+        except Exception as exc:
+            self.bt_logging.warning(
+                "Could not read NeuronBurnCost for bucket payout; "
+                f"using configured fallback={configured or 'none'}: {exc}"
+            )
+        return configured if configured > 0.0 else None
 
     def _sync_metagraph(self) -> None:
         try:
@@ -1577,8 +1677,27 @@ class ClaimsValidator:
             "batch_size": int(getattr(self.config, "claims_batch_size", 1)),
             "allow_reuse": bool(getattr(self.config, "claims_allow_paper_reuse", False)),
         }
+        force_new = bool(getattr(self, "_force_new_canonical_batch_pending", False))
+        if force_new:
+            override_request_id = str(
+                getattr(self, "_canonical_batch_override_request_id", "") or ""
+            ).strip()
+            if not override_request_id:
+                override_request_id = f"override_{uuid.uuid4().hex}"
+                self._canonical_batch_override_request_id = override_request_id
+            payload.update(
+                {
+                    "force_new_canonical_batch": True,
+                    "override_request_id": override_request_id,
+                }
+            )
         self.bt_logging.info(f"Selecting backend batch: {payload}")
         selected = self.backend_client.select_batch(payload)
+        if force_new:
+            self._force_new_canonical_batch_pending = False
+            self.bt_logging.info(
+                "Canonical batch successor override accepted; subsequent cycles will use normal assignment policy."
+            )
         task = ClaimsTask.from_dict(
             {
                 **selected,
@@ -1702,7 +1821,7 @@ class ClaimsValidator:
         ]
         assignments = {
             int(item.get("uid")): item
-            for item in list((self._active_miner_selection or {}).get("assignments") or [])
+            for item in list((getattr(self, "_active_miner_selection", {}) or {}).get("assignments") or [])
             if isinstance(item, dict) and item.get("uid") is not None
         }
         artifact_rows = self.backend_client.list_miner_artifacts(batch_id=task.batch_id)
@@ -2722,16 +2841,32 @@ class ClaimsValidator:
 
         failed_paper_ids = [str(item["paper_id"]) for item in validator_failed_papers]
         batch_id = task.batch_id or task.task_id
+        selection_assignments = [
+            item
+            for item in list((getattr(self, "_active_miner_selection", {}) or {}).get("assignments") or [])
+            if isinstance(item, dict)
+        ]
+        selection_policy = dict(
+            (getattr(self, "_active_miner_selection", {}) or {}).get("selection_policy") or {}
+        )
+        configured_payout_mode = str(getattr(self.config, "claims_payout_mode", "winner-takes-most"))
+        payout_mode = "bucket" if selection_policy.get("version") == BUCKET_ALGORITHM_VERSION else configured_payout_mode
         batch_result = score_batch(
             batch_id=batch_id,
             paper_scores=silver_score_breakdowns,
             expected_paper_ids=expected_paper_ids,
             eligible_paper_ids=eligible_paper_ids,
             validator_failed_paper_ids=failed_paper_ids,
-            payout_mode=str(getattr(self.config, "claims_payout_mode", "winner-takes-most")),
+            payout_mode=payout_mode,
             winner_share=float(getattr(self.config, "claims_payout_winner_share", 0.70)),
             runner_up_slots=int(getattr(self.config, "claims_payout_runner_up_slots", 4)),
             runner_up_decay=float(getattr(self.config, "claims_payout_runner_up_decay", 0.5)),
+            selection_lanes={
+                f"uid_{int(item['uid'])}": str(item.get("selection_lane") or "")
+                for item in selection_assignments
+                if item.get("uid") is not None
+            },
+            selection_policy=selection_policy,
         )
         batch_payload = batch_result.model_dump(mode="json")
         batch_payload["validator_failed_papers"] = validator_failed_papers
@@ -4056,6 +4191,7 @@ class ClaimsValidator:
             {
                 "uid": int(item["uid"]),
                 "hotkey": str(item.get("hotkey") or ""),
+                "coldkey": str(item.get("coldkey") or "") or None,
                 "registration_block": int(item.get("registration_block") or 0),
                 "score": max(0.0, min(1.0, float(scores.get(int(item["uid"]), 0.0)))),
             }
@@ -4767,6 +4903,10 @@ class ClaimsValidator:
                     "rank": item.get("rank"),
                     "winner": bool(item.get("winner", False)),
                     "payout_weight": float(item.get("payout_weight", 0.0) or 0.0),
+                    "selection_lane": item.get("selection_lane"),
+                    "newcomer": bool(item.get("newcomer", False)),
+                    "overall_payout_weight": float(item.get("overall_payout_weight", 0.0) or 0.0),
+                    "newcomer_bonus_weight": float(item.get("newcomer_bonus_weight", 0.0) or 0.0),
                     "expected_paper_count": int(item.get("expected_paper_count", 0) or 0),
                     "eligible_paper_count": int(item.get("eligible_paper_count", 0) or 0),
                     "submitted_paper_count": int(item.get("submitted_paper_count", 0) or 0),
@@ -4827,8 +4967,12 @@ class ClaimsValidator:
             self.bt_logging.warning("All target miner scores are zero; skipping set_weights.")
             return {"status": "all_zero", "weights": [], "calculated": False, "submitted": False}
         uids = sorted(scores)
-        payout_mode = str(getattr(self.config, "claims_payout_mode", "winner-takes-most") or "winner-takes-most")
         batch_outcome = dict(getattr(self, "_active_silver_batch_outcome", {}) or {})
+        payout_mode = str(
+            dict(batch_outcome.get("payout_policy") or {}).get("mode")
+            or getattr(self.config, "claims_payout_mode", "winner-takes-most")
+            or "winner-takes-most"
+        ).replace("_", "-")
         batch_weights = {
             _uid_from_miner_id(str(item.get("miner_id") or "")): float(item.get("payout_weight", 0.0) or 0.0)
             for item in list(batch_outcome.get("miners") or [])
@@ -5857,6 +6001,9 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_batch_size": int(getattr(config, "claims_batch_size", 1) or 1),
         "claims_batch_score_rule": str(getattr(config, "claims_batch_score_rule", "mean") or "mean"),
         "claims_allow_paper_reuse": bool(getattr(config, "claims_allow_paper_reuse", False)),
+        "claims_force_new_canonical_batch": bool(
+            getattr(config, "claims_force_new_canonical_batch", False)
+        ),
         "claims_miner_selection_mode": str(getattr(config, "claims_miner_selection_mode", "all") or "all"),
         "claims_miner_sample_size": int(getattr(config, "claims_miner_sample_size", 15) or 15),
         "claims_miner_immunity_period_blocks": int(
@@ -5872,6 +6019,12 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
             getattr(config, "claims_miner_ipv4_proximity_addresses", 1_024) or 0
         ),
         "claims_miner_ipv6_prefix_bits": int(getattr(config, "claims_miner_ipv6_prefix_bits", 64)),
+        "claims_bucket_max_newcomers_per_batch": int(
+            getattr(config, "claims_bucket_max_newcomers_per_batch", 5) or 5
+        ),
+        "claims_bucket_registration_price_tao": float(
+            getattr(config, "claims_bucket_registration_price_tao", 0.0) or 0.0
+        ),
         "claims_timeout": float(getattr(config, "claims_timeout", 0.0)),
         "claims_query_interval": float(getattr(config, "claims_query_interval", 0.0)),
         "claims_output_retention_runs": int(

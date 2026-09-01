@@ -71,6 +71,8 @@ class ClaimsBackendClient:
         selected_block: int,
         selection_algorithm: str,
         target_miners: list[dict[str, Any]],
+        selection_policy: dict[str, Any] | None = None,
+        registration_price_tao: float | None = None,
     ) -> dict[str, Any]:
         return self.post(
             f"/validator/batches/{quote(batch_id)}/miners",
@@ -80,6 +82,8 @@ class ClaimsBackendClient:
                 "selected_block": int(selected_block),
                 "selection_algorithm": selection_algorithm,
                 "target_miners": target_miners,
+                "selection_policy": selection_policy or {},
+                "registration_price_tao": registration_price_tao,
             },
         )
 

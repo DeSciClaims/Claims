@@ -76,6 +76,7 @@ class ClaimsTask:
     target_miners: tuple[dict[str, Any], ...] = ()
     metagraph_block: int | None = None
     miner_selection_algorithm: str = ""
+    miner_selection_policy: dict[str, Any] | None = None
     papers: tuple[ClaimsPaperTask, ...] = ()
     protocol_version: str = PROTOCOL_VERSION
     schema_version: str = SCHEMA_VERSION
@@ -116,6 +117,11 @@ class ClaimsTask:
             ),
             metagraph_block=int(payload["metagraph_block"]) if payload.get("metagraph_block") is not None else None,
             miner_selection_algorithm=str(payload.get("miner_selection_algorithm") or "").strip(),
+            miner_selection_policy=(
+                dict(payload.get("miner_selection_policy") or {})
+                if isinstance(payload.get("miner_selection_policy"), dict)
+                else {}
+            ),
             papers=papers,
             protocol_version=str(payload.get("protocol_version") or PROTOCOL_VERSION).strip(),
             schema_version=str(payload.get("schema_version") or SCHEMA_VERSION).strip(),

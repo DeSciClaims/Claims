@@ -33,18 +33,142 @@ def _state(
     last_evaluated_block: int | None = None,
     distinct_batch_count: int | None = None,
     hotkey: str | None = None,
+    coldkey_evaluation_count: int = 0,
+    coldkey_qualification_count: int = 0,
 ) -> dict:
     return {
         "uid": uid,
         "hotkey": hotkey or f"hotkey_{uid}",
         "registration_block": registration_block,
         "evaluation_count": count,
+        "coldkey_evaluation_count": coldkey_evaluation_count,
+        "coldkey_qualification_count": coldkey_qualification_count,
         "distinct_batch_count": count if distinct_batch_count is None else distinct_batch_count,
         "recent_scores": scores or [],
         "last_selected_batch": f"batch_{uid}" if last_selected_block is not None else None,
         "last_selected_block": last_selected_block,
         "last_evaluated_block": last_evaluated_block,
     }
+
+
+def test_bucket_policy_selects_fifo_newcomers_and_eight_established_miners() -> None:
+    candidates = [_miner(uid) for uid in range(1, 22)]
+    history = [
+        *[_state(uid, count=0) for uid in range(1, 6)],
+        *[
+            _state(
+                uid,
+                count=2,
+                scores=[uid / 30, uid / 25],
+                last_evaluated_block=uid * 10,
+            )
+            for uid in range(6, 21)
+        ],
+        _state(21, count=0),
+    ]
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="bucket-7",
+        mode="bucket",
+        current_block=2_000,
+    )
+
+    assert len(selected) == 13
+    assert [item.uid for item in selected if item.lane == "qualification"] == [1, 2, 3, 4, 5]
+    performance_uids = [item.uid for item in selected if item.lane == "performance"]
+    repeated = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="bucket-7",
+        mode="bucket",
+        current_block=2_000,
+    )
+    assert len(performance_uids) == 4
+    assert performance_uids == [item.uid for item in repeated if item.lane == "performance"]
+    assert set(performance_uids) != {17, 18, 19, 20}
+    assert sum(item.lane == "rotation" for item in selected) == 4
+    assert 21 not in {item.uid for item in selected}
+
+
+def test_bucket_policy_rejects_newcomer_when_its_coldkey_has_evaluation_history() -> None:
+    candidates = [
+        _miner(1, coldkey="shared_coldkey"),
+        _miner(2, coldkey="shared_coldkey"),
+        *[_miner(uid) for uid in range(3, 14)],
+    ]
+    history = [
+        _state(1, count=0, coldkey_evaluation_count=1),
+        _state(2, count=1, scores=[0.8], last_evaluated_block=100),
+        *[
+            _state(uid, count=1, scores=[0.5], last_evaluated_block=100 + uid)
+            for uid in range(3, 14)
+        ],
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="evaluated-coldkey",
+        mode="bucket",
+        current_block=2_000,
+    )
+
+    assert 1 not in {item.uid for item in selected if item.lane == "qualification"}
+    assert sum(item.coldkey == "shared_coldkey" for item in selected) <= 1
+
+
+def test_bucket_policy_does_not_repeat_a_claimed_newcomer_opportunity() -> None:
+    candidates = [_miner(uid) for uid in range(1, 12)]
+    history = [
+        _state(1, count=0, coldkey_qualification_count=1),
+        *[_state(uid, count=0) for uid in range(2, 7)],
+        *[
+            _state(uid, count=1, scores=[0.5], last_evaluated_block=100 + uid)
+            for uid in range(7, 12)
+        ],
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="claimed-newcomer",
+        mode="bucket",
+        current_block=2_000,
+    )
+
+    assert 1 not in {item.uid for item in selected if item.lane == "qualification"}
+    assert [item.uid for item in selected if item.lane == "qualification"] == [2, 3, 4, 5, 6]
+
+
+def test_bucket_policy_uses_earliest_hotkey_for_each_unevaluated_coldkey() -> None:
+    candidates = [
+        _miner(1, registration_block=200, coldkey="shared_coldkey"),
+        _miner(2, registration_block=100, coldkey="shared_coldkey"),
+        *[_miner(uid, registration_block=100 + uid) for uid in range(3, 16)],
+    ]
+    history = [
+        _state(uid, count=0 if uid <= 7 else 1, scores=[] if uid <= 7 else [0.5])
+        for uid in range(1, 16)
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="coldkey-representative",
+        mode="bucket",
+        current_block=2_000,
+    )
+
+    newcomers = [item.uid for item in selected if item.lane == "qualification"]
+    assert 2 in newcomers
+    assert 1 not in newcomers
+    assert len(newcomers) == 5
 
 
 def test_uid_v0_selection_uses_exact_six_six_three_lanes() -> None:
@@ -627,8 +751,8 @@ def test_completed_scores_record_every_selected_uid_including_zero(mode: str) ->
     validator._active_miner_selection = {
         "mode": mode,
         "assignments": [
-            {"uid": 7, "hotkey": "hotkey_7", "registration_block": 100},
-            {"uid": 8, "hotkey": "hotkey_8", "registration_block": 200},
+            {"uid": 7, "hotkey": "hotkey_7", "coldkey": "coldkey_7", "registration_block": 100},
+            {"uid": 8, "hotkey": "hotkey_8", "coldkey": "coldkey_8", "registration_block": 200},
         ],
     }
 
@@ -643,8 +767,20 @@ def test_completed_scores_record_every_selected_uid_including_zero(mode: str) ->
             "batch_id": "batch_1",
             "evaluated_block": 50_000,
             "evaluations": [
-                {"uid": 7, "hotkey": "hotkey_7", "registration_block": 100, "score": 0.75},
-                {"uid": 8, "hotkey": "hotkey_8", "registration_block": 200, "score": 0.0},
+                {
+                    "uid": 7,
+                    "hotkey": "hotkey_7",
+                    "coldkey": "coldkey_7",
+                    "registration_block": 100,
+                    "score": 0.75,
+                },
+                {
+                    "uid": 8,
+                    "hotkey": "hotkey_8",
+                    "coldkey": "coldkey_8",
+                    "registration_block": 200,
+                    "score": 0.0,
+                },
             ],
         }
     ]
@@ -694,7 +830,7 @@ def test_task_selection_claims_one_canonical_miner_assignment() -> None:
 
     def propose(*, selection_seed, batch_id, recent_registration_block):
         assert selection_seed == "canonical-seed"
-        assert batch_id is None
+        assert batch_id == "batch_1"
         assert recent_registration_block == 900
         validator._active_miner_selection = {
             "algorithm": "uid_v0",

@@ -7,6 +7,7 @@ from typing import Any
 
 
 ALGORITHM_VERSION = "uid_v0_hotkey_history_diverse_v6"
+BUCKET_ALGORITHM_VERSION = "bucket_fifo_v1"
 VETTED_EVALUATION_COUNT = 3
 PERFORMANCE_EVALUATION_COUNT = 1
 _LANE_WEIGHTS = (2, 2, 1)
@@ -23,6 +24,8 @@ class MinerSelection:
     registration_block: int
     immunity_expiry_block: int
     evaluation_count: int
+    coldkey_evaluation_count: int
+    coldkey_qualification_count: int
     distinct_batch_count: int
     recent_scores: tuple[float, ...]
     performance_score: float
@@ -43,6 +46,8 @@ class MinerSelection:
             "registration_block": self.registration_block,
             "immunity_expiry_block": self.immunity_expiry_block,
             "evaluation_count": self.evaluation_count,
+            "coldkey_evaluation_count": self.coldkey_evaluation_count,
+            "coldkey_qualification_count": self.coldkey_qualification_count,
             "distinct_batch_count": self.distinct_batch_count,
             "recent_scores": list(self.recent_scores),
             "performance_score": round(self.performance_score, 6),
@@ -74,6 +79,7 @@ def select_miners(
     registration_blocks: dict[int, int] | None = None,
     recent_registration_block: int = 0,
     selection_diagnostics: list[dict[str, Any]] | None = None,
+    bucket_max_newcomers_per_batch: int = 5,
 ) -> list[MinerSelection]:
     miners = [
         _candidate(
@@ -93,6 +99,16 @@ def select_miners(
     requested = max(1, int(sample_size))
     if mode == "all":
         return [_with_lane(item, "all") for item in miners]
+    if mode == "bucket":
+        return _select_bucket_miners(
+            miners,
+            max_newcomers_per_batch=bucket_max_newcomers_per_batch,
+            seed=seed,
+            current_block=current_block,
+            zero_score_cooldown_blocks=zero_score_cooldown_blocks,
+            recent_registration_block=recent_registration_block,
+            selection_diagnostics=selection_diagnostics,
+        )
 
     qualification_slots, performance_slots, rotation_slots = selection_lane_slots(requested)
     performance_target = qualification_slots + performance_slots
@@ -252,6 +268,8 @@ def _candidate(
         registration_block=registration_block,
         immunity_expiry_block=registration_block + immunity_period_blocks,
         evaluation_count=count,
+        coldkey_evaluation_count=max(0, _uid(history.get("coldkey_evaluation_count"))),
+        coldkey_qualification_count=max(0, _uid(history.get("coldkey_qualification_count"))),
         distinct_batch_count=distinct_batch_count,
         recent_scores=scores,
         performance_score=performance_score,
@@ -262,6 +280,105 @@ def _candidate(
         ipv4_proximity_addresses=ipv4_proximity_addresses,
         ipv6_prefix_bits=ipv6_prefix_bits,
     )
+
+
+def _select_bucket_miners(
+    miners: list[MinerSelection],
+    *,
+    max_newcomers_per_batch: int,
+    seed: str,
+    current_block: int,
+    zero_score_cooldown_blocks: int,
+    recent_registration_block: int,
+    selection_diagnostics: list[dict[str, Any]] | None,
+) -> list[MinerSelection]:
+    selected: list[MinerSelection] = []
+    available = [
+        item
+        for item in miners
+        if not _zero_score_cooldown_active(
+            item,
+            current_block=current_block,
+            cooldown_blocks=zero_score_cooldown_blocks,
+        )
+    ]
+    evaluated_coldkeys = {
+        _normalized_identity(item.coldkey)
+        for item in available
+        if (
+            item.evaluation_count >= 1
+            or item.coldkey_evaluation_count >= 1
+            or item.coldkey_qualification_count >= 1
+        )
+        and _normalized_identity(item.coldkey)
+    }
+
+    representatives: dict[str, MinerSelection] = {}
+    for item in sorted(available, key=lambda candidate: (candidate.registration_block, candidate.uid, candidate.hotkey)):
+        coldkey = _normalized_identity(item.coldkey)
+        if (
+            not coldkey
+            or coldkey in evaluated_coldkeys
+            or item.evaluation_count > 0
+            or item.coldkey_evaluation_count > 0
+            or item.coldkey_qualification_count > 0
+            or coldkey in representatives
+        ):
+            continue
+        representatives[coldkey] = item
+
+    newcomers = sorted(
+        representatives.values(),
+        key=lambda item: (item.registration_block, item.uid, item.hotkey),
+    )
+    for newcomer in newcomers:
+        if len(selected) >= max(1, int(max_newcomers_per_batch)):
+            break
+        if newcomer not in available or _diversity_conflict(newcomer, selected):
+            continue
+        selected.append(_with_lane(newcomer, "qualification"))
+        available.remove(newcomer)
+    selected_newcomer_count = sum(item.lane == "qualification" for item in selected)
+
+    rng = random.Random(seed)
+    established = [item for item in available if item.evaluation_count >= 1]
+    performance = _weighted_sample_without_replacement(
+        [item for item in established if _latest_score_positive(item)],
+        4,
+        rng,
+        already_selected=selected,
+    )
+    _take(selected, available, performance, lane="performance")
+
+    rotation_target = len(selected) + 4
+    rotation = sorted(
+        (item for item in available if item.evaluation_count >= 1),
+        key=lambda item: (_oldest_first(item.last_evaluated_block), item.uid),
+    )
+    _take_until(selected, available, rotation, target_total=rotation_target, lane="rotation")
+
+    desired_total = max(10, 8 + selected_newcomer_count)
+    established_fill = sorted(
+        (item for item in available if item.evaluation_count >= 1),
+        key=lambda item: _fallback_order(item, recent_registration_block=recent_registration_block),
+    )
+    _take_until(
+        selected,
+        available,
+        established_fill,
+        target_total=desired_total,
+        lane="established-fill",
+    )
+
+    if selection_diagnostics is not None:
+        _record_selection_diagnostics(
+            selection_diagnostics,
+            miners=miners,
+            selected=selected,
+            current_block=current_block,
+            zero_score_cooldown_blocks=zero_score_cooldown_blocks,
+        )
+    return selected
 
 
 def _weighted_sample_without_replacement(

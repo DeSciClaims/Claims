@@ -2767,6 +2767,54 @@ def test_winner_takes_most_renormalizes_runner_pool_and_splits_ties() -> None:
     assert tied_winners == pytest.approx({"miner_A": 0.45, "miner_B": 0.45, "miner_C": 0.10})
 
 
+def test_bucket_payout_stacks_newcomer_bonus_on_overall_rank_weight() -> None:
+    result = score_batch(
+        batch_id="batch",
+        paper_scores=[
+            _score_breakdown("miner_A", "paper", 0.9),
+            _score_breakdown("miner_B", "paper", 0.8),
+            _score_breakdown("miner_C", "paper", 0.7),
+        ],
+        payout_mode="bucket",
+        selection_lanes={
+            "miner_A": "performance",
+            "miner_B": "qualification",
+            "miner_C": "rotation",
+        },
+        selection_policy={
+            "version": "bucket_fifo_v1",
+            "newcomer_share": 0.20,
+            "newcomer_min_score": 0.10,
+        },
+    )
+    miners = {item.miner_id: item for item in result.miners}
+
+    assert miners["miner_A"].overall_payout_weight == pytest.approx(0.56)
+    assert miners["miner_A"].payout_weight == pytest.approx(0.56)
+    assert miners["miner_B"].overall_payout_weight == pytest.approx(0.16)
+    assert miners["miner_B"].newcomer_bonus_weight == pytest.approx(0.20)
+    assert miners["miner_B"].payout_weight == pytest.approx(0.36)
+    assert miners["miner_C"].payout_weight == pytest.approx(0.08)
+    assert sum(item.payout_weight for item in result.miners) == pytest.approx(1.0)
+
+
+def test_bucket_returns_bonus_to_overall_when_no_newcomer_qualifies() -> None:
+    result = score_batch(
+        batch_id="batch",
+        paper_scores=[
+            _score_breakdown("miner_A", "paper", 0.9),
+            _score_breakdown("miner_B", "paper", 0.0),
+        ],
+        payout_mode="bucket",
+        selection_lanes={"miner_A": "performance", "miner_B": "qualification"},
+        selection_policy={"newcomer_share": 0.30, "newcomer_min_score": 0.10},
+    )
+
+    assert result.miners[0].payout_weight == pytest.approx(1.0)
+    assert result.payout_policy["applied_newcomer_share"] == 0.0
+    assert result.payout_policy["newcomer_bonus_returned_to_overall"] is True
+
+
 def test_batch_score_excludes_validator_failed_papers_from_every_miner_denominator() -> None:
     result = score_batch(
         batch_id="batch",

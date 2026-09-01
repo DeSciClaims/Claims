@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from statistics import mean
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +24,10 @@ class MinerBatchScore(BaseModel):
     rank: int | None = None
     winner: bool = False
     payout_weight: float = 0.0
+    selection_lane: str | None = None
+    newcomer: bool = False
+    overall_payout_weight: float = 0.0
+    newcomer_bonus_weight: float = 0.0
     paper_scores: list[SilverScoreBreakdown] = Field(default_factory=list)
 
 
@@ -35,7 +40,7 @@ class BatchScoreResult(BaseModel):
     eligible_paper_ids: list[str] = Field(default_factory=list)
     validator_failed_paper_ids: list[str] = Field(default_factory=list)
     outcome: str = "completed"
-    payout_policy: dict[str, float | int | str] = Field(default_factory=dict)
+    payout_policy: dict[str, Any] = Field(default_factory=dict)
 
 
 def score_batch(
@@ -49,6 +54,8 @@ def score_batch(
     winner_share: float = 0.70,
     runner_up_slots: int = 4,
     runner_up_decay: float = 0.5,
+    selection_lanes: dict[str, str] | None = None,
+    selection_policy: dict[str, Any] | None = None,
 ) -> BatchScoreResult:
     expected_papers = list(dict.fromkeys(expected_paper_ids or []))
     eligible_papers = list(
@@ -91,6 +98,8 @@ def score_batch(
                 median_score=round(float(median_score), 4),
                 min_score=round(min(values), 4) if values else 0.0,
                 batch_score=mean_score,
+                selection_lane=(selection_lanes or {}).get(miner_id),
+                newcomer=(selection_lanes or {}).get(miner_id) == "qualification",
                 paper_scores=scores,
             )
         )
@@ -101,6 +110,7 @@ def score_batch(
             rank = index + 1
         item.rank = rank
 
+    policy_details: dict[str, Any] = {}
     if payout_mode == "proportional":
         total = sum(max(item.batch_score, 0.0) for item in miners)
         payout_weights = {
@@ -113,6 +123,12 @@ def score_batch(
             winner_share=winner_share,
             runner_up_slots=runner_up_slots,
             runner_up_decay=runner_up_decay,
+        )
+    if payout_mode == "bucket":
+        payout_weights, policy_details = bucket_payout_weights(
+            miners,
+            overall_weights=payout_weights,
+            selection_policy=selection_policy or {},
         )
     winner_ids = [
         item.miner_id
@@ -137,8 +153,49 @@ def score_batch(
             "winner_share": winner_share,
             "runner_up_slots": runner_up_slots,
             "runner_up_decay": runner_up_decay,
+            **policy_details,
         },
     )
+
+
+def bucket_payout_weights(
+    miners: list[MinerBatchScore],
+    *,
+    overall_weights: dict[str, float],
+    selection_policy: dict[str, Any],
+) -> tuple[dict[str, float], dict[str, Any]]:
+    configured_share = max(0.0, min(0.40, float(selection_policy.get("newcomer_share") or 0.0)))
+    minimum_score = max(0.0, min(1.0, float(selection_policy.get("newcomer_min_score") or 0.0)))
+    valid_newcomers = [
+        item
+        for item in miners
+        if item.newcomer
+        and item.submitted_paper_count > 0
+        and item.batch_score > minimum_score
+    ]
+    best_newcomer_score = max((item.batch_score for item in valid_newcomers), default=None)
+    newcomer_winners = [
+        item
+        for item in valid_newcomers
+        if best_newcomer_score is not None and item.batch_score == best_newcomer_score
+    ]
+    applied_share = configured_share if newcomer_winners else 0.0
+    overall_share = 1.0 - applied_share
+    bonus_each = applied_share / len(newcomer_winners) if newcomer_winners else 0.0
+    newcomer_ids = {item.miner_id for item in newcomer_winners}
+    final: dict[str, float] = {}
+    for item in miners:
+        item.overall_payout_weight = round(float(overall_weights.get(item.miner_id, 0.0)) * overall_share, 8)
+        item.newcomer_bonus_weight = round(bonus_each if item.miner_id in newcomer_ids else 0.0, 8)
+        final[item.miner_id] = item.overall_payout_weight + item.newcomer_bonus_weight
+    return final, {
+        **selection_policy,
+        "configured_newcomer_share": configured_share,
+        "applied_newcomer_share": applied_share,
+        "applied_overall_share": overall_share,
+        "newcomer_winner_miner_ids": sorted(newcomer_ids),
+        "newcomer_bonus_returned_to_overall": bool(configured_share > 0.0 and not newcomer_winners),
+    }
 
 
 def winner_takes_most_weights(

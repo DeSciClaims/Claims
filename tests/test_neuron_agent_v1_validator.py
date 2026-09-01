@@ -1628,6 +1628,53 @@ def test_validator_backend_client_uses_configured_timeout_and_retries() -> None:
     assert client.retry_backoff_seconds == 0.5
 
 
+def test_force_canonical_batch_override_is_sent_only_once() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_network="mainnet",
+        netuid=111,
+        claims_paper_ids=[],
+        claims_topics=[],
+        claims_task_type="agent_v1_claim_extraction",
+        claims_batch_size=1,
+        claims_allow_paper_reuse=True,
+    )
+    validator._force_new_canonical_batch_pending = True
+    validator._canonical_batch_override_request_id = "override_test_once"
+    validator.bt_logging = SimpleNamespace(info=lambda *_args: None)
+    payloads: list[dict] = []
+
+    def select_batch(payload: dict) -> dict:
+        payloads.append(dict(payload))
+        return {
+            "task_id": "task_forced",
+            "batch_id": "batch_forced",
+            "assignment_key": "assignment_forced",
+            "selection_seed": "assignment_forced",
+            "network": "mainnet",
+            "netuid": 111,
+            "papers": [
+                {
+                    "paper_id": "paper_1",
+                    "source_url": "https://example.test/paper.pdf",
+                    "source_sha256": "sha256",
+                }
+            ],
+        }
+
+    validator.backend_client = SimpleNamespace(select_batch=select_batch)
+
+    first = validator._fetch_backend_task()
+    second = validator._fetch_backend_task()
+
+    assert first.batch_id == second.batch_id == "batch_forced"
+    assert payloads[0]["force_new_canonical_batch"] is True
+    assert payloads[0]["override_request_id"] == "override_test_once"
+    assert "force_new_canonical_batch" not in payloads[1]
+    assert "override_request_id" not in payloads[1]
+    assert validator._force_new_canonical_batch_pending is False
+
+
 def test_validator_failed_cycle_counts_toward_max_steps_and_records_error() -> None:
     validator = ClaimsValidator.__new__(ClaimsValidator)
     validator.config = SimpleNamespace(
