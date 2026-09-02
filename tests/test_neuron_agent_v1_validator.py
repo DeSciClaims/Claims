@@ -29,6 +29,7 @@ from neurons.validator import (
     _stable_hash,
     _strict_env_flag,
     _source_context_map_from_payloads,
+    _validate_silver_model_configuration,
     _validation_findings_from_rows,
 )
 from validator.agent_v1.config import AgentV1ValidatorConfig
@@ -120,6 +121,77 @@ def test_chutes_api_base_takes_precedence_over_slash_style_model_id() -> None:
         )
         == "chutes"
     )
+
+
+def test_silver_preflight_rejects_blank_file_agent_models(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_SILVER_WORKFLOW_MODE", "file-agent")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_HARNESS", "hermes-cli")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER", "chutes")
+    monkeypatch.setenv("CHUTES_API_KEY", "test-key")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL", "")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", "")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", "")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MODEL_B", "")
+    config = SimpleNamespace(
+        claims_silver_enable=True,
+        claims_silver_adjudication_mode="static",
+    )
+
+    with pytest.raises(SystemExit, match="CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL"):
+        _validate_silver_model_configuration(config)
+
+
+def test_silver_preflight_rejects_disabling_silver_on_mainnet() -> None:
+    config = SimpleNamespace(
+        claims_network="mainnet",
+        claims_silver_enable=False,
+    )
+
+    with pytest.raises(SystemExit, match="Silver scoring is mandatory on mainnet"):
+        _validate_silver_model_configuration(config)
+
+
+def test_silver_preflight_allows_disabling_silver_for_testnet_smoke_test() -> None:
+    config = SimpleNamespace(
+        claims_network="testnet",
+        claims_silver_enable=False,
+    )
+
+    _validate_silver_model_configuration(config)
+
+
+def test_silver_preflight_accepts_complete_chutes_file_agent_config(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_SILVER_WORKFLOW_MODE", "file-agent")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_HARNESS", "hermes-cli")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER", "chutes")
+    monkeypatch.setenv("CHUTES_API_KEY", "test-key")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL", "chutes/comparison")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", "chutes/canonical")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "chutes/audit")
+    config = SimpleNamespace(
+        claims_silver_enable=True,
+        claims_silver_adjudication_mode="static",
+    )
+
+    _validate_silver_model_configuration(config)
+
+
+def test_silver_preflight_requires_configured_hermes_provider_key(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_SILVER_WORKFLOW_MODE", "file-agent")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_HARNESS", "hermes-cli")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER", "chutes")
+    monkeypatch.delenv("CHUTES_API_KEY", raising=False)
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL", "chutes/comparison")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", "chutes/canonical")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "chutes/audit")
+    config = SimpleNamespace(
+        claims_silver_enable=True,
+        claims_silver_adjudication_mode="static",
+    )
+
+    with pytest.raises(SystemExit, match="CHUTES_API_KEY"):
+        _validate_silver_model_configuration(config)
 
 
 def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) -> None:

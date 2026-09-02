@@ -24,6 +24,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from miner.agent_v1.ingest import PDF_READERS
+from miner.agent_v1.provider import provider_api_key_env
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig, build_silver_adjudication_passes
 from validator.agent_v1.artifact_summary import summarize_agent_artifact
 from validator.agent_v1.batch_scoring import score_batch, winner_takes_most_weights
@@ -37,7 +38,11 @@ from validator.agent_v1.diagnostic_batch import (
     precomputed_rigor_manifest,
     run_diagnostic_batch,
 )
-from validator.agent_v1.file_agent_workflow import FileAgentSilverWorkflow, file_agent_workflow_enabled
+from validator.agent_v1.file_agent_workflow import (
+    FileAgentSilverWorkflow,
+    FileAgentWorkflowConfig,
+    file_agent_workflow_enabled,
+)
 from validator.agent_v1.grounding import run_grounding_checks
 from validator.agent_v1.models import AgentV1ValidationFinding
 from validator.agent_v1.model_usage import ModelUsageCollector
@@ -1006,6 +1011,7 @@ class ClaimsValidator:
         config.claims_weight_period = parsed_args.claims_weight_period
         config.claims_dry_run = parsed_args.claims_dry_run
         _validate_task_args(config)
+        _validate_silver_model_configuration(config)
         config.claims_subtensor_network_arg = _subtensor_network_arg(parsed_args)
         config.full_path = os.path.expanduser(
             "{}/{}/{}/netuid{}/validator".format(
@@ -6321,6 +6327,78 @@ def _validate_task_args(config: Any) -> None:
         raise SystemExit("Provide exactly one of --claims.task-artifact, --claims.paper-url, or --claims.task-manifest.")
     if config.claims_task_artifact and not config.claims_task_id:
         config.claims_task_id = safe_task_id(str(Path(config.claims_task_artifact).stem))
+
+
+def _validate_silver_model_configuration(config: Any) -> None:
+    silver_enabled = bool(getattr(config, "claims_silver_enable", False))
+    network = str(getattr(config, "claims_network", "") or "").strip().lower()
+    if network == "mainnet" and not silver_enabled:
+        raise SystemExit(
+            "Silver scoring is mandatory on mainnet; CLAIMS_SILVER_ENABLE=false is permitted "
+            "only for testnet or local smoke tests."
+        )
+    if not silver_enabled:
+        return
+
+    errors: list[str] = []
+    adjudication_mode = str(
+        getattr(config, "claims_silver_adjudication_mode", "static") or "static"
+    ).strip().lower().replace("_", "-")
+    model_backed_modes = {
+        "dspy",
+        "openai-compatible",
+        "model",
+        "cli",
+        "hermes-cli",
+        "codex-cli",
+        "claude-cli",
+    }
+    if adjudication_mode in model_backed_modes:
+        for name, value in (
+            (
+                "CLAIMS_SILVER_ADJUDICATION_MODEL_A",
+                getattr(config, "claims_silver_adjudication_model_a", ""),
+            ),
+            (
+                "CLAIMS_SILVER_ADJUDICATION_MODEL_B",
+                getattr(config, "claims_silver_adjudication_model_b", ""),
+            ),
+        ):
+            if not str(value or "").strip():
+                errors.append(f"{name} must name a model")
+
+    if adjudication_mode == "hermes-cli":
+        provider = os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "openrouter")
+        key_env = provider_api_key_env(provider)
+        if not os.getenv(key_env, "").strip():
+            errors.append(
+                f"{key_env} is required by CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER={provider}"
+            )
+
+    if file_agent_workflow_enabled():
+        file_config = FileAgentWorkflowConfig.from_env()
+        for name, value in (
+            ("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL", file_config.comparison_model),
+            ("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", file_config.canonicalization_model),
+            ("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", file_config.canonical_audit_model),
+        ):
+            if not value:
+                errors.append(f"{name} must name a model")
+        if file_config.harness == "hermes-cli":
+            key_env = provider_api_key_env(file_config.provider)
+            if not os.getenv(key_env, "").strip():
+                errors.append(
+                    f"{key_env} is required by "
+                    f"CLAIMS_SILVER_FILE_AGENT_PROVIDER={file_config.provider}"
+                )
+
+    if errors:
+        details = "; ".join(dict.fromkeys(errors))
+        raise SystemExit(
+            "Silver model configuration is incomplete: "
+            f"{details}. Set the models and provider credentials, or explicitly disable Silver "
+            "with CLAIMS_SILVER_ENABLE=false for a non-production smoke test."
+        )
 
 
 def _subtensor_network_arg(parsed_args: argparse.Namespace) -> str | None:
