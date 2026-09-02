@@ -820,7 +820,7 @@ def test_task_selection_claims_one_canonical_miner_assignment() -> None:
         or {
             "created": False,
             "metagraph_block": 900,
-            "miner_selection_algorithm": "uid_v0",
+            "miner_selection_algorithm": "bucket_fifo_v1",
             "target_miners": [{"uid": 7, "hotkey": "hotkey_7", "registration_block": 100}],
         },
         record_miner_selections=lambda **_payload: [],
@@ -833,7 +833,7 @@ def test_task_selection_claims_one_canonical_miner_assignment() -> None:
         assert batch_id == "batch_1"
         assert recent_registration_block == 900
         validator._active_miner_selection = {
-            "algorithm": "uid_v0",
+            "algorithm": "bucket_fifo_v1",
             "metagraph_block": 850,
             "assignments": [{"uid": 8, "hotkey": "hotkey_8", "registration_block": 100}],
         }
@@ -841,6 +841,15 @@ def test_task_selection_claims_one_canonical_miner_assignment() -> None:
 
     resolved: list[dict] = []
     validator._load_target_neurons = propose
+    validator._miner_registration_price_tao = lambda: 1.25
+    validator._miner_reward_snapshot = lambda: {
+        "observed_block": 850,
+        "tempo_blocks": 360,
+        "alpha_out_emission_per_block": 1.0,
+        "owner_cut_fraction": 0.18,
+        "tao_reserve": 6_500.0,
+        "alpha_reserve": 1_000_000.0,
+    }
     validator._resolve_canonical_target_neurons = lambda assignments, **_kwargs: resolved.extend(assignments) or [
         SimpleNamespace(uid=7)
     ]
@@ -861,6 +870,36 @@ def test_task_selection_claims_one_canonical_miner_assignment() -> None:
     assert resolved[0]["uid"] == 7
     assert calls[0]["batch_id"] == "batch_1"
     assert calls[0]["target_miners"][0]["uid"] == 8
+    assert calls[0]["registration_price_tao"] == 1.25
+    assert calls[0]["miner_reward_snapshot"]["observed_block"] == 850
+
+
+def test_miner_reward_snapshot_uses_live_emission_owner_cut_and_pool_reserves() -> None:
+    from neurons.validator import _miner_reward_snapshot_from_chain
+
+    class Balance:
+        def __init__(self, value: float) -> None:
+            self.tao = value
+
+    snapshot = _miner_reward_snapshot_from_chain(
+        SimpleNamespace(
+            block=8_979_594,
+            tempo=360,
+            alpha_out_emission=Balance(1.0),
+            tao_in=Balance(6_500.0),
+            alpha_in=Balance(1_000_000.0),
+        ),
+        SimpleNamespace(value=11_796),
+    )
+
+    assert snapshot == {
+        "observed_block": 8_979_594,
+        "tempo_blocks": 360,
+        "alpha_out_emission_per_block": 1.0,
+        "owner_cut_fraction": 11_796 / 65_535,
+        "tao_reserve": 6_500.0,
+        "alpha_reserve": 1_000_000.0,
+    }
 
 
 def test_canonical_assignment_preserves_unavailable_uid_for_zero_scoring() -> None:

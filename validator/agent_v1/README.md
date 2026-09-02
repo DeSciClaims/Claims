@@ -31,9 +31,11 @@ For a manual or Ubuntu installation:
 
 ```bash
 cp validator/agent_v1/validator.testnet.env.example .env
-# Set the provider credential and review the configured models.
+# Set the provider credential, review the configured models, and set
+# CLAIMS_REFERENCE_MINER_CLAIMS_REPO to this checkout's absolute path.
 
-.venv/bin/python -c 'import claims_reference_miner; print("Reference miner runtime OK")'
+.venv/bin/python -m dotenv -f .env run --override -- \
+  .venv/bin/python -c 'from claims_reference_miner.config import ReferenceMinerConfig; p = ReferenceMinerConfig.from_env().claims_repo.resolve(); assert (p / "miner" / "agent_v1").is_dir(), p; print(f"Reference miner runtime OK; Claims repo={p}")'
 HERMES_BIN="$(command -v hermes || printf '%s/.local/bin/hermes' "$HOME")"
 "$HERMES_BIN" --help >/dev/null && echo "Hermes runtime OK"
 # Add the absolute path printed here to .env as HERMES_CMD.
@@ -213,7 +215,10 @@ evaluation. Moving UID does not erase a hotkey's history.
   `1-b`; a newcomer may earn both components. If no newcomer submits valid work
   above the configured minimum, the reserved share returns to the overall
   ranking. `NeuronBurnCost` is read from chain; use
-  `CLAIMS_BUCKET_REGISTRATION_PRICE_TAO` only as an outage fallback.
+  `CLAIMS_BUCKET_REGISTRATION_PRICE_TAO` only as an outage fallback. The round
+  reward is derived in alpha from a signed live subnet emission/pool snapshot
+  and recent canonical assignment block intervals; the registration price is
+  converted from TAO to alpha at the snapshotted pool price.
 - `--claims.batch-score-rule` controls legacy diagnostic aggregation. Final
   Silver incentives use the mean regardless of that compatibility setting.
 

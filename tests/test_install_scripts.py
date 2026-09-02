@@ -17,6 +17,7 @@ def test_public_role_installers_expose_help_without_installing() -> None:
         )
         assert result.returncode == 0
         assert "--skip-system-packages" in result.stdout
+        assert "--recreate-venv" in result.stdout
         assert "Hermes is the only external CLI harness installed automatically" in result.stdout
         assert "never creates, copies, registers, or funds" in result.stdout
 
@@ -27,6 +28,20 @@ def test_validator_installer_uses_public_reference_repository() -> None:
     assert "--reference-repo-version" in installer
     assert "--reference-key" not in installer
     assert "GIT_SSH_COMMAND" not in installer
+    assert "Claims requires Python 3.11 or newer" in installer
+    assert "Rerun with --recreate-venv" in installer
+    assert 'key = "CLAIMS_REFERENCE_MINER_CLAIMS_REPO"' in installer
+    assert "ReferenceMinerConfig.from_env()" in installer
+
+
+def test_validator_templates_expose_reference_miner_claims_path() -> None:
+    for relative_path in (
+        "examples/validator.env.example",
+        "validator/agent_v1/validator.testnet.env.example",
+        "validator/agent_v1/validator.mainnet.env.example",
+    ):
+        template = (ROOT / relative_path).read_text(encoding="utf-8")
+        assert "CLAIMS_REFERENCE_MINER_CLAIMS_REPO=" in template
 
 
 def test_hermes_install_skips_optional_browser_engine() -> None:
@@ -152,7 +167,7 @@ def test_installation_docs_link_validator_profiles_and_docker_path() -> None:
     assert "CLAIMS_BACKEND_URL=https://api.claims111.ai" in main_readme
     assert "CLAIMS_BACKEND_URL=https://artifacts.claims111.ai" in main_readme
     for content in (main_readme, validator_readme):
-        assert ".venv/bin/python -c 'import claims_reference_miner" in content
+        assert "ReferenceMinerConfig.from_env().claims_repo.resolve()" in content
         assert ".venv/bin/python -m dotenv -f .env run --override" in content
         assert "HERMES_CMD" in content
         assert "PM2" in content
@@ -160,5 +175,6 @@ def test_installation_docs_link_validator_profiles_and_docker_path() -> None:
     assert 'test -s "$HOME/.bittensor/wallets/$BT_WALLET_NAME/hotkeys/$BT_WALLET_HOTKEY"' in main_readme
     assert "poppler-utils" in main_readme
     assert "Manual installation does not create, fund, or register a Bittensor wallet" in main_readme
+    assert "CLAIMS_REFERENCE_MINER_CLAIMS_REPO=/absolute/path/to/Claims" in main_readme
     manual_install = main_readme.split("### Manual Installation", 1)[1].split("### Ubuntu Installers", 1)[0]
     assert "cp validator/agent_v1/validator.mainnet.env.example .env" in manual_install

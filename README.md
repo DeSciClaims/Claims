@@ -72,7 +72,7 @@ testing; use the production recommendation for sustained subnet operation.
 | Miner CPU/RAM | 4 cores / 16 GB minimum; 8 cores / 32 GB recommended | Higher paper concurrency starts additional agent and PDF-processing subprocesses. The example miner profile uses two paper workers. |
 | Persistent disk | 50 GB miner; 100 GB validator | Allow additional space when retaining many outputs, Bronze references, PDFs, model caches, or logs. Container deployments must persist `/data`. |
 | Docker | Docker Engine 24.0+ recommended | Required only for the published container workflow; manual and Ubuntu-installer deployments do not require Docker. |
-| Python | 3.10+ | The project enforces Python 3.10 or newer. Published Ubuntu 24.04 images use Python 3.12. |
+| Python | 3.11+ | Python 3.10 is unsupported because current validator dependencies use Python 3.11 typing APIs. Published Ubuntu 24.04 images use Python 3.12. |
 | Bittensor SDK | `10.5.0` | Installed from `requirements.txt`. Other SDK versions are not supported unless the repository pin is updated and tested. |
 | Network | Stable broadband; public TCP port for miners | Miners must expose a reachable Axon. Both roles need outbound access to Bittensor, Claims APIs, PDF storage, and configured inference providers. |
 | GPU | Not required with hosted inference providers | Operators using local models must size GPU memory and runtime dependencies for those models separately. |
@@ -94,7 +94,7 @@ sudo apt-get install -y \
   python3 python3-dev python3-pip python3-venv
 ```
 
-On macOS, install Python 3.10 or newer and Poppler before continuing. The
+On macOS, install Python 3.11 or newer and Poppler before continuing. The
 Ubuntu installer is the supported automated path for production Linux hosts.
 
 Clone Claims and create its Python environment:
@@ -102,7 +102,7 @@ Clone Claims and create its Python environment:
 ```bash
 git clone https://github.com/DeSciClaims/Claims.git
 cd Claims
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
 python -m pip install -r requirements.txt
@@ -126,6 +126,15 @@ git -C ../claims-reference-miner checkout <PINNED_COMMIT>
 
 # SN111 mainnet profile. Use validator.testnet.env.example for testnet instead.
 cp validator/agent_v1/validator.mainnet.env.example .env
+```
+
+Set `CLAIMS_REFERENCE_MINER_CLAIMS_REPO` in `.env` to the absolute path of
+this Claims checkout. The validator also derives this path from its installed
+source file, but keeping it explicit makes process-manager working directories
+irrelevant:
+
+```env
+CLAIMS_REFERENCE_MINER_CLAIMS_REPO=/absolute/path/to/Claims
 ```
 
 The default profiles use Hermes. Install it explicitly for a manual setup:
@@ -165,7 +174,14 @@ Verify the exact runtime and wallet before starting a run. These checks must
 all succeed; do not launch a production batch if one fails:
 
 ```bash
-.venv/bin/python -c 'import claims_reference_miner; print("Reference miner runtime OK")'
+.venv/bin/python -m dotenv -f .env run --override -- \
+  .venv/bin/python -c '
+from pathlib import Path
+from claims_reference_miner.config import ReferenceMinerConfig
+p = ReferenceMinerConfig.from_env().claims_repo.resolve()
+assert (p / "miner" / "agent_v1").is_dir(), f"Invalid Claims repo: {p}"
+print(f"Reference miner runtime OK; Claims repo={p}")
+'
 "$HERMES_BIN" --help >/dev/null && echo "Hermes runtime OK"
 
 .venv/bin/python -m dotenv -f .env run --override -- sh -c '
@@ -199,8 +215,9 @@ to the absolute Hermes path when it is not on the service `PATH`.
 
 ### Ubuntu Installers
 
-The public installers set up system packages, Python, Claims dependencies,
-Hermes, and a role-specific `.env` template:
+The public installers set up system packages, a virtual environment from the
+selected Python 3.11+ interpreter, Claims dependencies, Hermes, and a
+role-specific `.env` template:
 
 ```bash
 git clone https://github.com/DeSciClaims/Claims.git
@@ -212,8 +229,23 @@ cd Claims
 # configured from the selected provider and model.
 cp validator/agent_v1/validator.testnet.env.example .env
 ./scripts/install-validator.sh \
+  --python python3.11 \
   --reference-repo-version <PINNED_COMMIT>
 ```
+
+On hosts previously installed with Python 3.10, rebuild the virtual environment
+explicitly:
+
+```bash
+./scripts/install-validator.sh \
+  --python python3.11 \
+  --recreate-venv \
+  --reference-repo-version <PINNED_COMMIT>
+```
+
+Install Python 3.11 or 3.12 through the host's supported package source first
+when that interpreter is not already available. The installer will not modify
+system Python or silently mix two Python versions in one virtual environment.
 
 They configure Hermes non-interactively from `HERMES_PROVIDER`, `HERMES_MODEL`,
 and `HERMES_BASE_URL` in that role's `.env`; provider credentials remain in `.env`.
@@ -239,6 +271,7 @@ Pin its commit for a reproducible installation:
 
 ```bash
 ./scripts/install-validator.sh \
+  --python python3.11 \
   --reference-repo-version <PINNED_COMMIT>
 ```
 
@@ -498,6 +531,10 @@ Primary arguments:
   defaults to `5`. The established seats are four
   weighted performance draws and four oldest-evaluation rotation seats;
   established miners fill any shortage below ten.
+  For bucket payouts, the validator sends a signed live subnet reward snapshot
+  with the canonical assignment. The backend derives the miner reward per round
+  from on-chain alpha emission, owner cut, pool reserves, and recent canonical
+  assignment block intervals; there is no fixed TAO round-reward input.
   The legacy `adaptive` mode remains available and uses
   `--claims.miner-sample-size` with a 40/40/20 split.
   The performance lane requires a positive latest evaluation and is weighted

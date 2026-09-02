@@ -124,6 +124,12 @@ four weighted performance seats and four oldest-evaluation rotation seats. All
 selected miners share the same scientific scoring;
 the final payout adds the registration-price-derived newcomer bonus to the
 ordinary 70/16/8/4/2 overall rank weight.
+For a new canonical bucket assignment, the validator reads the subnet's live
+alpha emission, owner cut, and pool reserves and sends that signed snapshot to
+the backend. The backend derives the per-round miner reward from recent
+canonical assignment block intervals and stores every input and derived value
+in the canonical selection policy. Reused assignments reuse that stored policy
+rather than resampling chain state.
 With backend `CLAIMS_BATCH_ASSIGNMENT_WINDOW_SECONDS=14400`, validators arriving
 within four hours of the canonical batch's creation receive the same task ID,
 batch ID, papers, selection seed, and miner snapshot. The first request at or

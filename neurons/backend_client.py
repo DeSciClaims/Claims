@@ -73,6 +73,7 @@ class ClaimsBackendClient:
         target_miners: list[dict[str, Any]],
         selection_policy: dict[str, Any] | None = None,
         registration_price_tao: float | None = None,
+        miner_reward_snapshot: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return self.post(
             f"/validator/batches/{quote(batch_id)}/miners",
@@ -84,6 +85,7 @@ class ClaimsBackendClient:
                 "target_miners": target_miners,
                 "selection_policy": selection_policy or {},
                 "registration_price_tao": registration_price_tao,
+                "miner_reward_snapshot": miner_reward_snapshot,
             },
         )
 

@@ -131,14 +131,24 @@ def test_miner_selection_state_client_uses_signed_validator_endpoints(monkeypatc
         batch_id="batch_1",
         netuid=530,
         selected_block=1_000,
-        selection_algorithm="uid_v0",
+        selection_algorithm="bucket_fifo_v1",
         target_miners=[{"uid": 7, "hotkey": "hotkey_7"}],
+        registration_price_tao=1.0,
+        miner_reward_snapshot={
+            "observed_block": 1_000,
+            "tempo_blocks": 360,
+            "alpha_out_emission_per_block": 1.0,
+            "owner_cut_fraction": 0.18,
+            "tao_reserve": 6_500.0,
+            "alpha_reserve": 1_000_000.0,
+        },
     )
 
     assert state[0]["uid"] == 7
     assert selected[0]["uid"] == 7
     assert result["recorded"] == 1
     assert claimed["recorded"] == 1
+    assert posted[-1][1]["miner_reward_snapshot"]["observed_block"] == 1_000
     assert [path for path, _payload in posted] == [
         "/validator/miner-selection/state",
         "/validator/miner-selection/selections",

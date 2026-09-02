@@ -76,6 +76,8 @@ from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsPaperTask, ClaimsTask
 
 
 _CODE_STATE_CACHE: dict[str, Any] | None = None
+_CLAIMS_REPO_ROOT = Path(__file__).resolve().parents[1]
+_U16_MAX = 65_535
 
 
 @dataclass(frozen=True)
@@ -142,6 +144,39 @@ def _env_int_list(name: str) -> list[int]:
             continue
         values.append(int(item))
     return values
+
+
+def _balance_units(value: Any) -> float:
+    if hasattr(value, "tao"):
+        return float(value.tao)
+    return float(value)
+
+
+def _miner_reward_snapshot_from_chain(metagraph_info: Any, owner_cut_value: Any) -> dict[str, Any]:
+    if metagraph_info is None:
+        raise ValueError("subnet metagraph info is unavailable")
+    raw_owner_cut = getattr(owner_cut_value, "value", owner_cut_value)
+    owner_cut = float(raw_owner_cut)
+    if owner_cut > 1.0:
+        owner_cut /= _U16_MAX
+    snapshot = {
+        "observed_block": max(0, int(getattr(metagraph_info, "block"))),
+        "tempo_blocks": max(1, int(getattr(metagraph_info, "tempo"))),
+        "alpha_out_emission_per_block": _balance_units(
+            getattr(metagraph_info, "alpha_out_emission")
+        ),
+        "owner_cut_fraction": owner_cut,
+        "tao_reserve": _balance_units(getattr(metagraph_info, "tao_in")),
+        "alpha_reserve": _balance_units(getattr(metagraph_info, "alpha_in")),
+    }
+    if (
+        snapshot["alpha_out_emission_per_block"] <= 0.0
+        or not 0.0 <= snapshot["owner_cut_fraction"] < 1.0
+        or snapshot["tao_reserve"] <= 0.0
+        or snapshot["alpha_reserve"] <= 0.0
+    ):
+        raise ValueError("subnet reward snapshot contains unusable emission, owner-cut, or reserve values")
+    return snapshot
 
 
 def _env_str_list(name: str) -> list[str]:
@@ -537,7 +572,11 @@ class ClaimsValidator:
             "--claims.reference-miner-claims-repo",
             dest="claims_reference_miner_claims_repo",
             type=Path,
-            default=Path(os.getenv("CLAIMS_REFERENCE_MINER_CLAIMS_REPO", "")) if os.getenv("CLAIMS_REFERENCE_MINER_CLAIMS_REPO") else None,
+            default=(
+                Path(os.environ["CLAIMS_REFERENCE_MINER_CLAIMS_REPO"]).expanduser()
+                if os.getenv("CLAIMS_REFERENCE_MINER_CLAIMS_REPO")
+                else _CLAIMS_REPO_ROOT
+            ),
             help="Claims repo path passed to the private reference miner CLI.",
         )
         parser.add_argument(
@@ -1208,19 +1247,22 @@ class ClaimsValidator:
         assignments = [dict(item) for item in list(proposal.get("assignments") or [])]
         if not proposed or not assignments:
             raise RuntimeError("No eligible miners were available for the canonical batch assignment.")
+        selection_algorithm = str(proposal.get("algorithm") or "unknown")
+        registration_price_tao = None
+        miner_reward_snapshot = None
+        if selection_algorithm == BUCKET_ALGORITHM_VERSION:
+            registration_price_tao = self._miner_registration_price_tao()
+            miner_reward_snapshot = self._miner_reward_snapshot()
         try:
             claimed = self.backend_client.claim_batch_miner_selection(
                 batch_id=task.batch_id,
                 netuid=int(self.config.netuid),
                 selected_block=int(proposal.get("metagraph_block") or self._current_chain_block()),
-                selection_algorithm=str(proposal.get("algorithm") or "unknown"),
+                selection_algorithm=selection_algorithm,
                 target_miners=assignments,
                 selection_policy=dict(proposal.get("selection_policy") or {}),
-                registration_price_tao=(
-                    self._miner_registration_price_tao()
-                    if str(proposal.get("algorithm") or "") == BUCKET_ALGORITHM_VERSION
-                    else None
-                ),
+                registration_price_tao=registration_price_tao,
+                miner_reward_snapshot=miner_reward_snapshot,
             )
         except (BackendClientError, ValueError) as exc:
             raise RuntimeError(f"Could not claim canonical miner assignment for {task.batch_id}: {exc}") from exc
@@ -1413,6 +1455,26 @@ class ClaimsValidator:
                 f"using configured fallback={configured or 'none'}: {exc}"
             )
         return configured if configured > 0.0 else None
+
+    def _miner_reward_snapshot(self) -> dict[str, Any]:
+        try:
+            metagraph_info = self.subtensor.get_metagraph_info(netuid=int(self.config.netuid))
+            owner_cut = self.subtensor.substrate.query(
+                module="SubtensorModule",
+                storage_function="SubnetOwnerCut",
+                params=[],
+            )
+            snapshot = _miner_reward_snapshot_from_chain(metagraph_info, owner_cut)
+        except Exception as exc:
+            raise RuntimeError(f"Could not read the on-chain miner reward snapshot: {exc}") from exc
+        self.bt_logging.info(
+            "On-chain miner reward snapshot: "
+            f"block={snapshot['observed_block']} "
+            f"alpha_out_per_block={snapshot['alpha_out_emission_per_block']:.9f} "
+            f"owner_cut={snapshot['owner_cut_fraction']:.6f} "
+            f"spot_alpha_price_tao={snapshot['tao_reserve'] / snapshot['alpha_reserve']:.12f}"
+        )
+        return snapshot
 
     def _sync_metagraph(self) -> None:
         try:

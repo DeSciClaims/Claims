@@ -9,6 +9,7 @@ ROLE is miner or validator.
 
 Options:
   --python COMMAND               Python command (default: python3)
+  --recreate-venv               Clear and rebuild an existing .venv
   --env-file FILE               Runtime environment file (default: .env)
   --skip-system-packages        Do not install Ubuntu packages
   --skip-hermes                 Do not install Hermes Agent
@@ -38,6 +39,7 @@ fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 python_command="python3"
+recreate_venv=false
 env_file="${repo_root}/.env"
 skip_system_packages=false
 skip_hermes=false
@@ -53,6 +55,10 @@ while [[ $# -gt 0 ]]; do
     --python)
       python_command="$2"
       shift 2
+      ;;
+    --recreate-venv)
+      recreate_venv=true
+      shift
       ;;
     --env-file)
       env_file="$2"
@@ -139,11 +145,28 @@ if ! command -v "${python_command}" >/dev/null 2>&1; then
 fi
 "${python_command}" -c '
 import sys
-if sys.version_info < (3, 10):
-    raise SystemExit("Claims requires Python 3.10 or newer")
+if sys.version_info < (3, 11):
+    raise SystemExit(
+        "Claims requires Python 3.11 or newer; rerun with --python python3.11 "
+        "or --python python3.12"
+    )
 '
 
-"${python_command}" -m venv "${repo_root}/.venv"
+venv_dir="${repo_root}/.venv"
+requested_python_version="$("${python_command}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+if [[ -x "${venv_dir}/bin/python" && "${recreate_venv}" != true ]]; then
+  existing_python_version="$("${venv_dir}/bin/python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+  if [[ "${existing_python_version}" != "${requested_python_version}" ]]; then
+    echo ".venv uses Python ${existing_python_version}, but ${python_command} is Python ${requested_python_version}." >&2
+    echo "Rerun with --recreate-venv to rebuild it explicitly." >&2
+    exit 1
+  fi
+fi
+venv_args=()
+if [[ "${recreate_venv}" == true ]]; then
+  venv_args+=(--clear)
+fi
+"${python_command}" -m venv "${venv_args[@]}" "${venv_dir}"
 venv_python="${repo_root}/.venv/bin/python"
 "${venv_python}" -m pip install --upgrade pip setuptools wheel
 "${venv_python}" -m pip install -r "${repo_root}/requirements.txt"
@@ -170,6 +193,29 @@ if [[ ! -f "${env_file}" ]]; then
   echo "Created ${env_file} from ${env_template}."
 else
   echo "Keeping existing environment file ${env_file}."
+fi
+
+if [[ "${role}" == "validator" ]]; then
+  "${venv_python}" - "${env_file}" "${repo_root}" <<'PY'
+import sys
+from pathlib import Path
+
+env_path = Path(sys.argv[1])
+repo_root = Path(sys.argv[2]).resolve()
+key = "CLAIMS_REFERENCE_MINER_CLAIMS_REPO"
+replacement = f"{key}={repo_root}"
+lines = env_path.read_text(encoding="utf-8").splitlines()
+found = False
+for index, line in enumerate(lines):
+    if line.strip().startswith(f"{key}="):
+        found = True
+        if not line.split("=", 1)[1].strip():
+            lines[index] = replacement
+if not found:
+    lines.extend(["", replacement])
+env_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+PY
+  chmod 0600 "${env_file}"
 fi
 
 if [[ "${skip_hermes}" != true ]]; then
@@ -242,7 +288,18 @@ fi
 
 "${venv_python}" -c 'import bittensor, dspy, pdf_inspector; print("Claims runtime OK")'
 if [[ "${role}" == "validator" && -n "${reference_repo_url}" ]]; then
-  "${venv_python}" -c 'import claims_reference_miner; print("Reference miner runtime OK")'
+  "${venv_python}" -m dotenv -f "${env_file}" run --override -- \
+    "${venv_python}" - <<'PY'
+from claims_reference_miner.config import ReferenceMinerConfig
+from claims_reference_miner.runner import _ensure_claims_importable
+
+config = ReferenceMinerConfig.from_env()
+claims_repo = config.claims_repo.resolve()
+_ensure_claims_importable(claims_repo)
+from miner.agent_v1.config import AgentV1Config  # noqa: E402,F401
+
+print(f"Reference miner runtime OK; Claims repo={claims_repo}")
+PY
 fi
 if [[ "${skip_hermes}" != true ]]; then
   hermes_path="$(command -v hermes || true)"
