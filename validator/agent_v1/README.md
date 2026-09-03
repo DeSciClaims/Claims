@@ -340,10 +340,37 @@ exposes an embeddings endpoint.
 
 ### File-Workspace Silver
 
-`CLAIMS_SILVER_WORKFLOW_MODE=file-agent` runs one comparator, two anonymous
-judges plus a conditional tiebreaker, deterministic consensus, a canonical
-draft, and an independent canonical audit per paper. Agents use validator-owned
-short references; internal IDs are restored after validation.
+`CLAIMS_SILVER_WORKFLOW_MODE=file-agent` can first run claim eligibility, then
+comparison, two anonymous relationship judges plus a conditional tiebreaker,
+deterministic consensus, a canonical draft, and an independent canonical audit
+per paper. Agents use validator-owned short references; internal IDs are
+restored after validation.
+
+- `CLAIMS_SILVER_ELIGIBILITY_ENABLE=true` admits candidates before comparison.
+  A rejection-oriented judge and a reconstruction-oriented judge assess six
+  hard gates. Unanimous results are final; split results use blind finding
+  discovery followed by tiebreak resolution.
+- `CLAIMS_SILVER_ELIGIBILITY_HARNESS=dspy` runs each bounded eligibility call
+  through `dspy.Predict`; `file-agent` retains the original CLI implementation.
+  Both receive the same candidate packet, validator-owned source spans, skill
+  instructions, and strict output schema. Invalid or missing output retries
+  once and then fails the paper closed.
+  Keep `file-agent` as the production default until a chosen DSPy model set is
+  calibrated against reviewed eligibility decisions; runtime reliability does
+  not by itself establish equivalent scientific strictness.
+- `CLAIMS_SILVER_ELIGIBILITY_PROVIDER` selects `openrouter` or `chutes` for the
+  DSPy harness. `CLAIMS_SILVER_ELIGIBILITY_API_BASE` and
+  `CLAIMS_SILVER_ELIGIBILITY_API_KEY_ENV` optionally override the provider
+  defaults (`OPENROUTER_API_KEY` or `CHUTES_API_KEY`).
+- `CLAIMS_SILVER_ELIGIBILITY_NEGATIVE_MODEL`,
+  `CLAIMS_SILVER_ELIGIBILITY_POSITIVE_MODEL`, and
+  `CLAIMS_SILVER_ELIGIBILITY_TIEBREAK_MODEL` select the three eligibility roles.
+  Operational failures retry once and then fail the paper rather than becoming
+  PASS or FAIL votes.
+- `CLAIMS_SILVER_ELIGIBILITY_BATCH_SIZE` limits candidates in one judge packet;
+  `CLAIMS_SILVER_ELIGIBILITY_MAX_WORKERS` limits concurrent packets.
+- `CLAIMS_SILVER_ELIGIBILITY_MAX_TOKENS` and
+  `CLAIMS_SILVER_ELIGIBILITY_TIMEOUT` bound each DSPy request.
 
 - `CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true` requires different
   models for direct judges A and B.

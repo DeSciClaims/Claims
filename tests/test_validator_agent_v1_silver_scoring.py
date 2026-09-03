@@ -1030,8 +1030,8 @@ def test_silver_adjudication_factory_builds_dspy_passes_with_shared_limit(monkey
     assert isinstance(tiebreak, DSPyAdjudicationPass)
     assert passes[0].request_gate is passes[1].request_gate
     assert tiebreak.request_gate is passes[0].request_gate
-    assert passes[0].model == "deepseek/deepseek-v4-flash"
-    assert passes[1].model == "qwen/qwen3.7-flash"
+    assert passes[0].model == "openrouter/deepseek/deepseek-v4-flash"
+    assert passes[1].model == "openrouter/qwen/qwen3.7-flash"
 
 
 def test_silver_adjudication_factory_routes_chutes_through_openai_compatible_dspy(monkeypatch) -> None:

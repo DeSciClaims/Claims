@@ -12,6 +12,7 @@ from .adjudication_models import AdjudicationConsensus, AdjudicationContextBundl
 from .adjudication_runner import AdjudicationPass, run_adjudication_cases
 from .batch_scoring import BatchScoreResult, score_batch
 from .comparison_models import BronzeDiffCase, CandidatePairEdge, ComparisonCandidate, SilverRecord, SilverScoreBreakdown
+from .eligibility import ELIGIBILITY_PROFILE_ID, CandidateEligibilityDecision
 from .file_agent_workflow import FileAgentSilverWorkflow, FileAgentWorkflowSession
 from .models import AgentV1ValidationFinding
 from .pairing import (
@@ -65,6 +66,7 @@ class PaperSilverPipelineResult:
     adjudication_decisions: list[AdjudicationDecision]
     silver_record: SilverRecord
     scores: list[SilverScoreBreakdown]
+    eligibility_decisions: list[CandidateEligibilityDecision] = field(default_factory=list)
     stage_timings: list[dict] = field(default_factory=list)
 
 
@@ -85,6 +87,7 @@ def run_paper_silver_pipeline(
     validation_findings_by_miner_id: dict[str, list[AgentV1ValidationFinding]] | None = None,
     source_context: str = "",
     source_context_by_span_id: dict[str, str] | None = None,
+    eligibility_source_context_by_span_id: dict[str, str] | None = None,
     adjudication_max_workers: int = 4,
     adjudication_batch_size: int = 8,
     max_eligible_claims_per_miner: int = 6,
@@ -133,17 +136,18 @@ def run_paper_silver_pipeline(
         bronze_candidate_count=len(bronze_candidates),
         max_adjudication_cases=max_adjudication_cases,
     )
-    candidate_pool = [*bronze_candidates, *[candidate for submission in miner_submissions for candidate in submission.candidates]]
-    candidates_by_id = {candidate.candidate_id: candidate for candidate in candidate_pool}
+    all_candidate_pool = [*bronze_candidates, *[candidate for submission in miner_submissions for candidate in submission.candidates]]
+    candidates_by_id = {candidate.candidate_id: candidate for candidate in all_candidate_pool}
     workflow_fallbacks: list[str] = []
     file_session: FileAgentWorkflowSession | None = None
     if file_agent_workflow is not None:
         file_session = file_agent_workflow.start_session(
             paper_id=paper_id,
             workspace_id=silver_record_id,
-            candidates=candidate_pool,
+            candidates=all_candidate_pool,
             paper_context=paper_context or _paper_context_from_artifact(bronze_artifact),
             source_context_by_span_id=source_context_by_span_id or {},
+            eligibility_source_context_by_span_id=eligibility_source_context_by_span_id,
         )
     stage_timings.append(_stage_finish(
         projection_timer,
@@ -151,13 +155,71 @@ def run_paper_silver_pipeline(
         metadata={
             "bronze_candidate_count": len(bronze_candidates),
             "miner_count": len(miner_submissions),
-            "candidate_count": len(candidate_pool),
+            "candidate_count": len(all_candidate_pool),
             "projected_miner_candidate_count": projected_miner_candidate_count,
             "assessment_rejected_candidate_count": assessment_rejected_candidate_count,
             "case_budget_rejected_candidate_count": case_budget_rejected_candidate_count,
             "max_eligible_claims_per_miner": max_eligible_claims_per_miner,
             "filter_by_assessment": filter_by_assessment,
             "max_adjudication_cases": max_adjudication_cases,
+        },
+    ))
+
+    eligibility_timer = _stage_start("silver_eligibility", "Eligibility adjudication")
+    eligibility_decisions: list[CandidateEligibilityDecision] = []
+    eligibility_enabled = bool(
+        getattr(getattr(file_session, "config", None), "eligibility_enabled", False)
+    )
+    if file_session is not None and eligibility_enabled:
+        eligibility_decisions = file_session.run_eligibility()
+        decision_ids = {decision.candidate_id for decision in eligibility_decisions}
+        expected_ids = set(candidates_by_id)
+        if decision_ids != expected_ids:
+            raise RuntimeError(
+                "Eligibility adjudication did not decide the exact projected candidate set: "
+                f"missing={sorted(expected_ids - decision_ids)} "
+                f"unexpected={sorted(decision_ids - expected_ids)}."
+            )
+        eligible_candidate_ids = {
+            decision.candidate_id
+            for decision in eligibility_decisions
+            if decision.verdict == "PASS"
+        }
+    else:
+        eligible_candidate_ids = set(candidates_by_id)
+    candidate_pool = [
+        candidate
+        for candidate in all_candidate_pool
+        if candidate.candidate_id in eligible_candidate_ids
+    ]
+    comparison_bronze_candidates = [
+        candidate
+        for candidate in bronze_candidates
+        if candidate.candidate_id in eligible_candidate_ids
+    ]
+    comparison_miner_submissions = _filter_miner_submissions_by_candidate_ids(
+        miner_submissions,
+        eligible_candidate_ids,
+    )
+    if file_session is not None:
+        file_session.candidates = candidate_pool
+    rejected_candidate_ids = {
+        decision.candidate_id
+        for decision in eligibility_decisions
+        if decision.verdict == "FAIL"
+    }
+    stage_timings.append(_stage_finish(
+        eligibility_timer,
+        paper_id=paper_id,
+        metadata={
+            "enabled": eligibility_enabled,
+            "candidate_count": len(all_candidate_pool),
+            "eligible_candidate_count": len(candidate_pool),
+            "rejected_candidate_count": len(rejected_candidate_ids),
+            "split_decision_count": sum(
+                decision.consensus_route == "blind_tiebreak"
+                for decision in eligibility_decisions
+            ),
         },
     ))
 
@@ -179,8 +241,8 @@ def run_paper_silver_pipeline(
         comparison_edges = []
     if comparison_mode == "legacy":
         comparison_hits = {
-            submission.miner_id: filter_candidate_pairs(bronze_candidates, submission.candidates)
-            for submission in miner_submissions
+            submission.miner_id: filter_candidate_pairs(comparison_bronze_candidates, submission.candidates)
+            for submission in comparison_miner_submissions
         }
         comparison_edges = classify_filtered_candidate_pairs(
             [hit for hits in comparison_hits.values() for hit in hits],
@@ -189,8 +251,8 @@ def run_paper_silver_pipeline(
     candidate_graph_edges = _dedupe_candidate_graph_edges(comparison_edges)
     diff_cases = _comparison_cases_from_graph(
         paper_id=paper_id,
-        bronze_candidates=bronze_candidates,
-        miner_submissions=miner_submissions,
+        bronze_candidates=comparison_bronze_candidates,
+        miner_submissions=comparison_miner_submissions,
         candidate_graph_edges=candidate_graph_edges,
     )
     if len(diff_cases) > max_adjudication_cases:
@@ -324,12 +386,25 @@ def run_paper_silver_pipeline(
         paper_id=paper_id,
         silver_record_id=silver_record_id,
         bronze_record_id=bronze_record_id,
-        candidates=candidate_pool,
+        candidates=all_candidate_pool,
         decisions=decisions,
         equivalent_candidate_groups=equivalent_candidate_groups,
-        excluded_candidate_ids=unresolved_candidate_ids,
+        excluded_candidate_ids=unresolved_candidate_ids | rejected_candidate_ids,
+        eligibility_decisions=eligibility_decisions,
     )
-    if file_session is not None:
+    silver_record.metadata["eligibility_adjudication"] = {
+        "schema": "claims_silver_eligibility_v1",
+        "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
+        "enabled": eligibility_enabled,
+        "candidate_count": len(all_candidate_pool),
+        "passed_candidate_count": len(candidate_pool),
+        "failed_candidate_count": len(rejected_candidate_ids),
+        "decisions": [
+            _eligibility_decision_metadata(decision)
+            for decision in eligibility_decisions
+        ],
+    }
+    if file_session is not None and candidate_pool:
         try:
             silver_record = file_session.run_canonicalization(
                 baseline_record=silver_record,
@@ -406,6 +481,7 @@ def run_paper_silver_pipeline(
         paper_id=paper_id,
         bronze_candidates=bronze_candidates,
         miner_submissions=miner_submissions,
+        eligibility_decisions=eligibility_decisions,
         candidate_graph_edges=candidate_graph_edges,
         diff_cases=diff_cases,
         adjudication_consensus=consensus_records,
@@ -509,6 +585,54 @@ def _select_assessed_candidates(
         if len(selected) >= max_claims:
             break
     return selected
+
+
+def _filter_miner_submissions_by_candidate_ids(
+    submissions: list[MinerPaperSubmission],
+    candidate_ids: set[str],
+) -> list[MinerPaperSubmission]:
+    return [
+        MinerPaperSubmission(
+            miner_id=submission.miner_id,
+            paper_id=submission.paper_id,
+            candidates=[
+                candidate
+                for candidate in submission.candidates
+                if candidate.candidate_id in candidate_ids
+            ],
+            normal_findings=submission.normal_findings,
+        )
+        for submission in submissions
+    ]
+
+
+def _eligibility_decision_metadata(
+    decision: CandidateEligibilityDecision,
+) -> dict:
+    return {
+        "candidate_id": decision.candidate_id,
+        "verdict": decision.verdict,
+        "consensus_route": decision.consensus_route,
+        "failed_gates": list(decision.failed_gates),
+        "cited_span_ids": list(decision.cited_span_ids),
+        "rationale": decision.rationale,
+        "primary_votes": [
+            {
+                "judge_role": vote.judge_role,
+                "verdict": vote.verdict,
+                "model": vote.model,
+            }
+            for vote in decision.primary_votes
+        ],
+        "tiebreak_vote": (
+            {
+                "verdict": decision.tiebreak_vote.verdict,
+                "model": decision.tiebreak_vote.model,
+            }
+            if decision.tiebreak_vote is not None
+            else None
+        ),
+    }
 
 
 def _apply_case_budget(

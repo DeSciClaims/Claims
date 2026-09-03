@@ -486,6 +486,12 @@ Both profiles currently set `CLAIMS_ALLOW_PAPER_REUSE=true` so the backend may
 draw from approved papers that appeared in earlier batches while the paper
 catalog is still growing. Canonical task IDs, paper assignments, miner
 assignments, and uploaded artifacts remain isolated to their canonical batch.
+The profiles also enable pre-comparison claim eligibility: two role-specific
+judges apply six hard admission gates, with a blind tiebreak only when they
+disagree. Eligibility can use the established file-agent path or an optional
+bounded DSPy Predict path without changing comparison and relationship
+adjudication. Full controls and failure behavior are in the
+[validator configuration reference](./validator/agent_v1/README.md#file-workspace-silver).
 
 ### Testnet
 

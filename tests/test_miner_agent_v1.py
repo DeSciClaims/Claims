@@ -142,6 +142,17 @@ def test_dspy_chutes_model_keeps_explicit_litellm_route() -> None:
     ) == "openai/openai/gpt-oss-120b"
 
 
+def test_dspy_openrouter_model_adds_litellm_route() -> None:
+    assert dspy_model_id(
+        "qwen/qwen3.7-flash",
+        provider="openrouter",
+    ) == "openrouter/qwen/qwen3.7-flash"
+    assert dspy_model_id(
+        "openrouter/deepseek/deepseek-v4-flash",
+        provider="openrouter",
+    ) == "openrouter/deepseek/deepseek-v4-flash"
+
+
 def test_agent_v1_pdf_inspector_reader_outputs_markdown_page_spans(monkeypatch, tmp_path: Path) -> None:
     pdf_path = tmp_path / "paper.pdf"
     pdf_path.write_bytes(b"%PDF-1.4\n")

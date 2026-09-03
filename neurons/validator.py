@@ -2003,7 +2003,9 @@ class ClaimsValidator:
         precomputed_rigor: dict[
             tuple[int, str], tuple[dict[str, Any], dict[str, Any]]
         ] = {}
-        if not bool(getattr(self.config, "claims_skip_diagnostic_validation", False)):
+        if not bool(
+            getattr(self.config, "claims_skip_diagnostic_validation", False)
+        ) and not bool(getattr(self.config, "claims_agent_v1_skip_rigor", False)):
             precomputed_rigor = self._prepare_batched_diagnostics(
                 scored_responses,
                 task=task,
@@ -2694,6 +2696,9 @@ class ClaimsValidator:
                     direct_judge_confidence=float(getattr(self.config, "claims_silver_direct_confidence", 0.9)),
                     source_context=bronze_source_context,
                     source_context_by_span_id=source_context_by_span_id,
+                    eligibility_source_context_by_span_id=_source_context_map_from_payloads(
+                        [bronze_source_payload]
+                    ),
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
                     adjudication_batch_size=int(getattr(self.config, "claims_silver_adjudication_batch_size", 8)),
                     adjudication_progress_sink=lambda contexts, votes: self._persist_adjudication_progress(
@@ -3138,6 +3143,13 @@ class ClaimsValidator:
         self.bt_logging.info(
             "Silver file-agent workflow enabled: "
             f"harness={workflow.config.harness} "
+            f"eligibility={workflow.config.eligibility_enabled} "
+            f"eligibility_harness={workflow.config.eligibility_harness} "
+            f"eligibility_provider={workflow.config.eligibility_provider} "
+            f"eligibility_models="
+            f"{workflow.config.eligibility_negative_model},"
+            f"{workflow.config.eligibility_positive_model},"
+            f"{workflow.config.eligibility_tiebreak_model} "
             f"comparison_model={workflow.config.comparison_model} "
             f"canonicalization_model={workflow.config.canonicalization_model} "
             f"canonical_audit_model={workflow.config.canonical_audit_model or workflow.config.canonicalization_model}"
@@ -4756,6 +4768,30 @@ class ClaimsValidator:
             )
             for stage_key, stage_label, role, model in (
                 (
+                    "silver_eligibility",
+                    "Eligibility negative judge",
+                    "silver_eligibility_negative",
+                    config.eligibility_negative_model,
+                ),
+                (
+                    "silver_eligibility",
+                    "Eligibility positive judge",
+                    "silver_eligibility_positive",
+                    config.eligibility_positive_model,
+                ),
+                (
+                    "silver_eligibility",
+                    "Eligibility blind finding discovery",
+                    "silver_eligibility_tiebreak",
+                    config.eligibility_tiebreak_model,
+                ),
+                (
+                    "silver_eligibility",
+                    "Eligibility blind tiebreak resolution",
+                    "silver_eligibility_tiebreak",
+                    config.eligibility_tiebreak_model,
+                ),
+                (
                     "silver_comparison",
                     "Comparison graph",
                     "silver_file_comparator",
@@ -6131,6 +6167,42 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         ),
         "claims_silver_file_agent_canonical_audit_model": str(
             os.getenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "") or ""
+        ),
+        "claims_silver_eligibility_enable": _env_flag(
+            "CLAIMS_SILVER_ELIGIBILITY_ENABLE",
+            False,
+        ),
+        "claims_silver_eligibility_harness": str(
+            os.getenv("CLAIMS_SILVER_ELIGIBILITY_HARNESS", "file-agent")
+            or "file-agent"
+        ),
+        "claims_silver_eligibility_provider": str(
+            os.getenv("CLAIMS_SILVER_ELIGIBILITY_PROVIDER", "openrouter")
+            or "openrouter"
+        ),
+        "claims_silver_eligibility_api_base": str(
+            os.getenv("CLAIMS_SILVER_ELIGIBILITY_API_BASE", "") or ""
+        ),
+        "claims_silver_eligibility_negative_model": str(
+            os.getenv("CLAIMS_SILVER_ELIGIBILITY_NEGATIVE_MODEL", "") or ""
+        ),
+        "claims_silver_eligibility_positive_model": str(
+            os.getenv("CLAIMS_SILVER_ELIGIBILITY_POSITIVE_MODEL", "") or ""
+        ),
+        "claims_silver_eligibility_tiebreak_model": str(
+            os.getenv("CLAIMS_SILVER_ELIGIBILITY_TIEBREAK_MODEL", "") or ""
+        ),
+        "claims_silver_eligibility_batch_size": int(
+            os.getenv("CLAIMS_SILVER_ELIGIBILITY_BATCH_SIZE", "8") or 8
+        ),
+        "claims_silver_eligibility_max_workers": int(
+            os.getenv("CLAIMS_SILVER_ELIGIBILITY_MAX_WORKERS", "4") or 4
+        ),
+        "claims_silver_eligibility_max_tokens": int(
+            os.getenv("CLAIMS_SILVER_ELIGIBILITY_MAX_TOKENS", "32768") or 32768
+        ),
+        "claims_silver_eligibility_timeout": float(
+            os.getenv("CLAIMS_SILVER_ELIGIBILITY_TIMEOUT", "300") or 300
         ),
         "claims_silver_file_agent_require_distinct_judges": _env_flag(
             "CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES",
