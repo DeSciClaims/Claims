@@ -902,6 +902,34 @@ def test_miner_reward_snapshot_uses_live_emission_owner_cut_and_pool_reserves() 
     }
 
 
+def test_miner_registration_price_uses_subnet_recycle_balance() -> None:
+    calls: list[int] = []
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(netuid=111, claims_bucket_registration_price_tao=0.0)
+    validator.subtensor = SimpleNamespace(
+        recycle=lambda *, netuid: calls.append(netuid) or SimpleNamespace(tao=0.881344005)
+    )
+    validator.bt_logging = SimpleNamespace(warning=lambda *_args: None)
+
+    assert validator._miner_registration_price_tao() == pytest.approx(0.881344005)
+    assert calls == [111]
+
+
+def test_miner_registration_price_uses_configured_fallback_on_chain_error() -> None:
+    warnings: list[str] = []
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(netuid=111, claims_bucket_registration_price_tao=0.75)
+
+    def fail_recycle(*, netuid: int):
+        raise RuntimeError(f"burn unavailable for {netuid}")
+
+    validator.subtensor = SimpleNamespace(recycle=fail_recycle)
+    validator.bt_logging = SimpleNamespace(warning=warnings.append)
+
+    assert validator._miner_registration_price_tao() == pytest.approx(0.75)
+    assert "subnet Burn value" in warnings[0]
+
+
 def test_canonical_assignment_preserves_unavailable_uid_for_zero_scoring() -> None:
     validator = ClaimsValidator.__new__(ClaimsValidator)
     validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="validator_hotkey"))

@@ -442,7 +442,7 @@ class ClaimsValidator:
             dest="claims_bucket_registration_price_tao",
             type=float,
             default=max(0.0, float(os.getenv("CLAIMS_BUCKET_REGISTRATION_PRICE_TAO", "0"))),
-            help="Fallback miner registration price in TAO when NeuronBurnCost cannot be read on-chain.",
+            help="Fallback miner registration price in TAO when the subnet Burn value cannot be read on-chain.",
         )
         parser.add_argument(
             "--claims.audit-method",
@@ -1443,10 +1443,7 @@ class ClaimsValidator:
     def _miner_registration_price_tao(self) -> float | None:
         configured = float(getattr(self.config, "claims_bucket_registration_price_tao", 0.0) or 0.0)
         try:
-            value = self.subtensor.get_hyperparameter(
-                param_name="NeuronBurnCost",
-                netuid=int(self.config.netuid),
-            )
+            value = self.subtensor.recycle(netuid=int(self.config.netuid))
             if hasattr(value, "tao"):
                 price = float(value.tao)
             else:
@@ -1457,7 +1454,7 @@ class ClaimsValidator:
                 return price
         except Exception as exc:
             self.bt_logging.warning(
-                "Could not read NeuronBurnCost for bucket payout; "
+                "Could not read subnet Burn value for bucket payout; "
                 f"using configured fallback={configured or 'none'}: {exc}"
             )
         return configured if configured > 0.0 else None

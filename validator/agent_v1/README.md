@@ -214,7 +214,7 @@ evaluation. Moving UID does not erase a hotkey's history.
   for the highest-scoring valid newcomer. The overall component receives
   `1-b`; a newcomer may earn both components. If no newcomer submits valid work
   above the configured minimum, the reserved share returns to the overall
-  ranking. `NeuronBurnCost` is read from chain; use
+  ranking. The subnet `Burn` value is read from chain; use
   `CLAIMS_BUCKET_REGISTRATION_PRICE_TAO` only as an outage fallback. The round
   reward is derived in alpha from a signed live subnet emission/pool snapshot
   and recent canonical assignment block intervals; the registration price is
