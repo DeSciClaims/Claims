@@ -14,6 +14,7 @@ dependencies = [
     "langchain",
     "langchain-openai",
     "lxml",
+    "numpy",
     "openpyxl",
     "pdf-inspector",
     "psutil",

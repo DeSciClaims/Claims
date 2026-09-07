@@ -2815,6 +2815,38 @@ def test_bucket_returns_bonus_to_overall_when_no_newcomer_qualifies() -> None:
     assert result.payout_policy["newcomer_bonus_returned_to_overall"] is True
 
 
+def test_reward_exclusion_keeps_raw_score_but_removes_all_payout() -> None:
+    result = score_batch(
+        batch_id="batch",
+        paper_scores=[
+            _score_breakdown("miner_A", "paper", 0.9),
+            _score_breakdown("miner_B", "paper", 0.6),
+        ],
+        payout_mode="bucket",
+        selection_lanes={"miner_A": "qualification", "miner_B": "performance"},
+        selection_policy={"newcomer_share": 0.30, "newcomer_min_score": 0.10},
+        reward_exclusions={"miner_A": "duplicate_scientific_content"},
+    )
+    miners = {item.miner_id: item for item in result.miners}
+
+    assert miners["miner_A"].batch_score == 0.9
+    assert miners["miner_A"].raw_rank == 1
+    assert miners["miner_A"].rank is None
+    assert miners["miner_A"].reward_eligible is False
+    assert miners["miner_A"].reward_exclusion_reason == "duplicate_scientific_content"
+    assert miners["miner_A"].overall_payout_weight == 0.0
+    assert miners["miner_A"].newcomer_bonus_weight == 0.0
+    assert miners["miner_A"].payout_weight == 0.0
+    assert miners["miner_A"].winner is False
+    assert miners["miner_B"].payout_weight == 1.0
+    assert miners["miner_B"].rank == 1
+    assert miners["miner_B"].winner is True
+    assert result.winner_miner_id == "miner_B"
+    assert result.payout_policy["reward_exclusions"] == {
+        "miner_A": "duplicate_scientific_content"
+    }
+
+
 def test_batch_score_excludes_validator_failed_papers_from_every_miner_denominator() -> None:
     result = score_batch(
         batch_id="batch",

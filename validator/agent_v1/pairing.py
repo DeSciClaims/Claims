@@ -370,7 +370,7 @@ def _candidate_embeddings(
         return {}
     provider = embedding_provider
     if provider is None:
-        provider = _openrouter_embedding_provider_from_env()
+        provider = openrouter_embedding_provider_from_env()
     if provider is None:
         return {}
     try:
@@ -379,7 +379,7 @@ def _candidate_embeddings(
         return {}
 
 
-def _openrouter_embedding_provider_from_env() -> Callable[[list[ComparisonCandidate]], dict[str, list[float]]] | None:
+def openrouter_embedding_provider_from_env() -> Callable[[list[ComparisonCandidate]], dict[str, list[float]]] | None:
     mode = os.getenv("CLAIMS_SILVER_PAIRING_EMBEDDING_MODE", "").strip().lower()
     if mode not in {"openrouter", "on", "true", "1"}:
         return None
@@ -390,7 +390,7 @@ def _openrouter_embedding_provider_from_env() -> Callable[[list[ComparisonCandid
     model = os.getenv("CLAIMS_SILVER_PAIRING_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
 
     def provider(candidates: list[ComparisonCandidate]) -> dict[str, list[float]]:
-        inputs = [_embedding_text(candidate) for candidate in candidates]
+        inputs = [candidate_embedding_text(candidate) for candidate in candidates]
         body = json.dumps({"model": model, "input": inputs}).encode("utf-8")
         request = Request(
             f"{api_base}/embeddings",
@@ -418,13 +418,18 @@ def _openrouter_embedding_provider_from_env() -> Callable[[list[ComparisonCandid
     return provider
 
 
-def _embedding_text(candidate: ComparisonCandidate) -> str:
+def candidate_embedding_text(candidate: ComparisonCandidate) -> str:
     parts = [
         candidate.statement,
         candidate.qualifier or "",
         " ".join(candidate.source_quotes[:2]),
     ]
     return "\n".join(part for part in parts if part)
+
+
+# Kept as private aliases for callers written against the original pairing module.
+_openrouter_embedding_provider_from_env = openrouter_embedding_provider_from_env
+_embedding_text = candidate_embedding_text
 
 
 def _add_hit(

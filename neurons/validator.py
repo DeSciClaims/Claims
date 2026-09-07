@@ -38,6 +38,11 @@ from validator.agent_v1.diagnostic_batch import (
     precomputed_rigor_manifest,
     run_diagnostic_batch,
 )
+from validator.agent_v1.duplicate_submissions import (
+    FINGERPRINT_VERSION,
+    detect_duplicate_submissions,
+    detect_semantic_duplicate_submissions,
+)
 from validator.agent_v1.file_agent_workflow import (
     FileAgentSilverWorkflow,
     FileAgentWorkflowConfig,
@@ -47,6 +52,7 @@ from validator.agent_v1.grounding import run_grounding_checks
 from validator.agent_v1.models import AgentV1ValidationFinding
 from validator.agent_v1.model_usage import ModelUsageCollector
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline
+from validator.agent_v1.pairing import openrouter_embedding_provider_from_env
 from validator.agent_v1.reference_client import (
     BackendBackedReferenceMinerClient,
     LocalCliReferenceMinerClient,
@@ -443,6 +449,93 @@ class ClaimsValidator:
             type=float,
             default=max(0.0, float(os.getenv("CLAIMS_BUCKET_REGISTRATION_PRICE_TAO", "0"))),
             help="Fallback miner registration price in TAO when the subnet Burn value cannot be read on-chain.",
+        )
+        parser.add_argument(
+            "--claims.duplicate-submission-detection",
+            dest="claims_duplicate_submission_detection",
+            action=argparse.BooleanOptionalAction,
+            default=_env_flag("CLAIMS_DUPLICATE_SUBMISSION_DETECTION", True),
+            help="Detect batch-level duplicate scientific artifacts and exclude matching miners from rewards.",
+        )
+        parser.add_argument(
+            "--claims.duplicate-submission-min-matching-papers",
+            dest="claims_duplicate_submission_min_matching_papers",
+            type=int,
+            default=max(1, int(os.getenv("CLAIMS_DUPLICATE_SUBMISSION_MIN_MATCHING_PAPERS", "10"))),
+            help="Minimum number of matching shared papers required to confirm duplicate submissions.",
+        )
+        parser.add_argument(
+            "--claims.duplicate-submission-min-match-ratio",
+            dest="claims_duplicate_submission_min_match_ratio",
+            type=float,
+            default=max(
+                0.0,
+                min(1.0, float(os.getenv("CLAIMS_DUPLICATE_SUBMISSION_MIN_MATCH_RATIO", "0.80"))),
+            ),
+            help="Minimum fraction of shared papers whose scientific artifacts must match.",
+        )
+        parser.add_argument(
+            "--claims.duplicate-submission-semantic-mode",
+            dest="claims_duplicate_submission_semantic_mode",
+            choices=("off", "shadow", "enforce"),
+            default=os.getenv("CLAIMS_DUPLICATE_SUBMISSION_SEMANTIC_MODE", "shadow").strip().lower(),
+            help="Run semantic near-duplicate detection disabled, audit-only, or enforced for payout.",
+        )
+        parser.add_argument(
+            "--claims.duplicate-submission-semantic-claim-threshold",
+            dest="claims_duplicate_submission_semantic_claim_threshold",
+            type=float,
+            default=max(
+                0.0,
+                min(
+                    1.0,
+                    float(os.getenv("CLAIMS_DUPLICATE_SUBMISSION_SEMANTIC_CLAIM_THRESHOLD", "0.985")),
+                ),
+            ),
+            help="Cosine-similarity threshold for matching two submitted claims.",
+        )
+        parser.add_argument(
+            "--claims.duplicate-submission-semantic-min-matching-claims",
+            dest="claims_duplicate_submission_semantic_min_matching_claims",
+            type=int,
+            default=max(
+                1,
+                int(os.getenv("CLAIMS_DUPLICATE_SUBMISSION_SEMANTIC_MIN_MATCHING_CLAIMS", "5")),
+            ),
+            help="Minimum one-to-one semantic claim matches required to flag one shared paper.",
+        )
+        parser.add_argument(
+            "--claims.duplicate-submission-semantic-paper-match-ratio",
+            dest="claims_duplicate_submission_semantic_paper_match_ratio",
+            type=float,
+            default=max(
+                0.0,
+                min(
+                    1.0,
+                    float(os.getenv("CLAIMS_DUPLICATE_SUBMISSION_SEMANTIC_PAPER_MATCH_RATIO", "0.80")),
+                ),
+            ),
+            help="Minimum two-sided claim overlap required to flag one shared paper.",
+        )
+        parser.add_argument(
+            "--claims.duplicate-submission-embedding-batch-size",
+            dest="claims_duplicate_submission_embedding_batch_size",
+            type=int,
+            default=max(
+                1,
+                int(os.getenv("CLAIMS_DUPLICATE_SUBMISSION_EMBEDDING_BATCH_SIZE", "128")),
+            ),
+            help="Maximum unique semantic claim texts sent in one embedding request.",
+        )
+        parser.add_argument(
+            "--claims.duplicate-submission-embedding-max-workers",
+            dest="claims_duplicate_submission_embedding_max_workers",
+            type=int,
+            default=max(
+                1,
+                int(os.getenv("CLAIMS_DUPLICATE_SUBMISSION_EMBEDDING_MAX_WORKERS", "4")),
+            ),
+            help="Maximum concurrent semantic duplicate embedding requests.",
         )
         parser.add_argument(
             "--claims.audit-method",
@@ -927,6 +1020,31 @@ class ClaimsValidator:
         config.claims_miner_ipv6_prefix_bits = parsed_args.claims_miner_ipv6_prefix_bits
         config.claims_bucket_max_newcomers_per_batch = parsed_args.claims_bucket_max_newcomers_per_batch
         config.claims_bucket_registration_price_tao = parsed_args.claims_bucket_registration_price_tao
+        config.claims_duplicate_submission_detection = parsed_args.claims_duplicate_submission_detection
+        config.claims_duplicate_submission_min_matching_papers = (
+            parsed_args.claims_duplicate_submission_min_matching_papers
+        )
+        config.claims_duplicate_submission_min_match_ratio = (
+            parsed_args.claims_duplicate_submission_min_match_ratio
+        )
+        config.claims_duplicate_submission_semantic_mode = (
+            parsed_args.claims_duplicate_submission_semantic_mode
+        )
+        config.claims_duplicate_submission_semantic_claim_threshold = (
+            parsed_args.claims_duplicate_submission_semantic_claim_threshold
+        )
+        config.claims_duplicate_submission_semantic_min_matching_claims = (
+            parsed_args.claims_duplicate_submission_semantic_min_matching_claims
+        )
+        config.claims_duplicate_submission_semantic_paper_match_ratio = (
+            parsed_args.claims_duplicate_submission_semantic_paper_match_ratio
+        )
+        config.claims_duplicate_submission_embedding_batch_size = (
+            parsed_args.claims_duplicate_submission_embedding_batch_size
+        )
+        config.claims_duplicate_submission_embedding_max_workers = (
+            parsed_args.claims_duplicate_submission_embedding_max_workers
+        )
         config.claims_audit_method = parsed_args.claims_audit_method
         config.claims_agent_v1_validation_mode = parsed_args.claims_agent_v1_validation_mode
         config.claims_validator_pipeline = parsed_args.claims_validator_pipeline
@@ -2563,6 +2681,189 @@ class ClaimsValidator:
                         )
                     )
 
+        duplicate_detection_enabled = bool(
+            getattr(self.config, "claims_duplicate_submission_detection", True)
+        )
+        artifacts_by_miner: dict[str, dict[str, dict[str, Any]]] = {}
+        duplicate_matches = []
+        semantic_matches = []
+        semantic_mode = str(
+            getattr(self.config, "claims_duplicate_submission_semantic_mode", "off") or "off"
+        ).strip().lower()
+        semantic_report: dict[str, Any] = {
+            "schema": "agent_v1_semantic_content_v1",
+            "mode": semantic_mode,
+            "status": "disabled",
+            "groups": [],
+        }
+        if duplicate_detection_enabled:
+            for paper_id, miner_rows in miners_by_paper.items():
+                for uid, extraction, _metadata, _source_payload, _findings, _assessments in miner_rows:
+                    artifacts_by_miner.setdefault(f"uid_{uid}", {})[paper_id] = extraction
+            duplicate_matches = detect_duplicate_submissions(
+                artifacts_by_miner,
+                minimum_matching_papers=int(
+                    getattr(
+                        self.config,
+                        "claims_duplicate_submission_min_matching_papers",
+                        10,
+                    )
+                    or 10
+                ),
+                minimum_match_ratio=float(
+                    getattr(
+                        self.config,
+                        "claims_duplicate_submission_min_match_ratio",
+                        0.80,
+                    )
+                ),
+            )
+            if semantic_mode != "off":
+                embedding_provider = openrouter_embedding_provider_from_env()
+                if embedding_provider is None:
+                    semantic_report = {
+                        **semantic_report,
+                        "status": "unavailable",
+                        "reason": "pairing_embedding_provider_not_configured",
+                    }
+                else:
+                    semantic_result = detect_semantic_duplicate_submissions(
+                        artifacts_by_miner,
+                        embedding_provider=embedding_provider,
+                        minimum_matching_papers=int(
+                            getattr(
+                                self.config,
+                                "claims_duplicate_submission_min_matching_papers",
+                                10,
+                            )
+                            or 10
+                        ),
+                        minimum_batch_match_ratio=float(
+                            getattr(
+                                self.config,
+                                "claims_duplicate_submission_min_match_ratio",
+                                0.80,
+                            )
+                        ),
+                        claim_similarity_threshold=float(
+                            getattr(
+                                self.config,
+                                "claims_duplicate_submission_semantic_claim_threshold",
+                                0.985,
+                            )
+                        ),
+                        minimum_matching_claims_per_paper=int(
+                            getattr(
+                                self.config,
+                                "claims_duplicate_submission_semantic_min_matching_claims",
+                                5,
+                            )
+                            or 5
+                        ),
+                        minimum_paper_match_ratio=float(
+                            getattr(
+                                self.config,
+                                "claims_duplicate_submission_semantic_paper_match_ratio",
+                                0.80,
+                            )
+                        ),
+                        embedding_batch_size=int(
+                            getattr(
+                                self.config,
+                                "claims_duplicate_submission_embedding_batch_size",
+                                128,
+                            )
+                            or 128
+                        ),
+                        embedding_max_workers=int(
+                            getattr(
+                                self.config,
+                                "claims_duplicate_submission_embedding_max_workers",
+                                4,
+                            )
+                            or 4
+                        ),
+                    )
+                    semantic_matches = list(semantic_result.matches)
+                    semantic_report = {
+                        **semantic_result.as_dict(),
+                        "mode": semantic_mode,
+                        "claim_similarity_threshold": float(
+                            getattr(
+                                self.config,
+                                "claims_duplicate_submission_semantic_claim_threshold",
+                                0.985,
+                            )
+                        ),
+                        "minimum_matching_claims_per_paper": int(
+                            getattr(
+                                self.config,
+                                "claims_duplicate_submission_semantic_min_matching_claims",
+                                5,
+                            )
+                            or 5
+                        ),
+                        "minimum_paper_match_ratio": float(
+                            getattr(
+                                self.config,
+                                "claims_duplicate_submission_semantic_paper_match_ratio",
+                                0.80,
+                            )
+                        ),
+                    }
+        exact_duplicate_miner_ids = {
+            miner_id
+            for match in duplicate_matches
+            for miner_id in match.miner_ids
+        }
+        semantic_duplicate_miner_ids = {
+            miner_id
+            for match in semantic_matches
+            for miner_id in match.miner_ids
+        }
+        semantic_enforced = semantic_mode == "enforce" and semantic_report.get("status") == "complete"
+        duplicate_exclusion_reasons = {
+            miner_id: "duplicate_scientific_content"
+            for miner_id in exact_duplicate_miner_ids
+        }
+        if semantic_enforced:
+            for miner_id in semantic_duplicate_miner_ids:
+                duplicate_exclusion_reasons.setdefault(
+                    miner_id,
+                    "semantic_duplicate_scientific_content",
+                )
+        duplicate_miner_ids = set(duplicate_exclusion_reasons)
+        duplicate_report = {
+            "schema": "claims_duplicate_submission_detection_v2",
+            "enabled": duplicate_detection_enabled,
+            "fingerprint_version": FINGERPRINT_VERSION,
+            "minimum_matching_papers": int(
+                getattr(self.config, "claims_duplicate_submission_min_matching_papers", 10) or 10
+            ),
+            "minimum_match_ratio": float(
+                getattr(self.config, "claims_duplicate_submission_min_match_ratio", 0.80)
+            ),
+            "excluded_miner_ids": sorted(duplicate_miner_ids),
+            "groups": [match.as_dict() for match in duplicate_matches],
+            "exact_groups": [match.as_dict() for match in duplicate_matches],
+            "semantic": semantic_report,
+        }
+        if duplicate_matches:
+            self.bt_logging.error(
+                "Exact duplicate scientific submissions detected; excluding all matching miners from rewards: "
+                f"groups={duplicate_report['exact_groups']}"
+            )
+        if semantic_matches:
+            log_message = (
+                "Semantic near-duplicate scientific submissions detected: "
+                f"mode={semantic_mode} status={semantic_report.get('status')} "
+                f"groups={semantic_report.get('groups')}"
+            )
+            if semantic_enforced:
+                self.bt_logging.error(log_message)
+            else:
+                self.bt_logging.warning(log_message)
+
         paper_jobs = [
             (paper_index, paper)
             for paper_index, paper in enumerate(paper_tasks, start=1)
@@ -2932,8 +3233,10 @@ class ClaimsValidator:
                 if item.get("uid") is not None
             },
             selection_policy=selection_policy,
+            reward_exclusions=duplicate_exclusion_reasons,
         )
         batch_payload = batch_result.model_dump(mode="json")
+        batch_payload["duplicate_submission_detection"] = duplicate_report
         batch_payload["validator_failed_papers"] = validator_failed_papers
         batch_payload["scored_paper_count"] = len(eligible_paper_ids)
         batch_payload["expected_paper_count"] = len(expected_paper_ids)
@@ -2956,7 +3259,11 @@ class ClaimsValidator:
         )
         return {
             uid: next(
-                (float(item.batch_score) for item in batch_result.miners if item.miner_id == f"uid_{uid}"),
+                (
+                    float(item.batch_score) if item.reward_eligible else 0.0
+                    for item in batch_result.miners
+                    if item.miner_id == f"uid_{uid}"
+                ),
                 0.0,
             )
             for uid in expected_uids
@@ -4965,9 +5272,12 @@ class ClaimsValidator:
                     "mean_score": float(item.get("mean_score", score) or 0.0),
                     "median_score": float(item.get("median_score", score) or 0.0),
                     "min_score": float(item.get("min_score", score) or 0.0),
+                    "raw_rank": item.get("raw_rank"),
                     "rank": item.get("rank"),
                     "winner": bool(item.get("winner", False)),
                     "payout_weight": float(item.get("payout_weight", 0.0) or 0.0),
+                    "reward_eligible": bool(item.get("reward_eligible", True)),
+                    "reward_exclusion_reason": item.get("reward_exclusion_reason"),
                     "selection_lane": item.get("selection_lane"),
                     "newcomer": bool(item.get("newcomer", False)),
                     "overall_payout_weight": float(item.get("overall_payout_weight", 0.0) or 0.0),
@@ -6089,6 +6399,33 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         ),
         "claims_bucket_registration_price_tao": float(
             getattr(config, "claims_bucket_registration_price_tao", 0.0) or 0.0
+        ),
+        "claims_duplicate_submission_detection": bool(
+            getattr(config, "claims_duplicate_submission_detection", True)
+        ),
+        "claims_duplicate_submission_min_matching_papers": int(
+            getattr(config, "claims_duplicate_submission_min_matching_papers", 10) or 10
+        ),
+        "claims_duplicate_submission_min_match_ratio": float(
+            getattr(config, "claims_duplicate_submission_min_match_ratio", 0.80)
+        ),
+        "claims_duplicate_submission_semantic_mode": str(
+            getattr(config, "claims_duplicate_submission_semantic_mode", "off") or "off"
+        ),
+        "claims_duplicate_submission_semantic_claim_threshold": float(
+            getattr(config, "claims_duplicate_submission_semantic_claim_threshold", 0.985)
+        ),
+        "claims_duplicate_submission_semantic_min_matching_claims": int(
+            getattr(config, "claims_duplicate_submission_semantic_min_matching_claims", 5) or 5
+        ),
+        "claims_duplicate_submission_semantic_paper_match_ratio": float(
+            getattr(config, "claims_duplicate_submission_semantic_paper_match_ratio", 0.80)
+        ),
+        "claims_duplicate_submission_embedding_batch_size": int(
+            getattr(config, "claims_duplicate_submission_embedding_batch_size", 128) or 128
+        ),
+        "claims_duplicate_submission_embedding_max_workers": int(
+            getattr(config, "claims_duplicate_submission_embedding_max_workers", 4) or 4
         ),
         "claims_timeout": float(getattr(config, "claims_timeout", 0.0)),
         "claims_query_interval": float(getattr(config, "claims_query_interval", 0.0)),

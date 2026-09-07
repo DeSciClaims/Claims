@@ -546,6 +546,16 @@ Primary arguments:
   `CLAIMS_MINER_IPV4_PROXIMITY_ADDRESSES` (default `1024`) IPv4 addresses or the
   same IPv6 `/64`. If the eligible pool lacks enough distinct identities, the
   batch has fewer miners rather than relaxing these caps.
+  Before payout, the validator independently fingerprints each miner's
+  `logic`, `evidence`, and `trace` content. Miners matching on at least 10
+  shared papers and 80% of their shared batch are excluded from overall and
+  newcomer rewards. Raw Silver scores remain auditable, while selection
+  history records an effective zero and applies the normal zero-score cooldown.
+  Semantic near-copy detection embeds uncapped claim and evidence text and
+  requires high one-to-one overlap across the same batch threshold. It defaults
+  to `CLAIMS_DUPLICATE_SUBMISSION_SEMANTIC_MODE=shadow`, which records suspected
+  groups without changing rewards; use `enforce` only after reviewing live
+  shadow results.
 - `--claims.audit-method llm`, `--claims.validator-pipeline auto`, and
   `--claims.silver-enable` enable the current diagnostic and Silver scoring path.
 - `--claims.output-dir` stores local run artifacts. `--claims.timeout` is the

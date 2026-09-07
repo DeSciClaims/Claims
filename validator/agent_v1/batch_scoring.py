@@ -21,6 +21,7 @@ class MinerBatchScore(BaseModel):
     median_score: float = 0.0
     min_score: float = 0.0
     batch_score: float = 0.0
+    raw_rank: int | None = None
     rank: int | None = None
     winner: bool = False
     payout_weight: float = 0.0
@@ -28,6 +29,8 @@ class MinerBatchScore(BaseModel):
     newcomer: bool = False
     overall_payout_weight: float = 0.0
     newcomer_bonus_weight: float = 0.0
+    reward_eligible: bool = True
+    reward_exclusion_reason: str | None = None
     paper_scores: list[SilverScoreBreakdown] = Field(default_factory=list)
 
 
@@ -56,6 +59,7 @@ def score_batch(
     runner_up_decay: float = 0.5,
     selection_lanes: dict[str, str] | None = None,
     selection_policy: dict[str, Any] | None = None,
+    reward_exclusions: dict[str, str] | None = None,
 ) -> BatchScoreResult:
     expected_papers = list(dict.fromkeys(expected_paper_ids or []))
     eligible_papers = list(
@@ -100,26 +104,38 @@ def score_batch(
                 batch_score=mean_score,
                 selection_lane=(selection_lanes or {}).get(miner_id),
                 newcomer=(selection_lanes or {}).get(miner_id) == "qualification",
+                reward_eligible=miner_id not in (reward_exclusions or {}),
+                reward_exclusion_reason=(reward_exclusions or {}).get(miner_id),
                 paper_scores=scores,
             )
         )
     miners.sort(key=lambda item: (-item.batch_score, item.miner_id))
-    rank = 1
+    raw_rank = 1
     for index, item in enumerate(miners):
         if index > 0 and item.batch_score != miners[index - 1].batch_score:
-            rank = index + 1
-        item.rank = rank
+            raw_rank = index + 1
+        item.raw_rank = raw_rank
+    reward_rank = 1
+    reward_ranked = [item for item in miners if item.reward_eligible]
+    for index, item in enumerate(reward_ranked):
+        if index > 0 and item.batch_score != reward_ranked[index - 1].batch_score:
+            reward_rank = index + 1
+        item.rank = reward_rank
 
     policy_details: dict[str, Any] = {}
+    eligible_scores = {
+        item.miner_id: item.batch_score if item.reward_eligible else 0.0
+        for item in miners
+    }
     if payout_mode == "proportional":
-        total = sum(max(item.batch_score, 0.0) for item in miners)
+        total = sum(max(score, 0.0) for score in eligible_scores.values())
         payout_weights = {
-            item.miner_id: max(item.batch_score, 0.0) / total if total > 0.0 else 0.0
+            item.miner_id: max(eligible_scores[item.miner_id], 0.0) / total if total > 0.0 else 0.0
             for item in miners
         }
     else:
         payout_weights = winner_takes_most_weights(
-            {item.miner_id: item.batch_score for item in miners},
+            eligible_scores,
             winner_share=winner_share,
             runner_up_slots=runner_up_slots,
             runner_up_decay=runner_up_decay,
@@ -153,6 +169,7 @@ def score_batch(
             "winner_share": winner_share,
             "runner_up_slots": runner_up_slots,
             "runner_up_decay": runner_up_decay,
+            "reward_exclusions": dict(sorted((reward_exclusions or {}).items())),
             **policy_details,
         },
     )
@@ -170,6 +187,7 @@ def bucket_payout_weights(
         item
         for item in miners
         if item.newcomer
+        and item.reward_eligible
         and item.submitted_paper_count > 0
         and item.batch_score > minimum_score
     ]

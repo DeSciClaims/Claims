@@ -237,6 +237,15 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
         claims_miner_zero_score_cooldown_blocks=1_234,
         claims_miner_ipv4_proximity_addresses=2_048,
         claims_miner_ipv6_prefix_bits=56,
+        claims_duplicate_submission_detection=True,
+        claims_duplicate_submission_min_matching_papers=10,
+        claims_duplicate_submission_min_match_ratio=0.8,
+        claims_duplicate_submission_semantic_mode="shadow",
+        claims_duplicate_submission_semantic_claim_threshold=0.985,
+        claims_duplicate_submission_semantic_min_matching_claims=5,
+        claims_duplicate_submission_semantic_paper_match_ratio=0.8,
+        claims_duplicate_submission_embedding_batch_size=128,
+        claims_duplicate_submission_embedding_max_workers=4,
     )
 
     snapshot = _run_config_snapshot(config)
@@ -264,6 +273,12 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_miner_zero_score_cooldown_blocks"] == 1_234
     assert snapshot["claims_miner_ipv4_proximity_addresses"] == 2_048
     assert snapshot["claims_miner_ipv6_prefix_bits"] == 56
+    assert snapshot["claims_duplicate_submission_semantic_mode"] == "shadow"
+    assert snapshot["claims_duplicate_submission_semantic_claim_threshold"] == 0.985
+    assert snapshot["claims_duplicate_submission_semantic_min_matching_claims"] == 5
+    assert snapshot["claims_duplicate_submission_semantic_paper_match_ratio"] == 0.8
+    assert snapshot["claims_duplicate_submission_embedding_batch_size"] == 128
+    assert snapshot["claims_duplicate_submission_embedding_max_workers"] == 4
     assert snapshot["claims_silver_max_eligible_claims_per_miner"] == 6
     assert snapshot["claims_output_retention_runs"] == 5
     assert snapshot["claims_silver_filter_by_assessment"] is True
@@ -1358,9 +1373,12 @@ def test_weight_event_persists_authoritative_batch_summary() -> None:
                 "mean_score": 0.8,
                 "median_score": 0.8,
                 "min_score": 0.6,
+                "raw_rank": 1,
                 "rank": 1,
                 "winner": True,
                 "payout_weight": 1.0,
+                "reward_eligible": False,
+                "reward_exclusion_reason": "duplicate_scientific_content",
                 "expected_paper_count": 2,
                 "eligible_paper_count": 1,
                 "submitted_paper_count": 1,
@@ -1381,6 +1399,9 @@ def test_weight_event_persists_authoritative_batch_summary() -> None:
 
     [(_path, payload)] = posted
     assert payload["scores"][0]["batch_score"] == 0.8
+    assert payload["scores"][0]["raw_rank"] == 1
+    assert payload["scores"][0]["reward_eligible"] is False
+    assert payload["scores"][0]["reward_exclusion_reason"] == "duplicate_scientific_content"
     assert payload["scores"][0]["validator_failed_paper_ids"] == ["paper2"]
     assert payload["weights"][0]["weight"] == 1.0
 

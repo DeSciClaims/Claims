@@ -183,6 +183,17 @@ batch-scoped artifacts instead of repeating miner inference.
   `CLAIMS_MINER_IPV6_PREFIX_BITS=64` allows at most one Axon per IPv6 `/64`.
   Selected-run metadata records excluded and conflicting UIDs, hotkeys,
   coldkeys, IPs, and proximity details for auditing.
+- `CLAIMS_DUPLICATE_SUBMISSION_DETECTION=true` independently fingerprints
+  scientific artifact content before payout. A confirmed duplicate group is
+  excluded from overall and newcomer rewards while retaining raw Silver scores
+  for audit. `CLAIMS_DUPLICATE_SUBMISSION_MIN_MATCHING_PAPERS=10` and
+  `CLAIMS_DUPLICATE_SUBMISSION_MIN_MATCH_RATIO=0.80` set the batch-level
+  evidence threshold.
+- `CLAIMS_DUPLICATE_SUBMISSION_SEMANTIC_MODE=shadow` compares uncapped projected
+  claims using the configured Silver pairing embedding provider. It matches
+  claims one-to-one, requires five matches and 80% two-sided overlap per paper,
+  then applies the same 10-paper/80%-of-batch threshold. `shadow` records only;
+  `enforce` excludes confirmed groups, and incomplete embedding runs fail open.
 - Adaptive candidates must be registered, expose a serving Axon, and not be the
   validator's own hotkey. Assigned miners are never substituted after selection.
   Missing, invalid, offline, and timed-out miners remain in the batch and score

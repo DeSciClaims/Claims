@@ -124,6 +124,15 @@ four weighted performance seats and four oldest-evaluation rotation seats. All
 selected miners share the same scientific scoring;
 the final payout adds the registration-price-derived newcomer bonus to the
 ordinary 70/16/8/4/2 overall rank weight.
+Before payout, the validator independently fingerprints the `logic`,
+`evidence`, and `trace` content of every submitted artifact. Duplicate groups
+meeting the configured batch threshold retain their raw scores for audit but
+receive no payout or newcomer bonus and record an effective zero evaluation,
+which activates the existing cooldown.
+Semantic near-copy detection uses the configured Silver pairing embedding model
+against uncapped claim and evidence text. Its default `shadow` mode records
+suspected groups in batch metadata without affecting payout. `enforce` applies
+the same exclusion only when every embedding request completed successfully.
 For a new canonical bucket assignment, the validator reads the subnet's live
 alpha emission, owner cut, and pool reserves and sends that signed snapshot to
 the backend. The backend derives the per-round miner reward from recent
