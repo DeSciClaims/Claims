@@ -2073,6 +2073,53 @@ class ClaimsValidator:
                 self._post_miner_response(run_id, task, uid, response, miner_metadata, status="missing")
             return _DiagnosticScoreResult(uid=uid, score=score, response=response, stage=locals().get("stage"))
 
+        def failed_miner_diagnostic(
+            index: int,
+            neuron: Any,
+            exc: Exception,
+        ) -> _DiagnosticScoreResult:
+            uid = int(neuron.uid)
+            response = scored_responses[index] if index < len(scored_responses) else None
+            miner_metadata = self._miner_metadata(uid, response)
+            message = f"{type(exc).__name__}: {exc}"
+            self.bt_logging.warning(
+                f"Diagnostic validation failed uid={uid}; preserving miner artifacts for Silver: {message}"
+            )
+            self._post_miner_response(
+                run_id,
+                task,
+                uid,
+                response,
+                miner_metadata,
+                status="diagnostic_failed",
+            )
+            self._post_validation_report(
+                {
+                    "report_id": f"audit_{run_id}_uid_{uid}",
+                    "response_id": f"{run_id}:uid_{uid}",
+                    "run_id": run_id,
+                    "uid": uid,
+                    "hotkey": miner_metadata.get("hotkey", ""),
+                    "score": 0.0,
+                    "threshold": float(self.config.claims_agent_v1_threshold),
+                    "passed": False,
+                    "summary": {"validator_failure": 1},
+                    "report_uri": "",
+                    "findings": [
+                        _diagnostic_pipeline_failure_finding(
+                            error=message,
+                            target_id=f"uid_{uid}",
+                        )
+                    ],
+                    "paper_scores": [],
+                }
+            )
+            return _DiagnosticScoreResult(
+                uid=uid,
+                score=0.0,
+                response=response,
+            )
+
         diagnostic_worker_count = max(
             1,
             min(
@@ -2097,13 +2144,21 @@ class ClaimsValidator:
                     try:
                         diagnostic_results[index] = future.result()
                     except Exception as exc:
-                        self.bt_logging.warning(
-                            f"Diagnostic validation failed uid={uid}: {type(exc).__name__}: {exc}"
+                        diagnostic_results[index] = failed_miner_diagnostic(
+                            index,
+                            self.target_neurons[index],
+                            exc,
                         )
-                        diagnostic_results[index] = _DiagnosticScoreResult(uid=uid, score=0.0, response=None)
         else:
             for index, neuron in enumerate(self.target_neurons):
-                diagnostic_results[index] = score_miner_response(index, neuron)
+                try:
+                    diagnostic_results[index] = score_miner_response(index, neuron)
+                except Exception as exc:
+                    diagnostic_results[index] = failed_miner_diagnostic(
+                        index,
+                        neuron,
+                        exc,
+                    )
 
         for index, neuron in enumerate(self.target_neurons):
             result = diagnostic_results.get(index)
@@ -3875,6 +3930,48 @@ class ClaimsValidator:
                 "findings": finding_rows,
             }
 
+        def failed_paper_diagnostic(
+            index: int,
+            paper: ClaimsPaperTask,
+            exc: Exception,
+        ) -> dict[str, Any]:
+            paper_id = paper.paper_id or f"paper_{index}"
+            message = f"{type(exc).__name__}: {exc}"
+            self.bt_logging.warning(
+                f"Diagnostic validation failed uid={uid} paper={paper_id}; "
+                f"preserving artifact for Silver: {message}"
+            )
+            finding = _diagnostic_pipeline_failure_finding(
+                error=message,
+                target_id=paper_id,
+                paper_id=paper_id,
+                paper_title=paper.title,
+            )
+            article = articles_by_id.get(paper_id)
+            extraction = None
+            if isinstance(article, dict):
+                extraction = article.get("agent_output") or article.get("extraction")
+                article["diagnostic_score"] = 0.0
+                article["diagnostic_findings"] = [finding]
+                article["diagnostic_claim_assessments"] = []
+            result = {
+                "paper_id": paper_id,
+                "title": paper.title,
+                "status": "validator_failed",
+                "score": 0.0,
+                "error": message,
+                "report_path": None,
+            }
+            if isinstance(extraction, dict):
+                result["artifact_summary"] = summarize_agent_artifact(extraction)
+            return {
+                "index": index,
+                "score": 0.0,
+                "result": result,
+                "summary": {"validator_failure": 1},
+                "findings": [finding],
+            }
+
         paper_tasks = task.paper_tasks()
         paper_worker_count = max(
             1,
@@ -3896,10 +3993,20 @@ class ClaimsValidator:
                 }
                 for future in as_completed(futures):
                     index = futures[future]
-                    paper_results[index] = future.result()
+                    try:
+                        paper_results[index] = future.result()
+                    except Exception as exc:
+                        paper_results[index] = failed_paper_diagnostic(
+                            index,
+                            paper_tasks[index - 1],
+                            exc,
+                        )
         else:
             for index, paper in enumerate(paper_tasks, start=1):
-                paper_results[index] = score_paper(index, paper)
+                try:
+                    paper_results[index] = score_paper(index, paper)
+                except Exception as exc:
+                    paper_results[index] = failed_paper_diagnostic(index, paper, exc)
 
         for index in sorted(paper_results):
             item = paper_results[index]
@@ -3937,7 +4044,13 @@ class ClaimsValidator:
             ),
         }
         _write_json(base_dir / "batch_audit_record.json", batch_audit)
-        response_status = "completed" if any(result.get("status") in {"completed", "diagnostic_skipped"} for result in article_results) else "failed"
+        response_status = (
+            "completed"
+            if any(result.get("status") in {"completed", "diagnostic_skipped"} for result in article_results)
+            else "diagnostic_failed"
+            if any(result.get("status") == "validator_failed" for result in article_results)
+            else "failed"
+        )
         self._post_miner_response(run_id, task, uid, response, miner_metadata, status=response_status)
         self._post_validation_report(
             {
@@ -5777,6 +5890,34 @@ def _validation_findings_from_rows(rows: Any) -> list[AgentV1ValidationFinding]:
                 )
             )
     return findings
+
+
+def _diagnostic_pipeline_failure_finding(
+    *,
+    error: str,
+    target_id: str,
+    paper_id: str = "",
+    paper_title: str = "",
+) -> dict[str, Any]:
+    return {
+        "finding_id": f"DPF_{safe_task_id(target_id)}",
+        "pass_name": "scoring",
+        "dimension": "validator_pipeline",
+        "severity": "suggestion",
+        "target_type": "paper" if paper_id else "miner_response",
+        "target_id": target_id,
+        "paper_id": paper_id,
+        "paper_title": paper_title,
+        "message": (
+            "Validator diagnostic processing failed; the miner artifact was preserved "
+            "for Silver scoring and this finding does not penalize the miner."
+        ),
+        "metadata": {
+            "code": "validator_diagnostic_failure",
+            "miner_fault": False,
+            "error": error,
+        },
+    }
 
 
 def _coerce_validation_pass_name(value: Any) -> str:

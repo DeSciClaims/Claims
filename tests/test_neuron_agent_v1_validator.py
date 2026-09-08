@@ -783,6 +783,149 @@ def test_batched_diagnostic_repair_usage_is_recorded_as_a_separate_operation(
     assert [event["metadata"]["repair"] for event in events] == [False, True]
 
 
+def test_batch_diagnostic_failure_is_isolated_to_one_paper(tmp_path) -> None:
+    validator = object.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_output_dir=str(tmp_path / "outputs"),
+        claims_diagnostic_max_workers=2,
+        claims_batch_score_rule="mean",
+        claims_agent_v1_threshold=0.7,
+        claims_network="mainnet",
+        claims_rigor_model="test-model",
+        claims_rigor_harness="hermes-cli",
+        claims_agent_v1_runtime="",
+    )
+    validator.wallet = SimpleNamespace(
+        hotkey=SimpleNamespace(ss58_address="validator-hotkey")
+    )
+    validator.bt_logging = _logger()
+    validator._active_model_usage = None
+    posted_responses: list[dict] = []
+    posted_reports: list[dict] = []
+    validator._post_miner_response = lambda *_args, **kwargs: posted_responses.append(kwargs)
+    validator._post_validation_report = lambda payload: posted_reports.append(payload)
+    validator._record_diagnostic_model_usage = lambda **_kwargs: None
+
+    paper_one = _agent_v1_artifact()
+    paper_two = json.loads(json.dumps(paper_one))
+    paper_two["paper"]["paper_id"] = "paper2"
+
+    def score_extraction(extraction, **_kwargs):
+        if extraction["paper"]["paper_id"] == "paper1":
+            raise RuntimeError("diagnostic parser failed")
+        return 0.8
+
+    validator._score_extraction = score_extraction
+    response = SimpleNamespace(
+        articles=[
+            {
+                "paper_id": "paper1",
+                "status": "completed",
+                "agent_output": paper_one,
+                "source_payload": _source_payload(),
+            },
+            {
+                "paper_id": "paper2",
+                "status": "completed",
+                "agent_output": paper_two,
+                "source_payload": _source_payload(),
+            },
+        ]
+    )
+    task = ClaimsTask.from_dict(
+        {
+            "task_id": "task1",
+            "batch_id": "batch1",
+            "papers": [
+                {"paper_id": "paper1", "title": "Paper 1"},
+                {"paper_id": "paper2", "title": "Paper 2"},
+            ],
+        }
+    )
+
+    score = validator._score_batch_response(
+        response,
+        uid=88,
+        task=task,
+        run_id="run1",
+        miner_metadata={"hotkey": "miner-hotkey"},
+    )
+
+    assert score == 0.4
+    assert posted_responses[0]["status"] == "completed"
+    assert [row["status"] for row in posted_reports[0]["paper_scores"]] == [
+        "validator_failed",
+        "completed",
+    ]
+    assert response.articles[0]["status"] == "completed"
+    assert response.articles[0]["diagnostic_findings"][0]["severity"] == "suggestion"
+    assert (
+        response.articles[0]["diagnostic_findings"][0]["metadata"]["code"]
+        == "validator_diagnostic_failure"
+    )
+    assert response.articles[1]["diagnostic_score"] == 0.8
+
+
+def test_miner_diagnostic_failure_preserves_response_for_silver() -> None:
+    validator = object.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_skip_diagnostic_validation=False,
+        claims_agent_v1_skip_rigor=True,
+        claims_diagnostic_miner_max_workers=1,
+        claims_silver_enable=True,
+        claims_agent_v1_threshold=0.7,
+    )
+    validator.target_neurons = [SimpleNamespace(uid=88)]
+    validator.bt_logging = _logger()
+    response = SimpleNamespace(
+        protocol_version=PROTOCOL_VERSION,
+        schema_version=SCHEMA_VERSION,
+        articles=[
+            {
+                "paper_id": "paper1",
+                "status": "completed",
+                "agent_output": _agent_v1_artifact(),
+            }
+        ],
+    )
+    validator._hydrate_response_articles = lambda *_args, **_kwargs: None
+    validator._miner_metadata = lambda uid, _response: {
+        "uid": uid,
+        "hotkey": "miner-hotkey",
+    }
+    validator._score_batch_response = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        RuntimeError("unexpected diagnostic failure")
+    )
+    posted_responses: list[dict] = []
+    posted_reports: list[dict] = []
+    validator._post_miner_response = lambda *_args, **kwargs: posted_responses.append(kwargs)
+    validator._post_validation_report = lambda payload: posted_reports.append(payload)
+    silver_inputs: list[list] = []
+
+    def silver_post_pass(responses, **_kwargs):
+        silver_inputs.append(responses)
+        return {88: 0.75}
+
+    validator._run_silver_post_pass = silver_post_pass
+    task = ClaimsTask.from_dict(
+        {
+            "task_id": "task1",
+            "batch_id": "batch1",
+            "papers": [{"paper_id": "paper1", "title": "Paper 1"}],
+        }
+    )
+
+    scores = validator._score_responses([response], task=task, run_id="run1")
+
+    assert scores == {88: 0.75}
+    assert silver_inputs == [[response]]
+    assert posted_responses[0]["status"] == "diagnostic_failed"
+    assert (
+        posted_reports[0]["findings"][0]["metadata"]["code"]
+        == "validator_diagnostic_failure"
+    )
+
+
 def test_silver_missing_assigned_paper_scores_zero() -> None:
     silver = SilverRecord(
         silver_record_id="silver_paper1",
