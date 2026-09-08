@@ -301,6 +301,7 @@ class ClaimsMiner:
                     harness=str(self.config.claims_agent_harness),
                     model=str(self.config.claims_agent_model or agent_config.model),
                     wrapper_namespace="miner.agent_v1.wrappers",
+                    provider=str(agent_config.provider),
                 )
                 agent_config.runtime = profile.runtime
                 if profile.model:

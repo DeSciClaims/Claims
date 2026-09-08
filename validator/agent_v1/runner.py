@@ -184,18 +184,7 @@ class AgentV1ValidatorRunner:
 
     def _run_rigor_agent(self, *, run_dir: Path, artifact_reviewable: bool) -> tuple[list[AgentV1ValidationFinding], dict[str, Any]]:
         if self.config.skip_rigor_agent:
-            findings = [
-                AgentV1ValidationFinding(
-                    finding_id="R001",
-                    pass_name="rigor",
-                    dimension="rigor_agent",
-                    severity="warning",
-                    target_type="artifact",
-                    message="Rigor agent was skipped for this validator run.",
-                    suggestion="Run validator.agent_v1 without --skip-rigor-agent for production scoring.",
-                    metadata={"code": "rigor_agent_skipped"},
-                )
-            ]
+            findings: list[AgentV1ValidationFinding] = []
             _write_rigor_findings(run_dir, findings)
             return findings, {"runtime": "skipped", "usage": empty_usage("skipped"), "elapsed_seconds": 0.0}
         if not artifact_reviewable:

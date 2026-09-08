@@ -147,8 +147,8 @@ fi
 import sys
 if sys.version_info < (3, 11):
     raise SystemExit(
-        "Claims requires Python 3.11 or newer; rerun with --python python3.11 "
-        "or --python python3.12"
+        "Claims requires Python 3.11 or newer; rerun with --python python3.12 "
+        "or another supported Python 3.11+ interpreter"
     )
 '
 

@@ -28,6 +28,10 @@ from validator.agent_v1.adjudication_passes import (
     restore_file_adjudication_batch_payload,
 )
 from validator.agent_v1.adjudication_runner import run_adjudication_cases
+from validator.agent_v1.eligibility import (
+    EligibilityAdjudicationDecision,
+    EligibilityAdjudicationVote,
+)
 from validator.agent_v1.file_agent_workflow import (
     CanonicalAuditOutput,
     CanonicalAuditFinding,
@@ -897,7 +901,6 @@ def test_orchestrator_uses_file_workflow_without_legacy_relation_or_importance_c
     assert workflow.session.canonicalization_calls == 1
     assert len(result.silver_record.silver_units) == 1
     assert result.silver_record.silver_units[0].equivalent_candidate_ids == [
-        "bronze:C01",
         "miner:uid_9:C01",
     ]
     assert result.scores[0].score == 1.0
@@ -1126,6 +1129,7 @@ class _FakeWorkflow:
 
 class _FakeSession:
     fallback_to_legacy = False
+    config = SimpleNamespace(adjudication_max_workers=4, adjudication_batch_size=12)
 
     def __init__(self, *, fail_comparison: bool = False) -> None:
         self.fail_comparison = fail_comparison
@@ -1152,23 +1156,41 @@ class _FakeSession:
     def record_comparison_cases(self, _cases):
         return None
 
-    def run_adjudication(
-        self,
-        contexts,
-        *,
-        passes,
-        tiebreak_pass,
-        direct_judge_confidence,
-        progress_sink=None,
-    ):
+    def run_eligibility_adjudication(self, contexts):
         self.adjudication_calls += 1
-        return run_adjudication_cases(
-            contexts,
-            passes=passes,
-            tiebreak_pass=tiebreak_pass,
-            direct_judge_confidence=direct_judge_confidence,
-            progress_sink=progress_sink,
-        )
+        decisions = []
+        for context in contexts:
+            selected = next(
+                (
+                    candidate.candidate_id
+                    for candidate in context.candidates
+                    if candidate.origin == "miner"
+                ),
+                context.candidates[0].candidate_id,
+            )
+            vote = EligibilityAdjudicationVote(
+                case_id=context.case.case_id,
+                judge_role="negative",
+                selected_candidate_id=selected,
+                candidate_assessments=[],
+                rationale="The selected candidate passed every eligibility gate.",
+                model="test",
+            )
+            decisions.append(
+                EligibilityAdjudicationDecision(
+                    case_id=context.case.case_id,
+                    selected_candidate_id=selected,
+                    rejected_candidate_ids=[
+                        candidate.candidate_id
+                        for candidate in context.candidates
+                        if candidate.candidate_id != selected
+                    ],
+                    consensus_route="unanimous",
+                    primary_votes=[vote, vote.model_copy(update={"judge_role": "positive"})],
+                    rationale="Both judges selected the eligible candidate.",
+                )
+            )
+        return decisions
 
     def run_canonicalization(self, *, baseline_record, decisions):
         self.canonicalization_calls += 1

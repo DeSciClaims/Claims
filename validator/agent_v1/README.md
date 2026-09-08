@@ -273,7 +273,11 @@ Use model IDs from the Chutes catalog rather than OpenRouter aliases. The
 installer and container entrypoint persist only the Chutes endpoint and the
 name of the key environment variable in Hermes configuration; the secret stays
 in the validator `.env`. Models used by Hermes file agents must support tool
-calling and the required context and output limits.
+calling and the required context and output limits. Some Chutes non-streaming
+models reject completion caps above 8192; when using those models, cap the
+affected stage with `SUBNET_CLAIMS_VALIDATOR_AGENT_MAX_TOKENS=8192`,
+`CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS=8192`, or
+`CLAIMS_SILVER_FILE_AGENT_MAX_TOKENS=8192`.
 
 For the native DSPy rigor runtime, use the same catalog model ID and set:
 
@@ -283,6 +287,8 @@ CLAIMS_RIGOR_PROVIDER=chutes
 CLAIMS_RIGOR_MODEL=<CHUTES_MODEL_ID>
 CLAIMS_RIGOR_API_BASE=https://llm.chutes.ai/v1
 CLAIMS_RIGOR_API_KEY_ENV=CHUTES_API_KEY
+SUBNET_CLAIMS_VALIDATOR_AGENT_PROVIDER=chutes
+SUBNET_CLAIMS_VALIDATOR_AGENT_MODEL=<CHUTES_MODEL_ID>
 ```
 
 DSPy Silver adjudication uses its stage-specific endpoint and key variables:
@@ -313,6 +319,10 @@ exposes an embeddings endpoint.
   the value to `1` for the original per-miner path.
 - `--claims.diagnostic-max-workers` controls concurrent paper diagnostics.
   `--claims.diagnostic-miner-max-workers` controls per-miner fallback concurrency.
+- `--claims.agent-v1-skip-rigor` (or `CLAIMS_AGENT_V1_SKIP_RIGOR=true`) disables
+  the diagnostic LLM rigor agent while retaining structural and grounding
+  checks. The rigor pass is recorded as skipped and does not cap diagnostic
+  quality. Use this when Silver eligibility supplies the semantic claim review.
 - `--claims.skip-diagnostic-validation` omits diagnostic reports when only the
   Silver path is required.
 - `--claims.silver-paper-max-workers` controls concurrent paper-level Silver
@@ -351,10 +361,31 @@ exposes an embeddings endpoint.
 
 ### File-Workspace Silver
 
-`CLAIMS_SILVER_WORKFLOW_MODE=file-agent` runs one comparator, two anonymous
-judges plus a conditional tiebreaker, deterministic consensus, a canonical
-draft, and an independent canonical audit per paper. Agents use validator-owned
-short references; internal IDs are restored after validation.
+`CLAIMS_SILVER_WORKFLOW_MODE=file-agent` runs comparison, eligibility-selection
+adjudication, canonical drafting, and an independent canonical audit per paper.
+Agents use validator-owned short references; internal IDs are restored after
+validation.
+
+- Comparison assigns each candidate to at most one case. A deterministic
+  highest-confidence matching produces two-candidate cases; unmatched claims
+  become singleton cases.
+- The adjudication panel applies the same six eligibility gates to every claim
+  in each case. A singleton is selected only if it passes. For a pair, code
+  selects neither when both fail and the sole passing claim when only one
+  passes; when both pass, the judges select the stronger representative. The
+  stage does not merge, rewrite, or create a compromise claim.
+- `CLAIMS_SILVER_ADJUDICATION_HARNESS=dspy` runs bounded calls through
+  `dspy.Predict`; a CLI harness such as `hermes-cli` uses the file workspace.
+  Invalid or missing output retries once and then fails the paper rather than
+  becoming an eligibility vote.
+- `CLAIMS_SILVER_ADJUDICATION_MODEL_A`, `_MODEL_B`, and `_TIEBREAK_MODEL`
+  select the negative, positive, and conditional tiebreak roles.
+  `CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE` and `_MAX_WORKERS` control case
+  batching. `_MAX_IN_FLIGHT` is the shared hard limit across Silver calls.
+- DSPy uses `CLAIMS_SILVER_ADJUDICATION_API_BASE`, `_API_KEY_ENV`,
+  `_MAX_TOKENS`, and `_TIMEOUT`. CLI adjudication uses
+  `CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER` plus the file-agent timeout and
+  token limits below.
 
 - `CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true` requires different
   models for direct judges A and B.
@@ -428,8 +459,9 @@ Set `CLAIMS_VALIDATOR_AGENT_INNER_COMMAND` to override the inner command.
 
 ## Deterministic Smoke
 
-Use `--skip-rigor-agent` to test file flow without model calls. This is a smoke
-mode only; production scoring should include the rigor agent.
+Use `--skip-rigor-agent` to run structural and grounding validation without a
+diagnostic rigor model call. The report records the rigor pass as skipped and
+does not reduce the diagnostic score.
 
 ```bash
 .venv/bin/python -m validator.agent_v1 \

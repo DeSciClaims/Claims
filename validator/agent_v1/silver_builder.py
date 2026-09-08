@@ -16,6 +16,7 @@ def build_silver_record(
     bronze_record_id: str | None = None,
     equivalent_candidate_groups: list[list[str]] | None = None,
     excluded_candidate_ids: set[str] | None = None,
+    non_penalized_rejected_candidate_ids: set[str] | None = None,
 ) -> SilverRecord:
     candidates_by_id = {candidate.candidate_id: candidate for candidate in candidates}
     units_by_key: dict[tuple[str, str], SilverUnit] = {}
@@ -98,7 +99,11 @@ def build_silver_record(
                         )
                     )
                     seen_reference_errors.add(candidate.candidate_id)
-            elif candidate.miner_id:
+            elif (
+                candidate.miner_id
+                and candidate.candidate_id
+                not in (non_penalized_rejected_candidate_ids or set())
+            ):
                 invalid_key = (candidate.candidate_id, candidate.miner_id)
                 if invalid_key not in seen_invalid_candidates:
                     invalid_candidates.append(

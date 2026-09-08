@@ -279,6 +279,38 @@ def test_silver_scoring_multiplies_diagnostic_quality() -> None:
     assert score.findings == [diagnostic_finding]
 
 
+def test_eligibility_rejection_filters_candidate_without_quality_penalty() -> None:
+    bronze = _candidate("bronze:B01", "bronze", None, "Treatment A reduced mortality.")
+    miner = _candidate("miner:uid_9:C01", "miner", "uid_9", "Treatment A reduced mortality in adults.")
+    silver = build_silver_record(
+        paper_id="toy-001",
+        silver_record_id="silver",
+        candidates=[bronze, miner],
+        decisions=[
+            AdjudicationDecision(
+                case_id="case_eligibility",
+                disposition="both_invalid",
+                rejected_candidate_ids=[miner.candidate_id],
+                creates_required_silver_unit=False,
+                rationale="The Bronze candidate is the more eligible representative.",
+            )
+        ],
+        non_penalized_rejected_candidate_ids={miner.candidate_id},
+    )
+
+    score = score_miner_against_silver(
+        miner_id="uid_9",
+        miner_candidates=[miner],
+        silver_record=silver,
+    )
+
+    assert silver.invalid_miner_candidates == []
+    assert score.metadata["adjudication_quality"] == 1.0
+    assert "invalid_extra_candidate" not in {
+        finding.metadata.get("code") for finding in score.findings
+    }
+
+
 def test_empty_silver_record_is_not_a_perfect_score() -> None:
     score = score_miner_against_silver(
         miner_id="miner_A",
@@ -1030,8 +1062,8 @@ def test_silver_adjudication_factory_builds_dspy_passes_with_shared_limit(monkey
     assert isinstance(tiebreak, DSPyAdjudicationPass)
     assert passes[0].request_gate is passes[1].request_gate
     assert tiebreak.request_gate is passes[0].request_gate
-    assert passes[0].model == "deepseek/deepseek-v4-flash"
-    assert passes[1].model == "qwen/qwen3.7-flash"
+    assert passes[0].model == "openrouter/deepseek/deepseek-v4-flash"
+    assert passes[1].model == "openrouter/qwen/qwen3.7-flash"
 
 
 def test_silver_adjudication_factory_routes_chutes_through_openai_compatible_dspy(monkeypatch) -> None:

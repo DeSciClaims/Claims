@@ -583,7 +583,7 @@ class ClaimsValidator:
             dest="claims_agent_v1_skip_rigor",
             action="store_true",
             default=_env_flag("CLAIMS_AGENT_V1_SKIP_RIGOR"),
-            help="Run agent_v1 deterministic checks only. Useful for smoke tests.",
+            help="Disable the diagnostic LLM rigor agent while retaining structural and grounding checks without a score penalty.",
         )
         parser.add_argument(
             "--claims.skip-diagnostic-validation",
@@ -2121,7 +2121,9 @@ class ClaimsValidator:
         precomputed_rigor: dict[
             tuple[int, str], tuple[dict[str, Any], dict[str, Any]]
         ] = {}
-        if not bool(getattr(self.config, "claims_skip_diagnostic_validation", False)):
+        if not bool(
+            getattr(self.config, "claims_skip_diagnostic_validation", False)
+        ) and not bool(getattr(self.config, "claims_agent_v1_skip_rigor", False)):
             precomputed_rigor = self._prepare_batched_diagnostics(
                 scored_responses,
                 task=task,
@@ -2189,6 +2191,53 @@ class ClaimsValidator:
                 self._post_miner_response(run_id, task, uid, response, miner_metadata, status="missing")
             return _DiagnosticScoreResult(uid=uid, score=score, response=response, stage=locals().get("stage"))
 
+        def failed_miner_diagnostic(
+            index: int,
+            neuron: Any,
+            exc: Exception,
+        ) -> _DiagnosticScoreResult:
+            uid = int(neuron.uid)
+            response = scored_responses[index] if index < len(scored_responses) else None
+            miner_metadata = self._miner_metadata(uid, response)
+            message = f"{type(exc).__name__}: {exc}"
+            self.bt_logging.warning(
+                f"Diagnostic validation failed uid={uid}; preserving miner artifacts for Silver: {message}"
+            )
+            self._post_miner_response(
+                run_id,
+                task,
+                uid,
+                response,
+                miner_metadata,
+                status="diagnostic_failed",
+            )
+            self._post_validation_report(
+                {
+                    "report_id": f"audit_{run_id}_uid_{uid}",
+                    "response_id": f"{run_id}:uid_{uid}",
+                    "run_id": run_id,
+                    "uid": uid,
+                    "hotkey": miner_metadata.get("hotkey", ""),
+                    "score": 0.0,
+                    "threshold": float(self.config.claims_agent_v1_threshold),
+                    "passed": False,
+                    "summary": {"validator_failure": 1},
+                    "report_uri": "",
+                    "findings": [
+                        _diagnostic_pipeline_failure_finding(
+                            error=message,
+                            target_id=f"uid_{uid}",
+                        )
+                    ],
+                    "paper_scores": [],
+                }
+            )
+            return _DiagnosticScoreResult(
+                uid=uid,
+                score=0.0,
+                response=response,
+            )
+
         diagnostic_worker_count = max(
             1,
             min(
@@ -2213,13 +2262,21 @@ class ClaimsValidator:
                     try:
                         diagnostic_results[index] = future.result()
                     except Exception as exc:
-                        self.bt_logging.warning(
-                            f"Diagnostic validation failed uid={uid}: {type(exc).__name__}: {exc}"
+                        diagnostic_results[index] = failed_miner_diagnostic(
+                            index,
+                            self.target_neurons[index],
+                            exc,
                         )
-                        diagnostic_results[index] = _DiagnosticScoreResult(uid=uid, score=0.0, response=None)
         else:
             for index, neuron in enumerate(self.target_neurons):
-                diagnostic_results[index] = score_miner_response(index, neuron)
+                try:
+                    diagnostic_results[index] = score_miner_response(index, neuron)
+                except Exception as exc:
+                    diagnostic_results[index] = failed_miner_diagnostic(
+                        index,
+                        neuron,
+                        exc,
+                    )
 
         for index, neuron in enumerate(self.target_neurons):
             result = diagnostic_results.get(index)
@@ -2995,6 +3052,9 @@ class ClaimsValidator:
                     direct_judge_confidence=float(getattr(self.config, "claims_silver_direct_confidence", 0.9)),
                     source_context=bronze_source_context,
                     source_context_by_span_id=source_context_by_span_id,
+                    eligibility_source_context_by_span_id=_source_context_map_from_payloads(
+                        [bronze_source_payload]
+                    ),
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
                     adjudication_batch_size=int(getattr(self.config, "claims_silver_adjudication_batch_size", 8)),
                     adjudication_progress_sink=lambda contexts, votes: self._persist_adjudication_progress(
@@ -3445,6 +3505,12 @@ class ClaimsValidator:
         self.bt_logging.info(
             "Silver file-agent workflow enabled: "
             f"harness={workflow.config.harness} "
+            f"adjudication_harness={workflow.config.adjudication_harness} "
+            f"adjudication_provider={workflow.config.adjudication_provider} "
+            f"adjudication_models="
+            f"{workflow.config.adjudication_negative_model},"
+            f"{workflow.config.adjudication_positive_model},"
+            f"{workflow.config.adjudication_tiebreak_model} "
             f"comparison_model={workflow.config.comparison_model} "
             f"canonicalization_model={workflow.config.canonicalization_model} "
             f"canonical_audit_model={workflow.config.canonical_audit_model or workflow.config.canonicalization_model}"
@@ -4171,6 +4237,48 @@ class ClaimsValidator:
                 "findings": finding_rows,
             }
 
+        def failed_paper_diagnostic(
+            index: int,
+            paper: ClaimsPaperTask,
+            exc: Exception,
+        ) -> dict[str, Any]:
+            paper_id = paper.paper_id or f"paper_{index}"
+            message = f"{type(exc).__name__}: {exc}"
+            self.bt_logging.warning(
+                f"Diagnostic validation failed uid={uid} paper={paper_id}; "
+                f"preserving artifact for Silver: {message}"
+            )
+            finding = _diagnostic_pipeline_failure_finding(
+                error=message,
+                target_id=paper_id,
+                paper_id=paper_id,
+                paper_title=paper.title,
+            )
+            article = articles_by_id.get(paper_id)
+            extraction = None
+            if isinstance(article, dict):
+                extraction = article.get("agent_output") or article.get("extraction")
+                article["diagnostic_score"] = 0.0
+                article["diagnostic_findings"] = [finding]
+                article["diagnostic_claim_assessments"] = []
+            result = {
+                "paper_id": paper_id,
+                "title": paper.title,
+                "status": "validator_failed",
+                "score": 0.0,
+                "error": message,
+                "report_path": None,
+            }
+            if isinstance(extraction, dict):
+                result["artifact_summary"] = summarize_agent_artifact(extraction)
+            return {
+                "index": index,
+                "score": 0.0,
+                "result": result,
+                "summary": {"validator_failure": 1},
+                "findings": [finding],
+            }
+
         paper_tasks = task.paper_tasks()
         paper_worker_count = max(
             1,
@@ -4192,10 +4300,20 @@ class ClaimsValidator:
                 }
                 for future in as_completed(futures):
                     index = futures[future]
-                    paper_results[index] = future.result()
+                    try:
+                        paper_results[index] = future.result()
+                    except Exception as exc:
+                        paper_results[index] = failed_paper_diagnostic(
+                            index,
+                            paper_tasks[index - 1],
+                            exc,
+                        )
         else:
             for index, paper in enumerate(paper_tasks, start=1):
-                paper_results[index] = score_paper(index, paper)
+                try:
+                    paper_results[index] = score_paper(index, paper)
+                except Exception as exc:
+                    paper_results[index] = failed_paper_diagnostic(index, paper, exc)
 
         for index in sorted(paper_results):
             item = paper_results[index]
@@ -4233,7 +4351,13 @@ class ClaimsValidator:
             ),
         }
         _write_json(base_dir / "batch_audit_record.json", batch_audit)
-        response_status = "completed" if any(result.get("status") in {"completed", "diagnostic_skipped"} for result in article_results) else "failed"
+        response_status = (
+            "completed"
+            if any(result.get("status") in {"completed", "diagnostic_skipped"} for result in article_results)
+            else "diagnostic_failed"
+            if any(result.get("status") == "validator_failed" for result in article_results)
+            else "failed"
+        )
         self._post_miner_response(run_id, task, uid, response, miner_metadata, status=response_status)
         self._post_validation_report(
             {
@@ -5047,50 +5171,87 @@ class ClaimsValidator:
         if workflow is None:
             return []
         config = workflow.config
+        adjudication_runtime = (
+            "dspy" if config.adjudication_harness == "dspy" else config.harness
+        )
         return [
             _drop_empty_model_fields(
                 {
                     "stage_key": stage_key,
                     "stage_label": stage_label,
                     "role": role,
-                    "runtime": config.harness,
-                    "harness": config.harness,
-                    "provider": config.provider,
+                    "runtime": runtime,
+                    "harness": runtime,
+                    "provider": provider,
                     "model": model,
                     "models": [model] if model else [],
-                    "model_runtime_id": config.harness,
+                    "model_runtime_id": runtime,
                 }
             )
-            for stage_key, stage_label, role, model in (
+            for stage_key, stage_label, role, model, runtime, provider in (
+                (
+                    "silver_adjudication",
+                    "Eligibility selection negative judge",
+                    "silver_adjudication_negative",
+                    config.adjudication_negative_model,
+                    adjudication_runtime,
+                    config.adjudication_provider,
+                ),
+                (
+                    "silver_adjudication",
+                    "Eligibility selection positive judge",
+                    "silver_adjudication_positive",
+                    config.adjudication_positive_model,
+                    adjudication_runtime,
+                    config.adjudication_provider,
+                ),
+                (
+                    "silver_adjudication",
+                    "Eligibility selection tiebreak judge",
+                    "silver_adjudication_tiebreak",
+                    config.adjudication_tiebreak_model,
+                    adjudication_runtime,
+                    config.adjudication_provider,
+                ),
                 (
                     "silver_comparison",
                     "Comparison graph",
                     "silver_file_comparator",
                     config.comparison_model,
+                    config.harness,
+                    config.provider,
                 ),
                 (
                     "silver_comparison_repair",
                     "Comparison graph repair",
                     "silver_file_comparator",
                     config.comparison_model,
+                    config.harness,
+                    config.provider,
                 ),
                 (
                     "silver_canonicalization",
                     "Silver canonicalization draft",
                     "silver_file_canonicalizer",
                     config.canonicalization_model,
+                    config.harness,
+                    config.provider,
                 ),
                 (
                     "silver_canonicalization_audit",
                     "Silver canonicalization audit",
                     "silver_file_canonical_auditor",
                     config.canonical_audit_model or config.canonicalization_model,
+                    config.harness,
+                    config.provider,
                 ),
                 (
                     "silver_canonicalization_audit_repair",
                     "Silver canonicalization audit repair",
                     "silver_file_canonical_auditor",
                     config.canonical_audit_model or config.canonicalization_model,
+                    config.harness,
+                    config.provider,
                 ),
             )
         ]
@@ -6041,6 +6202,34 @@ def _validation_findings_from_rows(rows: Any) -> list[AgentV1ValidationFinding]:
     return findings
 
 
+def _diagnostic_pipeline_failure_finding(
+    *,
+    error: str,
+    target_id: str,
+    paper_id: str = "",
+    paper_title: str = "",
+) -> dict[str, Any]:
+    return {
+        "finding_id": f"DPF_{safe_task_id(target_id)}",
+        "pass_name": "scoring",
+        "dimension": "validator_pipeline",
+        "severity": "suggestion",
+        "target_type": "paper" if paper_id else "miner_response",
+        "target_id": target_id,
+        "paper_id": paper_id,
+        "paper_title": paper_title,
+        "message": (
+            "Validator diagnostic processing failed; the miner artifact was preserved "
+            "for Silver scoring and this finding does not penalize the miner."
+        ),
+        "metadata": {
+            "code": "validator_diagnostic_failure",
+            "miner_fault": False,
+            "error": error,
+        },
+    }
+
+
 def _coerce_validation_pass_name(value: Any) -> str:
     normalized = str(value or "").strip().lower()
     if normalized in {"structural", "grounding", "rigor", "scoring", "silver_comparison"}:
@@ -6715,6 +6904,12 @@ def _validate_silver_model_configuration(config: Any) -> None:
             ("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL", file_config.comparison_model),
             ("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", file_config.canonicalization_model),
             ("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", file_config.canonical_audit_model),
+            ("CLAIMS_SILVER_ADJUDICATION_MODEL_A", file_config.adjudication_negative_model),
+            ("CLAIMS_SILVER_ADJUDICATION_MODEL_B", file_config.adjudication_positive_model),
+            (
+                "CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL",
+                file_config.adjudication_tiebreak_model,
+            ),
         ):
             if not value:
                 errors.append(f"{name} must name a model")

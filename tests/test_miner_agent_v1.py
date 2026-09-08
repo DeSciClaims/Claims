@@ -55,6 +55,11 @@ def test_agent_v1_skillpack_preserves_all_resources() -> None:
 
 def test_agent_harness_profile_maps_cli_and_native_runtimes() -> None:
     hermes = resolve_agent_harness(harness="hermes-cli", model="openai/gpt-5-mini")
+    chutes = resolve_agent_harness(
+        harness="hermes-cli",
+        model="deepseek-ai/DeepSeek-V3.2-TEE",
+        provider="chutes",
+    )
     dspy = resolve_agent_harness(harness="dspy-react", model="openrouter/openai/gpt-5-mini")
     codex = resolve_agent_harness(harness="codex-cli", model="gpt-5.5")
 
@@ -68,6 +73,16 @@ def test_agent_harness_profile_maps_cli_and_native_runtimes() -> None:
         "openrouter",
         "-m",
         "openai/gpt-5-mini",
+        "--max-turns",
+        "30",
+        "-q",
+    ]
+    assert shlex.split(chutes.inner_command)[1:] == [
+        "chat",
+        "--provider",
+        "chutes",
+        "-m",
+        "deepseek-ai/DeepSeek-V3.2-TEE",
         "--max-turns",
         "30",
         "-q",
@@ -140,6 +155,17 @@ def test_dspy_chutes_model_keeps_explicit_litellm_route() -> None:
         "openai/gpt-oss-120b",
         provider="chutes",
     ) == "openai/openai/gpt-oss-120b"
+
+
+def test_dspy_openrouter_model_adds_litellm_route() -> None:
+    assert dspy_model_id(
+        "qwen/qwen3.7-flash",
+        provider="openrouter",
+    ) == "openrouter/qwen/qwen3.7-flash"
+    assert dspy_model_id(
+        "openrouter/deepseek/deepseek-v4-flash",
+        provider="openrouter",
+    ) == "openrouter/deepseek/deepseek-v4-flash"
 
 
 def test_agent_v1_pdf_inspector_reader_outputs_markdown_page_spans(monkeypatch, tmp_path: Path) -> None:

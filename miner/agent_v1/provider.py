@@ -41,4 +41,8 @@ def dspy_model_id(model: str, *, provider: str | None = None, api_base: str = ""
         if normalized.startswith("openai/") and normalized.count("/") >= 2:
             return normalized
         return f"openai/{normalized}"
+    if resolved_provider == "openrouter" and normalized and not normalized.startswith(
+        "openrouter/"
+    ):
+        return f"openrouter/{normalized}"
     return normalized
