@@ -55,6 +55,11 @@ def test_agent_v1_skillpack_preserves_all_resources() -> None:
 
 def test_agent_harness_profile_maps_cli_and_native_runtimes() -> None:
     hermes = resolve_agent_harness(harness="hermes-cli", model="openai/gpt-5-mini")
+    chutes = resolve_agent_harness(
+        harness="hermes-cli",
+        model="deepseek-ai/DeepSeek-V3.2-TEE",
+        provider="chutes",
+    )
     dspy = resolve_agent_harness(harness="dspy-react", model="openrouter/openai/gpt-5-mini")
     codex = resolve_agent_harness(harness="codex-cli", model="gpt-5.5")
 
@@ -68,6 +73,16 @@ def test_agent_harness_profile_maps_cli_and_native_runtimes() -> None:
         "openrouter",
         "-m",
         "openai/gpt-5-mini",
+        "--max-turns",
+        "30",
+        "-q",
+    ]
+    assert shlex.split(chutes.inner_command)[1:] == [
+        "chat",
+        "--provider",
+        "chutes",
+        "-m",
+        "deepseek-ai/DeepSeek-V3.2-TEE",
         "--max-turns",
         "30",
         "-q",
