@@ -228,13 +228,16 @@ cd Claims
 
 # Validator: copy the detailed profile before installation so Hermes is
 # configured from the selected provider and model.
-cp validator/agent_v1/validator.testnet.env.example .env
+cp validator/agent_v1/validator.mainnet.env.example .env
 ./scripts/install-validator.sh \
   --python python3.12 \
   --reference-repo-version <PINNED_COMMIT>
 ```
 
-On hosts previously installed with Python 3.10, rebuild the virtual environment
+Use `validator/agent_v1/validator.testnet.env.example` instead only when
+running a testnet validator.
+
+On hosts previously installed with Python <3.11, rebuild the virtual environment
 explicitly:
 
 ```bash

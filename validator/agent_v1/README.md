@@ -262,7 +262,11 @@ Use model IDs from the Chutes catalog rather than OpenRouter aliases. The
 installer and container entrypoint persist only the Chutes endpoint and the
 name of the key environment variable in Hermes configuration; the secret stays
 in the validator `.env`. Models used by Hermes file agents must support tool
-calling and the required context and output limits.
+calling and the required context and output limits. Some Chutes non-streaming
+models reject completion caps above 8192; when using those models, cap the
+affected stage with `SUBNET_CLAIMS_VALIDATOR_AGENT_MAX_TOKENS=8192`,
+`CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS=8192`, or
+`CLAIMS_SILVER_FILE_AGENT_MAX_TOKENS=8192`.
 
 For the native DSPy rigor runtime, use the same catalog model ID and set:
 
