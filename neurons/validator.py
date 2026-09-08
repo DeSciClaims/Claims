@@ -804,7 +804,7 @@ class ClaimsValidator:
             "--claims.silver-max-eligible-claims-per-miner",
             dest="claims_silver_max_eligible_claims_per_miner",
             type=int,
-            default=int(os.getenv("CLAIMS_SILVER_MAX_ELIGIBLE_CLAIMS_PER_MINER", "6")),
+            default=int(os.getenv("CLAIMS_SILVER_MAX_ELIGIBLE_CLAIMS_PER_MINER", "10")),
             help="Maximum evidence-supported central/supporting claims retained per miner and paper.",
         )
         parser.add_argument(
@@ -6676,7 +6676,7 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         ),
         "claims_silver_paper_max_workers": int(getattr(config, "claims_silver_paper_max_workers", 1) or 1),
         "claims_silver_max_eligible_claims_per_miner": int(
-            getattr(config, "claims_silver_max_eligible_claims_per_miner", 6) or 0
+            getattr(config, "claims_silver_max_eligible_claims_per_miner", 10) or 0
         ),
         "claims_silver_filter_by_assessment": bool(
             getattr(config, "claims_silver_filter_by_assessment", False)

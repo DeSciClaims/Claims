@@ -3057,6 +3057,68 @@ def test_sparse_claim_assessments_filter_only_explicit_issues() -> None:
     assert [candidate.record_id for candidate in selected] == ["m1", "m3"]
 
 
+def test_candidate_cap_prioritizes_miner_declared_importance_stably() -> None:
+    candidates = [
+        _candidate("minor_1", "miner", "uid_9", "Minor one").model_copy(
+            update={"metadata": {"source_claim_metadata_importance": "minor"}}
+        ),
+        _candidate("central_1", "miner", "uid_9", "Central one").model_copy(
+            update={"metadata": {"source_claim_metadata_importance": "central"}}
+        ),
+        _candidate("untagged", "miner", "uid_9", "Untagged"),
+        _candidate("supporting", "miner", "uid_9", "Supporting").model_copy(
+            update={"metadata": {"source_claim_metadata_importance": "supporting"}}
+        ),
+        _candidate("central_2", "miner", "uid_9", "Central two").model_copy(
+            update={"metadata": {"source_claim_metadata_importance": "central"}}
+        ),
+        _candidate("minor_2", "miner", "uid_9", "Minor two").model_copy(
+            update={"metadata": {"source_claim_metadata_importance": "minor"}}
+        ),
+    ]
+
+    selected = _select_assessed_candidates(
+        candidates,
+        assessments=None,
+        max_claims=5,
+    )
+
+    assert [candidate.record_id for candidate in selected] == [
+        "central_1",
+        "central_2",
+        "untagged",
+        "supporting",
+        "minor_1",
+    ]
+
+
+def test_candidate_priority_applies_before_assessment_filtering() -> None:
+    candidates = [
+        _candidate("supporting", "miner", "uid_9", "Supporting"),
+        _candidate("central_bad", "miner", "uid_9", "Unsupported central").model_copy(
+            update={"metadata": {"source_claim_metadata_importance": "central"}}
+        ),
+        _candidate("central_good", "miner", "uid_9", "Supported central").model_copy(
+            update={"metadata": {"source_claim_metadata_importance": "central"}}
+        ),
+    ]
+    assessments = [
+        {"claim_id": "central_bad", "evidence_status": "unsupported"},
+    ]
+
+    selected = _select_assessed_candidates(
+        candidates,
+        assessments,
+        max_claims=2,
+        filter_by_assessment=True,
+    )
+
+    assert [candidate.record_id for candidate in selected] == [
+        "central_good",
+        "supporting",
+    ]
+
+
 def test_sparse_claim_assessments_do_not_change_selection_when_filtering_is_off() -> None:
     candidates = [
         _candidate(f"m{index}", "miner", "uid_9", f"Claim {index}")

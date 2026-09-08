@@ -332,8 +332,12 @@ exposes an embeddings endpoint.
   `1` disables batching. `CLAIMS_SILVER_ADJUDICATION_BATCH_INPUT_TOKENS` bounds
   estimated input size before a batch is split.
 - `--claims.silver-max-eligible-claims-per-miner` bounds miner candidates entering
-  Silver. `--claims.silver-max-adjudication-cases-per-paper` bounds primary judge
-  cases and shares capacity fairly across miners.
+  Silver and defaults to `10`. Candidates are prioritized by the miner-declared
+  `logic.claims[].metadata.importance`: `central`, then `supporting` or untagged,
+  then `minor`, preserving submission order within each tier. The validator
+  independently assigns final Silver importance after adjudication.
+  `--claims.silver-max-adjudication-cases-per-paper` bounds primary judge cases
+  and shares capacity fairly across miners.
 - `--claims.silver-filter-by-assessment true|false` controls whether diagnostic
   issue assessments exclude miner claims downstream. The default is `false`;
   findings can still affect diagnostic quality without filtering candidates.

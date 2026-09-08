@@ -95,7 +95,7 @@ def run_paper_silver_pipeline(
     eligibility_source_context_by_span_id: dict[str, str] | None = None,
     adjudication_max_workers: int = 4,
     adjudication_batch_size: int = 8,
-    max_eligible_claims_per_miner: int = 6,
+    max_eligible_claims_per_miner: int = 10,
     filter_by_assessment: bool = False,
     max_adjudication_cases: int = 80,
     adjudication_progress_sink: Callable[
@@ -551,6 +551,7 @@ def _select_assessed_candidates(
     max_claims: int,
     filter_by_assessment: bool = False,
 ) -> list[ComparisonCandidate]:
+    candidates = sorted(candidates, key=_miner_declared_importance_rank)
     if not assessments:
         return candidates[:max_claims]
 
@@ -580,6 +581,15 @@ def _select_assessed_candidates(
         if len(selected) >= max_claims:
             break
     return selected
+
+
+def _miner_declared_importance_rank(candidate: ComparisonCandidate) -> int:
+    declared = str(
+        (candidate.metadata or {}).get("source_claim_metadata_importance") or ""
+    ).strip().lower()
+    # Untagged claims retain the historical supporting default so older miner
+    # artifacts are not pushed behind explicitly tagged minor claims.
+    return {"central": 0, "supporting": 1, "": 1, "minor": 2}.get(declared, 1)
 
 
 def _apply_case_budget(
