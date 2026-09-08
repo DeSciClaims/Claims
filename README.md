@@ -72,7 +72,7 @@ testing; use the production recommendation for sustained subnet operation.
 | Miner CPU/RAM | 4 cores / 16 GB minimum; 8 cores / 32 GB recommended | Higher paper concurrency starts additional agent and PDF-processing subprocesses. The example miner profile uses two paper workers. |
 | Persistent disk | 50 GB miner; 100 GB validator | Allow additional space when retaining many outputs, Bronze references, PDFs, model caches, or logs. Container deployments must persist `/data`. |
 | Docker | Docker Engine 24.0+ recommended | Required only for the published container workflow; manual and Ubuntu-installer deployments do not require Docker. |
-| Python | 3.11+ | Python 3.10 is unsupported because current validator dependencies use Python 3.11 typing APIs. Published Ubuntu 24.04 images use Python 3.12. |
+| Python | 3.12 recommended; 3.11+ minimum | Python 3.10 is unsupported because current validator dependencies use Python 3.11 typing APIs. Published Ubuntu 24.04 images and the verified Ubuntu setup use Python 3.12. |
 | Bittensor SDK | `10.5.0` | Installed from `requirements.txt`. Other SDK versions are not supported unless the repository pin is updated and tested. |
 | Network | Stable broadband; public TCP port for miners | Miners must expose a reachable Axon. Both roles need outbound access to Bittensor, Claims APIs, PDF storage, and configured inference providers. |
 | GPU | Not required with hosted inference providers | Operators using local models must size GPU memory and runtime dependencies for those models separately. |
@@ -94,7 +94,7 @@ sudo apt-get install -y \
   python3 python3-dev python3-pip python3-venv
 ```
 
-On macOS, install Python 3.11 or newer and Poppler before continuing. The
+On macOS, install Python 3.12 or newer and Poppler before continuing. The
 Ubuntu installer is the supported automated path for production Linux hosts.
 
 Clone Claims and create its Python environment:
@@ -102,7 +102,7 @@ Clone Claims and create its Python environment:
 ```bash
 git clone https://github.com/DeSciClaims/Claims.git
 cd Claims
-python3.11 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools wheel
 python -m pip install -r requirements.txt
@@ -216,8 +216,9 @@ to the absolute Hermes path when it is not on the service `PATH`.
 ### Ubuntu Installers
 
 The public installers set up system packages, a virtual environment from the
-selected Python 3.11+ interpreter, Claims dependencies, Hermes, and a
-role-specific `.env` template:
+selected Python interpreter, Claims dependencies, Hermes, and a role-specific
+`.env` template. Python 3.12 is the recommended runtime for production
+validators:
 
 ```bash
 git clone https://github.com/DeSciClaims/Claims.git
@@ -229,7 +230,7 @@ cd Claims
 # configured from the selected provider and model.
 cp validator/agent_v1/validator.testnet.env.example .env
 ./scripts/install-validator.sh \
-  --python python3.11 \
+  --python python3.12 \
   --reference-repo-version <PINNED_COMMIT>
 ```
 
@@ -238,14 +239,15 @@ explicitly:
 
 ```bash
 ./scripts/install-validator.sh \
-  --python python3.11 \
+  --python python3.12 \
   --recreate-venv \
   --reference-repo-version <PINNED_COMMIT>
 ```
 
-Install Python 3.11 or 3.12 through the host's supported package source first
-when that interpreter is not already available. The installer will not modify
-system Python or silently mix two Python versions in one virtual environment.
+Install Python 3.12 through the host's supported package source first when it
+is not already available. Python 3.11 remains supported, but do not use Python
+3.10. The installer will not modify system Python or silently mix two Python
+versions in one virtual environment.
 
 They configure Hermes non-interactively from `HERMES_PROVIDER`, `HERMES_MODEL`,
 and `HERMES_BASE_URL` in that role's `.env`; provider credentials remain in `.env`.
@@ -267,11 +269,12 @@ with `--wallet.name <WALLET_NAME>` and `--wallet.hotkey <HOTKEY_NAME>`.
 Bittensor normally reads their files from `~/.bittensor/wallets/`.
 
 The validator installer also checks out and installs the public reference miner.
-Pin its commit for a reproducible installation:
+The installer defaults to `main`, which is convenient for smoke tests. Pin a
+reviewed commit for a reproducible production installation:
 
 ```bash
 ./scripts/install-validator.sh \
-  --python python3.11 \
+  --python python3.12 \
   --reference-repo-version <PINNED_COMMIT>
 ```
 
