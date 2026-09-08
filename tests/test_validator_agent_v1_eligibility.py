@@ -1,29 +1,33 @@
 from __future__ import annotations
 
 import json
-import os
+import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 from types import MethodType, SimpleNamespace
 
 import pytest
 
-from validator.agent_v1.adjudication_passes import StaticAdjudicationPass
-from validator.agent_v1.adjudication_runner import run_adjudication_cases
-from validator.agent_v1.comparison_models import CandidatePairEdge, ComparisonCandidate
+from validator.agent_v1.adjudication_models import AdjudicationContextBundle
+from validator.agent_v1.comparison_models import (
+    BronzeDiffCase,
+    CandidatePairEdge,
+    ComparisonCandidate,
+)
 from validator.agent_v1.eligibility import (
     ELIGIBILITY_GATES,
-    BlindEligibilityDiscoveryOutput,
-    BlindEligibilityFinding,
-    CandidateEligibilityDecision,
-    EligibilityAgentOutput,
+    EligibilityAdjudicationAgentOutput,
+    EligibilityAdjudicationCaseAssessment,
+    EligibilityAdjudicationDecision,
+    EligibilityAdjudicationVote,
     EligibilityCandidateAssessment,
+    EligibilityClaimAtomAssessment,
     EligibilityGateAssessment,
-    EligibilityTiebreakAssessment,
-    EligibilityTiebreakOutput,
-    decide_candidate_eligibility,
-    validate_eligibility_output,
-    vote_from_assessment,
+    assessment_passes_hard_gates,
+    decide_eligibility_adjudication,
+    eligibility_adjudication_vote_from_assessment,
+    validate_eligibility_adjudication_output,
 )
 from validator.agent_v1.eligibility_dspy import (
     DSPyEligibilityRuntime,
@@ -31,386 +35,356 @@ from validator.agent_v1.eligibility_dspy import (
 )
 from validator.agent_v1.file_agent_workflow import (
     FileAgentWorkflowConfig,
-    FileAgentWorkflowError,
     FileAgentWorkflowSession,
-    _validate_blind_discovery_payload,
 )
-from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline
+from validator.agent_v1.orchestrator import (
+    MinerArtifactSubmission,
+    MinerPaperSubmission,
+    _pairwise_comparison_cases_from_graph,
+    run_paper_silver_pipeline,
+)
 
 
-def test_split_primary_votes_use_locked_blind_discovery(tmp_path) -> None:
-    candidate = _candidate("miner:uid_9:C01", "miner", "uid_9")
-    session = _session(tmp_path, [candidate])
-    tasks: dict[str, dict] = {}
+def test_singleton_selects_only_candidate_when_it_passes() -> None:
+    assessment = _case_assessment("k0", ["k0_a"], selected_ref="k0_a")
 
-    def fake_stage(_self, **kwargs):
-        stage_key = kwargs["stage_key"]
-        tasks[stage_key] = kwargs["task"]
-        if stage_key == "eligibility_negative":
-            return SimpleNamespace(payload=_agent_output("e0", failed_gate="author_assertion"))
-        if stage_key == "eligibility_positive":
-            return SimpleNamespace(payload=_agent_output("e0"))
-        if stage_key == "eligibility_blind_discovery":
-            return SimpleNamespace(
-                payload=BlindEligibilityDiscoveryOutput(
-                    findings=[
-                        BlindEligibilityFinding(
-                            finding_ref="f0",
-                            statement="The authors report a mortality reduction.",
-                            cited_span_ids=["S1"],
-                            rationale="The result is stated directly in the supplied result span.",
-                        )
-                    ],
-                    search_summary="Reviewed all supplied result evidence independently.",
-                )
-            )
-        if stage_key == "eligibility_blind_resolution_e0":
-            return SimpleNamespace(
-                payload=EligibilityTiebreakOutput(
-                    assessments=[
-                        EligibilityTiebreakAssessment(
-                            **_assessment_payload("e0", failed_gate="author_assertion"),
-                            matched_finding_refs=["f0"],
-                            primary_disagreement_resolution=(
-                                "The paper reports a result, but the disputed wording attributes "
-                                "a stronger author assertion than the cited span supports."
-                            ),
-                        )
-                    ]
-                )
-            )
-        raise AssertionError(stage_key)
+    vote = eligibility_adjudication_vote_from_assessment(
+        case_id="case_0",
+        judge_role="negative",
+        assessment=assessment,
+        candidate_id_by_ref={"k0_a": "candidate_a"},
+        model="model-negative",
+    )
 
-    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
-    decisions = session.run_eligibility()
-
-    assert len(decisions) == 1
-    assert decisions[0].verdict == "FAIL"
-    assert decisions[0].consensus_route == "blind_tiebreak"
-    assert "author_assertion" in decisions[0].failed_gates
-    assert "candidates" not in tasks["eligibility_blind_discovery"]
-    assert "primary_assessments" not in tasks["eligibility_blind_discovery"]
-    resolution_task = tasks["eligibility_blind_resolution_e0"]
-    assert len(resolution_task["candidates"]) == 1
-    assert resolution_task["locked_independent_findings"]["findings"][0]["finding_ref"] == "f0"
+    assert vote.selected_candidate_id == "candidate_a"
 
 
-def test_split_tiebreak_resolves_each_candidate_independently(tmp_path) -> None:
+def test_singleton_selects_neither_when_candidate_fails() -> None:
+    assessment = _case_assessment(
+        "k0",
+        ["k0_a"],
+        selected_ref="k0_a",
+        failed_refs={"k0_a"},
+    )
+
+    vote = eligibility_adjudication_vote_from_assessment(
+        case_id="case_0",
+        judge_role="positive",
+        assessment=assessment,
+        candidate_id_by_ref={"k0_a": "candidate_a"},
+        model="model-positive",
+    )
+
+    assert vote.selected_candidate_id is None
+
+
+def test_pair_uses_sole_passing_candidate_not_model_preference() -> None:
+    assessment = _case_assessment(
+        "k0",
+        ["k0_a", "k0_b"],
+        selected_ref="k0_a",
+        failed_refs={"k0_a"},
+    )
+
+    vote = eligibility_adjudication_vote_from_assessment(
+        case_id="case_0",
+        judge_role="negative",
+        assessment=assessment,
+        candidate_id_by_ref={"k0_a": "candidate_a", "k0_b": "candidate_b"},
+        model="model-negative",
+    )
+
+    assert vote.selected_candidate_id == "candidate_b"
+
+
+def test_pair_derives_neither_when_both_candidates_fail() -> None:
+    assessment = _case_assessment(
+        "k0",
+        ["k0_a", "k0_b"],
+        selected_ref="k0_a",
+        failed_refs={"k0_a", "k0_b"},
+    )
+
+    vote = eligibility_adjudication_vote_from_assessment(
+        case_id="case_0",
+        judge_role="positive",
+        assessment=assessment,
+        candidate_id_by_ref={"k0_a": "candidate_a", "k0_b": "candidate_b"},
+        model="model-positive",
+    )
+
+    assert vote.selected_candidate_id is None
+    assert "every candidate failed" in vote.rationale
+
+
+def test_pair_retains_preference_when_both_candidates_pass() -> None:
+    assessment = _case_assessment(
+        "k0",
+        ["k0_a", "k0_b"],
+        selected_ref="k0_b",
+    )
+
+    vote = eligibility_adjudication_vote_from_assessment(
+        case_id="case_0",
+        judge_role="tiebreak",
+        assessment=assessment,
+        candidate_id_by_ref={"k0_a": "candidate_a", "k0_b": "candidate_b"},
+        model="model-tiebreak",
+    )
+
+    assert vote.selected_candidate_id == "candidate_b"
+
+
+def test_unsupported_atom_fails_candidate() -> None:
+    assessment = _assessment("k0_a", unsupported_atom=True)
+
+    assert assessment_passes_hard_gates(assessment) is False
+    vote = eligibility_adjudication_vote_from_assessment(
+        case_id="case_0",
+        judge_role="negative",
+        assessment=EligibilityAdjudicationCaseAssessment(
+            case_ref="k0",
+            candidate_assessments=[assessment],
+            selected_candidate_ref="k0_a",
+            rationale="The candidate was assessed against every hard gate.",
+        ),
+        candidate_id_by_ref={"k0_a": "candidate_a"},
+        model="model-negative",
+    )
+    normalized = vote.candidate_assessments[0]
+    assert next(
+        gate for gate in normalized.gates if gate.gate == "argument_sufficiency"
+    ).passed is False
+    assert next(gate for gate in normalized.gates if gate.gate == "fidelity").passed is False
+
+
+def test_split_primary_votes_require_tiebreak() -> None:
+    passing = _vote("case_0", "negative", "candidate_a")
+    failing = _vote("case_0", "positive", None)
+
+    with pytest.raises(ValueError, match="require a tiebreak"):
+        decide_eligibility_adjudication(
+            case_id="case_0",
+            candidate_ids=["candidate_a"],
+            negative_vote=passing,
+            positive_vote=failing,
+        )
+
+    decision = decide_eligibility_adjudication(
+        case_id="case_0",
+        candidate_ids=["candidate_a"],
+        negative_vote=passing,
+        positive_vote=failing,
+        tiebreak_vote=_vote("case_0", "tiebreak", None),
+    )
+    assert decision.selected_candidate_id is None
+    assert decision.consensus_route == "tiebreak"
+
+
+def test_pairwise_cases_use_disjoint_highest_confidence_matching() -> None:
+    bronze = _candidate("bronze:B01", "bronze", None)
+    miner_a = _candidate("miner:uid_9:M01", "miner", "uid_9")
+    miner_b = _candidate("miner:uid_10:M01", "miner", "uid_10")
+    cases = _pairwise_comparison_cases_from_graph(
+        paper_id="paper",
+        bronze_candidates=[bronze],
+        miner_submissions=[
+            MinerPaperSubmission("uid_9", "paper", [miner_a]),
+            MinerPaperSubmission("uid_10", "paper", [miner_b]),
+        ],
+        candidate_graph_edges=[
+            CandidatePairEdge(
+                edge_id="lower",
+                left_candidate_id=bronze.candidate_id,
+                right_candidate_id=miner_a.candidate_id,
+                relation="semantic_equivalent",
+                confidence=0.8,
+            ),
+            CandidatePairEdge(
+                edge_id="higher",
+                left_candidate_id=bronze.candidate_id,
+                right_candidate_id=miner_b.candidate_id,
+                relation="compatible_refinement",
+                confidence=0.95,
+            ),
+        ],
+    )
+
+    assert [case.candidate_ids for case in cases if len(case.candidate_ids) == 2] == [
+        ["bronze:B01", "miner:uid_10:M01"]
+    ]
+    assert [case.candidate_ids for case in cases if len(case.candidate_ids) == 1] == [
+        ["miner:uid_9:M01"]
+    ]
+
+
+def test_adjudication_batches_singleton_and_pair_hermes_calls(tmp_path) -> None:
     candidates = [
-        _candidate("miner:uid_9:C01", "miner", "uid_9"),
-        _candidate("miner:uid_10:C01", "miner", "uid_10"),
+        _candidate("bronze:B01", "bronze", None),
+        _candidate("miner:uid_9:M01", "miner", "uid_9"),
+        _candidate("miner:uid_10:M02", "miner", "uid_10"),
     ]
     session = _session(tmp_path, candidates)
-    resolution_candidate_counts: list[int] = []
-
-    def fake_stage(_self, **kwargs):
-        stage_key = kwargs["stage_key"]
-        if stage_key == "eligibility_negative":
-            return SimpleNamespace(
-                payload=EligibilityAgentOutput(
-                    assessments=[
-                        _agent_output("e0", failed_gate="author_assertion").assessments[0],
-                        _agent_output("e1", failed_gate="author_assertion").assessments[0],
-                    ]
-                )
-            )
-        if stage_key == "eligibility_positive":
-            return SimpleNamespace(
-                payload=EligibilityAgentOutput(
-                    assessments=[
-                        _agent_output("e0").assessments[0],
-                        _agent_output("e1").assessments[0],
-                    ]
-                )
-            )
-        if stage_key == "eligibility_blind_discovery":
-            return SimpleNamespace(
-                payload=BlindEligibilityDiscoveryOutput(
-                    findings=[],
-                    search_summary="Reviewed the supplied evidence independently.",
-                )
-            )
-        if stage_key.startswith("eligibility_blind_resolution_"):
-            candidate_ref = kwargs["task"]["candidates"][0]["candidate_ref"]
-            resolution_candidate_counts.append(len(kwargs["task"]["candidates"]))
-            return SimpleNamespace(
-                payload=EligibilityTiebreakOutput(
-                    assessments=[
-                        EligibilityTiebreakAssessment(
-                            **_assessment_payload(
-                                candidate_ref,
-                                failed_gate="author_assertion",
-                            )
-                        )
-                    ]
-                )
-            )
-        raise AssertionError(stage_key)
-
-    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
-    decisions = session.run_eligibility()
-
-    assert [decision.verdict for decision in decisions] == ["FAIL", "FAIL"]
-    assert resolution_candidate_counts == [1, 1]
-
-
-def test_eligibility_operational_failure_retries_without_casting_a_vote(tmp_path) -> None:
-    session = _session(tmp_path, [_candidate("miner:uid_9:C01", "miner", "uid_9")])
+    session.config = replace(
+        session.config,
+        adjudication_batch_size=1,
+        adjudication_max_workers=1,
+    )
     calls: list[str] = []
 
     def fake_stage(_self, **kwargs):
         calls.append(kwargs["stage_key"])
-        if kwargs["stage_key"] == "eligibility_negative":
-            raise RuntimeError("temporary provider failure")
-        return SimpleNamespace(payload=_agent_output("e0"))
+        case = kwargs["task"]["cases"][0]
+        refs = [item["candidate_ref"] for item in case["candidates"]]
+        return SimpleNamespace(payload=_output(case["case_ref"], refs, selected_ref=refs[0]))
 
     session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
-    decisions = session.run_eligibility()
+    decisions = session.run_eligibility_adjudication(
+        [
+            _context("case_1", candidates[:2]),
+            _context("case_2", candidates[2:]),
+        ]
+    )
 
-    assert decisions[0].verdict == "PASS"
-    assert "eligibility_negative_retry" in calls
-    assert decisions[0].primary_votes[0].judge_role == "negative"
+    assert [decision.selected_candidate_id for decision in decisions] == [
+        "bronze:B01",
+        "miner:uid_10:M02",
+    ]
+    assert set(calls[:2]) == {
+        "eligibility_adjudication_negative",
+        "eligibility_adjudication_positive",
+    }
+    assert set(calls[2:]) == {
+        "eligibility_adjudication_negative_b001",
+        "eligibility_adjudication_positive_b001",
+    }
 
 
-def test_dspy_eligibility_uses_the_standalone_task_contract(monkeypatch, tmp_path) -> None:
-    session = _session(tmp_path, [_candidate("miner:uid_9:C01", "miner", "uid_9")])
-    session.config = replace(session.config, eligibility_harness="dspy")
-    captured_tasks: list[dict] = []
+def test_dspy_uses_same_singleton_and_pair_contract(monkeypatch, tmp_path) -> None:
+    candidates = [
+        _candidate("bronze:B01", "bronze", None),
+        _candidate("miner:uid_9:M01", "miner", "uid_9"),
+    ]
+    session = _session(tmp_path, candidates)
+    session.config = replace(session.config, adjudication_harness="dspy")
+    tasks: list[dict] = []
 
     def fake_dspy_run(_self, **kwargs):
-        captured_tasks.append(kwargs["task"])
-        payload = _agent_output("e0")
+        task = kwargs["task"]
+        tasks.append(task)
+        assessments = []
+        for case in task["cases"]:
+            refs = [item["candidate_ref"] for item in case["candidates"]]
+            assessments.extend(_output(case["case_ref"], refs, selected_ref=refs[-1]).assessments)
+        payload = EligibilityAdjudicationAgentOutput(assessments=assessments)
         kwargs["validator"](payload)
         return payload
 
-    def reject_file_agent(*_args, **_kwargs):
-        raise AssertionError("DSPy eligibility must not invoke the file-agent stage.")
+    monkeypatch.setattr(DSPyEligibilityRuntime, "run", fake_dspy_run)
+    decisions = session.run_eligibility_adjudication(
+        [
+            _context("case_pair", candidates),
+            _context("case_single", candidates[1:]),
+        ]
+    )
+
+    assert [decision.selected_candidate_id for decision in decisions] == [
+        "miner:uid_9:M01",
+        "miner:uid_9:M01",
+    ]
+    assert len(tasks) == 2
+    assert all(task["mode"] == "eligibility_selection" for task in tasks)
+
+
+def test_dspy_adjudication_obeys_shared_request_limit(monkeypatch, tmp_path) -> None:
+    candidates = [
+        _candidate(f"miner:uid_{index}:M01", "miner", f"uid_{index}")
+        for index in range(4)
+    ]
+    session = _session(tmp_path, candidates)
+    session.config = replace(
+        session.config,
+        adjudication_harness="dspy",
+        adjudication_batch_size=1,
+        adjudication_max_workers=4,
+    )
+    session.request_gate = threading.BoundedSemaphore(2)
+    state_lock = threading.Lock()
+    active = 0
+    peak = 0
+
+    def fake_dspy_run(_self, **kwargs):
+        nonlocal active, peak
+        with state_lock:
+            active += 1
+            peak = max(peak, active)
+        try:
+            time.sleep(0.02)
+            case = kwargs["task"]["cases"][0]
+            refs = [item["candidate_ref"] for item in case["candidates"]]
+            payload = _output(case["case_ref"], refs, selected_ref=refs[0])
+            kwargs["validator"](payload)
+            return payload
+        finally:
+            with state_lock:
+                active -= 1
 
     monkeypatch.setattr(DSPyEligibilityRuntime, "run", fake_dspy_run)
-    session._run_stage = reject_file_agent  # type: ignore[method-assign]
-
-    decisions = session.run_eligibility()
-
-    assert decisions[0].verdict == "PASS"
-    assert len(captured_tasks) == 2
-    assert {task["judge_role"] for task in captured_tasks} == {"negative", "positive"}
-    assert all(task["hard_gates"] == list(ELIGIBILITY_GATES) for task in captured_tasks)
-    assert all(task["source_spans"] == {"S1": "The treatment reduced mortality in the trial."} for task in captured_tasks)
-    assert all(task["requirements"]["do_not_compare_candidates"] for task in captured_tasks)
-    assert all("skill_instructions" in task for task in captured_tasks)
+    contexts = [_context(f"case_{index}", [candidate]) for index, candidate in enumerate(candidates)]
+    assert len(session.run_eligibility_adjudication(contexts)) == 4
+    assert peak == 2
 
 
-def test_dspy_eligibility_retries_then_fails_closed(monkeypatch, tmp_path) -> None:
-    session = _session(tmp_path, [_candidate("miner:uid_9:C01", "miner", "uid_9")])
-    session.config = replace(session.config, eligibility_harness="dspy")
-    calls: list[str] = []
-
-    def failing_dspy_run(_self, **kwargs):
-        calls.append(kwargs["stage_key"])
-        raise ValueError("invalid provider response")
-
-    monkeypatch.setattr(DSPyEligibilityRuntime, "run", failing_dspy_run)
-
-    with pytest.raises(FileAgentWorkflowError, match="failed after one operational retry"):
-        session._run_eligibility_stage_with_retry(
-            stage_key="eligibility_negative",
-            stage_label="Eligibility negative judge",
-            model="model-negative",
-            task={"judge_role": "negative"},
-            output_model=EligibilityAgentOutput,
-            skill_path=(
-                Path(__file__).parents[1]
-                / "validator"
-                / "agent_v1"
-                / "skills"
-                / "claims-silver-eligibility-negative"
-                / "SKILL.md"
-            ),
-            validator=lambda _payload: None,
-        )
-
-    assert calls == ["eligibility_negative", "eligibility_negative_retry"]
-
-
-def test_dspy_eligibility_runtime_parses_strict_output_and_records_usage() -> None:
-    captured: dict = {}
-    usage_events: list[dict] = []
-    raw_outputs: list[str] = []
-
-    def program(**kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace(eligibility=_agent_output("e0"))
-
-    runtime = DSPyEligibilityRuntime(
-        provider="openrouter",
-        api_base="https://openrouter.ai/api/v1",
-        api_key_env="OPENROUTER_API_KEY",
-        program=program,
-        usage_sink=usage_events.append,
-        raw_output_sink=raw_outputs.append,
-    )
-    task = {
-        "judge_role": "negative",
-        "candidates": [{"candidate_ref": "e0", "statement": "Treatment reduced mortality."}],
-        "source_spans": {"S1": "The treatment reduced mortality in the trial."},
-        "hard_gates": list(ELIGIBILITY_GATES),
-    }
-
-    result = runtime.run(
-        task=task,
-        output_model=EligibilityAgentOutput,
-        model="deepseek/deepseek-v4-flash",
-        stage_key="eligibility_negative",
-        stage_label="Eligibility negative judge",
-        paper_id="paper",
-        workspace_id="workspace",
-        validator=lambda payload: validate_eligibility_output(
-            payload,
-            expected_candidate_refs={"e0"},
-        ),
-    )
-
-    assert isinstance(result, EligibilityAgentOutput)
-    assert json.loads(captured["task_json"])["judge_role"] == "negative"
-    assert "properties" in json.loads(captured["required_json_schema"])
-    assert json.loads(raw_outputs[0])["assessments"][0]["candidate_ref"] == "e0"
-    assert usage_events[0]["harness"] == "dspy"
-    assert usage_events[0]["status"] == "success"
-
-
-def test_dspy_eligibility_config_resolves_chutes_credentials(monkeypatch) -> None:
-    monkeypatch.setenv("CLAIMS_SILVER_ELIGIBILITY_ENABLE", "true")
-    monkeypatch.setenv("CLAIMS_SILVER_ELIGIBILITY_HARNESS", "dspy")
-    monkeypatch.setenv("CLAIMS_SILVER_ELIGIBILITY_PROVIDER", "chutes")
-    monkeypatch.setenv("CLAIMS_SILVER_ELIGIBILITY_NEGATIVE_MODEL", "model-negative")
-    monkeypatch.setenv("CLAIMS_SILVER_ELIGIBILITY_POSITIVE_MODEL", "model-positive")
-    monkeypatch.setenv("CLAIMS_SILVER_ELIGIBILITY_TIEBREAK_MODEL", "model-tiebreak")
-    monkeypatch.setenv("CLAIMS_SILVER_ELIGIBILITY_MAX_TOKENS", "20000")
-    monkeypatch.setenv("CLAIMS_SILVER_ELIGIBILITY_TIMEOUT", "180")
+def test_config_uses_existing_adjudication_env_for_dspy_chutes(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_HARNESS", "dspy")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "chutes")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", "model-negative")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MODEL_B", "model-positive")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL", "model-tiebreak")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "20000")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_TIMEOUT", "180")
 
     config = FileAgentWorkflowConfig.from_env()
 
-    assert config.eligibility_harness == "dspy"
-    assert config.eligibility_provider == "chutes"
-    assert config.eligibility_api_base == "https://llm.chutes.ai/v1"
-    assert config.eligibility_api_key_env == "CHUTES_API_KEY"
-    assert config.eligibility_max_tokens == 20000
-    assert config.eligibility_timeout_seconds == 180.0
+    assert config.adjudication_harness == "dspy"
+    assert config.adjudication_provider == "chutes"
+    assert config.adjudication_api_base == "https://llm.chutes.ai/v1"
+    assert config.adjudication_api_key_env == "CHUTES_API_KEY"
+    assert config.adjudication_max_tokens == 20000
+    assert config.adjudication_timeout_seconds == 180.0
 
 
-def test_dspy_eligibility_program_uses_concrete_pydantic_output_type() -> None:
-    environment_before_import = dict(os.environ)
-    try:
-        dspy = pytest.importorskip("dspy")
-        program = DSPyEligibilityRuntime._program(dspy, EligibilityAgentOutput)
-    finally:
-        for name in set(os.environ) - set(environment_before_import):
-            os.environ.pop(name, None)
-        os.environ.update(environment_before_import)
-
-    assert program.signature.fields["eligibility"].annotation is EligibilityAgentOutput
-
-
-def test_dspy_eligibility_schema_restricts_candidate_and_span_references() -> None:
+def test_dspy_schema_restricts_singleton_case_candidate_and_span_refs() -> None:
     task = {
-        "candidates": [{"candidate_ref": "e0"}],
+        "cases": [{"case_ref": "k0", "candidates": [{"candidate_ref": "k0_a"}]}],
         "source_spans": {"S1": "Treatment reduced mortality."},
     }
-    output_model = _constrained_output_model(EligibilityAgentOutput, task)
-    valid = _agent_output("e0").model_dump(mode="json")
+    output_model = _constrained_output_model(EligibilityAdjudicationAgentOutput, task)
+    valid = _output("k0", ["k0_a"], selected_ref="k0_a").model_dump(mode="json")
 
-    assert output_model.model_validate(valid).assessments[0].candidate_ref == "e0"
+    assert output_model.model_validate(valid).assessments[0].case_ref == "k0"
+
+    invalid_case = json.loads(json.dumps(valid))
+    invalid_case["assessments"][0]["case_ref"] = "k1"
+    with pytest.raises(ValueError):
+        output_model.model_validate(invalid_case)
 
     invalid_candidate = json.loads(json.dumps(valid))
-    invalid_candidate["assessments"][0]["candidate_ref"] = "e1"
+    invalid_candidate["assessments"][0]["candidate_assessments"][0][
+        "candidate_ref"
+    ] = "k0_b"
     with pytest.raises(ValueError):
         output_model.model_validate(invalid_candidate)
 
     invalid_span = json.loads(json.dumps(valid))
-    invalid_span["assessments"][0]["gates"][0]["cited_span_ids"] = ["S2"]
+    invalid_span["assessments"][0]["candidate_assessments"][0][
+        "claim_atom_assessments"
+    ][0]["cited_span_ids"] = ["S2"]
     with pytest.raises(ValueError):
         output_model.model_validate(invalid_span)
 
 
-def test_blind_discovery_rejects_schema_placeholder_content() -> None:
-    payload = BlindEligibilityDiscoveryOutput(
-        findings=[
-            BlindEligibilityFinding(
-                finding_ref="example_finding_ref",
-                statement="An example finding statement.",
-                cited_span_ids=["S1"],
-                rationale="This finding is supported by the evidence provided.",
-            )
-        ],
-        search_summary="This is a blind eligibility discovery task.",
-    )
-
-    with pytest.raises(FileAgentWorkflowError, match="sequential f0"):
-        _validate_blind_discovery_payload(payload, known_span_ids={"S1"})
-
-
-def test_tiebreak_uses_disagreement_resolution_when_rationale_is_omitted() -> None:
-    payload = _assessment_payload("e0")
-    payload.pop("rationale")
-    assessment = EligibilityTiebreakAssessment(
-        **payload,
-        primary_disagreement_resolution="The source evidence resolves the split vote.",
-    )
-
-    assert assessment.rationale == "The source evidence resolves the split vote."
-
-
-def test_file_agent_stage_resume_requires_matching_task_and_skill(tmp_path) -> None:
-    session = _session(tmp_path, [_candidate("miner:uid_9:C01", "miner", "uid_9")])
-    session.config = replace(session.config, resume_existing_stages=True)
-    stage_dir = session.root / "executions" / "resume-stage"
-    stage_dir.mkdir(parents=True)
-    task = {"candidate": "e0"}
-    skill_path = tmp_path / "resume-skill.md"
-    skill_path.write_text("# Resume skill\n", encoding="utf-8")
-    (stage_dir / "task.json").write_text(json.dumps(task), encoding="utf-8")
-    (stage_dir / "SKILL.md").write_text("# Resume skill\n", encoding="utf-8")
-    (stage_dir / "output.json").write_text(
-        _agent_output("e0").model_dump_json(),
-        encoding="utf-8",
-    )
-
-    result = session._run_stage(
-        stage_key="resume-stage",
-        stage_label="Resume stage",
-        model="model",
-        task=task,
-        output_model=EligibilityAgentOutput,
-        skill_path=skill_path,
-    )
-
-    assert isinstance(result.payload, EligibilityAgentOutput)
-    assert session.manifest["stages"][-1]["status"] == "resumed"
-
-
-def test_eligibility_uses_validator_owned_spans_instead_of_merged_miner_text(tmp_path) -> None:
-    session = _session(tmp_path, [_candidate("miner:uid_9:C01", "miner", "uid_9")])
-    session.source_context_by_span_id = {"S1": "Miner-controlled replacement text."}
-    session.eligibility_source_context_by_span_id = {
-        "S1": "Validator-owned paper text."
-    }
-
-    def fake_stage(_self, **kwargs):
-        assert kwargs["task"]["source_spans"] == {
-            "S1": "Validator-owned paper text."
-        }
-        assert kwargs["task"]["candidates"][0] == {
-            "candidate_ref": "e0",
-            "statement": "Treatment reduced mortality.",
-            "qualifier": None,
-        }
-        return SimpleNamespace(payload=_agent_output("e0"))
-
-    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
-    assert session.run_eligibility()[0].verdict == "PASS"
-
-
-def test_eligibility_filters_before_comparison_and_preserves_rejection_for_scoring() -> None:
+def test_pipeline_compares_all_candidates_then_adjudicates_singletons_and_pairs() -> None:
     workflow = _EligibilityWorkflow()
     result = run_paper_silver_pipeline(
         paper_id="paper",
@@ -426,53 +400,25 @@ def test_eligibility_filters_before_comparison_and_preserves_rejection_for_scori
             ),
         ],
         silver_record_id="silver",
-        adjudication_passes=[
-            StaticAdjudicationPass(
-                pass_id="pass_a",
-                adjudication_profile_id="static",
-                model_runtime_id="static",
-                dispositions_by_case_id={},
-                default_disposition="both_valid",
-            )
-        ],
+        adjudication_passes=[],
         file_agent_workflow=workflow,  # type: ignore[arg-type]
     )
 
     assert workflow.session.comparison_candidate_ids == {
         "bronze:B01",
+        "miner:uid_1:M01",
         "miner:uid_2:M02",
     }
-    assert {item.candidate_id for item in result.silver_record.invalid_miner_candidates} == {
-        "miner:uid_1:M01"
-    }
-    assert result.silver_record.metadata["eligibility_adjudication"]["failed_candidate_count"] == 1
-    assert len(result.scores) == 2
-
-
-def test_unanimous_gate_results_determine_verdict_without_confidence_threshold() -> None:
-    assessment = _assessment("e0", failed_gate="fidelity")
-    negative = vote_from_assessment(
-        candidate_id="miner:uid_9:C01",
-        judge_role="negative",
-        assessment=assessment,
-        model="model-a",
-    )
-    positive = vote_from_assessment(
-        candidate_id="miner:uid_9:C01",
-        judge_role="positive",
-        assessment=assessment,
-        model="model-b",
-    )
-
-    decision = decide_candidate_eligibility(
-        candidate_id="miner:uid_9:C01",
-        negative_vote=negative,
-        positive_vote=positive,
-    )
-
-    assert decision.verdict == "FAIL"
-    assert decision.consensus_route == "unanimous"
-    assert decision.failed_gates == ["fidelity"]
+    assert result.adjudication_consensus == []
+    assert len(result.eligibility_adjudication_decisions) == 2
+    metadata = result.silver_record.metadata["eligibility_selection_adjudication"]
+    assert metadata["single_case_count"] == 1
+    assert metadata["pair_case_count"] == 1
+    assert {
+        candidate_id
+        for unit in result.silver_record.silver_units
+        for candidate_id in unit.equivalent_candidate_ids
+    } == {"miner:uid_2:M02"}
 
 
 class _EligibilityWorkflow:
@@ -485,18 +431,12 @@ class _EligibilityWorkflow:
 
 
 class _EligibilitySession:
-    config = SimpleNamespace(eligibility_enabled=True)
+    config = SimpleNamespace(adjudication_batch_size=12, adjudication_max_workers=4)
     fallback_to_legacy = False
 
     def __init__(self) -> None:
         self.candidates: list[ComparisonCandidate] = []
         self.comparison_candidate_ids: set[str] = set()
-
-    def run_eligibility(self) -> list[CandidateEligibilityDecision]:
-        return [
-            _decision(candidate, passed=candidate.candidate_id != "miner:uid_1:M01")
-            for candidate in self.candidates
-        ]
 
     def run_comparison(self) -> list[CandidatePairEdge]:
         self.comparison_candidate_ids = {candidate.candidate_id for candidate in self.candidates}
@@ -507,21 +447,43 @@ class _EligibilitySession:
                 right_candidate_id="miner:uid_2:M02",
                 relation="semantic_equivalent",
                 confidence=1.0,
-                rationale="The eligible submission restates the supported reference result.",
+                rationale="The submission restates the supported reference result.",
             )
         ]
 
     def record_comparison_cases(self, _cases) -> None:
         return None
 
-    def run_adjudication(self, contexts, *, passes, tiebreak_pass, direct_judge_confidence, progress_sink=None):
-        return run_adjudication_cases(
-            contexts,
-            passes=passes,
-            tiebreak_pass=tiebreak_pass,
-            direct_judge_confidence=direct_judge_confidence,
-            progress_sink=progress_sink,
-        )
+    def run_adjudication(self, *_args, **_kwargs):
+        raise AssertionError("Legacy disposition adjudication must not run.")
+
+    def run_eligibility_adjudication(self, contexts):
+        decisions = []
+        for context in contexts:
+            selected = (
+                "miner:uid_2:M02"
+                if "miner:uid_2:M02" in context.case.candidate_ids
+                else None
+            )
+            votes = [
+                _vote(context.case.case_id, "negative", selected),
+                _vote(context.case.case_id, "positive", selected),
+            ]
+            decisions.append(
+                EligibilityAdjudicationDecision(
+                    case_id=context.case.case_id,
+                    selected_candidate_id=selected,
+                    rejected_candidate_ids=[
+                        candidate_id
+                        for candidate_id in context.case.candidate_ids
+                        if candidate_id != selected
+                    ],
+                    consensus_route="unanimous",
+                    primary_votes=votes,
+                    rationale="The judges selected only the directly supported candidate.",
+                )
+            )
+        return decisions
 
     def run_canonicalization(self, *, baseline_record, decisions):
         return baseline_record
@@ -530,7 +492,7 @@ class _EligibilitySession:
         return {"workspace_id": "silver", "manifest_sha256": "test", "status": "complete"}
 
 
-def _session(tmp_path, candidates: list[ComparisonCandidate]) -> FileAgentWorkflowSession:
+def _session(tmp_path: Path, candidates: list[ComparisonCandidate]) -> FileAgentWorkflowSession:
     return FileAgentWorkflowSession(
         config=FileAgentWorkflowConfig(
             root=tmp_path,
@@ -538,10 +500,9 @@ def _session(tmp_path, candidates: list[ComparisonCandidate]) -> FileAgentWorkfl
             provider="openrouter",
             comparison_model="model-comparison",
             canonicalization_model="model-canonicalization",
-            eligibility_enabled=True,
-            eligibility_negative_model="model-negative",
-            eligibility_positive_model="model-positive",
-            eligibility_tiebreak_model="model-tiebreak",
+            adjudication_negative_model="model-negative",
+            adjudication_positive_model="model-positive",
+            adjudication_tiebreak_model="model-tiebreak",
         ),
         paper_id="paper",
         workspace_id="workspace",
@@ -565,7 +526,7 @@ def _candidate(candidate_id: str, origin: str, miner_id: str | None) -> Comparis
         source_quotes=["The treatment reduced mortality in the trial."],
         metadata={
             "source_claim": {
-                "sources": [{"span_ids": ["S1"], "quote": "The treatment reduced mortality."}]
+                "sources": [{"span_ids": ["S1"], "quote": "Treatment reduced mortality."}]
             },
             "evidence_records": [
                 {
@@ -578,20 +539,95 @@ def _candidate(candidate_id: str, origin: str, miner_id: str | None) -> Comparis
     )
 
 
-def _assessment(candidate_ref: str, *, failed_gate: str | None = None) -> EligibilityCandidateAssessment:
-    return EligibilityCandidateAssessment(**_assessment_payload(candidate_ref, failed_gate=failed_gate))
+def _context(case_id: str, candidates: list[ComparisonCandidate]) -> AdjudicationContextBundle:
+    bronze = next((candidate for candidate in candidates if candidate.origin == "bronze"), None)
+    miner = next((candidate for candidate in candidates if candidate.origin == "miner"), None)
+    return AdjudicationContextBundle(
+        case=BronzeDiffCase(
+            case_id=case_id,
+            paper_id="paper",
+            miner_id=miner.miner_id if miner and miner.miner_id else "graph",
+            mismatch_type=(
+                "SEMANTIC_EQUIVALENCE_CANDIDATE"
+                if len(candidates) == 2
+                else "EXTRA_FROM_MINER"
+            ),
+            candidate_ids=[candidate.candidate_id for candidate in candidates],
+            bronze_candidate_id=bronze.candidate_id if bronze else None,
+            miner_candidate_id=miner.candidate_id if miner else None,
+            question="Which candidates satisfy every eligibility gate?",
+            metadata={"candidate_graph_edge": {"relation": "semantic_equivalent"}},
+        ),
+        candidates=candidates,
+        source_context="S1: The treatment reduced mortality in the trial.",
+    )
 
 
-def _assessment_payload(candidate_ref: str, *, failed_gate: str | None = None) -> dict:
-    return {
-        "candidate_ref": candidate_ref,
-        "claim_atoms": ["Treatment reduced mortality."],
-        "gates": [
+def _output(
+    case_ref: str,
+    candidate_refs: list[str],
+    *,
+    selected_ref: str | None,
+    failed_refs: set[str] | None = None,
+) -> EligibilityAdjudicationAgentOutput:
+    return EligibilityAdjudicationAgentOutput(
+        assessments=[
+            _case_assessment(
+                case_ref,
+                candidate_refs,
+                selected_ref=selected_ref,
+                failed_refs=failed_refs,
+            )
+        ]
+    )
+
+
+def _case_assessment(
+    case_ref: str,
+    candidate_refs: list[str],
+    *,
+    selected_ref: str | None,
+    failed_refs: set[str] | None = None,
+) -> EligibilityAdjudicationCaseAssessment:
+    failed_refs = failed_refs or set()
+    return EligibilityAdjudicationCaseAssessment(
+        case_ref=case_ref,
+        candidate_assessments=[
+            _assessment(ref, failed_gate="fidelity" if ref in failed_refs else None)
+            for ref in candidate_refs
+        ],
+        selected_candidate_ref=selected_ref,
+        rationale="Every candidate was assessed independently against all hard gates.",
+    )
+
+
+def _assessment(
+    candidate_ref: str,
+    *,
+    failed_gate: str | None = None,
+    unsupported_atom: bool = False,
+) -> EligibilityCandidateAssessment:
+    return EligibilityCandidateAssessment(
+        candidate_ref=candidate_ref,
+        claim_atoms=["Treatment reduced mortality."],
+        claim_atom_assessments=[
+            EligibilityClaimAtomAssessment(
+                atom="Treatment reduced mortality.",
+                supported=not unsupported_atom,
+                cited_span_ids=[] if unsupported_atom else ["S1"],
+                rationale=(
+                    "The complete atom is not directly supported."
+                    if unsupported_atom
+                    else "The result span directly supports the complete atom."
+                ),
+            )
+        ],
+        gates=[
             EligibilityGateAssessment(
                 gate=gate,
                 passed=gate != failed_gate,
                 rationale=(
-                    "The decisive paper evidence does not satisfy this hard gate."
+                    "The decisive evidence does not satisfy this hard gate."
                     if gate == failed_gate
                     else "The supplied result evidence satisfies this hard gate."
                 ),
@@ -599,41 +635,27 @@ def _assessment_payload(candidate_ref: str, *, failed_gate: str | None = None) -
             )
             for gate in ELIGIBILITY_GATES
         ],
-        "rationale": (
-            "At least one mandatory admission gate failed."
+        rationale=(
+            "At least one mandatory gate failed."
             if failed_gate
-            else "All mandatory admission gates are supported."
+            else "All mandatory gates are supported."
         ),
-    }
-
-
-def _agent_output(candidate_ref: str, *, failed_gate: str | None = None) -> EligibilityAgentOutput:
-    return EligibilityAgentOutput(
-        assessments=[_assessment(candidate_ref, failed_gate=failed_gate)]
     )
 
 
-def _decision(candidate: ComparisonCandidate, *, passed: bool) -> CandidateEligibilityDecision:
-    assessment = _assessment(
-        "e0",
-        failed_gate=None if passed else "paper_original_support",
-    )
-    negative = vote_from_assessment(
-        candidate_id=candidate.candidate_id,
-        judge_role="negative",
-        assessment=assessment,
-        model="model-negative",
-    )
-    positive = vote_from_assessment(
-        candidate_id=candidate.candidate_id,
-        judge_role="positive",
-        assessment=assessment,
-        model="model-positive",
-    )
-    return decide_candidate_eligibility(
-        candidate_id=candidate.candidate_id,
-        negative_vote=negative,
-        positive_vote=positive,
+def _vote(
+    case_id: str,
+    role: str,
+    selected_candidate_id: str | None,
+) -> EligibilityAdjudicationVote:
+    candidate_id = selected_candidate_id or "candidate_a"
+    return EligibilityAdjudicationVote(
+        case_id=case_id,
+        judge_role=role,  # type: ignore[arg-type]
+        selected_candidate_id=selected_candidate_id,
+        candidate_assessments=[_assessment(candidate_id)],
+        rationale="The candidate was assessed against every hard gate.",
+        model=f"model-{role}",
     )
 
 

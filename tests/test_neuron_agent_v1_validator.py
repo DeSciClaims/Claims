@@ -169,6 +169,9 @@ def test_silver_preflight_accepts_complete_chutes_file_agent_config(monkeypatch)
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL", "chutes/comparison")
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", "chutes/canonical")
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "chutes/audit")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", "chutes/judge-a")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MODEL_B", "chutes/judge-b")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL", "chutes/tiebreak")
     config = SimpleNamespace(
         claims_silver_enable=True,
         claims_silver_adjudication_mode="static",
@@ -185,6 +188,9 @@ def test_silver_preflight_requires_configured_hermes_provider_key(monkeypatch) -
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL", "chutes/comparison")
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", "chutes/canonical")
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "chutes/audit")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", "chutes/judge-a")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MODEL_B", "chutes/judge-b")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL", "chutes/tiebreak")
     config = SimpleNamespace(
         claims_silver_enable=True,
         claims_silver_adjudication_mode="static",
@@ -846,8 +852,13 @@ def test_neuron_agent_v1_scoring_smoke(tmp_path) -> None:
         task=SimpleNamespace(task_id="task-1"),
     )
 
-    assert score == 0.6
-    assert (tmp_path / "uid_3" / "agent_v1" / "agent_v1_validation_report.json").exists()
+    assert score == 1.0
+    report = json.loads(
+        (tmp_path / "uid_3" / "agent_v1" / "agent_v1_validation_report.json").read_text(encoding="utf-8")
+    )
+    assert report["passes"]["rigor"]["runtime"] == "skipped"
+    assert report["passes"]["rigor"]["finding_count"] == 0
+    assert report["metadata"]["rigor_agent_required"] is False
 
 
 def test_neuron_silver_post_pass_persists_backend_records(tmp_path) -> None:

@@ -5,7 +5,6 @@ import re
 
 from .adjudication_models import AdjudicationDecision
 from .comparison_models import ComparisonCandidate, InvalidMinerCandidate, ReferenceError, SilverRecord, SilverUnit
-from .eligibility import CandidateEligibilityDecision
 
 
 def build_silver_record(
@@ -17,7 +16,7 @@ def build_silver_record(
     bronze_record_id: str | None = None,
     equivalent_candidate_groups: list[list[str]] | None = None,
     excluded_candidate_ids: set[str] | None = None,
-    eligibility_decisions: list[CandidateEligibilityDecision] | None = None,
+    non_penalized_rejected_candidate_ids: set[str] | None = None,
 ) -> SilverRecord:
     candidates_by_id = {candidate.candidate_id: candidate for candidate in candidates}
     units_by_key: dict[tuple[str, str], SilverUnit] = {}
@@ -25,38 +24,6 @@ def build_silver_record(
     reference_errors: list[ReferenceError] = []
     seen_invalid_candidates: set[tuple[str, str | None]] = set()
     seen_reference_errors: set[str] = set()
-
-    for eligibility in eligibility_decisions or []:
-        if eligibility.verdict != "FAIL":
-            continue
-        candidate = candidates_by_id.get(eligibility.candidate_id)
-        if candidate is None:
-            continue
-        reason = eligibility.rationale
-        case_id = f"eligibility:{candidate.candidate_id}"
-        if candidate.origin == "bronze":
-            if candidate.candidate_id not in seen_reference_errors:
-                reference_errors.append(
-                    ReferenceError(
-                        candidate_id=candidate.candidate_id,
-                        reason=reason,
-                        adjudication_case_id=case_id,
-                    )
-                )
-                seen_reference_errors.add(candidate.candidate_id)
-        elif candidate.miner_id:
-            invalid_key = (candidate.candidate_id, candidate.miner_id)
-            if invalid_key not in seen_invalid_candidates:
-                invalid_candidates.append(
-                    InvalidMinerCandidate(
-                        candidate_id=candidate.candidate_id,
-                        miner_id=candidate.miner_id,
-                        reason=reason,
-                        adjudication_case_id=case_id,
-                        evidence_span=(eligibility.cited_span_ids or [None])[0],
-                    )
-                )
-                seen_invalid_candidates.add(invalid_key)
 
     accepted_candidate_ids: set[str] = set()
     accepted_bronze_ids: set[str] = set()
@@ -132,7 +99,11 @@ def build_silver_record(
                         )
                     )
                     seen_reference_errors.add(candidate.candidate_id)
-            elif candidate.miner_id:
+            elif (
+                candidate.miner_id
+                and candidate.candidate_id
+                not in (non_penalized_rejected_candidate_ids or set())
+            ):
                 invalid_key = (candidate.candidate_id, candidate.miner_id)
                 if invalid_key not in seen_invalid_candidates:
                     invalid_candidates.append(

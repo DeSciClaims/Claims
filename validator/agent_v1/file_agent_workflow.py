@@ -35,15 +35,14 @@ from .comparison_models import CandidatePairEdge, ComparisonCandidate, RelationT
 from .eligibility import (
     ELIGIBILITY_GATES,
     ELIGIBILITY_PROFILE_ID,
-    BlindEligibilityDiscoveryOutput,
-    CandidateEligibilityDecision,
-    CandidateEligibilityVote,
-    EligibilityAgentOutput,
+    EligibilityAdjudicationAgentOutput,
+    EligibilityAdjudicationDecision,
+    EligibilityAdjudicationVote,
     EligibilityCandidateAssessment,
-    EligibilityTiebreakOutput,
-    decide_candidate_eligibility,
-    validate_eligibility_output,
-    vote_from_assessment,
+    assessment_passes_hard_gates,
+    decide_eligibility_adjudication,
+    eligibility_adjudication_vote_from_assessment,
+    validate_eligibility_adjudication_output,
 )
 from .eligibility_dspy import DSPyEligibilityRuntime
 from .model_usage import UsageSink, provider_from_model_or_base
@@ -186,18 +185,17 @@ class FileAgentWorkflowConfig:
     comparison_model: str
     canonicalization_model: str
     canonical_audit_model: str = ""
-    eligibility_enabled: bool = False
-    eligibility_harness: str = "file-agent"
-    eligibility_provider: str = "openrouter"
-    eligibility_api_base: str = "https://openrouter.ai/api/v1"
-    eligibility_api_key_env: str = "OPENROUTER_API_KEY"
-    eligibility_negative_model: str = ""
-    eligibility_positive_model: str = ""
-    eligibility_tiebreak_model: str = ""
-    eligibility_batch_size: int = 8
-    eligibility_max_workers: int = 4
-    eligibility_max_tokens: int = 32768
-    eligibility_timeout_seconds: float = 300.0
+    adjudication_harness: str = "file-agent"
+    adjudication_provider: str = "openrouter"
+    adjudication_api_base: str = "https://openrouter.ai/api/v1"
+    adjudication_api_key_env: str = "OPENROUTER_API_KEY"
+    adjudication_negative_model: str = ""
+    adjudication_positive_model: str = ""
+    adjudication_tiebreak_model: str = ""
+    adjudication_batch_size: int = 8
+    adjudication_max_workers: int = 4
+    adjudication_max_tokens: int = 8192
+    adjudication_timeout_seconds: float = 120.0
     command_template: str = ""
     max_turns: int = 30
     max_tokens: int = 32768
@@ -210,24 +208,14 @@ class FileAgentWorkflowConfig:
     resume_existing_stages: bool = False
 
     def __post_init__(self) -> None:
-        if self.eligibility_harness not in {"file-agent", "dspy"}:
-            raise ValueError("Eligibility harness must be file-agent or dspy.")
-        if self.eligibility_enabled and not all(
-            (
-                self.eligibility_negative_model,
-                self.eligibility_positive_model,
-                self.eligibility_tiebreak_model,
-            )
-        ):
-            raise ValueError(
-                "Eligibility adjudication requires negative, positive, and tiebreak models."
-            )
+        if self.adjudication_harness not in {"file-agent", "dspy"}:
+            raise ValueError("Eligibility adjudication harness must be file-agent or dspy.")
 
     @classmethod
     def from_env(cls) -> FileAgentWorkflowConfig:
         harness = os.getenv(
             "CLAIMS_SILVER_FILE_AGENT_HARNESS",
-            os.getenv("CLAIMS_SILVER_ADJUDICATION_HARNESS", "hermes-cli"),
+            "hermes-cli",
         ).strip().lower().replace("_", "-")
         if harness not in {"hermes-cli", "codex-cli", "claude-cli"}:
             raise ValueError(
@@ -245,16 +233,20 @@ class FileAgentWorkflowConfig:
             "CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL",
             secondary_model or default_model,
         ).strip()
-        eligibility_api_base_explicit = os.getenv(
-            "CLAIMS_SILVER_ELIGIBILITY_API_BASE",
+        adjudication_harness = os.getenv(
+            "CLAIMS_SILVER_ADJUDICATION_HARNESS",
+            "hermes-cli",
+        ).strip().lower().replace("_", "-")
+        adjudication_api_base_explicit = os.getenv(
+            "CLAIMS_SILVER_ADJUDICATION_API_BASE",
             "",
         ).strip()
-        eligibility_provider = normalize_provider(
+        adjudication_provider = normalize_provider(
             os.getenv(
-                "CLAIMS_SILVER_ELIGIBILITY_PROVIDER",
+                "CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER",
                 os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER", "openrouter"),
             ),
-            api_base=eligibility_api_base_explicit,
+            api_base=adjudication_api_base_explicit,
         )
         return cls(
             root=Path(os.getenv("CLAIMS_SILVER_FILE_WORKSPACE_ROOT", "/tmp/claims-silver-workspaces")).expanduser(),
@@ -272,51 +264,45 @@ class FileAgentWorkflowConfig:
                     os.getenv("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", default_model),
                 ),
             ).strip(),
-            eligibility_enabled=os.getenv(
-                "CLAIMS_SILVER_ELIGIBILITY_ENABLE",
-                "false",
-            ).strip().lower()
-            in {"1", "true", "yes", "on"},
-            eligibility_harness=os.getenv(
-                "CLAIMS_SILVER_ELIGIBILITY_HARNESS",
-                "file-agent",
-            ).strip().lower().replace("_", "-"),
-            eligibility_provider=eligibility_provider,
-            eligibility_api_base=provider_api_base(
-                eligibility_provider,
-                eligibility_api_base_explicit,
+            adjudication_harness=(
+                "dspy" if adjudication_harness == "dspy" else "file-agent"
             ),
-            eligibility_api_key_env=provider_api_key_env(
-                eligibility_provider,
-                os.getenv("CLAIMS_SILVER_ELIGIBILITY_API_KEY_ENV", ""),
+            adjudication_provider=adjudication_provider,
+            adjudication_api_base=provider_api_base(
+                adjudication_provider,
+                adjudication_api_base_explicit,
             ),
-            eligibility_negative_model=os.getenv(
-                "CLAIMS_SILVER_ELIGIBILITY_NEGATIVE_MODEL",
+            adjudication_api_key_env=provider_api_key_env(
+                adjudication_provider,
+                os.getenv("CLAIMS_SILVER_ADJUDICATION_API_KEY_ENV", ""),
+            ),
+            adjudication_negative_model=os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_MODEL_A",
                 default_model,
             ).strip(),
-            eligibility_positive_model=os.getenv(
-                "CLAIMS_SILVER_ELIGIBILITY_POSITIVE_MODEL",
+            adjudication_positive_model=os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_MODEL_B",
                 secondary_model or default_model,
             ).strip(),
-            eligibility_tiebreak_model=os.getenv(
-                "CLAIMS_SILVER_ELIGIBILITY_TIEBREAK_MODEL",
+            adjudication_tiebreak_model=os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL",
                 tiebreak_model,
             ).strip(),
-            eligibility_batch_size=max(
+            adjudication_batch_size=max(
                 1,
-                int(os.getenv("CLAIMS_SILVER_ELIGIBILITY_BATCH_SIZE", "8") or 8),
+                int(os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE", "8") or 8),
             ),
-            eligibility_max_workers=max(
+            adjudication_max_workers=max(
                 1,
-                int(os.getenv("CLAIMS_SILVER_ELIGIBILITY_MAX_WORKERS", "4") or 4),
+                int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_WORKERS", "4") or 4),
             ),
-            eligibility_max_tokens=max(
+            adjudication_max_tokens=max(
                 1024,
-                int(os.getenv("CLAIMS_SILVER_ELIGIBILITY_MAX_TOKENS", "32768") or 32768),
+                int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "8192") or 8192),
             ),
-            eligibility_timeout_seconds=max(
+            adjudication_timeout_seconds=max(
                 1.0,
-                float(os.getenv("CLAIMS_SILVER_ELIGIBILITY_TIMEOUT", "300") or 300),
+                float(os.getenv("CLAIMS_SILVER_ADJUDICATION_TIMEOUT", "120") or 120),
             ),
             command_template=os.getenv("CLAIMS_SILVER_FILE_AGENT_CLI_COMMAND_TEMPLATE", "").strip(),
             max_turns=max(1, int(os.getenv("CLAIMS_SILVER_FILE_AGENT_MAX_TURNS", "30") or 30)),
@@ -395,271 +381,253 @@ class FileAgentWorkflowSession:
     def fallback_to_legacy(self) -> bool:
         return self.config.fallback_to_legacy
 
-    def run_eligibility(self) -> list[CandidateEligibilityDecision]:
-        if not self.config.eligibility_enabled or not self.candidates:
+    def run_eligibility_adjudication(
+        self,
+        contexts: list[AdjudicationContextBundle],
+    ) -> list[EligibilityAdjudicationDecision]:
+        if any(len(context.candidates) not in {1, 2} for context in contexts):
+            raise ValueError("Eligibility adjudication accepts one- or two-candidate cases.")
+        if not contexts:
+            self._write_json("eligibility_adjudication/decisions.json", {"decisions": []})
             return []
-
         batches = [
-            self.candidates[index : index + self.config.eligibility_batch_size]
-            for index in range(0, len(self.candidates), self.config.eligibility_batch_size)
+            contexts[index : index + self.config.adjudication_batch_size]
+            for index in range(0, len(contexts), self.config.adjudication_batch_size)
         ]
-        worker_count = max(1, min(self.config.eligibility_max_workers, len(batches)))
+        worker_count = max(1, min(self.config.adjudication_max_workers, len(batches)))
         if worker_count == 1:
             batch_decisions = [
-                self._run_eligibility_batch(candidates, batch_index=index)
-                for index, candidates in enumerate(batches)
+                self._run_eligibility_adjudication_batch(batch, batch_index=index)
+                for index, batch in enumerate(batches)
             ]
         else:
             with ThreadPoolExecutor(max_workers=worker_count) as executor:
                 futures = [
                     executor.submit(
-                        self._run_eligibility_batch,
-                        candidates,
+                        self._run_eligibility_adjudication_batch,
+                        batch,
                         batch_index=index,
                     )
-                    for index, candidates in enumerate(batches)
+                    for index, batch in enumerate(batches)
                 ]
                 batch_decisions = [future.result() for future in futures]
         decisions = [decision for batch in batch_decisions for decision in batch]
         self._write_json(
-            "eligibility/decisions.json",
+            "eligibility_adjudication/decisions.json",
             {
-                "schema": "claims_silver_eligibility_v1",
+                "schema": "claims_silver_eligibility_adjudication_v1",
                 "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
-                "candidate_count": len(self.candidates),
-                "batch_size": self.config.eligibility_batch_size,
+                "case_count": len(contexts),
+                "single_case_count": sum(len(context.candidates) == 1 for context in contexts),
+                "pair_case_count": sum(len(context.candidates) == 2 for context in contexts),
+                "batch_size": self.config.adjudication_batch_size,
                 "batch_count": len(batches),
                 "decisions": [decision.model_dump(mode="json") for decision in decisions],
             },
         )
         return decisions
 
-    def _run_eligibility_batch(
+    def _run_eligibility_adjudication_batch(
         self,
-        candidates: list[ComparisonCandidate],
+        contexts: list[AdjudicationContextBundle],
         *,
         batch_index: int,
-    ) -> list[CandidateEligibilityDecision]:
+    ) -> list[EligibilityAdjudicationDecision]:
         stage_suffix = "" if batch_index == 0 else f"_b{batch_index:03d}"
-
-        alias_by_id = {
-            candidate.candidate_id: f"e{index}"
-            for index, candidate in enumerate(candidates)
+        case_alias_by_id = {
+            context.case.case_id: f"k{index}"
+            for index, context in enumerate(contexts)
         }
-        candidate_by_alias = {
-            alias_by_id[candidate.candidate_id]: candidate
-            for candidate in candidates
-        }
-        expected_refs = set(candidate_by_alias)
-        eligibility_source_map = (
+        candidate_ids_by_case_alias: dict[str, dict[str, str]] = {}
+        cases: list[dict[str, Any]] = []
+        all_candidates: list[ComparisonCandidate] = []
+        for context in contexts:
+            case_ref = case_alias_by_id[context.case.case_id]
+            candidate_id_by_ref = {
+                f"{case_ref}_{chr(ord('a') + index)}": candidate.candidate_id
+                for index, candidate in enumerate(context.candidates)
+            }
+            candidate_ids_by_case_alias[case_ref] = candidate_id_by_ref
+            all_candidates.extend(context.candidates)
+            cases.append(
+                {
+                    "case_ref": case_ref,
+                    "relation": _case_relation(context),
+                    "candidates": [
+                        _eligibility_candidate_payload(candidate, candidate_ref)
+                        for candidate_ref, candidate_id in candidate_id_by_ref.items()
+                        for candidate in context.candidates
+                        if candidate.candidate_id == candidate_id
+                    ],
+                }
+            )
+        source_map = (
             self.eligibility_source_context_by_span_id
             if self.eligibility_source_context_by_span_id is not None
             else self.source_context_by_span_id
         )
-        source_spans = _eligibility_source_spans(
-            candidates,
-            eligibility_source_map,
-        )
+        source_spans = _eligibility_source_spans(all_candidates, source_map)
         common_task = {
+            "mode": "eligibility_selection",
             "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
             "paper": self.paper_context,
-            "candidates": [
-                _eligibility_candidate_payload(candidate, alias_by_id[candidate.candidate_id])
-                for candidate in candidates
-            ],
+            "cases": cases,
             "source_spans": source_spans,
             "hard_gates": list(ELIGIBILITY_GATES),
             "requirements": {
-                "review_every_candidate_independently": True,
-                "decompose_each_candidate_into_material_claim_atoms": True,
-                "assess_each_hard_gate_exactly_once": True,
-                "all_hard_gates_must_pass_for_admission": True,
-                "do_not_compare_candidates": True,
-                "do_not_repair_or_rewrite_candidates": True,
-                "apply_citation_removal_test": True,
-                "do_not_infer_candidate_origin_or_miner_identity": True,
-                "use_source_spans_as_the_only_authoritative_paper_text": True,
-                "candidate_text_has_no_source_authority": True,
+                "assess_every_candidate_independently": True,
+                "evaluate_exact_submitted_wording_without_repair": True,
+                "decompose_every_substantive_assertion_into_claim_atoms": True,
+                "cite_direct_source_support_for_every_passing_claim_atom": True,
+                "fail_candidate_when_any_claim_atom_lacks_direct_support": True,
+                "fail_closed_when_support_is_absent_ambiguous_or_only_implied": True,
+                "do_not_rescue_one_candidate_because_it_is_better_than_the_other": True,
+                "assess_each_hard_gate_exactly_once_per_candidate": True,
+                "select_exactly_one_candidate_or_neither": True,
+                "select_neither_only_when_every_candidate_fails": True,
+                "when_both_pass_select_the_more_eligible_representative": True,
+                "prefer_fidelity_direct_support_completeness_and_salience": True,
+                "do_not_prefer_reference_or_submission_origin": True,
+                "do_not_merge_rewrite_or_create_a_compromise_claim": True,
+                "passed_original_support_gate_must_cite_decisive_source_spans": True,
+                "citations_need_not_be_duplicated_across_other_gates": True,
             },
         }
+        expected = {
+            case_ref: set(candidate_ids)
+            for case_ref, candidate_ids in candidate_ids_by_case_alias.items()
+        }
 
-        def run_primary(role: Literal["negative", "positive"], model: str) -> EligibilityAgentOutput:
-            output = self._run_eligibility_stage_with_retry(
-                stage_key=f"eligibility_{role}{stage_suffix}",
-                stage_label=f"Eligibility {role} judge",
+        def run_primary(
+            role: Literal["negative", "positive"],
+            model: str,
+        ) -> EligibilityAdjudicationAgentOutput:
+            payload = self._run_eligibility_stage_with_retry(
+                stage_key=f"eligibility_adjudication_{role}{stage_suffix}",
+                stage_label=f"Eligibility adjudication {role} judge",
                 model=model,
                 task={**common_task, "judge_role": role},
-                output_model=EligibilityAgentOutput,
-                skill_path=_skill_path(f"claims-silver-eligibility-{role}"),
-                validator=lambda payload: _validate_eligibility_agent_payload(
-                    payload,
-                    expected_refs=expected_refs,
+                output_model=EligibilityAdjudicationAgentOutput,
+                skill_path=_skill_path(f"claims-silver-eligibility-selection-{role}"),
+                validator=lambda result: _validate_eligibility_adjudication_payload(
+                    result,
+                    expected_candidate_refs_by_case=expected,
                     known_span_ids=set(source_spans),
                 ),
             )
-            assert isinstance(output, EligibilityAgentOutput)
-            return output
+            assert isinstance(payload, EligibilityAdjudicationAgentOutput)
+            return payload
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             negative_future = executor.submit(
                 run_primary,
                 "negative",
-                self.config.eligibility_negative_model,
+                self.config.adjudication_negative_model,
             )
             positive_future = executor.submit(
                 run_primary,
                 "positive",
-                self.config.eligibility_positive_model,
+                self.config.adjudication_positive_model,
             )
             negative_output = negative_future.result()
             positive_output = positive_future.result()
 
-        negative_by_ref = {item.candidate_ref: item for item in negative_output.assessments}
-        positive_by_ref = {item.candidate_ref: item for item in positive_output.assessments}
-        negative_votes: dict[str, CandidateEligibilityVote] = {}
-        positive_votes: dict[str, CandidateEligibilityVote] = {}
-        split_refs: list[str] = []
-        for alias, candidate in candidate_by_alias.items():
-            negative_vote = vote_from_assessment(
-                candidate_id=candidate.candidate_id,
+        negative_by_ref = {item.case_ref: item for item in negative_output.assessments}
+        positive_by_ref = {item.case_ref: item for item in positive_output.assessments}
+        negative_votes: dict[str, EligibilityAdjudicationVote] = {}
+        positive_votes: dict[str, EligibilityAdjudicationVote] = {}
+        split_case_refs: list[str] = []
+        for context in contexts:
+            case_ref = case_alias_by_id[context.case.case_id]
+            negative_vote = eligibility_adjudication_vote_from_assessment(
+                case_id=context.case.case_id,
                 judge_role="negative",
-                assessment=negative_by_ref[alias],
-                model=self.config.eligibility_negative_model,
+                assessment=negative_by_ref[case_ref],
+                candidate_id_by_ref=candidate_ids_by_case_alias[case_ref],
+                model=self.config.adjudication_negative_model,
             )
-            positive_vote = vote_from_assessment(
-                candidate_id=candidate.candidate_id,
+            positive_vote = eligibility_adjudication_vote_from_assessment(
+                case_id=context.case.case_id,
                 judge_role="positive",
-                assessment=positive_by_ref[alias],
-                model=self.config.eligibility_positive_model,
+                assessment=positive_by_ref[case_ref],
+                candidate_id_by_ref=candidate_ids_by_case_alias[case_ref],
+                model=self.config.adjudication_positive_model,
             )
-            negative_votes[alias] = negative_vote
-            positive_votes[alias] = positive_vote
-            if negative_vote.verdict != positive_vote.verdict:
-                split_refs.append(alias)
+            negative_votes[case_ref] = negative_vote
+            positive_votes[case_ref] = positive_vote
+            if negative_vote.selected_candidate_id != positive_vote.selected_candidate_id:
+                split_case_refs.append(case_ref)
 
-        tiebreak_votes: dict[str, CandidateEligibilityVote] = {}
-        blind_discovery: BlindEligibilityDiscoveryOutput | None = None
-        if split_refs:
-            blind_source_spans = _eligibility_source_spans(
-                self.initial_candidates,
-                eligibility_source_map,
-            )
-            blind_discovery_payload = self._run_eligibility_stage_with_retry(
-                stage_key=f"eligibility_blind_discovery{stage_suffix}",
-                stage_label="Eligibility blind finding discovery",
-                model=self.config.eligibility_tiebreak_model,
+        tiebreak_votes: dict[str, EligibilityAdjudicationVote] = {}
+        if split_case_refs:
+            split_cases = [case for case in cases if case["case_ref"] in split_case_refs]
+            split_expected = {
+                case_ref: expected[case_ref]
+                for case_ref in split_case_refs
+            }
+            payload = self._run_eligibility_stage_with_retry(
+                stage_key=f"eligibility_adjudication_tiebreak{stage_suffix}",
+                stage_label="Eligibility adjudication tiebreak judge",
+                model=self.config.adjudication_tiebreak_model,
                 task={
-                    "mode": "independent_discovery",
-                    "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
-                    "paper": self.paper_context,
-                    "source_spans": blind_source_spans,
-                    "hard_gates": list(ELIGIBILITY_GATES),
+                    **common_task,
+                    "judge_role": "tiebreak",
+                    "cases": split_cases,
+                    "primary_assessments": [
+                        {
+                            "case_ref": case_ref,
+                            "negative": negative_by_ref[case_ref].model_dump(mode="json"),
+                            "positive": positive_by_ref[case_ref].model_dump(mode="json"),
+                        }
+                        for case_ref in split_case_refs
+                    ],
                     "requirements": {
-                        "candidate_text_is_intentionally_withheld": True,
-                        "primary_judgments_are_intentionally_withheld": True,
-                        "reconstruct_all_qualifying_findings_from_the_evidence": True,
-                        "cite_decisive_source_spans": True,
-                        "use_f0_f1_sequential_finding_references": True,
-                        "do_not_return_examples_or_placeholders": True,
+                        **common_task["requirements"],
+                        "resolve_each_primary_disagreement": True,
+                        "return_only_disputed_cases": True,
                     },
                 },
-                output_model=BlindEligibilityDiscoveryOutput,
-                skill_path=_skill_path("claims-silver-eligibility-blind"),
-                validator=lambda payload: _validate_blind_discovery_payload(
-                    payload,
-                    known_span_ids=set(blind_source_spans),
+                output_model=EligibilityAdjudicationAgentOutput,
+                skill_path=_skill_path("claims-silver-eligibility-selection-tiebreak"),
+                validator=lambda result: _validate_eligibility_adjudication_payload(
+                    result,
+                    expected_candidate_refs_by_case=split_expected,
+                    known_span_ids=set(source_spans),
                 ),
             )
-            assert isinstance(blind_discovery_payload, BlindEligibilityDiscoveryOutput)
-            blind_discovery = blind_discovery_payload
-            finding_refs = {finding.finding_ref for finding in blind_discovery.findings}
-            def run_tiebreak(alias: str) -> EligibilityTiebreakOutput:
-                payload = self._run_eligibility_stage_with_retry(
-                    stage_key=(
-                        f"eligibility_blind_resolution{stage_suffix}_{_safe_path(alias)}"
-                    ),
-                    stage_label="Eligibility blind tiebreak resolution",
-                    model=self.config.eligibility_tiebreak_model,
-                    task={
-                        "mode": "candidate_resolution",
-                        "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
-                        "paper": self.paper_context,
-                        "candidates": [
-                            _eligibility_candidate_payload(candidate_by_alias[alias], alias)
-                        ],
-                        "source_spans": blind_source_spans,
-                        "locked_independent_findings": blind_discovery.model_dump(mode="json"),
-                        "primary_assessments": [
-                            {
-                                "candidate_ref": alias,
-                                "negative": negative_by_ref[alias].model_dump(mode="json"),
-                                "positive": positive_by_ref[alias].model_dump(mode="json"),
-                            }
-                        ],
-                        "hard_gates": list(ELIGIBILITY_GATES),
-                        "requirements": {
-                            "do_not_modify_locked_findings": True,
-                            "resolve_the_primary_disagreement": True,
-                            "return_exactly_one_assessment": True,
-                            "assess_each_hard_gate_exactly_once": True,
-                            "all_hard_gates_must_pass_for_admission": True,
-                            "do_not_repair_or_rewrite_candidates": True,
-                        },
-                    },
-                    output_model=EligibilityTiebreakOutput,
-                    skill_path=_skill_path("claims-silver-eligibility-blind"),
-                    validator=lambda result: _validate_eligibility_tiebreak_payload(
-                        result,
-                        expected_refs={alias},
-                        known_span_ids=set(blind_source_spans),
-                        finding_refs=finding_refs,
-                    ),
+            assert isinstance(payload, EligibilityAdjudicationAgentOutput)
+            for assessment in payload.assessments:
+                context = next(
+                    item
+                    for item in contexts
+                    if case_alias_by_id[item.case.case_id] == assessment.case_ref
                 )
-                assert isinstance(payload, EligibilityTiebreakOutput)
-                return payload
-
-            tiebreak_worker_count = max(
-                1,
-                min(self.config.eligibility_max_workers, len(split_refs)),
-            )
-            if tiebreak_worker_count == 1:
-                tiebreak_payloads = [run_tiebreak(alias) for alias in split_refs]
-            else:
-                with ThreadPoolExecutor(max_workers=tiebreak_worker_count) as executor:
-                    tiebreak_payloads = list(executor.map(run_tiebreak, split_refs))
-            for tiebreak_payload in tiebreak_payloads:
-                assessment = tiebreak_payload.assessments[0]
-                candidate = candidate_by_alias[assessment.candidate_ref]
-                tiebreak_votes[assessment.candidate_ref] = vote_from_assessment(
-                    candidate_id=candidate.candidate_id,
-                    judge_role="blind_tiebreak",
+                tiebreak_votes[assessment.case_ref] = eligibility_adjudication_vote_from_assessment(
+                    case_id=context.case.case_id,
+                    judge_role="tiebreak",
                     assessment=assessment,
-                    model=self.config.eligibility_tiebreak_model,
+                    candidate_id_by_ref=candidate_ids_by_case_alias[assessment.case_ref],
+                    model=self.config.adjudication_tiebreak_model,
                 )
 
-        decisions = [
-            decide_candidate_eligibility(
-                candidate_id=candidate.candidate_id,
-                negative_vote=negative_votes[alias],
-                positive_vote=positive_votes[alias],
-                tiebreak_vote=tiebreak_votes.get(alias),
+        decisions = []
+        for context in contexts:
+            case_ref = case_alias_by_id[context.case.case_id]
+            decisions.append(
+                decide_eligibility_adjudication(
+                    case_id=context.case.case_id,
+                    candidate_ids=[candidate.candidate_id for candidate in context.candidates],
+                    negative_vote=negative_votes[case_ref],
+                    positive_vote=positive_votes[case_ref],
+                    tiebreak_vote=tiebreak_votes.get(case_ref),
+                )
             )
-            for alias, candidate in candidate_by_alias.items()
-        ]
         self._write_json(
-            f"eligibility/batches/batch_{batch_index:03d}.json",
-            {
-                "schema": "claims_silver_eligibility_v1",
-                "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
-                "blind_discovery": (
-                    blind_discovery.model_dump(mode="json")
-                    if blind_discovery is not None
-                    else None
-                ),
-                "decisions": [decision.model_dump(mode="json") for decision in decisions],
-            },
+            f"eligibility_adjudication/batches/batch_{batch_index:03d}.json",
+            {"decisions": [decision.model_dump(mode="json") for decision in decisions]},
         )
         return decisions
+
 
     def _run_eligibility_stage_with_retry(
         self,
@@ -693,7 +661,7 @@ class FileAgentWorkflowSession:
                 else task
             )
             try:
-                if self.config.eligibility_harness == "dspy":
+                if self.config.adjudication_harness == "dspy":
                     return self._run_dspy_eligibility_stage(
                         stage_key=effective_stage_key,
                         stage_label=stage_label,
@@ -742,32 +710,49 @@ class FileAgentWorkflowSession:
             **task,
             "skill_instructions": skill_path.read_text(encoding="utf-8"),
         }
+        output_path = stage_dir / "output.json"
+        if self.config.resume_existing_stages:
+            existing_task = _read_json_value(stage_dir / "task.json")
+            existing_payload = _read_model(output_path, output_model)
+            if existing_task == enriched_task and existing_payload is not None:
+                validator(existing_payload)
+                self._record_manifest_stage(
+                    {
+                        "stage_key": stage_key,
+                        "status": "resumed",
+                        "model": model,
+                        "harness": "dspy",
+                        "output_sha256": _sha256(output_path),
+                    }
+                )
+                return existing_payload
         self._atomic_json(stage_dir / "task.json", enriched_task)
         self._atomic_json(stage_dir / "output_schema.json", output_model.model_json_schema())
         started = time.perf_counter()
         try:
-            payload = DSPyEligibilityRuntime(
-                provider=self.config.eligibility_provider,
-                api_base=self.config.eligibility_api_base,
-                api_key_env=self.config.eligibility_api_key_env,
-                max_tokens=self.config.eligibility_max_tokens,
-                timeout_seconds=self.config.eligibility_timeout_seconds,
-                usage_sink=self.usage_sink,
-                raw_output_sink=lambda raw: self._atomic_json(
-                    stage_dir / "raw_response.json",
-                    {"raw_response": raw},
-                ),
-            ).run(
-                task=enriched_task,
-                output_model=output_model,
-                model=model,
-                stage_key=stage_key,
-                stage_label=stage_label,
-                paper_id=self.paper_id,
-                workspace_id=self.workspace_id,
-                validator=validator,
-            )
-            self._atomic_json(stage_dir / "output.json", payload.model_dump(mode="json"))
+            with _request_slot(self.request_gate):
+                payload = DSPyEligibilityRuntime(
+                    provider=self.config.adjudication_provider,
+                    api_base=self.config.adjudication_api_base,
+                    api_key_env=self.config.adjudication_api_key_env,
+                    max_tokens=self.config.adjudication_max_tokens,
+                    timeout_seconds=self.config.adjudication_timeout_seconds,
+                    usage_sink=self.usage_sink,
+                    raw_output_sink=lambda raw: self._atomic_json(
+                        stage_dir / "raw_response.json",
+                        {"raw_response": raw},
+                    ),
+                ).run(
+                    task=enriched_task,
+                    output_model=output_model,
+                    model=model,
+                    stage_key=stage_key,
+                    stage_label=stage_label,
+                    paper_id=self.paper_id,
+                    workspace_id=self.workspace_id,
+                    validator=validator,
+                )
+            self._atomic_json(output_path, payload.model_dump(mode="json"))
             self._record_manifest_stage(
                 {
                     "stage_key": stage_key,
@@ -775,7 +760,7 @@ class FileAgentWorkflowSession:
                     "model": model,
                     "harness": "dspy",
                     "duration_seconds": round(time.perf_counter() - started, 3),
-                    "output_sha256": _sha256(stage_dir / "output.json"),
+                    "output_sha256": _sha256(output_path),
                 }
             )
             return payload
@@ -2052,6 +2037,14 @@ def _eligibility_candidate_payload(candidate: ComparisonCandidate, alias: str) -
     }
 
 
+def _case_relation(context: AdjudicationContextBundle) -> str:
+    metadata = context.case.metadata if isinstance(context.case.metadata, dict) else {}
+    edge = metadata.get("candidate_graph_edge")
+    if isinstance(edge, dict) and edge.get("relation"):
+        return str(edge["relation"])
+    return context.case.mismatch_type
+
+
 def _eligibility_source_spans(
     candidates: list[ComparisonCandidate],
     source_context_by_span_id: dict[str, str],
@@ -2078,37 +2071,26 @@ def _eligibility_source_spans(
     }
 
 
-def _validate_eligibility_agent_payload(
+def _validate_eligibility_adjudication_payload(
     payload: BaseModel,
     *,
-    expected_refs: set[str],
+    expected_candidate_refs_by_case: dict[str, set[str]],
     known_span_ids: set[str],
 ) -> None:
-    if not isinstance(payload, EligibilityAgentOutput):
-        raise FileAgentWorkflowError("Eligibility judge returned the wrong output type.")
-    validate_eligibility_output(payload, expected_candidate_refs=expected_refs)
-    _validate_eligibility_citations(payload.assessments, known_span_ids=known_span_ids)
-
-
-def _validate_eligibility_tiebreak_payload(
-    payload: BaseModel,
-    *,
-    expected_refs: set[str],
-    known_span_ids: set[str],
-    finding_refs: set[str],
-) -> None:
-    if not isinstance(payload, EligibilityTiebreakOutput):
-        raise FileAgentWorkflowError("Eligibility tiebreak returned the wrong output type.")
-    validate_eligibility_output(payload, expected_candidate_refs=expected_refs)
-    _validate_eligibility_citations(payload.assessments, known_span_ids=known_span_ids)
-    for assessment in payload.assessments:
-        unknown = set(assessment.matched_finding_refs).difference(finding_refs)
-        if unknown:
-            raise FileAgentWorkflowError(
-                f"Eligibility tiebreak cited unknown blind findings: {sorted(unknown)}."
-            )
-
-
+    if not isinstance(payload, EligibilityAdjudicationAgentOutput):
+        raise FileAgentWorkflowError("Eligibility adjudication returned the wrong output type.")
+    validate_eligibility_adjudication_output(
+        payload,
+        expected_candidate_refs_by_case=expected_candidate_refs_by_case,
+    )
+    _validate_eligibility_citations(
+        [
+            candidate
+            for case in payload.assessments
+            for candidate in case.candidate_assessments
+        ],
+        known_span_ids=known_span_ids,
+    )
 def _validate_eligibility_citations(
     assessments: list[EligibilityCandidateAssessment],
     *,
@@ -2117,57 +2099,20 @@ def _validate_eligibility_citations(
     cited_span_ids = {
         span_id
         for assessment in assessments
-        for gate in assessment.gates
-        for span_id in gate.cited_span_ids
+        for span_id in (
+            [span_id for gate in assessment.gates for span_id in gate.cited_span_ids]
+            + [
+                span_id
+                for atom_assessment in assessment.claim_atom_assessments
+                for span_id in atom_assessment.cited_span_ids
+            ]
+        )
     }
     unknown = cited_span_ids.difference(known_span_ids)
     if unknown:
         raise FileAgentWorkflowError(
             f"Eligibility output cited unknown source spans: {sorted(unknown)}."
         )
-
-
-def _validate_blind_discovery_payload(
-    payload: BaseModel,
-    *,
-    known_span_ids: set[str],
-) -> None:
-    if not isinstance(payload, BlindEligibilityDiscoveryOutput):
-        raise FileAgentWorkflowError("Blind eligibility discovery returned the wrong output type.")
-    finding_refs = [finding.finding_ref for finding in payload.findings]
-    if len(finding_refs) != len(set(finding_refs)):
-        raise FileAgentWorkflowError("Blind eligibility discovery returned duplicate finding refs.")
-    expected_refs = [f"f{index}" for index in range(len(finding_refs))]
-    if finding_refs != expected_refs:
-        raise FileAgentWorkflowError(
-            "Blind eligibility discovery finding refs must be sequential f0, f1, ...; "
-            f"received {finding_refs}."
-        )
-    placeholder_phrases = {
-        "an example finding statement.",
-        "this finding is supported by the evidence provided.",
-        "this is a blind eligibility discovery task.",
-    }
-    returned_text = {
-        payload.search_summary.strip().lower(),
-        *(finding.statement.strip().lower() for finding in payload.findings),
-        *(finding.rationale.strip().lower() for finding in payload.findings),
-    }
-    if returned_text.intersection(placeholder_phrases):
-        raise FileAgentWorkflowError(
-            "Blind eligibility discovery returned example or placeholder content."
-        )
-    unknown = {
-        span_id
-        for finding in payload.findings
-        for span_id in finding.cited_span_ids
-    }.difference(known_span_ids)
-    if unknown:
-        raise FileAgentWorkflowError(
-            f"Blind eligibility discovery cited unknown source spans: {sorted(unknown)}."
-        )
-
-
 def _canonical_candidate_payload(candidate: ComparisonCandidate, alias: str) -> dict[str, Any]:
     return {
         "candidate_id": alias,

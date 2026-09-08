@@ -16,13 +16,11 @@ from miner.agent_v1.runtime.usage import empty_usage, usage_from_dspy_lm
 from .model_usage import UsageSink
 from .eligibility import (
     ELIGIBILITY_GATES,
-    BlindEligibilityDiscoveryOutput,
-    BlindEligibilityFinding,
-    EligibilityAgentOutput,
+    EligibilityAdjudicationAgentOutput,
+    EligibilityAdjudicationCaseAssessment,
     EligibilityCandidateAssessment,
+    EligibilityClaimAtomAssessment,
     EligibilityGateAssessment,
-    EligibilityTiebreakAssessment,
-    EligibilityTiebreakOutput,
 )
 
 
@@ -140,7 +138,7 @@ class DSPyEligibilityRuntime:
                         "ended_at": datetime.now(timezone.utc),
                         "duration_seconds": time.perf_counter() - started,
                         "metadata": {
-                            "workflow": "standalone_eligibility",
+                            "workflow": "eligibility_adjudication",
                             "workspace_id": workspace_id,
                         },
                     }
@@ -163,9 +161,12 @@ class DSPyEligibilityRuntime:
             (dspy_module.Signature,),
             {
                 "__doc__": (
-                    "Apply all Claims eligibility gates and obey the supplied JSON contract "
-                    "exactly. Cite only source-span identifiers that appear verbatim as keys "
-                    "in task_json. Never invent, shorten, renumber, or normalize an identifier."
+                    "Follow skill_instructions in task_json as the governing adjudication "
+                    "policy. Apply all Claims eligibility gates independently and obey the "
+                    "supplied JSON contract exactly. A PASS must be supported for every material "
+                    "claim atom; never invent support or repair the candidate. "
+                    "Cite only source-span identifiers that appear verbatim as keys in "
+                    "task_json. Never invent, shorten, renumber, or normalize an identifier."
                 ),
                 "__annotations__": {
                     "task_json": str,
@@ -200,70 +201,69 @@ def _constrained_output_model(
 ) -> type[BaseModel]:
     source_refs = tuple(sorted(str(ref) for ref in dict(task.get("source_spans") or {})))
     candidates = task.get("candidates")
-    candidate_refs = tuple(
-        sorted(
-            str(candidate.get("candidate_ref"))
-            for candidate in (candidates if isinstance(candidates, list) else [])
-            if isinstance(candidate, dict) and candidate.get("candidate_ref")
+    flat_candidate_refs = {
+        str(candidate.get("candidate_ref"))
+        for candidate in (candidates if isinstance(candidates, list) else [])
+        if isinstance(candidate, dict) and candidate.get("candidate_ref")
+    }
+    cases = task.get("cases")
+    case_rows = cases if isinstance(cases, list) else []
+    pair_candidate_refs = {
+        str(candidate.get("candidate_ref"))
+        for case in case_rows
+        if isinstance(case, dict)
+        for candidate in (
+            case.get("candidates") if isinstance(case.get("candidates"), list) else []
         )
-    )
-    locked = task.get("locked_independent_findings")
-    finding_rows = locked.get("findings") if isinstance(locked, dict) else []
-    finding_refs = tuple(
+        if isinstance(candidate, dict) and candidate.get("candidate_ref")
+    }
+    candidate_refs = tuple(sorted(flat_candidate_refs | pair_candidate_refs))
+    case_refs = tuple(
         sorted(
-            str(finding.get("finding_ref"))
-            for finding in (finding_rows if isinstance(finding_rows, list) else [])
-            if isinstance(finding, dict) and finding.get("finding_ref")
+            str(case.get("case_ref"))
+            for case in case_rows
+            if isinstance(case, dict) and case.get("case_ref")
         )
     )
     suffix = sha256(
-        repr((output_model.__name__, source_refs, candidate_refs, finding_refs)).encode(
+        repr(
+            (output_model.__name__, source_refs, candidate_refs, case_refs)
+        ).encode(
             "utf-8"
         )
     ).hexdigest()[:10]
     span_type = _literal_type(source_refs)
     candidate_type = _literal_type(candidate_refs)
-    finding_type = _literal_type(finding_refs)
+    case_type = _literal_type(case_refs)
     gate_model = create_model(
         f"DSPyEligibilityGate_{suffix}",
         __base__=EligibilityGateAssessment,
+        cited_span_ids=(list[span_type], Field(default_factory=list)),
+    )
+    atom_model = create_model(
+        f"DSPyEligibilityClaimAtom_{suffix}",
+        __base__=EligibilityClaimAtomAssessment,
         cited_span_ids=(list[span_type], Field(default_factory=list)),
     )
     assessment_model = create_model(
         f"DSPyEligibilityAssessment_{suffix}",
         __base__=EligibilityCandidateAssessment,
         candidate_ref=(candidate_type, ...),
+        claim_atom_assessments=(list[atom_model], Field(min_length=1)),
         gates=(list[gate_model], Field(min_length=len(ELIGIBILITY_GATES))),
     )
-    if issubclass(output_model, EligibilityTiebreakOutput):
-        tiebreak_model = create_model(
-            f"DSPyEligibilityTiebreakAssessment_{suffix}",
-            __base__=EligibilityTiebreakAssessment,
-            candidate_ref=(candidate_type, ...),
-            gates=(list[gate_model], Field(min_length=len(ELIGIBILITY_GATES))),
-            matched_finding_refs=(list[finding_type], Field(default_factory=list)),
+    if issubclass(output_model, EligibilityAdjudicationAgentOutput):
+        case_model = create_model(
+            f"DSPyEligibilityAdjudicationCase_{suffix}",
+            __base__=EligibilityAdjudicationCaseAssessment,
+            case_ref=(case_type, ...),
+            candidate_assessments=(list[assessment_model], Field(min_length=1, max_length=2)),
+            selected_candidate_ref=(candidate_type | None, None),
         )
         return create_model(
-            f"DSPyEligibilityTiebreakOutput_{suffix}",
-            __base__=EligibilityTiebreakOutput,
-            assessments=(list[tiebreak_model], ...),
-        )
-    if issubclass(output_model, BlindEligibilityDiscoveryOutput):
-        finding_model = create_model(
-            f"DSPyBlindEligibilityFinding_{suffix}",
-            __base__=BlindEligibilityFinding,
-            cited_span_ids=(list[span_type], Field(min_length=1)),
-        )
-        return create_model(
-            f"DSPyBlindEligibilityDiscoveryOutput_{suffix}",
-            __base__=BlindEligibilityDiscoveryOutput,
-            findings=(list[finding_model], Field(default_factory=list)),
-        )
-    if issubclass(output_model, EligibilityAgentOutput):
-        return create_model(
-            f"DSPyEligibilityAgentOutput_{suffix}",
-            __base__=EligibilityAgentOutput,
-            assessments=(list[assessment_model], ...),
+            f"DSPyEligibilityAdjudicationOutput_{suffix}",
+            __base__=EligibilityAdjudicationAgentOutput,
+            assessments=(list[case_model], ...),
         )
     return output_model
 

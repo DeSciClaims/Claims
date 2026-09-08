@@ -490,7 +490,7 @@ class ClaimsValidator:
             dest="claims_agent_v1_skip_rigor",
             action="store_true",
             default=_env_flag("CLAIMS_AGENT_V1_SKIP_RIGOR"),
-            help="Run agent_v1 deterministic checks only. Useful for smoke tests.",
+            help="Disable the diagnostic LLM rigor agent while retaining structural and grounding checks without a score penalty.",
         )
         parser.add_argument(
             "--claims.skip-diagnostic-validation",
@@ -3143,13 +3143,12 @@ class ClaimsValidator:
         self.bt_logging.info(
             "Silver file-agent workflow enabled: "
             f"harness={workflow.config.harness} "
-            f"eligibility={workflow.config.eligibility_enabled} "
-            f"eligibility_harness={workflow.config.eligibility_harness} "
-            f"eligibility_provider={workflow.config.eligibility_provider} "
-            f"eligibility_models="
-            f"{workflow.config.eligibility_negative_model},"
-            f"{workflow.config.eligibility_positive_model},"
-            f"{workflow.config.eligibility_tiebreak_model} "
+            f"adjudication_harness={workflow.config.adjudication_harness} "
+            f"adjudication_provider={workflow.config.adjudication_provider} "
+            f"adjudication_models="
+            f"{workflow.config.adjudication_negative_model},"
+            f"{workflow.config.adjudication_positive_model},"
+            f"{workflow.config.adjudication_tiebreak_model} "
             f"comparison_model={workflow.config.comparison_model} "
             f"canonicalization_model={workflow.config.canonicalization_model} "
             f"canonical_audit_model={workflow.config.canonical_audit_model or workflow.config.canonicalization_model}"
@@ -4752,74 +4751,87 @@ class ClaimsValidator:
         if workflow is None:
             return []
         config = workflow.config
+        adjudication_runtime = (
+            "dspy" if config.adjudication_harness == "dspy" else config.harness
+        )
         return [
             _drop_empty_model_fields(
                 {
                     "stage_key": stage_key,
                     "stage_label": stage_label,
                     "role": role,
-                    "runtime": config.harness,
-                    "harness": config.harness,
-                    "provider": config.provider,
+                    "runtime": runtime,
+                    "harness": runtime,
+                    "provider": provider,
                     "model": model,
                     "models": [model] if model else [],
-                    "model_runtime_id": config.harness,
+                    "model_runtime_id": runtime,
                 }
             )
-            for stage_key, stage_label, role, model in (
+            for stage_key, stage_label, role, model, runtime, provider in (
                 (
-                    "silver_eligibility",
-                    "Eligibility negative judge",
-                    "silver_eligibility_negative",
-                    config.eligibility_negative_model,
+                    "silver_adjudication",
+                    "Eligibility selection negative judge",
+                    "silver_adjudication_negative",
+                    config.adjudication_negative_model,
+                    adjudication_runtime,
+                    config.adjudication_provider,
                 ),
                 (
-                    "silver_eligibility",
-                    "Eligibility positive judge",
-                    "silver_eligibility_positive",
-                    config.eligibility_positive_model,
+                    "silver_adjudication",
+                    "Eligibility selection positive judge",
+                    "silver_adjudication_positive",
+                    config.adjudication_positive_model,
+                    adjudication_runtime,
+                    config.adjudication_provider,
                 ),
                 (
-                    "silver_eligibility",
-                    "Eligibility blind finding discovery",
-                    "silver_eligibility_tiebreak",
-                    config.eligibility_tiebreak_model,
-                ),
-                (
-                    "silver_eligibility",
-                    "Eligibility blind tiebreak resolution",
-                    "silver_eligibility_tiebreak",
-                    config.eligibility_tiebreak_model,
+                    "silver_adjudication",
+                    "Eligibility selection tiebreak judge",
+                    "silver_adjudication_tiebreak",
+                    config.adjudication_tiebreak_model,
+                    adjudication_runtime,
+                    config.adjudication_provider,
                 ),
                 (
                     "silver_comparison",
                     "Comparison graph",
                     "silver_file_comparator",
                     config.comparison_model,
+                    config.harness,
+                    config.provider,
                 ),
                 (
                     "silver_comparison_repair",
                     "Comparison graph repair",
                     "silver_file_comparator",
                     config.comparison_model,
+                    config.harness,
+                    config.provider,
                 ),
                 (
                     "silver_canonicalization",
                     "Silver canonicalization draft",
                     "silver_file_canonicalizer",
                     config.canonicalization_model,
+                    config.harness,
+                    config.provider,
                 ),
                 (
                     "silver_canonicalization_audit",
                     "Silver canonicalization audit",
                     "silver_file_canonical_auditor",
                     config.canonical_audit_model or config.canonicalization_model,
+                    config.harness,
+                    config.provider,
                 ),
                 (
                     "silver_canonicalization_audit_repair",
                     "Silver canonicalization audit repair",
                     "silver_file_canonical_auditor",
                     config.canonical_audit_model or config.canonicalization_model,
+                    config.harness,
+                    config.provider,
                 ),
             )
         ]
@@ -6168,42 +6180,6 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_silver_file_agent_canonical_audit_model": str(
             os.getenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "") or ""
         ),
-        "claims_silver_eligibility_enable": _env_flag(
-            "CLAIMS_SILVER_ELIGIBILITY_ENABLE",
-            False,
-        ),
-        "claims_silver_eligibility_harness": str(
-            os.getenv("CLAIMS_SILVER_ELIGIBILITY_HARNESS", "file-agent")
-            or "file-agent"
-        ),
-        "claims_silver_eligibility_provider": str(
-            os.getenv("CLAIMS_SILVER_ELIGIBILITY_PROVIDER", "openrouter")
-            or "openrouter"
-        ),
-        "claims_silver_eligibility_api_base": str(
-            os.getenv("CLAIMS_SILVER_ELIGIBILITY_API_BASE", "") or ""
-        ),
-        "claims_silver_eligibility_negative_model": str(
-            os.getenv("CLAIMS_SILVER_ELIGIBILITY_NEGATIVE_MODEL", "") or ""
-        ),
-        "claims_silver_eligibility_positive_model": str(
-            os.getenv("CLAIMS_SILVER_ELIGIBILITY_POSITIVE_MODEL", "") or ""
-        ),
-        "claims_silver_eligibility_tiebreak_model": str(
-            os.getenv("CLAIMS_SILVER_ELIGIBILITY_TIEBREAK_MODEL", "") or ""
-        ),
-        "claims_silver_eligibility_batch_size": int(
-            os.getenv("CLAIMS_SILVER_ELIGIBILITY_BATCH_SIZE", "8") or 8
-        ),
-        "claims_silver_eligibility_max_workers": int(
-            os.getenv("CLAIMS_SILVER_ELIGIBILITY_MAX_WORKERS", "4") or 4
-        ),
-        "claims_silver_eligibility_max_tokens": int(
-            os.getenv("CLAIMS_SILVER_ELIGIBILITY_MAX_TOKENS", "32768") or 32768
-        ),
-        "claims_silver_eligibility_timeout": float(
-            os.getenv("CLAIMS_SILVER_ELIGIBILITY_TIMEOUT", "300") or 300
-        ),
         "claims_silver_file_agent_require_distinct_judges": _env_flag(
             "CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES",
             True,
@@ -6450,6 +6426,12 @@ def _validate_silver_model_configuration(config: Any) -> None:
             ("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL", file_config.comparison_model),
             ("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", file_config.canonicalization_model),
             ("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", file_config.canonical_audit_model),
+            ("CLAIMS_SILVER_ADJUDICATION_MODEL_A", file_config.adjudication_negative_model),
+            ("CLAIMS_SILVER_ADJUDICATION_MODEL_B", file_config.adjudication_positive_model),
+            (
+                "CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL",
+                file_config.adjudication_tiebreak_model,
+            ),
         ):
             if not value:
                 errors.append(f"{name} must name a model")
