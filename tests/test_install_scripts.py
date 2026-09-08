@@ -127,18 +127,18 @@ def test_mainnet_profile_has_production_policy_without_prescribed_models() -> No
     assert "CLAIMS_BATCH_SIZE=50" in profile
     assert "CLAIMS_MINER_SELECTION_MODE=bucket" in profile
     assert "CLAIMS_PAYOUT_MODE=bucket" in profile
-    assert "CLAIMS_MINER_SAMPLE_SIZE=15" in profile
+    assert "CLAIMS_BUCKET_MAX_NEWCOMERS_PER_BATCH=5" in profile
     assert "CLAIMS_TIMEOUT=3600" in profile
     assert "CLAIMS_OUTPUT_RETENTION_RUNS=5" in profile
     assert "CLAIMS_MAX_STEPS=4" in profile
     assert "CLAIMS_QUERY_INTERVAL=10800" in profile
     assert "CLAIMS_AUDIT_ONLY=false" in profile
+    assert "CLAIMS_AGENT_V1_SKIP_RIGOR=true" in profile
+    assert "CLAIMS_DUPLICATE_SUBMISSION_SEMANTIC_MODE=enforce" in profile
     assert "CLAIMS_SILVER_WORKFLOW_MODE=file-agent" in profile
     assert "CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true" in profile
     assert "\nCLAIMS_TARGET_UIDS=" not in profile
     for key in (
-        "HERMES_MODEL",
-        "CLAIMS_RIGOR_MODEL",
         "CLAIMS_REFERENCE_MINER_MODEL",
         "CLAIMS_SILVER_PAIRING_EMBEDDING_MODEL",
         "CLAIMS_SILVER_ADJUDICATION_MODEL_A",
@@ -150,6 +150,14 @@ def test_mainnet_profile_has_production_policy_without_prescribed_models() -> No
         "CLAIMS_SILVER_IMPORTANCE_MODEL",
     ):
         assert f"{key}=\n" in profile
+    for obsolete_key in (
+        "HERMES_MODEL",
+        "CLAIMS_RIGOR_MODEL",
+        "CLAIMS_MINER_SAMPLE_SIZE",
+        "CLAIMS_MINER_IMMUNITY_PERIOD_BLOCKS",
+        "CLAIMS_MINER_IMMUNITY_PRIORITY_BLOCKS",
+    ):
+        assert f"{obsolete_key}=" not in profile
 
 
 def test_installation_docs_link_validator_profiles_and_docker_path() -> None:

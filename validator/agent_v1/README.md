@@ -302,6 +302,10 @@ exposes an embeddings endpoint.
   the value to `1` for the original per-miner path.
 - `--claims.diagnostic-max-workers` controls concurrent paper diagnostics.
   `--claims.diagnostic-miner-max-workers` controls per-miner fallback concurrency.
+- `--claims.agent-v1-skip-rigor` (or `CLAIMS_AGENT_V1_SKIP_RIGOR=true`) disables
+  the diagnostic LLM rigor agent while retaining structural and grounding
+  checks. The rigor pass is recorded as skipped and does not cap diagnostic
+  quality. Use this when Silver eligibility supplies the semantic claim review.
 - `--claims.skip-diagnostic-validation` omits diagnostic reports when only the
   Silver path is required.
 - `--claims.silver-paper-max-workers` controls concurrent paper-level Silver
@@ -340,37 +344,31 @@ exposes an embeddings endpoint.
 
 ### File-Workspace Silver
 
-`CLAIMS_SILVER_WORKFLOW_MODE=file-agent` can first run claim eligibility, then
-comparison, two anonymous relationship judges plus a conditional tiebreaker,
-deterministic consensus, a canonical draft, and an independent canonical audit
-per paper. Agents use validator-owned short references; internal IDs are
-restored after validation.
+`CLAIMS_SILVER_WORKFLOW_MODE=file-agent` runs comparison, eligibility-selection
+adjudication, canonical drafting, and an independent canonical audit per paper.
+Agents use validator-owned short references; internal IDs are restored after
+validation.
 
-- `CLAIMS_SILVER_ELIGIBILITY_ENABLE=true` admits candidates before comparison.
-  A rejection-oriented judge and a reconstruction-oriented judge assess six
-  hard gates. Unanimous results are final; split results use blind finding
-  discovery followed by tiebreak resolution.
-- `CLAIMS_SILVER_ELIGIBILITY_HARNESS=dspy` runs each bounded eligibility call
-  through `dspy.Predict`; `file-agent` retains the original CLI implementation.
-  Both receive the same candidate packet, validator-owned source spans, skill
-  instructions, and strict output schema. Invalid or missing output retries
-  once and then fails the paper closed.
-  Keep `file-agent` as the production default until a chosen DSPy model set is
-  calibrated against reviewed eligibility decisions; runtime reliability does
-  not by itself establish equivalent scientific strictness.
-- `CLAIMS_SILVER_ELIGIBILITY_PROVIDER` selects `openrouter` or `chutes` for the
-  DSPy harness. `CLAIMS_SILVER_ELIGIBILITY_API_BASE` and
-  `CLAIMS_SILVER_ELIGIBILITY_API_KEY_ENV` optionally override the provider
-  defaults (`OPENROUTER_API_KEY` or `CHUTES_API_KEY`).
-- `CLAIMS_SILVER_ELIGIBILITY_NEGATIVE_MODEL`,
-  `CLAIMS_SILVER_ELIGIBILITY_POSITIVE_MODEL`, and
-  `CLAIMS_SILVER_ELIGIBILITY_TIEBREAK_MODEL` select the three eligibility roles.
-  Operational failures retry once and then fail the paper rather than becoming
-  PASS or FAIL votes.
-- `CLAIMS_SILVER_ELIGIBILITY_BATCH_SIZE` limits candidates in one judge packet;
-  `CLAIMS_SILVER_ELIGIBILITY_MAX_WORKERS` limits concurrent packets.
-- `CLAIMS_SILVER_ELIGIBILITY_MAX_TOKENS` and
-  `CLAIMS_SILVER_ELIGIBILITY_TIMEOUT` bound each DSPy request.
+- Comparison assigns each candidate to at most one case. A deterministic
+  highest-confidence matching produces two-candidate cases; unmatched claims
+  become singleton cases.
+- The adjudication panel applies the same six eligibility gates to every claim
+  in each case. A singleton is selected only if it passes. For a pair, code
+  selects neither when both fail and the sole passing claim when only one
+  passes; when both pass, the judges select the stronger representative. The
+  stage does not merge, rewrite, or create a compromise claim.
+- `CLAIMS_SILVER_ADJUDICATION_HARNESS=dspy` runs bounded calls through
+  `dspy.Predict`; a CLI harness such as `hermes-cli` uses the file workspace.
+  Invalid or missing output retries once and then fails the paper rather than
+  becoming an eligibility vote.
+- `CLAIMS_SILVER_ADJUDICATION_MODEL_A`, `_MODEL_B`, and `_TIEBREAK_MODEL`
+  select the negative, positive, and conditional tiebreak roles.
+  `CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE` and `_MAX_WORKERS` control case
+  batching. `_MAX_IN_FLIGHT` is the shared hard limit across Silver calls.
+- DSPy uses `CLAIMS_SILVER_ADJUDICATION_API_BASE`, `_API_KEY_ENV`,
+  `_MAX_TOKENS`, and `_TIMEOUT`. CLI adjudication uses
+  `CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER` plus the file-agent timeout and
+  token limits below.
 
 - `CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true` requires different
   models for direct judges A and B.
@@ -444,8 +442,9 @@ Set `CLAIMS_VALIDATOR_AGENT_INNER_COMMAND` to override the inner command.
 
 ## Deterministic Smoke
 
-Use `--skip-rigor-agent` to test file flow without model calls. This is a smoke
-mode only; production scoring should include the rigor agent.
+Use `--skip-rigor-agent` to run structural and grounding validation without a
+diagnostic rigor model call. The report records the rigor pass as skipped and
+does not reduce the diagnostic score.
 
 ```bash
 .venv/bin/python -m validator.agent_v1 \

@@ -486,11 +486,15 @@ Both profiles currently set `CLAIMS_ALLOW_PAPER_REUSE=true` so the backend may
 draw from approved papers that appeared in earlier batches while the paper
 catalog is still growing. Canonical task IDs, paper assignments, miner
 assignments, and uploaded artifacts remain isolated to their canonical batch.
-The profiles also enable pre-comparison claim eligibility: two role-specific
-judges apply six hard admission gates, with a blind tiebreak only when they
-disagree. Eligibility can use the established file-agent path or an optional
-bounded DSPy Predict path without changing comparison and relationship
-adjudication. Full controls and failure behavior are in the
+The profiles use eligibility-selection adjudication after comparison.
+Comparison assigns each claim to one singleton or paired case. Two
+role-specific judges apply six hard admission gates to every claim, with a
+tiebreak only when they disagree. A singleton survives only if it passes. For a
+pair, code selects neither when both fail, selects the sole passing claim when
+only one passes, and uses the judges' relative preference only when both pass.
+Every substantive claim atom must have direct cited paper support. The stage
+supports the file-agent and bounded DSPy Predict harnesses. Full controls and
+failure behavior are in the
 [validator configuration reference](./validator/agent_v1/README.md#file-workspace-silver).
 
 ### Testnet
