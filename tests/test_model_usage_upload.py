@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from neurons.model_usage_upload import (
@@ -121,6 +123,8 @@ def test_model_usage_backup_preserves_uploaded_prefix_when_events_are_appended(t
 
 
 def test_model_usage_checkpoint_failure_does_not_fail_recording(caplog) -> None:
+    caplog.set_level(logging.WARNING, logger="validator.agent_v1.model_usage")
+
     def fail_checkpoint(_events):
         raise OSError("disk unavailable")
 
