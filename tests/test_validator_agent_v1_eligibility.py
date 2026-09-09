@@ -306,6 +306,153 @@ def test_hermes_missing_output_retries_through_structured_dspy(tmp_path) -> None
     assert structured_calls == ["eligibility_adjudication_negative_retry"]
 
 
+def test_failed_structured_batch_recovers_by_recursive_case_splitting(tmp_path) -> None:
+    candidates = [
+        _candidate(f"miner:uid_{index}:M01", "miner", f"uid_{index}")
+        for index in range(4)
+    ]
+    session = _session(tmp_path, candidates)
+    task = {
+        "cases": [
+            {
+                "case_ref": f"k{index}",
+                "candidates": [
+                    {
+                        "candidate_ref": f"k{index}_a",
+                        "statement": candidate.statement,
+                    }
+                ],
+            }
+            for index, candidate in enumerate(candidates)
+        ],
+        "source_spans": {"S1": "The treatment reduced mortality in the trial."},
+    }
+    structured_calls: list[tuple[str, list[str]]] = []
+
+    def missing_file_stage(_self, **_kwargs):
+        raise RuntimeError("agent did not write a valid output file")
+
+    def structured_retry(_self, **kwargs):
+        case_refs = [case["case_ref"] for case in kwargs["task"]["cases"]]
+        structured_calls.append((kwargs["stage_key"], case_refs))
+        if len(case_refs) == 4 or case_refs == ["k2", "k3"]:
+            raise ValueError("incomplete structured output")
+        payload = EligibilityAdjudicationAgentOutput(
+            assessments=[
+                _output(
+                    case_ref,
+                    [f"{case_ref}_a"],
+                    selected_ref=f"{case_ref}_a",
+                ).assessments[0]
+                for case_ref in case_refs
+            ]
+        )
+        kwargs["validator"](payload)
+        return payload
+
+    session._run_stage = MethodType(missing_file_stage, session)  # type: ignore[method-assign]
+    session._run_dspy_eligibility_stage = MethodType(  # type: ignore[method-assign]
+        structured_retry,
+        session,
+    )
+
+    result = session._run_eligibility_stage_with_retry(
+        stage_key="eligibility_adjudication_negative",
+        stage_label="Eligibility adjudication negative judge",
+        model="test-model",
+        task=task,
+        output_model=EligibilityAdjudicationAgentOutput,
+        skill_path=Path(__file__),
+        validator=lambda output: validate_eligibility_adjudication_output(
+            output,
+            expected_candidate_refs_by_case={
+                f"k{index}": {f"k{index}_a"} for index in range(4)
+            },
+        ),
+    )
+
+    assert [assessment.case_ref for assessment in result.assessments] == [
+        "k0",
+        "k1",
+        "k2",
+        "k3",
+    ]
+    assert structured_calls == [
+        ("eligibility_adjudication_negative_retry", ["k0", "k1", "k2", "k3"]),
+        ("eligibility_adjudication_negative_retry_s0", ["k0", "k1"]),
+        ("eligibility_adjudication_negative_retry_s1", ["k2", "k3"]),
+        ("eligibility_adjudication_negative_retry_s1_s0", ["k2"]),
+        ("eligibility_adjudication_negative_retry_s1_s1", ["k3"]),
+    ]
+
+
+def test_irrecoverable_single_case_fails_closed_without_discarding_batch(tmp_path) -> None:
+    candidates = [
+        _candidate(f"miner:uid_{index}:M01", "miner", f"uid_{index}")
+        for index in range(2)
+    ]
+    session = _session(tmp_path, candidates)
+    task = {
+        "cases": [
+            {
+                "case_ref": f"k{index}",
+                "candidates": [
+                    {
+                        "candidate_ref": f"k{index}_a",
+                        "statement": candidate.statement,
+                    }
+                ],
+            }
+            for index, candidate in enumerate(candidates)
+        ],
+        "source_spans": {"S1": "The treatment reduced mortality in the trial."},
+    }
+
+    def missing_file_stage(_self, **_kwargs):
+        raise RuntimeError("agent did not write a valid output file")
+
+    def structured_retry(_self, **kwargs):
+        case_refs = [case["case_ref"] for case in kwargs["task"]["cases"]]
+        if len(case_refs) > 1 or case_refs == ["k0"]:
+            raise ValueError("malformed structured output")
+        payload = _output("k1", ["k1_a"], selected_ref="k1_a")
+        kwargs["validator"](payload)
+        return payload
+
+    session._run_stage = MethodType(missing_file_stage, session)  # type: ignore[method-assign]
+    session._run_dspy_eligibility_stage = MethodType(  # type: ignore[method-assign]
+        structured_retry,
+        session,
+    )
+
+    result = session._run_eligibility_stage_with_retry(
+        stage_key="eligibility_adjudication_positive",
+        stage_label="Eligibility adjudication positive judge",
+        model="test-model",
+        task=task,
+        output_model=EligibilityAdjudicationAgentOutput,
+        skill_path=Path(__file__),
+        validator=lambda output: validate_eligibility_adjudication_output(
+            output,
+            expected_candidate_refs_by_case={"k0": {"k0_a"}, "k1": {"k1_a"}},
+        ),
+    )
+
+    failed_case, recovered_case = result.assessments
+    assert failed_case.case_ref == "k0"
+    assert failed_case.selected_candidate_ref is None
+    assert all(not gate.passed for gate in failed_case.candidate_assessments[0].gates)
+    assert "operational recovery" in failed_case.rationale
+    assert recovered_case.case_ref == "k1"
+    assert recovered_case.selected_candidate_ref == "k1_a"
+    assert (
+        session.root
+        / "executions"
+        / "eligibility_adjudication_positive_retry_s0_fail_closed"
+        / "output.json"
+    ).exists()
+
+
 def test_dspy_uses_same_singleton_and_pair_contract(monkeypatch, tmp_path) -> None:
     candidates = [
         _candidate("bronze:B01", "bronze", None),
@@ -398,6 +545,14 @@ def test_config_uses_existing_adjudication_env_for_dspy_chutes(monkeypatch) -> N
     assert config.adjudication_api_key_env == "CHUTES_API_KEY"
     assert config.adjudication_max_tokens == 20000
     assert config.adjudication_timeout_seconds == 180.0
+
+
+def test_config_defaults_adjudication_output_limit_for_batched_responses(monkeypatch) -> None:
+    monkeypatch.delenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", raising=False)
+
+    config = FileAgentWorkflowConfig.from_env()
+
+    assert config.adjudication_max_tokens == 32768
 
 
 def test_dspy_adjudication_api_base_selects_chutes_without_cli_provider(monkeypatch) -> None:

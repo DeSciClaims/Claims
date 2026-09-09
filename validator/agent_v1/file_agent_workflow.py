@@ -263,7 +263,7 @@ class FileAgentWorkflowConfig:
     adjudication_tiebreak_model: str = ""
     adjudication_batch_size: int = 8
     adjudication_max_workers: int = 4
-    adjudication_max_tokens: int = 8192
+    adjudication_max_tokens: int = 32768
     adjudication_timeout_seconds: float = 120.0
     command_template: str = ""
     max_turns: int = 30
@@ -404,7 +404,7 @@ class FileAgentWorkflowConfig:
             ),
             adjudication_max_tokens=max(
                 1024,
-                int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "8192") or 8192),
+                int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "32768") or 32768),
             ),
             adjudication_timeout_seconds=max(
                 1.0,
@@ -746,58 +746,240 @@ class FileAgentWorkflowSession:
         skill_path: Path,
         validator: Callable[[BaseModel], None],
     ) -> BaseModel:
-        first_error: Exception | None = None
-        for attempt in range(2):
-            retrying = attempt == 1
-            effective_stage_key = f"{stage_key}_retry" if retrying else stage_key
-            effective_task = (
-                {
-                    **task,
-                    "operational_retry": {
-                        "attempt": 2,
-                        "previous_error": (
-                            f"{type(first_error).__name__}: {first_error}"
-                            if first_error is not None
-                            else "unknown"
-                        ),
-                        "return_a_complete_fresh_output": True,
-                    },
-                }
-                if retrying
-                else task
-            )
-            try:
-                if self.config.adjudication_harness == "dspy" or retrying:
-                    return self._run_dspy_eligibility_stage(
-                        stage_key=effective_stage_key,
-                        stage_label=stage_label,
-                        model=model,
-                        task=effective_task,
-                        output_model=output_model,
-                        skill_path=skill_path,
-                        validator=validator,
-                    )
-                result = self._run_stage(
-                    stage_key=effective_stage_key,
+        try:
+            if self.config.adjudication_harness == "dspy":
+                return self._run_dspy_eligibility_stage(
+                    stage_key=stage_key,
                     stage_label=stage_label,
                     model=model,
-                    task=effective_task,
+                    task=task,
                     output_model=output_model,
                     skill_path=skill_path,
+                    validator=validator,
                 )
-                validator(result.payload)
-                return result.payload
-            except Exception as exc:
-                if first_error is None:
-                    first_error = exc
-                    continue
+            result = self._run_stage(
+                stage_key=stage_key,
+                stage_label=stage_label,
+                model=model,
+                task=task,
+                output_model=output_model,
+                skill_path=skill_path,
+            )
+            validator(result.payload)
+            return result.payload
+        except Exception as first_error:
+            retry_task = {
+                **task,
+                "operational_retry": {
+                    "attempt": 2,
+                    "previous_error": _exception_summary(first_error),
+                    "return_a_complete_fresh_output": True,
+                },
+            }
+
+        retry_stage_key = f"{stage_key}_retry"
+        try:
+            return self._run_dspy_eligibility_stage(
+                stage_key=retry_stage_key,
+                stage_label=stage_label,
+                model=model,
+                task=retry_task,
+                output_model=output_model,
+                skill_path=skill_path,
+                validator=validator,
+            )
+        except Exception as retry_error:
+            cases = retry_task.get("cases")
+            if not isinstance(cases, list) or not cases:
                 raise FileAgentWorkflowError(
-                    f"{stage_label} failed after one operational retry: "
-                    f"{type(exc).__name__}: {exc}"
-                ) from exc
-        raise FileAgentWorkflowError(
-            f"{stage_label} failed: {type(first_error).__name__}: {first_error}"
+                    f"{stage_label} failed after structured recovery: "
+                    f"{type(retry_error).__name__}: {retry_error}"
+                ) from retry_error
+            payload = self._run_dspy_eligibility_split_recovery(
+                stage_key=retry_stage_key,
+                stage_label=stage_label,
+                model=model,
+                task=retry_task,
+                output_model=output_model,
+                skill_path=skill_path,
+                previous_error=retry_error,
+            )
+            validator(payload)
+            return payload
+
+    def _run_dspy_eligibility_split_recovery(
+        self,
+        *,
+        stage_key: str,
+        stage_label: str,
+        model: str,
+        task: dict[str, Any],
+        output_model: type[BaseModel],
+        skill_path: Path,
+        previous_error: Exception,
+    ) -> BaseModel:
+        cases = task.get("cases")
+        if not isinstance(cases, list) or not cases:
+            raise FileAgentWorkflowError(
+                f"{stage_label} cannot split a task without adjudication cases."
+            )
+        if len(cases) == 1:
+            return self._eligibility_fail_closed_output(
+                stage_key=stage_key,
+                stage_label=stage_label,
+                model=model,
+                task=task,
+                output_model=output_model,
+                error=previous_error,
+            )
+
+        midpoint = len(cases) // 2
+        recovered: list[BaseModel] = []
+        for split_index, split_cases in enumerate((cases[:midpoint], cases[midpoint:])):
+            split_stage_key = f"{stage_key}_s{split_index}"
+            split_task = _eligibility_split_task(
+                task,
+                cases=split_cases,
+                parent_case_count=len(cases),
+            )
+
+            def split_validator(
+                payload: BaseModel,
+                current_task: dict[str, Any] = split_task,
+            ) -> None:
+                _validate_eligibility_payload_for_task(payload, current_task)
+
+            try:
+                recovered.append(
+                    self._run_dspy_eligibility_stage(
+                        stage_key=split_stage_key,
+                        stage_label=stage_label,
+                        model=model,
+                        task=split_task,
+                        output_model=output_model,
+                        skill_path=skill_path,
+                        validator=split_validator,
+                    )
+                )
+            except Exception as split_error:
+                recovered.append(
+                    self._run_dspy_eligibility_split_recovery(
+                        stage_key=split_stage_key,
+                        stage_label=stage_label,
+                        model=model,
+                        task=split_task,
+                        output_model=output_model,
+                        skill_path=skill_path,
+                        previous_error=split_error,
+                    )
+                )
+
+        payload = output_model.model_validate(
+            {
+                "assessments": [
+                    assessment.model_dump(mode="json")
+                    for item in recovered
+                    if isinstance(item, EligibilityAdjudicationAgentOutput)
+                    for assessment in item.assessments
+                ]
+            }
         )
+        _validate_eligibility_payload_for_task(payload, task)
+        return payload
+
+    def _eligibility_fail_closed_output(
+        self,
+        *,
+        stage_key: str,
+        stage_label: str,
+        model: str,
+        task: dict[str, Any],
+        output_model: type[BaseModel],
+        error: Exception,
+    ) -> BaseModel:
+        error_summary = _exception_summary(error)
+        reason = (
+            "Validator operational recovery could not obtain a complete adjudication "
+            f"for this isolated case: {error_summary}"
+        )
+        cases = task.get("cases")
+        if not isinstance(cases, list) or len(cases) != 1 or not isinstance(cases[0], dict):
+            raise FileAgentWorkflowError(
+                f"{stage_label} fail-closed recovery requires exactly one case."
+            )
+        case = cases[0]
+        LOGGER.warning(
+            "%s failed for isolated case %s; excluding that case without discarding the paper: %s",
+            stage_label,
+            case.get("case_ref"),
+            error_summary,
+        )
+        candidates = case.get("candidates")
+        candidate_rows = candidates if isinstance(candidates, list) else []
+        payload = output_model.model_validate(
+            {
+                "assessments": [
+                    {
+                        "case_ref": str(case.get("case_ref") or ""),
+                        "candidate_assessments": [
+                            {
+                                "candidate_ref": str(candidate.get("candidate_ref") or ""),
+                                "claim_atoms": [
+                                    str(
+                                        candidate.get("statement")
+                                        or candidate.get("candidate_ref")
+                                        or "unknown"
+                                    )
+                                ],
+                                "claim_atom_assessments": [
+                                    {
+                                        "atom": str(
+                                            candidate.get("statement")
+                                            or candidate.get("candidate_ref")
+                                            or "unknown"
+                                        ),
+                                        "supported": False,
+                                        "cited_span_ids": [],
+                                        "rationale": reason,
+                                    }
+                                ],
+                                "gates": [
+                                    {
+                                        "gate": gate,
+                                        "passed": False,
+                                        "cited_span_ids": [],
+                                        "rationale": reason,
+                                    }
+                                    for gate in ELIGIBILITY_GATES
+                                ],
+                                "rationale": reason,
+                            }
+                            for candidate in candidate_rows
+                            if isinstance(candidate, dict)
+                        ],
+                        "selected_candidate_ref": None,
+                        "rationale": reason,
+                    }
+                ]
+            }
+        )
+        _validate_eligibility_payload_for_task(payload, task)
+        recovery_dir = self.root / "executions" / _safe_path(f"{stage_key}_fail_closed")
+        recovery_dir.mkdir(parents=True, exist_ok=True)
+        self._atomic_json(recovery_dir / "task.json", task)
+        self._atomic_json(recovery_dir / "output.json", payload.model_dump(mode="json"))
+        self._record_manifest_stage(
+            {
+                "stage_key": f"{stage_key}_fail_closed",
+                "status": "complete",
+                "model": model,
+                "harness": "validator",
+                "recovery": "isolated_case_fail_closed",
+                "error": error_summary,
+                "output_sha256": _sha256(recovery_dir / "output.json"),
+            }
+        )
+        return payload
 
     def _run_dspy_eligibility_stage(
         self,
@@ -2335,6 +2517,71 @@ def _eligibility_source_spans(
         for span_id in sorted(span_ids)
         if span_id in source_context_by_span_id
     }
+
+
+def _eligibility_split_task(
+    task: dict[str, Any],
+    *,
+    cases: list[Any],
+    parent_case_count: int,
+) -> dict[str, Any]:
+    case_refs = {
+        str(case.get("case_ref"))
+        for case in cases
+        if isinstance(case, dict) and case.get("case_ref")
+    }
+    split_task = {
+        **task,
+        "cases": cases,
+        "recovery_split": {
+            "parent_case_count": parent_case_count,
+            "case_count": len(cases),
+            "return_every_listed_case": True,
+        },
+    }
+    primary_assessments = task.get("primary_assessments")
+    if isinstance(primary_assessments, list):
+        split_task["primary_assessments"] = [
+            assessment
+            for assessment in primary_assessments
+            if isinstance(assessment, dict)
+            and str(assessment.get("case_ref")) in case_refs
+        ]
+    return split_task
+
+
+def _exception_summary(error: Exception, *, max_chars: int = 1000) -> str:
+    summary = " ".join(f"{type(error).__name__}: {error}".split())
+    if len(summary) <= max_chars:
+        return summary
+    return f"{summary[: max_chars - 3]}..."
+
+
+def _validate_eligibility_payload_for_task(
+    payload: BaseModel,
+    task: dict[str, Any],
+) -> None:
+    cases = task.get("cases")
+    case_rows = cases if isinstance(cases, list) else []
+    expected = {
+        str(case.get("case_ref")): {
+            str(candidate.get("candidate_ref"))
+            for candidate in (
+                case.get("candidates")
+                if isinstance(case, dict) and isinstance(case.get("candidates"), list)
+                else []
+            )
+            if isinstance(candidate, dict) and candidate.get("candidate_ref")
+        }
+        for case in case_rows
+        if isinstance(case, dict) and case.get("case_ref")
+    }
+    source_spans = task.get("source_spans")
+    _validate_eligibility_adjudication_payload(
+        payload,
+        expected_candidate_refs_by_case=expected,
+        known_span_ids=set(source_spans) if isinstance(source_spans, dict) else set(),
+    )
 
 
 def _validate_eligibility_adjudication_payload(

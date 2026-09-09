@@ -390,14 +390,18 @@ validation.
 - `CLAIMS_SILVER_ADJUDICATION_HARNESS=dspy` runs bounded calls through
   `dspy.Predict`; a CLI harness such as `hermes-cli` uses the file workspace.
   Invalid or missing Hermes output retries once through the structured DSPy
-  path, which validates and writes the result in validator code. If that
-  recovery also fails, the paper fails rather than accepting a partial panel.
+  path, which validates and writes the result in validator code. A malformed
+  batched DSPy retry is recursively split into smaller case groups. An
+  irrecoverable single case fails closed and is excluded with an operational
+  recovery rationale, while successfully adjudicated cases continue through
+  the paper pipeline.
 - `CLAIMS_SILVER_ADJUDICATION_MODEL_A`, `_MODEL_B`, and `_TIEBREAK_MODEL`
   select the negative, positive, and conditional tiebreak roles.
   `CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE` and `_MAX_WORKERS` control case
   batching. `_MAX_IN_FLIGHT` is the shared hard limit across Silver calls.
 - DSPy uses `CLAIMS_SILVER_ADJUDICATION_API_BASE`, `_API_KEY_ENV`,
-  `_MAX_TOKENS`, and `_TIMEOUT`. CLI adjudication uses
+  `_MAX_TOKENS`, and `_TIMEOUT`. `_MAX_TOKENS` defaults to `32768`; real
+  12-case OpenRouter replays exceeded `8192`. CLI adjudication uses
   `CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER` plus the file-agent timeout and
   token limits below.
 
