@@ -6649,6 +6649,17 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_silver_file_agent_provider": str(
             os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER", "openrouter") or "openrouter"
         ),
+        "claims_silver_canonicalization_harness": str(
+            os.getenv("CLAIMS_SILVER_CANONICALIZATION_HARNESS", "file-agent")
+            or "file-agent"
+        ),
+        "claims_silver_canonicalization_provider": str(
+            os.getenv(
+                "CLAIMS_SILVER_CANONICALIZATION_PROVIDER",
+                os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER", "openrouter"),
+            )
+            or "openrouter"
+        ),
         "claims_silver_file_agent_comparison_model": str(
             os.getenv("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL", "") or ""
         ),
@@ -6920,6 +6931,11 @@ def _validate_silver_model_configuration(config: Any) -> None:
                     f"{key_env} is required by "
                     f"CLAIMS_SILVER_FILE_AGENT_PROVIDER={file_config.provider}"
                 )
+        if not os.getenv(file_config.canonicalization_api_key_env, "").strip():
+            errors.append(
+                f"{file_config.canonicalization_api_key_env} is required for "
+                "DSPy canonicalization recovery"
+            )
 
     if errors:
         details = "; ".join(dict.fromkeys(errors))

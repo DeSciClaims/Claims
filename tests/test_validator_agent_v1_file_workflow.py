@@ -86,7 +86,7 @@ def test_file_comparator_requires_complete_global_review_and_maps_anonymous_ids(
                     )
                 ],
             )
-        )
+            )
 
     session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
     edges = session.run_comparison()
@@ -760,7 +760,28 @@ def test_file_canonicalizer_rejects_unit_without_linked_evidence(tmp_path) -> No
             )
         )
 
+    def invalid_structured_repair(_self, **kwargs):
+        assert kwargs["stage_key"] == "canonicalization_audit_repair"
+        assert draft_payload is not None
+        payload = CanonicalAuditOutput(
+            **draft_payload.model_dump(),
+            draft_unit_reviews=[_draft_unit_review()],
+            quality_checks=CanonicalQualityChecks(
+                duplicate_or_split_attack_checked=True,
+                paper_relevance_checked=True,
+                evidence_support_checked=True,
+                contradiction_checked=True,
+                importance_checked=True,
+            ),
+        )
+        kwargs["validator"](payload)
+        return payload
+
     session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    session._run_dspy_canonicalization_stage = MethodType(  # type: ignore[method-assign]
+        invalid_structured_repair,
+        session,
+    )
     baseline = SilverRecord(
         silver_record_id="silver_1",
         paper_id="paper",
@@ -816,18 +837,34 @@ def test_file_canonicalizer_repairs_incomplete_audit_partition(tmp_path) -> None
                     exclusions=[],
                 )
             )
+        raise AssertionError(f"Unexpected file-agent stage: {stage_key}")
+
+    def fake_structured_repair(_self, **kwargs):
+        stage_key = kwargs["stage_key"]
+        calls.append(stage_key)
         assert stage_key == "canonicalization_audit_repair"
         assert "missing=" in kwargs["task"]["validator_rejection"]
-        return SimpleNamespace(
-            payload=CanonicalAuditOutput(
-                draft_unit_reviews=[_draft_unit_review()],
-                quality_checks=quality_checks(),
-                units=[unit],
-                exclusions=[],
-            )
+        alias = kwargs["task"]["accepted_candidates"][0]["candidate_id"]
+        payload = CanonicalAuditOutput(
+            draft_unit_reviews=[_draft_unit_review()],
+            quality_checks=quality_checks(),
+            units=[
+                CanonicalUnitProposal(
+                    statement=candidate.statement,
+                    importance="central",
+                    candidate_ids=[alias],
+                )
+            ],
+            exclusions=[],
         )
+        kwargs["validator"](payload)
+        return payload
 
     session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    session._run_dspy_canonicalization_stage = MethodType(  # type: ignore[method-assign]
+        fake_structured_repair,
+        session,
+    )
     baseline = SilverRecord(
         silver_record_id="silver_1",
         paper_id="paper",

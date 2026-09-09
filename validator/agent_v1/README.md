@@ -533,9 +533,22 @@ Agents use short `cN`, `kN`, and `uN` references; the validator owns the mapping
 to persisted candidate, case, and Silver lineage IDs.
 Only the logical workspace ID and manifest hash are persisted.
 
+Canonicalization processes the complete accepted candidate set for one paper in
+each draft and audit request. With
+`CLAIMS_SILVER_CANONICALIZATION_HARNESS=file-agent`, missing or malformed draft
+output and missing, malformed, or partition-invalid audit output receive one
+structured `dspy.Predict` recovery. Set the value to `dspy` to use structured
+prediction as the primary path. The DSPy path validates candidate and draft-unit
+identifiers, applies the same partition checks, and lets validator code write
+`output.json`. It inherits
+`CLAIMS_SILVER_FILE_AGENT_PROVIDER`, `MAX_TOKENS`, and `TIMEOUT`; optional
+`CLAIMS_SILVER_CANONICALIZATION_PROVIDER`, `_API_BASE`, and `_API_KEY_ENV`
+overrides are available when canonicalization should use another provider.
+
 ```bash
 CLAIMS_SILVER_WORKFLOW_MODE=file-agent \
 CLAIMS_SILVER_FILE_AGENT_HARNESS=hermes-cli \
+CLAIMS_SILVER_CANONICALIZATION_HARNESS=file-agent \
 CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL=deepseek/deepseek-v4-flash \
 CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL=deepseek/deepseek-v4-flash \
 CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL=qwen/qwen3.7-flash \

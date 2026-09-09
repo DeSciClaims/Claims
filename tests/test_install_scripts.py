@@ -89,6 +89,7 @@ def test_validator_template_uses_scheduled_weight_submitting_runs() -> None:
     assert "CLAIMS_PAYOUT_MODE=bucket" in template
     assert "CLAIMS_AUDIT_METHOD=llm" in template
     assert "CLAIMS_SILVER_ADJUDICATION_HARNESS=hermes-cli" in template
+    assert "CLAIMS_SILVER_CANONICALIZATION_HARNESS=file-agent" in template
     assert "CLAIMS_SILVER_FILE_AGENT_FALLBACK=none" in template
 
 
@@ -138,6 +139,7 @@ def test_mainnet_profile_has_production_policy_without_prescribed_models() -> No
     assert "CLAIMS_RIGOR_MAX_TURNS=30" in profile
     assert "CLAIMS_AGENT_V1_SKIP_RIGOR=false" in profile
     assert "SUBNET_CLAIMS_VALIDATOR_AGENT_MAX_TOKENS=16384" in profile
+    assert "CLAIMS_SILVER_ADJUDICATION_MAX_IN_FLIGHT=64" in profile
     assert "SUBNET_CLAIMS_VALIDATOR_AGENT_PROVIDER=" not in profile
     assert "SUBNET_CLAIMS_VALIDATOR_AGENT_MODEL=" not in profile
     assert "CLAIMS_DIAGNOSTIC_MINER_BATCH_SIZE=10" in profile

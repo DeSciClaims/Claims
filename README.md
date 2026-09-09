@@ -502,6 +502,10 @@ Every substantive claim atom must have direct cited paper support. The stage
 supports the file-agent and bounded DSPy Predict harnesses. Full controls and
 failure behavior are in the
 [validator configuration reference](./validator/agent_v1/README.md#file-workspace-silver).
+Canonical draft and audit operate globally over each paper's accepted candidates.
+They use the configured file agent by default. Missing or malformed draft output,
+and missing, malformed, or partition-invalid audit output, recover once through
+structured DSPy; DSPy can also be selected as the primary canonicalization harness.
 
 ### Testnet
 

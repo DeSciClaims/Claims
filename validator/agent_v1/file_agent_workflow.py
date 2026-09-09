@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 from miner.agent_v1.provider import normalize_provider, provider_api_base, provider_api_key_env
 from miner.agent_v1.runtime.usage import empty_usage, usage_from_cli_process
@@ -31,6 +31,7 @@ from .adjudication_passes import (
     votes_from_adjudication_batch_payload,
 )
 from .adjudication_runner import AdjudicationPass
+from .canonicalization_dspy import DSPyCanonicalizationRuntime
 from .comparison_models import CandidatePairEdge, ComparisonCandidate, RelationType, SilverRecord, SilverUnit
 from .eligibility import (
     ELIGIBILITY_GATES,
@@ -177,6 +178,70 @@ class CanonicalAuditOutput(CanonicalizationAgentOutput):
     findings: list[CanonicalAuditFinding] = Field(default_factory=list)
 
 
+def _constrained_canonical_output_model(
+    output_model: type[BaseModel],
+    task: dict[str, Any],
+) -> type[BaseModel]:
+    candidate_refs = tuple(
+        sorted(
+            str(candidate.get("candidate_id"))
+            for candidate in task.get("accepted_candidates", [])
+            if isinstance(candidate, dict) and candidate.get("candidate_id")
+        )
+    )
+    draft_unit_refs = tuple(
+        sorted(
+            str(unit.get("draft_unit_id"))
+            for unit in dict(task.get("canonical_draft") or {}).get("units", [])
+            if isinstance(unit, dict) and unit.get("draft_unit_id")
+        )
+    )
+    suffix = hashlib.sha256(
+        repr((output_model.__name__, candidate_refs, draft_unit_refs)).encode("utf-8")
+    ).hexdigest()[:10]
+    candidate_type = _literal_from_values(candidate_refs)
+    unit_model = create_model(
+        f"DSPyCanonicalUnit_{suffix}",
+        __base__=CanonicalUnitProposal,
+        candidate_ids=(list[candidate_type], Field(min_length=1)),
+    )
+    exclusion_model = create_model(
+        f"DSPyCanonicalExclusion_{suffix}",
+        __base__=CanonicalExclusionProposal,
+        candidate_ids=(list[candidate_type], Field(min_length=1)),
+    )
+    if issubclass(output_model, CanonicalAuditOutput):
+        draft_unit_type = _literal_from_values(draft_unit_refs)
+        review_model = create_model(
+            f"DSPyCanonicalDraftReview_{suffix}",
+            __base__=CanonicalDraftUnitReview,
+            draft_unit_id=(draft_unit_type, ...),
+        )
+        finding_model = create_model(
+            f"DSPyCanonicalAuditFinding_{suffix}",
+            __base__=CanonicalAuditFinding,
+            draft_unit_ids=(list[draft_unit_type], Field(default_factory=list)),
+        )
+        return create_model(
+            f"DSPyCanonicalAuditOutput_{suffix}",
+            __base__=CanonicalAuditOutput,
+            units=(list[unit_model], Field(default_factory=list)),
+            exclusions=(list[exclusion_model], Field(default_factory=list)),
+            draft_unit_reviews=(list[review_model], ...),
+            findings=(list[finding_model], Field(default_factory=list)),
+        )
+    return create_model(
+        f"DSPyCanonicalizationOutput_{suffix}",
+        __base__=CanonicalizationAgentOutput,
+        units=(list[unit_model], Field(default_factory=list)),
+        exclusions=(list[exclusion_model], Field(default_factory=list)),
+    )
+
+
+def _literal_from_values(values: tuple[str, ...]):
+    return Literal.__getitem__(values) if values else str
+
+
 @dataclass(frozen=True)
 class FileAgentWorkflowConfig:
     root: Path
@@ -185,6 +250,10 @@ class FileAgentWorkflowConfig:
     comparison_model: str
     canonicalization_model: str
     canonical_audit_model: str = ""
+    canonicalization_harness: str = "file-agent"
+    canonicalization_provider: str = "openrouter"
+    canonicalization_api_base: str = "https://openrouter.ai/api/v1"
+    canonicalization_api_key_env: str = "OPENROUTER_API_KEY"
     adjudication_harness: str = "file-agent"
     adjudication_provider: str = "openrouter"
     adjudication_api_base: str = "https://openrouter.ai/api/v1"
@@ -208,6 +277,8 @@ class FileAgentWorkflowConfig:
     resume_existing_stages: bool = False
 
     def __post_init__(self) -> None:
+        if self.canonicalization_harness not in {"file-agent", "dspy"}:
+            raise ValueError("Canonicalization harness must be file-agent or dspy.")
         if self.adjudication_harness not in {"file-agent", "dspy"}:
             raise ValueError("Eligibility adjudication harness must be file-agent or dspy.")
 
@@ -221,6 +292,10 @@ class FileAgentWorkflowConfig:
             raise ValueError(
                 "File-agent Silver workflow requires hermes-cli, codex-cli, or claude-cli."
             )
+        file_agent_provider = normalize_provider(
+            os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER", "openrouter").strip()
+            or "openrouter"
+        )
         default_model = os.getenv(
             "CLAIMS_SILVER_FILE_AGENT_MODEL",
             os.getenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", ""),
@@ -254,10 +329,25 @@ class FileAgentWorkflowConfig:
             adjudication_provider_hint,
             api_base=adjudication_api_base_explicit,
         )
+        canonicalization_harness = os.getenv(
+            "CLAIMS_SILVER_CANONICALIZATION_HARNESS",
+            "file-agent",
+        ).strip().lower().replace("_", "-")
+        canonicalization_api_base_explicit = os.getenv(
+            "CLAIMS_SILVER_CANONICALIZATION_API_BASE",
+            "",
+        ).strip()
+        canonicalization_provider = normalize_provider(
+            os.getenv(
+                "CLAIMS_SILVER_CANONICALIZATION_PROVIDER",
+                file_agent_provider,
+            ).strip(),
+            api_base=canonicalization_api_base_explicit,
+        )
         return cls(
             root=Path(os.getenv("CLAIMS_SILVER_FILE_WORKSPACE_ROOT", "/tmp/claims-silver-workspaces")).expanduser(),
             harness=harness,
-            provider=os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER", "openrouter").strip() or "openrouter",
+            provider=file_agent_provider,
             comparison_model=os.getenv("CLAIMS_SILVER_FILE_AGENT_COMPARISON_MODEL", default_model).strip(),
             canonicalization_model=os.getenv(
                 "CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL",
@@ -270,6 +360,16 @@ class FileAgentWorkflowConfig:
                     os.getenv("CLAIMS_SILVER_FILE_AGENT_CANONICALIZATION_MODEL", default_model),
                 ),
             ).strip(),
+            canonicalization_harness=canonicalization_harness,
+            canonicalization_provider=canonicalization_provider,
+            canonicalization_api_base=provider_api_base(
+                canonicalization_provider,
+                canonicalization_api_base_explicit,
+            ),
+            canonicalization_api_key_env=provider_api_key_env(
+                canonicalization_provider,
+                os.getenv("CLAIMS_SILVER_CANONICALIZATION_API_KEY_ENV", ""),
+            ),
             adjudication_harness=(
                 "dspy" if adjudication_harness == "dspy" else "file-agent"
             ),
@@ -782,6 +882,175 @@ class FileAgentWorkflowSession:
             )
             raise
 
+    def _run_canonicalization_stage_with_retry(
+        self,
+        *,
+        stage_key: str,
+        stage_label: str,
+        model: str,
+        task: dict[str, Any],
+        output_model: type[BaseModel],
+        skill_path: Path,
+        validator: Callable[[BaseModel], None] | None = None,
+        retry_stage_key: str | None = None,
+        retry_task_extra: dict[str, Any] | None = None,
+    ) -> tuple[BaseModel, str]:
+        first_error = ""
+        rejected_payload: BaseModel | None = None
+        for attempt in range(2):
+            payload: BaseModel | None = None
+            retrying = attempt == 1
+            effective_stage_key = (
+                retry_stage_key or f"{stage_key}_retry"
+                if retrying
+                else stage_key
+            )
+            effective_task = task
+            if retrying:
+                effective_task = {
+                    **task,
+                    **(retry_task_extra or {}),
+                    "validator_rejection": first_error or "unknown",
+                    "operational_retry": {
+                        "attempt": 2,
+                        "previous_error": first_error or "unknown",
+                        "return_a_complete_fresh_output": True,
+                    },
+                }
+                if rejected_payload is not None:
+                    rejected_output = rejected_payload.model_dump(mode="json")
+                    effective_task["rejected_output"] = rejected_output
+                    if issubclass(output_model, CanonicalAuditOutput):
+                        effective_task["rejected_audit_output"] = rejected_output
+            try:
+                if self.config.canonicalization_harness == "dspy" or retrying:
+                    payload = self._run_dspy_canonicalization_stage(
+                        stage_key=effective_stage_key,
+                        stage_label=(
+                            f"{stage_label} structured repair"
+                            if retrying
+                            else stage_label
+                        ),
+                        model=model,
+                        task=effective_task,
+                        output_model=output_model,
+                        skill_path=skill_path,
+                        validator=validator,
+                    )
+                else:
+                    result = self._run_stage(
+                        stage_key=effective_stage_key,
+                        stage_label=stage_label,
+                        model=model,
+                        task=effective_task,
+                        output_model=output_model,
+                        skill_path=skill_path,
+                    )
+                    payload = result.payload
+                    if validator is not None:
+                        validator(payload)
+                return payload, first_error
+            except Exception as exc:
+                if not first_error:
+                    first_error = f"{type(exc).__name__}: {exc}"
+                    if isinstance(payload, BaseModel):
+                        rejected_payload = payload
+                    continue
+                raise FileAgentWorkflowError(
+                    f"{stage_label} primary failed ({first_error}); structured DSPy "
+                    f"recovery also failed ({type(exc).__name__}: {exc})"
+                ) from exc
+        raise FileAgentWorkflowError(f"{stage_label} failed: {first_error}")
+
+    def _run_dspy_canonicalization_stage(
+        self,
+        *,
+        stage_key: str,
+        stage_label: str,
+        model: str,
+        task: dict[str, Any],
+        output_model: type[BaseModel],
+        skill_path: Path,
+        validator: Callable[[BaseModel], None] | None,
+    ) -> BaseModel:
+        stage_dir = self.root / "executions" / _safe_path(stage_key)
+        stage_dir.mkdir(parents=True, exist_ok=True)
+        enriched_task = {
+            **task,
+            "skill_instructions": skill_path.read_text(encoding="utf-8"),
+        }
+        output_path = stage_dir / "output.json"
+        schema_model = _constrained_canonical_output_model(output_model, task)
+        if self.config.resume_existing_stages:
+            existing_task = _read_json_value(stage_dir / "task.json")
+            existing_payload = _read_model(output_path, output_model)
+            if existing_task == enriched_task and existing_payload is not None:
+                if validator is not None:
+                    validator(existing_payload)
+                self._record_manifest_stage(
+                    {
+                        "stage_key": stage_key,
+                        "status": "resumed",
+                        "model": model,
+                        "harness": "dspy",
+                        "output_sha256": _sha256(output_path),
+                    }
+                )
+                return existing_payload
+        self._atomic_json(stage_dir / "task.json", enriched_task)
+        self._atomic_json(
+            stage_dir / "output_schema.json",
+            schema_model.model_json_schema(),
+        )
+        started = time.perf_counter()
+        try:
+            with _request_slot(self.request_gate):
+                payload = DSPyCanonicalizationRuntime(
+                    provider=self.config.canonicalization_provider,
+                    api_base=self.config.canonicalization_api_base,
+                    api_key_env=self.config.canonicalization_api_key_env,
+                    max_tokens=self.config.max_tokens,
+                    timeout_seconds=self.config.timeout_seconds,
+                    usage_sink=self.usage_sink,
+                    raw_output_sink=lambda raw: self._atomic_json(
+                        stage_dir / "raw_response.json",
+                        {"raw_response": raw},
+                    ),
+                ).run(
+                    task=enriched_task,
+                    output_model=output_model,
+                    schema_model=schema_model,
+                    model=model,
+                    stage_key=stage_key,
+                    stage_label=stage_label,
+                    paper_id=self.paper_id,
+                    workspace_id=self.workspace_id,
+                    validator=validator,
+                )
+            self._atomic_json(output_path, payload.model_dump(mode="json"))
+            self._record_manifest_stage(
+                {
+                    "stage_key": stage_key,
+                    "status": "complete",
+                    "model": model,
+                    "harness": "dspy",
+                    "duration_seconds": round(time.perf_counter() - started, 3),
+                    "output_sha256": _sha256(output_path),
+                }
+            )
+            return payload
+        except Exception as exc:
+            self._record_manifest_stage(
+                {
+                    "stage_key": stage_key,
+                    "status": "failed",
+                    "model": model,
+                    "harness": "dspy",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            raise
+
     def run_comparison(self) -> list[CandidatePairEdge]:
         aliases, candidates_by_alias = _comparison_aliases(self.candidates)
         mandatory_pairs = _exact_reference_submission_pairs(self.candidates, aliases)
@@ -1169,7 +1438,7 @@ class FileAgentWorkflowSession:
                 "assign_importance": ["central", "supporting", "minor"],
             },
         }
-        draft_result = self._run_stage(
+        draft, draft_retry_error = self._run_canonicalization_stage_with_retry(
             stage_key="canonicalization_draft",
             stage_label="Silver canonicalization draft",
             model=self.config.canonicalization_model,
@@ -1177,7 +1446,6 @@ class FileAgentWorkflowSession:
             output_model=CanonicalizationAgentOutput,
             skill_path=_skill_path("claims-silver-canonicalizer"),
         )
-        draft = draft_result.payload
         assert isinstance(draft, CanonicalizationAgentOutput)
         draft_unit_ids = [f"u{index}" for index, _unit in enumerate(draft.units)]
         draft_issues = _canonical_partition_issues(
@@ -1215,55 +1483,42 @@ class FileAgentWorkflowSession:
                 "reassess_every_importance_tag_from_the_paper": True,
             },
         }
-        audit_result = self._run_stage(
+        canonical_validator = lambda payload: _validate_canonical_output(
+            payload,
+            expected_draft_unit_ids=set(draft_unit_ids),
+            expected_aliases=expected_aliases,
+            eligible_aliases=expected_aliases.difference(required_exclusion_aliases),
+            required_exclusion_aliases=required_exclusion_aliases,
+            must_link_groups=must_link_aliases,
+        )
+        output, audit_repair_error = self._run_canonicalization_stage_with_retry(
             stage_key="canonicalization_audit",
             stage_label="Silver canonicalization audit",
             model=self.config.canonical_audit_model or self.config.canonicalization_model,
             task=audit_task,
             output_model=CanonicalAuditOutput,
             skill_path=_skill_path("claims-silver-canonical-auditor"),
+            validator=canonical_validator,
+            retry_stage_key="canonicalization_audit_repair",
+            retry_task_extra={
+                "repair_requirements": {
+                    "return_the_complete_corrected_output": True,
+                    "fix_every_validator_rejection": True,
+                    "do_not_drop_candidates_or_weaken_completed_quality_checks": True,
+                }
+            },
         )
-        output = audit_result.payload
         assert isinstance(output, CanonicalAuditOutput)
-        audit_repair_error = ""
-        try:
-            _validate_canonical_output(
-                output,
-                expected_draft_unit_ids=set(draft_unit_ids),
-                expected_aliases=expected_aliases,
-                eligible_aliases=expected_aliases.difference(required_exclusion_aliases),
-                required_exclusion_aliases=required_exclusion_aliases,
-                must_link_groups=must_link_aliases,
-            )
-        except FileAgentWorkflowError as exc:
-            audit_repair_error = str(exc)
-            repair_result = self._run_stage(
-                stage_key="canonicalization_audit_repair",
-                stage_label="Silver canonicalization audit repair",
-                model=self.config.canonical_audit_model or self.config.canonicalization_model,
-                task={
-                    **audit_task,
-                    "rejected_audit_output": output.model_dump(mode="json"),
-                    "validator_rejection": audit_repair_error,
-                    "repair_requirements": {
-                        "return_the_complete_corrected_output": True,
-                        "fix_every_validator_rejection": True,
-                        "do_not_drop_candidates_or_weaken_completed_quality_checks": True,
-                    },
-                },
-                output_model=CanonicalAuditOutput,
-                skill_path=_skill_path("claims-silver-canonical-auditor"),
-            )
-            output = repair_result.payload
-            assert isinstance(output, CanonicalAuditOutput)
-            _validate_canonical_output(
-                output,
-                expected_draft_unit_ids=set(draft_unit_ids),
-                expected_aliases=expected_aliases,
-                eligible_aliases=expected_aliases.difference(required_exclusion_aliases),
-                required_exclusion_aliases=required_exclusion_aliases,
-                must_link_groups=must_link_aliases,
-            )
+        draft_runtime = (
+            "dspy"
+            if self.config.canonicalization_harness == "dspy" or draft_retry_error
+            else self.config.harness
+        )
+        audit_runtime = (
+            "dspy"
+            if self.config.canonicalization_harness == "dspy" or audit_repair_error
+            else self.config.harness
+        )
 
         baseline_units = list(baseline_record.silver_units)
         canonical_units: list[SilverUnit] = []
@@ -1297,7 +1552,8 @@ class FileAgentWorkflowSession:
                     scoring_mode="required",
                     metadata={
                         "canonicalization": {
-                            "workflow": "file_agent",
+                            "workflow": "dspy" if audit_runtime == "dspy" else "file_agent",
+                            "harness": audit_runtime,
                             "rationale": proposal.rationale,
                             "workspace_id": self.workspace_id,
                         },
@@ -1328,6 +1584,10 @@ class FileAgentWorkflowSession:
             ],
             "canonical_audit_repaired": bool(audit_repair_error),
             "canonical_audit_initial_rejection": audit_repair_error or None,
+            "canonical_draft_repaired": bool(draft_retry_error),
+            "canonical_draft_initial_failure": draft_retry_error or None,
+            "canonical_draft_harness": draft_runtime,
+            "canonical_audit_harness": audit_runtime,
             "mandatory_same_unit_group_count": len(must_link_aliases),
             "mandatory_evidence_exclusion_count": len(required_exclusion_aliases),
         }
