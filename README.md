@@ -216,9 +216,10 @@ to the absolute Hermes path when it is not on the service `PATH`.
 ### Ubuntu Installers
 
 The public installers set up system packages, a virtual environment from the
-selected Python interpreter, Claims dependencies, Hermes, and a role-specific
-`.env` template. Python 3.12 is the recommended runtime for production
-validators:
+selected Python interpreter, Claims dependencies, and Hermes. They consume a
+role-specific `.env` file that you create before running the installer; they do
+not create a production-ready `.env`, choose wallets, or guess provider secrets.
+Python 3.12 is the recommended runtime for production validators:
 
 ```bash
 git clone https://github.com/DeSciClaims/Claims.git
@@ -226,16 +227,54 @@ cd Claims
 
 ./scripts/install-miner.sh
 
-# Validator: copy the detailed profile before installation so Hermes is
-# configured from the selected provider and model.
+# Validator: copy and edit the detailed profile before installation.
 cp validator/agent_v1/validator.mainnet.env.example .env
+chmod 600 .env
+$EDITOR .env
+
 ./scripts/install-validator.sh \
   --python python3.12 \
+  --env-file .env \
   --reference-repo-version <PINNED_COMMIT>
 ```
 
 Use `validator/agent_v1/validator.testnet.env.example` instead only when
 running a testnet validator.
+
+For a mainnet validator, review the full copied `.env` profile before
+installation. At minimum, replace the wallet names, backend URL, blank model
+fields, and provider credentials. OpenRouter is the recommended provider for
+production validators today; the excerpt below shows the provider and identity
+values that usually need editing, not the complete validator configuration:
+
+```env
+OPENROUTER_API_KEY=...
+OPENROUTER_API_BASE=https://openrouter.ai/api/v1
+
+HERMES_PROVIDER=openrouter
+HERMES_MODEL=deepseek/deepseek-v4-flash
+HERMES_BASE_URL=https://openrouter.ai/api/v1
+
+CLAIMS_RIGOR_PROVIDER=openrouter
+CLAIMS_REFERENCE_MINER_PROVIDER=openrouter
+CLAIMS_SILVER_FILE_AGENT_PROVIDER=openrouter
+CLAIMS_SILVER_ADJUDICATION_PROVIDER=openrouter
+CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER=openrouter
+
+BT_WALLET_NAME=<wallet>
+BT_WALLET_HOTKEY=<hotkey>
+BT_NETUID=111
+BT_SUBTENSOR_NETWORK=finney
+CLAIMS_NETWORK=mainnet
+CLAIMS_BACKEND_URL=https://api.claims111.ai
+CLAIMS_REFERENCE_MINER_CLAIMS_REPO=/root/.bittensor/subnets/Claims
+```
+
+When choosing a different provider, change the provider, model, API base, and
+API-key environment variables in `.env` first, then run the installer with the
+same `--env-file`. The installer configures Hermes non-interactively from
+`HERMES_PROVIDER`, `HERMES_MODEL`, and `HERMES_BASE_URL`; provider credentials
+remain in `.env`.
 
 On hosts previously installed with Python <3.11, rebuild the virtual environment
 explicitly:
@@ -243,6 +282,7 @@ explicitly:
 ```bash
 ./scripts/install-validator.sh \
   --python python3.12 \
+  --env-file .env \
   --recreate-venv \
   --reference-repo-version <PINNED_COMMIT>
 ```
@@ -252,8 +292,6 @@ is not already available. Python 3.11 remains supported, but do not use Python
 3.10. The installer will not modify system Python or silently mix two Python
 versions in one virtual environment.
 
-They configure Hermes non-interactively from `HERMES_PROVIDER`, `HERMES_MODEL`,
-and `HERMES_BASE_URL` in that role's `.env`; provider credentials remain in `.env`.
 Chutes is supported as a named OpenAI-compatible provider; see
 [Chutes provider configuration](./validator/agent_v1/README.md#chutes-provider).
 Hermes is the only external CLI harness installed automatically. Install and
