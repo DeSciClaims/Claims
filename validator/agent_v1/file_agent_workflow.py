@@ -661,7 +661,7 @@ class FileAgentWorkflowSession:
                 else task
             )
             try:
-                if self.config.adjudication_harness == "dspy":
+                if self.config.adjudication_harness == "dspy" or retrying:
                     return self._run_dspy_eligibility_stage(
                         stage_key=effective_stage_key,
                         stage_label=stage_label,

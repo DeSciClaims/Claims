@@ -379,8 +379,9 @@ validation.
   stage does not merge, rewrite, or create a compromise claim.
 - `CLAIMS_SILVER_ADJUDICATION_HARNESS=dspy` runs bounded calls through
   `dspy.Predict`; a CLI harness such as `hermes-cli` uses the file workspace.
-  Invalid or missing output retries once and then fails the paper rather than
-  becoming an eligibility vote.
+  Invalid or missing Hermes output retries once through the structured DSPy
+  path, which validates and writes the result in validator code. If that
+  recovery also fails, the paper fails rather than accepting a partial panel.
 - `CLAIMS_SILVER_ADJUDICATION_MODEL_A`, `_MODEL_B`, and `_TIEBREAK_MODEL`
   select the negative, positive, and conditional tiebreak roles.
   `CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE` and `_MAX_WORKERS` control case

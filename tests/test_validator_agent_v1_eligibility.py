@@ -260,6 +260,52 @@ def test_adjudication_batches_singleton_and_pair_hermes_calls(tmp_path) -> None:
     }
 
 
+def test_hermes_missing_output_retries_through_structured_dspy(tmp_path) -> None:
+    candidate = _candidate("miner:uid_9:M01", "miner", "uid_9")
+    session = _session(tmp_path, [candidate])
+    task = {
+        "cases": [
+            {
+                "case_ref": "k0",
+                "candidates": [{"candidate_ref": "k0_a"}],
+            }
+        ],
+        "source_spans": {},
+    }
+    structured_calls: list[str] = []
+
+    def missing_file_stage(_self, **_kwargs):
+        raise RuntimeError("agent did not write a valid output file")
+
+    def structured_retry(_self, **kwargs):
+        structured_calls.append(kwargs["stage_key"])
+        payload = _output("k0", ["k0_a"], selected_ref="k0_a")
+        kwargs["validator"](payload)
+        return payload
+
+    session._run_stage = MethodType(missing_file_stage, session)  # type: ignore[method-assign]
+    session._run_dspy_eligibility_stage = MethodType(  # type: ignore[method-assign]
+        structured_retry,
+        session,
+    )
+
+    result = session._run_eligibility_stage_with_retry(
+        stage_key="eligibility_adjudication_negative",
+        stage_label="Eligibility adjudication negative judge",
+        model="test-model",
+        task=task,
+        output_model=EligibilityAdjudicationAgentOutput,
+        skill_path=Path(__file__),
+        validator=lambda output: validate_eligibility_adjudication_output(
+            output,
+            expected_candidate_refs_by_case={"k0": {"k0_a"}},
+        ),
+    )
+
+    assert isinstance(result, EligibilityAdjudicationAgentOutput)
+    assert structured_calls == ["eligibility_adjudication_negative_retry"]
+
+
 def test_dspy_uses_same_singleton_and_pair_contract(monkeypatch, tmp_path) -> None:
     candidates = [
         _candidate("bronze:B01", "bronze", None),
