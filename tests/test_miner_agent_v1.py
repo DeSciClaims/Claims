@@ -155,6 +155,10 @@ def test_dspy_chutes_model_keeps_explicit_litellm_route() -> None:
         "openai/gpt-oss-120b",
         provider="chutes",
     ) == "openai/openai/gpt-oss-120b"
+    assert dspy_model_id(
+        "chutes/deepseek-ai/DeepSeek-V4-Flash-0731-TEE",
+        provider="chutes",
+    ) == "openai/deepseek-ai/DeepSeek-V4-Flash-0731-TEE"
 
 
 def test_dspy_openrouter_model_adds_litellm_route() -> None:

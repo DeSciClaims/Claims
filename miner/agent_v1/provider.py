@@ -38,6 +38,8 @@ def dspy_model_id(model: str, *, provider: str | None = None, api_base: str = ""
     if resolved_provider == "chutes":
         # DSPy routes custom OpenAI-compatible endpoints through LiteLLM's
         # openai provider. Chutes catalog IDs remain unchanged after the prefix.
+        if normalized.startswith("chutes/"):
+            normalized = normalized[len("chutes/") :]
         if normalized.startswith("openai/") and normalized.count("/") >= 2:
             return normalized
         return f"openai/{normalized}"

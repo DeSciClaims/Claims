@@ -261,7 +261,7 @@ Chutes exposes an OpenAI-compatible API:
 CHUTES_API_KEY=...
 CHUTES_API_BASE=https://llm.chutes.ai/v1
 HERMES_PROVIDER=chutes
-HERMES_MODEL=<CHUTES_MODEL_ID>
+HERMES_MODEL=deepseek-ai/DeepSeek-V4-Flash-0731-TEE
 HERMES_BASE_URL=https://llm.chutes.ai/v1
 CLAIMS_RIGOR_PROVIDER=chutes
 CLAIMS_REFERENCE_MINER_PROVIDER=chutes
@@ -293,13 +293,23 @@ DSPy Silver adjudication uses its stage-specific endpoint and key variables:
 
 ```env
 CLAIMS_SILVER_ADJUDICATION_HARNESS=dspy
+CLAIMS_SILVER_ADJUDICATION_PROVIDER=chutes
 CLAIMS_SILVER_ADJUDICATION_API_BASE=https://llm.chutes.ai/v1
 CLAIMS_SILVER_ADJUDICATION_API_KEY_ENV=CHUTES_API_KEY
+CLAIMS_SILVER_ADJUDICATION_MODEL_A=deepseek-ai/DeepSeek-V4-Flash-0731-TEE
+CLAIMS_SILVER_ADJUDICATION_MODEL_B=deepseek-ai/DeepSeek-V4-Flash-0731-TEE
+CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL=deepseek-ai/DeepSeek-V4-Flash-0731-TEE
 ```
 
 The runtime automatically adds DSPy/LiteLLM's OpenAI-compatible routing prefix
-to the Chutes catalog model ID. Do not change the model ID merely because DSPy
-is selected.
+to the Chutes catalog model ID. For example,
+`deepseek-ai/DeepSeek-V4-Flash-0731-TEE` becomes
+`openai/deepseek-ai/DeepSeek-V4-Flash-0731-TEE`. Do not add the transport prefix
+to the configured catalog ID yourself.
+
+`CLAIMS_SILVER_ADJUDICATION_PROVIDER` applies to DSPy and direct adjudication.
+The older `CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER` remains supported for CLI
+configurations and as a compatibility fallback.
 
 Direct OpenAI-compatible stages are configured separately. To run importance
 scoring through Chutes, set

@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from miner.agent_v1.provider import dspy_model_id
 from miner.agent_v1.runtime.usage import empty_usage, usage_from_cli_process, usage_from_dspy_lm
 
 from .adjudication_models import AdjudicationContextBundle, AdjudicationDisposition, AdjudicationVote
@@ -1013,7 +1014,7 @@ class DSPyAdjudicationPass:
         timeout_seconds: float | None = None,
     ):
         return self.dspy_module.LM(
-            model=_dspy_model_id(self.model, self.api_base),
+            model=dspy_model_id(self.model, api_base=self.api_base),
             api_key=self.api_key,
             api_base=self.api_base,
             temperature=self.temperature,
@@ -1739,13 +1740,6 @@ def _request_slot(request_gate: Any | None):
         yield
     finally:
         request_gate.release()
-
-
-def _dspy_model_id(model: str, api_base: str) -> str:
-    normalized = model.strip()
-    if "openrouter.ai/api" in api_base and normalized and not normalized.startswith("openrouter/"):
-        return f"openrouter/{normalized}"
-    return normalized
 
 
 def _json_object_candidates(text: str) -> list[str]:

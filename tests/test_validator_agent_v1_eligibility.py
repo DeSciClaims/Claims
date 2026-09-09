@@ -400,6 +400,33 @@ def test_config_uses_existing_adjudication_env_for_dspy_chutes(monkeypatch) -> N
     assert config.adjudication_timeout_seconds == 180.0
 
 
+def test_dspy_adjudication_api_base_selects_chutes_without_cli_provider(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_HARNESS", "dspy")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_API_BASE", "https://llm.chutes.ai/v1")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_API_KEY_ENV", "CHUTES_API_KEY")
+    monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER", "openrouter")
+    monkeypatch.delenv("CLAIMS_SILVER_ADJUDICATION_PROVIDER", raising=False)
+    monkeypatch.delenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", raising=False)
+
+    config = FileAgentWorkflowConfig.from_env()
+
+    assert config.adjudication_provider == "chutes"
+    assert config.adjudication_api_base == "https://llm.chutes.ai/v1"
+    assert config.adjudication_api_key_env == "CHUTES_API_KEY"
+
+
+def test_dspy_adjudication_prefers_provider_neutral_env(monkeypatch) -> None:
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_HARNESS", "dspy")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_PROVIDER", "chutes")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "openrouter")
+
+    config = FileAgentWorkflowConfig.from_env()
+
+    assert config.adjudication_provider == "chutes"
+    assert config.adjudication_api_base == "https://llm.chutes.ai/v1"
+    assert config.adjudication_api_key_env == "CHUTES_API_KEY"
+
+
 def test_dspy_schema_restricts_singleton_case_candidate_and_span_refs() -> None:
     task = {
         "cases": [{"case_ref": "k0", "candidates": [{"candidate_ref": "k0_a"}]}],

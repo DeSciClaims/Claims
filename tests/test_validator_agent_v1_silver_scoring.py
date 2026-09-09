@@ -1082,6 +1082,30 @@ def test_silver_adjudication_factory_routes_chutes_through_openai_compatible_dsp
     assert passes[1].model == "openai/openai/gpt-oss-120b"
 
 
+def test_dspy_adjudication_lm_normalizes_raw_chutes_model() -> None:
+    captured: dict = {}
+
+    class FakeDSPy:
+        @staticmethod
+        def LM(**kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(**kwargs)
+
+    adjudication_pass = DSPyAdjudicationPass(
+        pass_id="pass_a",
+        adjudication_profile_id="dspy:chutes",
+        model_runtime_id="dspy-predict",
+        model="chutes/deepseek-ai/DeepSeek-V4-Flash-0731-TEE",
+        api_key="test-chutes-key",
+        api_base="https://llm.chutes.ai/v1",
+        dspy_module=FakeDSPy(),
+    )
+
+    adjudication_pass._new_lm()
+
+    assert captured["model"] == "openai/deepseek-ai/DeepSeek-V4-Flash-0731-TEE"
+
+
 def test_silver_adjudication_factory_disables_shared_limit_with_zero(monkeypatch) -> None:
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-openrouter-key")
     passes, tiebreak = build_silver_adjudication_passes(

@@ -241,11 +241,17 @@ class FileAgentWorkflowConfig:
             "CLAIMS_SILVER_ADJUDICATION_API_BASE",
             "",
         ).strip()
+        adjudication_provider_hint = (
+            os.getenv("CLAIMS_SILVER_ADJUDICATION_PROVIDER", "").strip()
+            or os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER", "").strip()
+        )
+        if not adjudication_provider_hint and not adjudication_api_base_explicit:
+            adjudication_provider_hint = os.getenv(
+                "CLAIMS_SILVER_FILE_AGENT_PROVIDER",
+                "openrouter",
+            ).strip()
         adjudication_provider = normalize_provider(
-            os.getenv(
-                "CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER",
-                os.getenv("CLAIMS_SILVER_FILE_AGENT_PROVIDER", "openrouter"),
-            ),
+            adjudication_provider_hint,
             api_base=adjudication_api_base_explicit,
         )
         return cls(
