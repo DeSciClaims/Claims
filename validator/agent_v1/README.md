@@ -287,8 +287,6 @@ CLAIMS_RIGOR_PROVIDER=chutes
 CLAIMS_RIGOR_MODEL=<CHUTES_MODEL_ID>
 CLAIMS_RIGOR_API_BASE=https://llm.chutes.ai/v1
 CLAIMS_RIGOR_API_KEY_ENV=CHUTES_API_KEY
-SUBNET_CLAIMS_VALIDATOR_AGENT_PROVIDER=chutes
-SUBNET_CLAIMS_VALIDATOR_AGENT_MODEL=<CHUTES_MODEL_ID>
 ```
 
 DSPy Silver adjudication uses its stage-specific endpoint and key variables:
@@ -322,7 +320,8 @@ exposes an embeddings endpoint.
 - `--claims.agent-v1-skip-rigor` (or `CLAIMS_AGENT_V1_SKIP_RIGOR=true`) disables
   the diagnostic LLM rigor agent while retaining structural and grounding
   checks. The rigor pass is recorded as skipped and does not cap diagnostic
-  quality. Use this when Silver eligibility supplies the semantic claim review.
+  quality. Keep this `false` for mainnet; the skip is intended for controlled
+  testing and troubleshooting.
 - `--claims.skip-diagnostic-validation` omits diagnostic reports when only the
   Silver path is required.
 - `--claims.silver-paper-max-workers` controls concurrent paper-level Silver

@@ -133,12 +133,20 @@ def test_mainnet_profile_has_production_policy_without_prescribed_models() -> No
     assert "CLAIMS_MAX_STEPS=4" in profile
     assert "CLAIMS_QUERY_INTERVAL=10800" in profile
     assert "CLAIMS_AUDIT_ONLY=false" in profile
-    assert "CLAIMS_AGENT_V1_SKIP_RIGOR=true" in profile
+    assert "CLAIMS_RIGOR_HARNESS=hermes-cli" in profile
+    assert "CLAIMS_RIGOR_PROVIDER=openrouter" in profile
+    assert "CLAIMS_RIGOR_MAX_TURNS=30" in profile
+    assert "CLAIMS_AGENT_V1_SKIP_RIGOR=false" in profile
+    assert "SUBNET_CLAIMS_VALIDATOR_AGENT_MAX_TOKENS=16384" in profile
+    assert "SUBNET_CLAIMS_VALIDATOR_AGENT_PROVIDER=" not in profile
+    assert "SUBNET_CLAIMS_VALIDATOR_AGENT_MODEL=" not in profile
+    assert "CLAIMS_DIAGNOSTIC_MINER_BATCH_SIZE=10" in profile
     assert "CLAIMS_DUPLICATE_SUBMISSION_SEMANTIC_MODE=enforce" in profile
     assert "CLAIMS_SILVER_WORKFLOW_MODE=file-agent" in profile
     assert "CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true" in profile
     assert "\nCLAIMS_TARGET_UIDS=" not in profile
     for key in (
+        "CLAIMS_RIGOR_MODEL",
         "CLAIMS_REFERENCE_MINER_MODEL",
         "CLAIMS_SILVER_PAIRING_EMBEDDING_MODEL",
         "CLAIMS_SILVER_ADJUDICATION_MODEL_A",
@@ -152,7 +160,6 @@ def test_mainnet_profile_has_production_policy_without_prescribed_models() -> No
         assert f"{key}=\n" in profile
     for obsolete_key in (
         "HERMES_MODEL",
-        "CLAIMS_RIGOR_MODEL",
         "CLAIMS_MINER_SAMPLE_SIZE",
         "CLAIMS_MINER_IMMUNITY_PERIOD_BLOCKS",
         "CLAIMS_MINER_IMMUNITY_PRIORITY_BLOCKS",

@@ -175,7 +175,8 @@ python -m neurons.validator \
 To disable the diagnostic LLM rigor agent while retaining deterministic
 structural and grounding checks, set `CLAIMS_AGENT_V1_SKIP_RIGOR=true` or add
 `--claims.agent-v1-skip-rigor`. This intentional skip does not cap diagnostic
-quality; the report records the rigor pass as `skipped`.
+quality; the report records the rigor pass as `skipped`. Keep rigor enabled for
+mainnet and use this option only for controlled testing or troubleshooting.
 
 Use `--claims.max-steps 1` for a single validation round.
 Use `--claims.audit-only` to score miners without submitting weights.
