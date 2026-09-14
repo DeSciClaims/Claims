@@ -585,6 +585,99 @@ def test_query_owner_finalizes_canonical_submissions_then_reuses_uploaded_artifa
     assert responses[0].articles[0]["artifact_origin_run_id"] == "run1"
 
 
+def test_query_miners_logs_failed_transport_with_uid_and_axon() -> None:
+    warnings: list[str] = []
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.target_neurons = [
+        SimpleNamespace(
+            uid=128,
+            hotkey="hotkey_128",
+            axon_info=SimpleNamespace(ip="172.86.92.86", port=18111, hotkey="hotkey_128"),
+        )
+    ]
+    validator._active_unavailable_target_uids = {}
+    validator.bt_logging = SimpleNamespace(
+        info=lambda *_args, **_kwargs: None,
+        warning=lambda message, *_args, **_kwargs: warnings.append(str(message)),
+    )
+    validator.config = SimpleNamespace(claims_timeout=30)
+    validator.dendrite = SimpleNamespace(
+        query=lambda **_kwargs: [
+            SimpleNamespace(
+                dendrite=SimpleNamespace(
+                    status_code=503,
+                    status_message="[Errno 104] Connection reset by peer",
+                    uuid="request-128",
+                )
+            )
+        ]
+    )
+    task = ClaimsTask.from_dict(
+        {"task_id": "task1", "batch_id": "batch1", "papers": [{"paper_id": "paper1"}]}
+    )
+
+    responses = validator._query_miners(task, run_id="run1")
+
+    assert len(responses) == 1
+    assert len(warnings) == 1
+    assert "uid=128" in warnings[0]
+    assert "hotkey=hotkey_128" in warnings[0]
+    assert "axon=172.86.92.86:18111" in warnings[0]
+    assert "dendrite_status=503" in warnings[0]
+    assert "Connection reset by peer" in warnings[0]
+    assert "request_id=request-128" in warnings[0]
+
+
+def test_canonical_submission_preserves_dendrite_transport_error() -> None:
+    class FakeBackend:
+        def __init__(self) -> None:
+            self.finalized: list[dict] = []
+
+        def list_miner_artifacts(self, *, batch_id: str):
+            assert batch_id == "batch1"
+            return []
+
+        def finalize_batch_miner_submission(self, **payload):
+            self.finalized.append(payload)
+
+    backend = FakeBackend()
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.backend_client = backend
+    validator.target_neurons = [
+        SimpleNamespace(
+            uid=128,
+            hotkey="hotkey_128",
+            axon_info=SimpleNamespace(ip="172.86.92.86", port=18111, hotkey="hotkey_128"),
+        )
+    ]
+    validator._active_miner_selection = {"assignments": [{"uid": 128, "hotkey": "hotkey_128"}]}
+    validator._active_unavailable_target_uids = {}
+    response = SimpleNamespace(
+        articles=[],
+        error=None,
+        dendrite=SimpleNamespace(
+            status_code=503,
+            status_message="[Errno 104] Connection reset by peer",
+            uuid="request-128",
+        ),
+    )
+    task = ClaimsTask.from_dict(
+        {"task_id": "task1", "batch_id": "batch1", "papers": [{"paper_id": "paper1"}]}
+    )
+
+    validator._finalize_canonical_submissions(
+        task=task,
+        run_id="run1",
+        responses=[response],
+        finalized_uids=set(),
+    )
+
+    assert backend.finalized[0]["status"] == "failed"
+    assert backend.finalized[0]["error"] == (
+        "dendrite_status=503 message=[Errno 104] Connection reset by peer request_id=request-128"
+    )
+
+
 def test_article_metadata_keeps_per_paper_runtime_metrics() -> None:
     artifact = _agent_v1_artifact()
     artifact["metadata"] = {

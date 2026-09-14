@@ -157,6 +157,34 @@ def _env_int_list(name: str) -> list[int]:
     return values
 
 
+def _miner_query_target_label(neuron: Any) -> str:
+    axon = getattr(neuron, "axon_info", None)
+    hotkey = str(getattr(neuron, "hotkey", "") or getattr(axon, "hotkey", "") or "unknown")
+    ip = str(getattr(axon, "ip", "") or "unknown")
+    port = getattr(axon, "port", None)
+    endpoint = f"{ip}:{port}" if port not in (None, "") else ip
+    return f"uid={int(neuron.uid)} hotkey={hotkey} axon={endpoint}"
+
+
+def _dendrite_transport_error(response: Any | None) -> str | None:
+    if response is None:
+        return "Dendrite returned no response"
+    dendrite = getattr(response, "dendrite", None)
+    if dendrite is None:
+        return None
+    status_code = getattr(dendrite, "status_code", None)
+    try:
+        successful = int(status_code) == 200
+    except (TypeError, ValueError):
+        successful = status_code in (None, "")
+    if successful:
+        return None
+    status_message = str(getattr(dendrite, "status_message", "") or "unknown transport error")
+    request_id = str(getattr(dendrite, "uuid", "") or "")
+    details = f"dendrite_status={status_code or 'unknown'} message={status_message}"
+    return f"{details} request_id={request_id}" if request_id else details
+
+
 def _balance_units(value: Any) -> float:
     if hasattr(value, "tao"):
         return float(value.tao)
@@ -1914,6 +1942,13 @@ class ClaimsValidator:
             f"Querying {len(axons)} miner axons for task={label}; "
             f"assigned={len(self.target_neurons)} unavailable={len(self._active_unavailable_target_uids)}"
         )
+        self.bt_logging.info(
+            f"Miner query targets task={label}: "
+            + ", ".join(
+                _miner_query_target_label(self.target_neurons[index])
+                for index in query_indices
+            )
+        )
         aligned: list[Any] = [None] * len(self.target_neurons)
         if not axons:
             return aligned
@@ -1924,8 +1959,14 @@ class ClaimsValidator:
         )
         queried = list(queried or [])
         for result_index, target_index in enumerate(query_indices):
-            if result_index < len(queried):
-                aligned[target_index] = queried[result_index]
+            response = queried[result_index] if result_index < len(queried) else None
+            aligned[target_index] = response
+            transport_error = _dendrite_transport_error(response)
+            if transport_error:
+                self.bt_logging.warning(
+                    f"Miner query failed {_miner_query_target_label(self.target_neurons[target_index])} "
+                    f"task={label}; {transport_error}"
+                )
         return aligned
 
     def _collect_or_reuse_miner_responses(self, task: ClaimsTask, *, run_id: str) -> list[Any]:
@@ -2041,6 +2082,7 @@ class ClaimsValidator:
                 if paper_id not in completed_ids
             ]
             response_error = str(getattr(response, "error", "") or "") if response is not None else ""
+            response_error = response_error or _dendrite_transport_error(response) or ""
             if uid in self._active_unavailable_target_uids:
                 status = "unavailable"
                 error = self._active_unavailable_target_uids[uid]
