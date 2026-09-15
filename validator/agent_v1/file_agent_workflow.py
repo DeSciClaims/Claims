@@ -540,65 +540,19 @@ class FileAgentWorkflowSession:
         batch_index: int,
     ) -> list[EligibilityAdjudicationDecision]:
         stage_suffix = "" if batch_index == 0 else f"_b{batch_index:03d}"
-        case_alias_by_id = {
-            context.case.case_id: f"k{index}"
-            for index, context in enumerate(contexts)
-        }
-        candidate_ids_by_case_alias: dict[str, dict[str, str]] = {}
-        cases: list[dict[str, Any]] = []
-        all_candidates: list[ComparisonCandidate] = []
-        for context in contexts:
-            case_ref = case_alias_by_id[context.case.case_id]
-            candidate_id_by_ref = {
-                f"{case_ref}_{chr(ord('a') + index)}": candidate.candidate_id
-                for index, candidate in enumerate(context.candidates)
-            }
-            candidate_ids_by_case_alias[case_ref] = candidate_id_by_ref
-            all_candidates.extend(context.candidates)
-            cases.append(
-                {
-                    "case_ref": case_ref,
-                    "relation": _case_relation(context),
-                    "candidates": [
-                        _eligibility_candidate_payload(candidate, candidate_ref)
-                        for candidate_ref, candidate_id in candidate_id_by_ref.items()
-                        for candidate in context.candidates
-                        if candidate.candidate_id == candidate_id
-                    ],
-                }
-            )
         source_map = (
             self.eligibility_source_context_by_span_id
             if self.eligibility_source_context_by_span_id is not None
             else self.source_context_by_span_id
         )
-        source_spans = _eligibility_source_spans(all_candidates, source_map)
-        common_task = {
-            "mode": "eligibility_selection",
-            "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
-            "paper": self.paper_context,
-            "cases": cases,
-            "source_spans": source_spans,
-            "hard_gates": list(ELIGIBILITY_GATES),
-            "requirements": {
-                "assess_every_candidate_independently": True,
-                "evaluate_exact_submitted_wording_without_repair": True,
-                "decompose_every_substantive_assertion_into_claim_atoms": True,
-                "cite_direct_source_support_for_every_passing_claim_atom": True,
-                "fail_candidate_when_any_claim_atom_lacks_direct_support": True,
-                "fail_closed_when_support_is_absent_ambiguous_or_only_implied": True,
-                "do_not_rescue_one_candidate_because_it_is_better_than_the_other": True,
-                "assess_each_hard_gate_exactly_once_per_candidate": True,
-                "select_exactly_one_candidate_or_neither": True,
-                "select_neither_only_when_every_candidate_fails": True,
-                "when_both_pass_select_the_more_eligible_representative": True,
-                "prefer_fidelity_direct_support_completeness_and_salience": True,
-                "do_not_prefer_reference_or_submission_origin": True,
-                "do_not_merge_rewrite_or_create_a_compromise_claim": True,
-                "passed_original_support_gate_must_cite_decisive_source_spans": True,
-                "citations_need_not_be_duplicated_across_other_gates": True,
-            },
-        }
+        common_task, case_alias_by_id, candidate_ids_by_case_alias = (
+            build_eligibility_adjudication_task(
+                contexts,
+                paper_context=self.paper_context,
+                source_context_by_span_id=source_map,
+            )
+        )
+        source_spans = dict(common_task["source_spans"])
         expected = {
             case_ref: set(candidate_ids)
             for case_ref, candidate_ids in candidate_ids_by_case_alias.items()
@@ -2483,6 +2437,72 @@ def _eligibility_candidate_payload(candidate: ComparisonCandidate, alias: str) -
         "statement": candidate.statement,
         "qualifier": candidate.qualifier,
     }
+
+
+def build_eligibility_adjudication_task(
+    contexts: list[AdjudicationContextBundle],
+    *,
+    paper_context: dict[str, Any],
+    source_context_by_span_id: dict[str, str],
+) -> tuple[dict[str, Any], dict[str, str], dict[str, dict[str, str]]]:
+    case_alias_by_id = {
+        context.case.case_id: f"k{index}"
+        for index, context in enumerate(contexts)
+    }
+    candidate_ids_by_case_alias: dict[str, dict[str, str]] = {}
+    cases: list[dict[str, Any]] = []
+    all_candidates: list[ComparisonCandidate] = []
+    for context in contexts:
+        case_ref = case_alias_by_id[context.case.case_id]
+        candidate_id_by_ref = {
+            f"{case_ref}_{chr(ord('a') + index)}": candidate.candidate_id
+            for index, candidate in enumerate(context.candidates)
+        }
+        candidate_ids_by_case_alias[case_ref] = candidate_id_by_ref
+        all_candidates.extend(context.candidates)
+        cases.append(
+            {
+                "case_ref": case_ref,
+                "relation": _case_relation(context),
+                "candidates": [
+                    _eligibility_candidate_payload(candidate, candidate_ref)
+                    for candidate_ref, candidate_id in candidate_id_by_ref.items()
+                    for candidate in context.candidates
+                    if candidate.candidate_id == candidate_id
+                ],
+            }
+        )
+    source_spans = _eligibility_source_spans(
+        all_candidates,
+        source_context_by_span_id,
+    )
+    task = {
+        "mode": "eligibility_selection",
+        "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
+        "paper": paper_context,
+        "cases": cases,
+        "source_spans": source_spans,
+        "hard_gates": list(ELIGIBILITY_GATES),
+        "requirements": {
+            "assess_every_candidate_independently": True,
+            "evaluate_exact_submitted_wording_without_repair": True,
+            "decompose_every_substantive_assertion_into_claim_atoms": True,
+            "cite_direct_source_support_for_every_passing_claim_atom": True,
+            "fail_candidate_when_any_claim_atom_lacks_direct_support": True,
+            "fail_closed_when_support_is_absent_ambiguous_or_only_implied": True,
+            "do_not_rescue_one_candidate_because_it_is_better_than_the_other": True,
+            "assess_each_hard_gate_exactly_once_per_candidate": True,
+            "select_exactly_one_candidate_or_neither": True,
+            "select_neither_only_when_every_candidate_fails": True,
+            "when_both_pass_select_the_more_eligible_representative": True,
+            "prefer_fidelity_direct_support_completeness_and_salience": True,
+            "do_not_prefer_reference_or_submission_origin": True,
+            "do_not_merge_rewrite_or_create_a_compromise_claim": True,
+            "passed_original_support_gate_must_cite_decisive_source_spans": True,
+            "citations_need_not_be_duplicated_across_other_gates": True,
+        },
+    }
+    return task, case_alias_by_id, candidate_ids_by_case_alias
 
 
 def _case_relation(context: AdjudicationContextBundle) -> str:
