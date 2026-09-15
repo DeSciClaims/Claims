@@ -17,7 +17,7 @@ class AgentV1Config(BaseModel):
     runtime: str = "dspy-react"
     skill_dir: Path
     timeout_seconds: int = 1800
-    max_source_chars: int = 60000
+    max_extraction_source_chars: int = 60000
     pdf_reader: str = "pdf-inspector"
     grobid_url: str = "http://localhost:8070/"
     grobid_timeout_s: int = 120
@@ -55,7 +55,12 @@ class AgentV1Config(BaseModel):
             runtime=os.getenv("SUBNET_CLAIMS_AGENT_RUNTIME", "dspy-react"),
             skill_dir=Path(os.getenv("SUBNET_CLAIMS_AGENT_SKILL_DIR", str(package_dir / "skills" / "compiler"))),
             timeout_seconds=int(os.getenv("SUBNET_CLAIMS_AGENT_TIMEOUT", "1800")),
-            max_source_chars=int(os.getenv("SUBNET_CLAIMS_AGENT_MAX_SOURCE_CHARS", "60000")),
+            max_extraction_source_chars=int(
+                os.getenv(
+                    "SUBNET_CLAIMS_AGENT_MAX_EXTRACTION_SOURCE_CHARS",
+                    os.getenv("SUBNET_CLAIMS_AGENT_MAX_SOURCE_CHARS", "60000"),
+                )
+            ),
             pdf_reader=_pdf_reader_from_env(),
             grobid_url=os.getenv("GROBID_URL", "http://localhost:8070/"),
             grobid_timeout_s=int(os.getenv("SUBNET_CLAIMS_GROBID_TIMEOUT_S", "120")),

@@ -91,7 +91,7 @@ Useful flags:
 
 - `--claims.agent-skill-dir`: override the mounted SkillPack.
 - `--claims.agent-timeout`: runtime timeout in seconds.
-- `--claims.agent-max-source-chars`: source text budget.
+- `--claims.agent-max-extraction-source-chars`: source text budget for native DSPy/LangChain extraction prompts. File-agent harnesses such as Hermes receive the complete `source_payload.json` path and can inspect it incrementally. The former `--claims.agent-max-source-chars` name remains as a compatibility alias.
 - `--claims.agent-max-iters`: native agent loop iteration budget.
 - `--claims.pdf-extraction-method`: choose `pdf-inspector`, `pypdf`, or `grobid`.
 

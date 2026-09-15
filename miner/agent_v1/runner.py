@@ -34,7 +34,7 @@ class AgentV1Runner:
     ) -> Artifact:
         document = ingest_pdf(
             pdf_path,
-            max_chars=self.config.max_source_chars,
+            max_chars=None,
             reader=self.config.pdf_reader,
             grobid_url=self.config.grobid_url,
             grobid_cache_dir=self.config.cache_dir / "grobid",
@@ -47,11 +47,11 @@ class AgentV1Runner:
         return self.run_from_document(document, output_dir=output_dir, source_artifact_path=pdf_path)
 
     def run_from_artifact_json(self, artifact_json_path: Path, *, output_dir: Path | None = None) -> Artifact:
-        document = ingest_artifact_json(artifact_json_path, max_chars=self.config.max_source_chars)
+        document = ingest_artifact_json(artifact_json_path, max_chars=None)
         return self.run_from_document(document, output_dir=output_dir, source_artifact_path=artifact_json_path)
 
     def run_from_text(self, text_path: Path, *, output_dir: Path | None = None) -> Artifact:
-        document = ingest_text(text_path, max_chars=self.config.max_source_chars)
+        document = ingest_text(text_path, max_chars=None)
         return self.run_from_document(document, output_dir=output_dir, source_artifact_path=text_path)
 
     def run_from_document(
@@ -63,12 +63,22 @@ class AgentV1Runner:
     ) -> Artifact:
         run_dir = (output_dir or (self.config.output_dir / document.paper.paper_id)).absolute()
         run_dir.mkdir(parents=True, exist_ok=True)
-        source_payload = document_source_payload(document, max_chars=self.config.max_source_chars)
+        source_payload = document_source_payload(document, max_chars=None)
+        extraction_source_payload = document_source_payload(
+            document,
+            max_chars=self.config.max_extraction_source_chars,
+        )
         skill_pack = load_skill_pack(self.config.skill_dir)
         runtime = build_agent_runtime(self.config)
 
-        self._write_run_inputs(run_dir, document, source_payload, skill_pack.manifest())
-        artifact, runtime_metrics = self._compile_with_repair(runtime, skill_pack, run_dir, document, source_payload)
+        self._write_run_inputs(
+            run_dir,
+            document,
+            source_payload,
+            extraction_source_payload,
+            skill_pack.manifest(),
+        )
+        artifact, runtime_metrics = self._compile_with_repair(runtime, skill_pack, run_dir, document)
         artifact.metadata.update(
             {
                 "pipeline_name": "agent_v1",
@@ -100,7 +110,6 @@ class AgentV1Runner:
         skill_pack,
         run_dir: Path,
         document: InputDocument,
-        source_payload: dict[str, Any],
     ) -> tuple[Artifact, dict[str, Any]]:
         feedback: dict[str, Any] = {}
         last_raw: dict[str, Any] = {}
@@ -112,7 +121,7 @@ class AgentV1Runner:
             )
             request = AgentRequest(
                 paper=document.paper.model_dump(mode="json"),
-                source_payload_path="source_payload.json",
+                source_payload_path=_runtime_source_payload_path(self.config.runtime),
                 output_schema_path=AGENT_JSON_SCHEMA_FILENAME,
                 validation_feedback_path="validation_feedback.json",
             )
@@ -147,9 +156,14 @@ class AgentV1Runner:
         run_dir: Path,
         document: InputDocument,
         source_payload: dict[str, Any],
+        extraction_source_payload: dict[str, Any],
         skill_manifest: dict[str, Any],
     ) -> None:
         (run_dir / "source_payload.json").write_text(json.dumps(source_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        (run_dir / "extraction_source_payload.json").write_text(
+            json.dumps(extraction_source_payload, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
         write_agent_json_schema(run_dir / AGENT_JSON_SCHEMA_FILENAME)
         (run_dir / "paper.json").write_text(
             json.dumps(document.paper.model_dump(mode="json"), indent=2, ensure_ascii=False),
@@ -190,6 +204,12 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     except Exception:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _runtime_source_payload_path(runtime: str) -> str:
+    if str(runtime or "").strip().lower() in {"dspy-react", "langchain-agent"}:
+        return "extraction_source_payload.json"
+    return "source_payload.json"
 
 
 def _runtime_metrics(manifests: list[dict[str, Any]]) -> dict[str, Any]:

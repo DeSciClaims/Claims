@@ -16,7 +16,7 @@ from typing import Any, Tuple
 from dotenv import load_dotenv
 
 from miner.agent_v1.config import AgentV1Config
-from miner.agent_v1.ingest import PDF_READERS, SOURCE_PAYLOAD_SCHEMA_VERSION
+from miner.agent_v1.ingest import PDF_READERS, SOURCE_PAYLOAD_POLICY_VERSION, SOURCE_PAYLOAD_SCHEMA_VERSION
 from miner.agent_v1.runner import AgentV1Runner
 from miner.v0.config import SectionContextV1Config
 from miner.v0.runner import SectionContextV1Runner
@@ -145,11 +145,12 @@ class ClaimsMiner:
             help="agent_v1 runtime timeout in seconds.",
         )
         parser.add_argument(
+            "--claims.agent-max-extraction-source-chars",
             "--claims.agent-max-source-chars",
-            dest="claims_agent_max_source_chars",
+            dest="claims_agent_max_extraction_source_chars",
             type=int,
             default=None,
-            help="Maximum source characters passed into agent_v1.",
+            help="Maximum source characters passed into the extraction model; the persisted source payload remains complete.",
         )
         parser.add_argument(
             "--claims.agent-max-iters",
@@ -233,7 +234,7 @@ class ClaimsMiner:
         config.claims_agent_skill_dir = parsed_args.claims_agent_skill_dir
         config.claims_agent_cli_command = parsed_args.claims_agent_cli_command
         config.claims_agent_timeout = parsed_args.claims_agent_timeout
-        config.claims_agent_max_source_chars = parsed_args.claims_agent_max_source_chars
+        config.claims_agent_max_extraction_source_chars = parsed_args.claims_agent_max_extraction_source_chars
         config.claims_agent_max_iters = parsed_args.claims_agent_max_iters
         config.claims_max_requests_per_hotkey_minute = parsed_args.claims_max_requests_per_hotkey_minute
         config.claims_batch_max_workers = max(1, int(parsed_args.claims_batch_max_workers or 1))
@@ -322,8 +323,8 @@ class ClaimsMiner:
                 agent_config.skill_dir = Path(self.config.claims_agent_skill_dir)
             if self.config.claims_agent_timeout:
                 agent_config.timeout_seconds = int(self.config.claims_agent_timeout)
-            if self.config.claims_agent_max_source_chars:
-                agent_config.max_source_chars = int(self.config.claims_agent_max_source_chars)
+            if self.config.claims_agent_max_extraction_source_chars:
+                agent_config.max_extraction_source_chars = int(self.config.claims_agent_max_extraction_source_chars)
             if self.config.claims_agent_max_iters:
                 agent_config.max_agent_iters = int(self.config.claims_agent_max_iters)
             if self.config.claims_agent_cli_command:
@@ -748,9 +749,10 @@ class ClaimsMiner:
                 f"{runner_config.model}:"
                 f"{runner_config.pdf_reader}:"
                 f"{SOURCE_PAYLOAD_SCHEMA_VERSION}:"
+                f"{SOURCE_PAYLOAD_POLICY_VERSION}:"
                 f"{runner_config.skill_dir}:"
                 f"{runner_config.timeout_seconds}:"
-                f"{runner_config.max_source_chars}:"
+                f"{runner_config.max_extraction_source_chars}:"
                 f"{runner_config.max_agent_iters}:"
                 f"{' '.join(runner_config.cli_command)}"
             )

@@ -20,7 +20,7 @@ from miner.agent_v1.ingest import (
     document_source_payload,
     ingest_pdf,
 )
-from miner.agent_v1.runner import AgentV1Runner
+from miner.agent_v1.runner import AgentV1Runner, _runtime_source_payload_path
 from miner.agent_v1.runtime.base import AgentRequest, AgentResult
 from miner.agent_v1.runtime.langchain_agent import _structured_payload, _validation_status
 from miner.agent_v1.runtime.subprocess_cli import SubprocessAgentRuntime
@@ -345,17 +345,25 @@ def test_agent_v1_toolbox_validates_and_submits_artifact(tmp_path: Path) -> None
 
 def test_agent_v1_runner_uses_runtime_contract(monkeypatch, tmp_path: Path) -> None:
     text_path = tmp_path / "paper.txt"
-    text_path.write_text("Treatment improved outcome in the study sample.", encoding="utf-8")
+    early_source = "Treatment improved outcome in the study sample. " + ("A" * 59_952)
+    late_source = "Late-paper evidence must remain available to validator span resolution."
+    text_path.write_text(f"{early_source}\n\n{late_source}", encoding="utf-8")
     output_dir = tmp_path / "run"
     config = AgentV1Config.from_env(Path.cwd())
     config.output_dir = tmp_path / "outputs"
-    config.runtime = "fake"
+    config.runtime = "dspy-react"
     config.skill_dir = Path("miner/agent_v1/skills/compiler")
+    assert len(early_source) == 60_000
+    config.max_extraction_source_chars = 60_000
 
     class FakeRuntime:
         runtime_name = "fake"
 
         def run_skill(self, *, skill_pack, run_dir, request):
+            assert request.source_payload_path == "extraction_source_payload.json"
+            extraction_payload = json.loads((run_dir / request.source_payload_path).read_text(encoding="utf-8"))
+            extraction_text = "".join(span["text"] for span in extraction_payload["spans"])
+            assert extraction_text == early_source
             payload = _valid_ara_payload()
             (run_dir / request.expected_output_path).write_text(json.dumps(payload), encoding="utf-8")
             return AgentResult(
@@ -384,6 +392,7 @@ def test_agent_v1_runner_uses_runtime_contract(monkeypatch, tmp_path: Path) -> N
     assert artifact.metadata["output_schema"] == "agent_v1"
     assert (output_dir / "request.json").exists()
     assert (output_dir / "source_payload.json").exists()
+    assert (output_dir / "extraction_source_payload.json").exists()
     assert (output_dir / "agent_schema.json").exists()
     assert (output_dir / "output_contract.json").exists()
     assert (output_dir / "skill_manifest.json").exists()
@@ -394,6 +403,19 @@ def test_agent_v1_runner_uses_runtime_contract(monkeypatch, tmp_path: Path) -> N
     assert artifact.metadata["runtime_metrics"]["elapsed_seconds"] == 1.25
     assert artifact.metadata["runtime_metrics"]["token_usage"]["total_tokens"] == 15
     assert artifact.metadata["runtime_metrics"]["cost_usd"] == 0.001
+    full_payload = json.loads((output_dir / "source_payload.json").read_text(encoding="utf-8"))
+    archived_payload = json.loads(
+        (output_dir / "data" / "agent_v1_source_payload.json").read_text(encoding="utf-8")
+    )
+    assert late_source in "".join(span["text"] for span in full_payload["spans"])
+    assert archived_payload == full_payload
+
+
+def test_file_agent_runtime_receives_complete_source_payload() -> None:
+    assert _runtime_source_payload_path("dspy-react") == "extraction_source_payload.json"
+    assert _runtime_source_payload_path("langchain-agent") == "extraction_source_payload.json"
+    assert _runtime_source_payload_path("agent-cli") == "source_payload.json"
+    assert _runtime_source_payload_path("hermes-cli") == "source_payload.json"
 
 
 def test_agent_cli_runtime_recovers_valid_output_on_timeout(monkeypatch, tmp_path: Path) -> None:

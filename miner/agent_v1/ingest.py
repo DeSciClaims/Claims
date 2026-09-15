@@ -33,12 +33,13 @@ class InputDocument(BaseModel):
 
 PDF_READERS = ("pdf-inspector", "pypdf", "grobid")
 SOURCE_PAYLOAD_SCHEMA_VERSION = "agent_v1_source_payload_v1"
+SOURCE_PAYLOAD_POLICY_VERSION = "full-source-v1"
 
 
 def ingest_pdf(
     pdf_path: Path,
     *,
-    max_chars: int,
+    max_chars: int | None,
     reader: str = "pdf-inspector",
     grobid_url: str = "http://localhost:8070/",
     grobid_cache_dir: Path | None = None,
@@ -70,7 +71,7 @@ def ingest_pdf(
     )
 
 
-def ingest_artifact_json(path: Path, *, max_chars: int) -> InputDocument:
+def ingest_artifact_json(path: Path, *, max_chars: int | None) -> InputDocument:
     payload = json.loads(path.read_text(encoding="utf-8"))
     paper_raw = payload.get("paper", {}) if isinstance(payload, dict) else {}
     paper_id = str(paper_raw.get("paper_id") or path.stem)
@@ -107,7 +108,7 @@ def ingest_artifact_json(path: Path, *, max_chars: int) -> InputDocument:
     )
 
 
-def ingest_text(text_path: Path, *, max_chars: int) -> InputDocument:
+def ingest_text(text_path: Path, *, max_chars: int | None) -> InputDocument:
     paper_id = text_path.stem
     text = text_path.read_text(encoding="utf-8")
     chunks = _chunk_text(text, max_chars=3500)
@@ -129,7 +130,7 @@ def ingest_text(text_path: Path, *, max_chars: int) -> InputDocument:
     )
 
 
-def document_source_payload(document: InputDocument, *, max_chars: int) -> dict[str, Any]:
+def document_source_payload(document: InputDocument, *, max_chars: int | None) -> dict[str, Any]:
     spans = _truncate_spans(document.spans, max_chars=max_chars)
     return {
         "schema_version": SOURCE_PAYLOAD_SCHEMA_VERSION,
@@ -193,7 +194,7 @@ def _normalize_pdf_reader(reader: str) -> str:
     raise ValueError(f"Unsupported agent_v1 PDF reader: {reader}. Expected one of: {', '.join(PDF_READERS)}")
 
 
-def _document_from_pdf_inspector(pdf_path: Path, *, paper_id: str, max_chars: int) -> InputDocument:
+def _document_from_pdf_inspector(pdf_path: Path, *, paper_id: str, max_chars: int | None) -> InputDocument:
     try:
         import pdf_inspector  # type: ignore
     except Exception as exc:  # pragma: no cover - depends on local install
@@ -237,7 +238,7 @@ def _document_from_pdf_inspector(pdf_path: Path, *, paper_id: str, max_chars: in
 def _document_from_grobid(
     pdf_path: Path,
     *,
-    max_chars: int,
+    max_chars: int | None,
     grobid_url: str,
     grobid_cache_dir: Path | None,
     grobid_timeout_s: int,
@@ -291,7 +292,7 @@ def _document_from_grobid(
     )
 
 
-def _spans_from_pypdf(pdf_path: Path, *, paper_id: str, max_chars: int) -> list[InputSpan]:
+def _spans_from_pypdf(pdf_path: Path, *, paper_id: str, max_chars: int | None) -> list[InputSpan]:
     try:
         from pypdf import PdfReader  # type: ignore
     except Exception as exc:  # pragma: no cover
@@ -319,7 +320,9 @@ def _spans_from_pypdf(pdf_path: Path, *, paper_id: str, max_chars: int) -> list[
     return _truncate_spans(spans, max_chars=max_chars)
 
 
-def _truncate_spans(spans: list[InputSpan], *, max_chars: int) -> list[InputSpan]:
+def _truncate_spans(spans: list[InputSpan], *, max_chars: int | None) -> list[InputSpan]:
+    if max_chars is None:
+        return list(spans)
     kept: list[InputSpan] = []
     total = 0
     for span in spans:
