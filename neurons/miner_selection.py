@@ -35,6 +35,19 @@ class MinerSelection:
     last_evaluated_block: int | None
     ipv4_proximity_addresses: int
     ipv6_prefix_bits: int
+    funding_cluster_id: str | None
+    funding_status: str | None
+    funding_resolution_status: str | None
+    funding_policy_mode: str
+    funding_policy_enforced: bool
+    funding_policy_version: str | None
+    funding_newcomer_eligible: bool
+    funding_ineligibility_reason: str | None
+    lineage_registration_rank: int
+    lineage_registration_count: int
+    lineage_window_start_block: int
+    lineage_window_blocks: int
+    funding_evidence_block: int | None
 
     def assignment(self) -> dict[str, Any]:
         return {
@@ -55,6 +68,19 @@ class MinerSelection:
             "last_selected_batch": self.last_selected_batch,
             "last_selected_block": self.last_selected_block,
             "last_evaluated_block": self.last_evaluated_block,
+            "funding_cluster_id": self.funding_cluster_id,
+            "funding_status": self.funding_status,
+            "funding_resolution_status": self.funding_resolution_status,
+            "funding_policy_mode": self.funding_policy_mode,
+            "funding_policy_enforced": self.funding_policy_enforced,
+            "funding_policy_version": self.funding_policy_version,
+            "funding_newcomer_eligible": self.funding_newcomer_eligible,
+            "funding_ineligibility_reason": self.funding_ineligibility_reason,
+            "lineage_registration_rank": self.lineage_registration_rank,
+            "lineage_registration_count": self.lineage_registration_count,
+            "lineage_window_start_block": self.lineage_window_start_block,
+            "lineage_window_blocks": self.lineage_window_blocks,
+            "funding_evidence_block": self.funding_evidence_block,
             # Keep the original snapshot keys readable by older backend deployments.
             "historical_batch_count": self.evaluation_count,
             "historical_average_score": round(self.performance_score, 6) if self.recent_scores else None,
@@ -279,6 +305,19 @@ def _candidate(
         last_evaluated_block=_optional_int(history.get("last_evaluated_block")),
         ipv4_proximity_addresses=ipv4_proximity_addresses,
         ipv6_prefix_bits=ipv6_prefix_bits,
+        funding_cluster_id=_normalized_identity(history.get("funding_cluster_id")),
+        funding_status=_normalized_identity(history.get("funding_status")),
+        funding_resolution_status=_normalized_identity(history.get("funding_resolution_status")),
+        funding_policy_mode=str(history.get("funding_policy_mode") or "off").strip().lower(),
+        funding_policy_enforced=bool(history.get("funding_policy_enforced", False)),
+        funding_policy_version=_normalized_identity(history.get("funding_policy_version")),
+        funding_newcomer_eligible=bool(history.get("funding_newcomer_eligible", True)),
+        funding_ineligibility_reason=_normalized_identity(history.get("funding_ineligibility_reason")),
+        lineage_registration_rank=max(0, _uid(history.get("lineage_registration_rank"))),
+        lineage_registration_count=max(0, _uid(history.get("lineage_registration_count"))),
+        lineage_window_start_block=max(0, _uid(history.get("lineage_window_start_block"))),
+        lineage_window_blocks=max(0, _uid(history.get("lineage_window_blocks"))),
+        funding_evidence_block=_optional_int(history.get("funding_evidence_block")),
     )
 
 
@@ -316,16 +355,23 @@ def _select_bucket_miners(
     representatives: dict[str, MinerSelection] = {}
     for item in sorted(available, key=lambda candidate: (candidate.registration_block, candidate.uid, candidate.hotkey)):
         coldkey = _normalized_identity(item.coldkey)
+        funding_identity = (
+            _normalized_identity(item.funding_cluster_id)
+            if item.funding_policy_enforced
+            else coldkey
+        )
         if (
             not coldkey
             or coldkey in evaluated_coldkeys
             or item.evaluation_count > 0
             or item.coldkey_evaluation_count > 0
             or item.coldkey_qualification_count > 0
-            or coldkey in representatives
+            or (item.funding_policy_enforced and not item.funding_newcomer_eligible)
+            or not funding_identity
+            or funding_identity in representatives
         ):
             continue
-        representatives[coldkey] = item
+        representatives[funding_identity] = item
 
     newcomers = sorted(
         representatives.values(),
@@ -352,10 +398,22 @@ def _select_bucket_miners(
 
     rotation_target = len(selected) + 4
     rotation = sorted(
-        (item for item in available if item.evaluation_count >= 1),
-        key=lambda item: (_oldest_first(item.last_evaluated_block), item.uid),
+        (
+            item
+            for item in available
+            if item.evaluation_count >= 1
+        ),
+        key=lambda item: (
+            _oldest_first(item.last_evaluated_block),
+            _oldest_first(item.last_selected_block),
+            item.registration_block,
+            item.uid,
+        ),
     )
-    _take_until(selected, available, rotation, target_total=rotation_target, lane="rotation")
+    for item in rotation:
+        if len(selected) >= rotation_target:
+            break
+        _take(selected, available, [item], lane="rotation")
 
     desired_total = max(10, 8 + selected_newcomer_count)
     established_fill = sorted(
@@ -600,6 +658,22 @@ def _record_selection_diagnostics(
                     "coldkey": item.coldkey,
                     "axon_ip": item.axon_ip,
                     **conflict,
+                }
+            )
+            continue
+        if item.funding_policy_enforced and not item.funding_newcomer_eligible:
+            diagnostics.append(
+                {
+                    "uid": item.uid,
+                    "hotkey": item.hotkey,
+                    "coldkey": item.coldkey,
+                    "axon_ip": item.axon_ip,
+                    "reason": item.funding_ineligibility_reason or "funding_lineage_ineligible",
+                    "funding_cluster_id": item.funding_cluster_id,
+                    "lineage_registration_rank": item.lineage_registration_rank,
+                    "lineage_registration_count": item.lineage_registration_count,
+                    "lineage_window_start_block": item.lineage_window_start_block,
+                    "lineage_window_blocks": item.lineage_window_blocks,
                 }
             )
 

@@ -1293,12 +1293,18 @@ class ClaimsValidator:
             assignments = [item.assignment() for item in selected]
             if mode == "bucket":
                 newcomer_count = sum(item.lane == "qualification" for item in selected)
+                funding_history = next(
+                    (row for row in history if row.get("funding_policy_version")),
+                    {},
+                )
                 selection_policy = {
                     **selection_policy,
                     "newcomer_count": newcomer_count,
                     "max_newcomers_per_batch": int(
                         getattr(self.config, "claims_bucket_max_newcomers_per_batch", 5) or 5
                     ),
+                    "funding_policy_mode": funding_history.get("funding_policy_mode", "off"),
+                    "funding_policy_version": funding_history.get("funding_policy_version"),
                 }
             if mode == "adaptive" and self.backend_client is not None and batch_id:
                 try:
@@ -1390,34 +1396,47 @@ class ClaimsValidator:
                 selection_policy=dict(task.miner_selection_policy or {}),
             )
 
-        proposed = self._load_target_neurons(
-            selection_seed=task.selection_seed or fallback_seed,
-            batch_id=task.batch_id,
-            recent_registration_block=recent_registration_block,
-        )
-        proposal = dict(self._active_miner_selection)
-        assignments = [dict(item) for item in list(proposal.get("assignments") or [])]
-        if not proposed or not assignments:
-            raise RuntimeError("No eligible miners were available for the canonical batch assignment.")
-        selection_algorithm = str(proposal.get("algorithm") or "unknown")
-        registration_price_tao = None
-        miner_reward_snapshot = None
-        if selection_algorithm == BUCKET_ALGORITHM_VERSION:
-            registration_price_tao = self._miner_registration_price_tao()
-            miner_reward_snapshot = self._miner_reward_snapshot()
-        try:
-            claimed = self.backend_client.claim_batch_miner_selection(
+        claimed: dict[str, Any] | None = None
+        assignments: list[dict[str, Any]] = []
+        selection_algorithm = "unknown"
+        for claim_attempt in range(2):
+            proposed = self._load_target_neurons(
+                selection_seed=task.selection_seed or fallback_seed,
                 batch_id=task.batch_id,
-                netuid=int(self.config.netuid),
-                selected_block=int(proposal.get("metagraph_block") or self._current_chain_block()),
-                selection_algorithm=selection_algorithm,
-                target_miners=assignments,
-                selection_policy=dict(proposal.get("selection_policy") or {}),
-                registration_price_tao=registration_price_tao,
-                miner_reward_snapshot=miner_reward_snapshot,
+                recent_registration_block=recent_registration_block,
             )
-        except (BackendClientError, ValueError) as exc:
-            raise RuntimeError(f"Could not claim canonical miner assignment for {task.batch_id}: {exc}") from exc
+            proposal = dict(self._active_miner_selection)
+            assignments = [dict(item) for item in list(proposal.get("assignments") or [])]
+            if not proposed or not assignments:
+                raise RuntimeError("No eligible miners were available for the canonical batch assignment.")
+            selection_algorithm = str(proposal.get("algorithm") or "unknown")
+            registration_price_tao = None
+            miner_reward_snapshot = None
+            if selection_algorithm == BUCKET_ALGORITHM_VERSION:
+                registration_price_tao = self._miner_registration_price_tao()
+                miner_reward_snapshot = self._miner_reward_snapshot()
+            try:
+                claimed = self.backend_client.claim_batch_miner_selection(
+                    batch_id=task.batch_id,
+                    netuid=int(self.config.netuid),
+                    selected_block=int(proposal.get("metagraph_block") or self._current_chain_block()),
+                    selection_algorithm=selection_algorithm,
+                    target_miners=assignments,
+                    selection_policy=dict(proposal.get("selection_policy") or {}),
+                    registration_price_tao=registration_price_tao,
+                    miner_reward_snapshot=miner_reward_snapshot,
+                )
+                break
+            except (BackendClientError, ValueError) as exc:
+                stale_funding_decision = "funding lineage" in str(exc).lower() or "funding source" in str(exc).lower()
+                if claim_attempt == 0 and selection_algorithm == BUCKET_ALGORITHM_VERSION and stale_funding_decision:
+                    self.bt_logging.warning(
+                        "Funding-lineage eligibility changed before the canonical claim; refreshing history and redrawing once."
+                    )
+                    continue
+                raise RuntimeError(f"Could not claim canonical miner assignment for {task.batch_id}: {exc}") from exc
+        if claimed is None:
+            raise RuntimeError(f"Could not claim canonical miner assignment for {task.batch_id}.")
         canonical = [dict(item) for item in list(claimed.get("target_miners") or []) if isinstance(item, dict)]
         if not canonical:
             raise RuntimeError(f"Backend returned no canonical miner assignment for {task.batch_id}.")

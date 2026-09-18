@@ -93,6 +93,110 @@ def test_bucket_policy_selects_fifo_newcomers_and_eight_established_miners() -> 
     assert 21 not in {item.uid for item in selected}
 
 
+def test_bucket_enforcement_groups_newcomers_by_funding_lineage() -> None:
+    candidates = [_miner(uid, registration_block=uid * 10) for uid in range(1, 20)]
+    history = []
+    for uid in range(1, 7):
+        row = _state(uid, count=0, registration_block=uid * 10)
+        row.update(
+            {
+                "funding_cluster_id": "shared" if uid in {1, 2} else f"cluster_{uid}",
+                "funding_status": "linked_lineage",
+                "funding_resolution_status": "resolved",
+                "funding_policy_mode": "enforce",
+                "funding_policy_enforced": True,
+                "funding_policy_version": "funding_lineage_v3",
+                "funding_newcomer_eligible": True,
+            }
+        )
+        history.append(row)
+    history.extend(
+        _state(uid, count=1, scores=[0.5], last_evaluated_block=uid * 10)
+        for uid in range(7, 20)
+    )
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="funding-lineage",
+        mode="bucket",
+        current_block=2_000,
+    )
+
+    qualification = [item.uid for item in selected if item.lane == "qualification"]
+    assert 1 in qualification
+    assert 2 not in qualification
+    assert qualification == [1, 3, 4, 5, 6]
+
+
+def test_bucket_shadow_mode_does_not_change_newcomer_selection() -> None:
+    candidates = [_miner(uid, registration_block=uid * 10) for uid in range(1, 15)]
+    history = []
+    for uid in (1, 2):
+        row = _state(uid, count=0, registration_block=uid * 10)
+        row.update(
+            {
+                "funding_cluster_id": "shared",
+                "funding_policy_mode": "shadow",
+                "funding_policy_enforced": False,
+                "funding_newcomer_eligible": False,
+                "funding_ineligibility_reason": "funding_lineage_identity_cap_reached",
+            }
+        )
+        history.append(row)
+    history.extend(
+        _state(uid, count=1, scores=[0.5], last_evaluated_block=uid * 10)
+        for uid in range(3, 15)
+    )
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="funding-shadow",
+        mode="bucket",
+        current_block=2_000,
+    )
+
+    assert [item.uid for item in selected if item.lane == "qualification"] == [1, 2]
+
+
+def test_lineage_ineligible_unevaluated_miner_is_not_selected() -> None:
+    candidates = [_miner(uid, registration_block=uid * 10) for uid in range(1, 14)]
+    ineligible = _state(1, count=0, registration_block=10)
+    ineligible.update(
+        {
+            "funding_cluster_id": "capped_cluster",
+            "funding_status": "linked_lineage",
+            "funding_resolution_status": "resolved",
+            "funding_policy_mode": "enforce",
+            "funding_policy_enforced": True,
+            "funding_newcomer_eligible": False,
+            "funding_ineligibility_reason": "funding_lineage_identity_cap_reached",
+            "lineage_registration_rank": 4,
+            "lineage_registration_count": 4,
+        }
+    )
+    history = [
+        ineligible,
+        *[
+            _state(uid, count=1, scores=[0.5], last_evaluated_block=uid * 10)
+            for uid in range(2, 14)
+        ],
+    ]
+
+    selected = select_miners(
+        candidates,
+        history_rows=history,
+        sample_size=15,
+        seed="funding-rotation",
+        mode="bucket",
+        current_block=2_000,
+    )
+    assert 1 not in {item.uid for item in selected}
+
+
 def test_bucket_policy_rejects_newcomer_when_its_coldkey_has_evaluation_history() -> None:
     candidates = [
         _miner(1, coldkey="shared_coldkey"),
