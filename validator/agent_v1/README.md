@@ -138,6 +138,13 @@ batch-scoped artifacts instead of repeating miner inference.
   ten, so a batch contains 10-13 miners when 0-5 newcomers are selected. The
   assignment and policy snapshot are canonical: every validator scoring the
   same batch receives the same miners and payout parameters.
+  The mainnet backend can additionally enforce funding-lineage newcomer
+eligibility. Only the configured number of earliest registered coldkeys in
+  a resolved lineage's rolling registration window are newcomer-eligible;
+  later identities are delayed until capacity opens and unresolved identities
+  are excluded from newcomer qualification. Existing evaluated miners remain eligible for ordinary
+  performance and rotation. The backend computes this state asynchronously,
+  so validator startup never waits on Taostats.
 - `--claims.miner-selection-mode adaptive --claims.miner-sample-size N`
   keeps the earlier V0 selector available. The configured total is apportioned 40% to
   qualification, 40% to performance, and 20% to rotation. For example, `10`

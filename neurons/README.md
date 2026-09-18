@@ -124,6 +124,16 @@ four weighted performance seats and four oldest-evaluation rotation seats. All
 selected miners share the same scientific scoring;
 the final payout adds the registration-price-derived newcomer bonus to the
 ordinary 70/16/8/4/2 overall rank weight.
+On mainnet, the backend may also return a persisted funding-lineage decision.
+In `shadow` mode it is audit metadata only. In `enforce` mode, FIFO admits at
+most one representative per resolved funding lineage and excludes coldkeys
+ranked after the configured identity cap within the rolling registration
+window. The rank is recomputed each batch, so delayed identities can become
+eligible as older registrations age out. An unevaluated identity that
+is ineligible for newcomer treatment is not given a separate first-evaluation
+route. Miners with existing evaluation history remain eligible for ordinary
+performance and rotation. Taostats resolution runs asynchronously in the
+backend and is never part of validator batch startup.
 Before payout, the validator independently fingerprints the `logic`,
 `evidence`, and `trace` content of every submitted artifact. Duplicate groups
 meeting the configured batch threshold retain their raw scores for audit but

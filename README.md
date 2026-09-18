@@ -589,6 +589,14 @@ Primary arguments:
   defaults to `5`. The established seats are four
   weighted performance draws and four oldest-evaluation rotation seats;
   established miners fill any shortage below ten.
+  On mainnet, the backend can layer funding-lineage eligibility onto newcomer
+  FIFO. Only the backend-configured number of earliest registered coldkeys in
+  one resolved funding component during the rolling registration window are
+  newcomer-eligible. A later linked identity is delayed until older
+  registrations age out; unresolved identities remain excluded. Miners that already have evaluation history
+  remain eligible for the ordinary performance and rotation lanes.
+  Funding resolution is asynchronous and does not add a Taostats call to
+  validator startup.
   For bucket payouts, the validator sends a signed live subnet reward snapshot
   with the canonical assignment. The backend derives the miner reward per round
   from on-chain alpha emission, owner cut, pool reserves, and recent canonical
