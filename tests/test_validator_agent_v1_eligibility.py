@@ -260,6 +260,40 @@ def test_adjudication_batches_singleton_and_pair_hermes_calls(tmp_path) -> None:
     }
 
 
+def test_primary_disagreement_sends_disputed_case_to_tiebreak(tmp_path) -> None:
+    candidates = [
+        _candidate("bronze:B01", "bronze", None),
+        _candidate("miner:uid_9:M01", "miner", "uid_9"),
+    ]
+    session = _session(tmp_path, candidates)
+    tiebreak_case_refs: list[str] = []
+
+    def fake_stage(_self, **kwargs):
+        task = kwargs["task"]
+        role = task["judge_role"]
+        assessments = []
+        for case in task["cases"]:
+            refs = [item["candidate_ref"] for item in case["candidates"]]
+            selected_ref = refs[-1] if role in {"positive", "tiebreak"} else refs[0]
+            assessments.extend(
+                _output(case["case_ref"], refs, selected_ref=selected_ref).assessments
+            )
+        if role == "tiebreak":
+            tiebreak_case_refs.extend(case["case_ref"] for case in task["cases"])
+        return SimpleNamespace(
+            payload=EligibilityAdjudicationAgentOutput(assessments=assessments)
+        )
+
+    session._run_stage = MethodType(fake_stage, session)  # type: ignore[method-assign]
+    decisions = session.run_eligibility_adjudication(
+        [_context("case_pair", candidates)]
+    )
+
+    assert decisions[0].selected_candidate_id == "miner:uid_9:M01"
+    assert decisions[0].consensus_route == "tiebreak"
+    assert tiebreak_case_refs == ["k0"]
+
+
 def test_hermes_missing_output_retries_through_structured_dspy(tmp_path) -> None:
     candidate = _candidate("miner:uid_9:M01", "miner", "uid_9")
     session = _session(tmp_path, [candidate])

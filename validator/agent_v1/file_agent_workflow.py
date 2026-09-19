@@ -620,7 +620,11 @@ class FileAgentWorkflowSession:
 
         tiebreak_votes: dict[str, EligibilityAdjudicationVote] = {}
         if split_case_refs:
-            split_cases = [case for case in cases if case["case_ref"] in split_case_refs]
+            split_cases = [
+                case
+                for case in common_task["cases"]
+                if case["case_ref"] in split_case_refs
+            ]
             split_expected = {
                 case_ref: expected[case_ref]
                 for case_ref in split_case_refs
