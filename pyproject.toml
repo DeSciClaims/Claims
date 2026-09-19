@@ -26,8 +26,21 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pre-commit>=4,<5",
     "pytest",
+    "ruff==0.16.8",
 ]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["F821"]
+
+[tool.ruff.lint.per-file-ignores]
+"miner/section_context_v1/config.py" = ["F821"]
+"miner/v0/config.py" = ["F821"]
+"validator/judge_v1/config.py" = ["F821"]
 
 [tool.setuptools.packages.find]
 include = ["miner*", "validator*", "neurons*"]

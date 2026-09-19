@@ -83,6 +83,20 @@ files in `schemas/`.
 
 Before opening a PR, run the smallest reasonable checks for your change.
 
+Install the repository's pre-commit hook once per checkout:
+
+```bash
+uv sync --extra dev
+uv run pre-commit install
+```
+
+The hook checks staged Python files for undefined names before every commit.
+Run the same check across the complete repository with:
+
+```bash
+uv run pre-commit run --all-files
+```
+
 Useful examples in this repo:
 
 - `python -m py_compile miner/section_context_v1/*.py validator/judge_v1/*.py`
