@@ -16,6 +16,7 @@ from validator.agent_v1.file_agent_workflow import (
     FileAgentWorkflowConfig,
     FileAgentWorkflowSession,
     _constrained_canonical_output_model,
+    _partial_canonical_audit_from_raw,
 )
 
 
@@ -92,6 +93,18 @@ def test_constrained_canonical_schema_rejects_invented_references() -> None:
                 "findings": [],
             }
         )
+
+
+def test_schema_invalid_audit_preserves_individually_valid_rows() -> None:
+    raw = _partial_audit_output((0, 1)).model_dump(mode="json")
+    raw["units"][1]["statement"] = ""
+    raw["draft_unit_reviews"][1]["rationale"] = ""
+
+    partial = _partial_canonical_audit_from_raw(raw)
+
+    assert partial is not None
+    assert [unit.candidate_ids for unit in partial.units] == [["c0"]]
+    assert [review.draft_unit_id for review in partial.draft_unit_reviews] == ["u0"]
 
 
 def test_missing_hermes_canonicalization_output_recovers_through_dspy(tmp_path) -> None:
@@ -201,6 +214,59 @@ def test_dspy_can_be_primary_canonicalization_harness(tmp_path) -> None:
     assert len(record.silver_units) == 1
 
 
+def test_incomplete_audit_recovers_only_missing_units_with_recursive_splitting(
+    tmp_path,
+) -> None:
+    session, baseline = _multi_session_and_baseline(tmp_path, count=4)
+    draft = _multi_draft_output(4)
+    calls: list[tuple[str, tuple[str, ...]]] = []
+
+    def fake_file_stage(_self, **kwargs):
+        if kwargs["stage_key"] == "canonicalization_draft":
+            return SimpleNamespace(payload=draft)
+        partial = _partial_audit_output((0,))
+        kwargs.get("validator", lambda _payload: None)(partial)
+        return SimpleNamespace(payload=partial)
+
+    def fake_dspy_stage(_self, **kwargs):
+        aliases = tuple(
+            row["candidate_id"] for row in kwargs["task"]["accepted_candidates"]
+        )
+        calls.append((kwargs["stage_key"], aliases))
+        if kwargs["stage_key"] == "canonicalization_audit_repair":
+            payload = _partial_audit_output((0, 1))
+            stage_dir = session.root / "executions" / kwargs["stage_key"]
+            stage_dir.mkdir(parents=True, exist_ok=True)
+            (stage_dir / "raw_response.json").write_text(
+                json.dumps({"raw_response": payload.model_dump_json()}),
+                encoding="utf-8",
+            )
+        elif aliases == ("c2", "c3"):
+            raise ValueError("truncated two-unit repair")
+        else:
+            indexes = tuple(int(alias[1:]) for alias in aliases)
+            payload = _partial_audit_output(indexes)
+        kwargs["validator"](payload)
+        return payload
+
+    session._run_stage = MethodType(fake_file_stage, session)  # type: ignore[method-assign]
+    session._run_dspy_canonicalization_stage = MethodType(  # type: ignore[method-assign]
+        fake_dspy_stage,
+        session,
+    )
+
+    record = session.run_canonicalization(baseline_record=baseline, decisions=[])
+
+    assert calls == [
+        ("canonicalization_audit_repair", ("c0", "c1", "c2", "c3")),
+        ("canonicalization_audit_repair_partial", ("c2", "c3")),
+        ("canonicalization_audit_repair_partial_s0", ("c2",)),
+        ("canonicalization_audit_repair_partial_s1", ("c3",)),
+    ]
+    assert len(record.silver_units) == 4
+    assert record.metadata["file_agent_workflow"]["canonical_audit_repaired"] is True
+
+
 def test_config_reads_dspy_canonicalization_provider(monkeypatch) -> None:
     monkeypatch.setenv("CLAIMS_SILVER_CANONICALIZATION_HARNESS", "dspy")
     monkeypatch.setenv("CLAIMS_SILVER_CANONICALIZATION_PROVIDER", "chutes")
@@ -285,6 +351,108 @@ def _audit_output() -> CanonicalAuditOutput:
                 "outcome": "retained",
                 "rationale": "The supported unit remains a distinct canonical claim.",
             }
+        ],
+        quality_checks=CanonicalQualityChecks(
+            duplicate_or_split_attack_checked=True,
+            paper_relevance_checked=True,
+            evidence_support_checked=True,
+            contradiction_checked=True,
+            importance_checked=True,
+        ),
+        findings=[],
+    )
+
+
+def _multi_session_and_baseline(tmp_path, *, count: int):
+    candidates = [
+        ComparisonCandidate(
+            candidate_id=f"miner:uid_{index}:C01",
+            paper_id="paper",
+            origin="miner",
+            miner_id=f"uid_{index}",
+            record_id=f"record_{index}",
+            statement=f"Finding {index} was observed.",
+            normalized_statement=f"finding {index} was observed.",
+            evidence_ids=[f"EV{index}"],
+            source_span_ids=[f"S{index}"],
+            metadata={
+                "evidence_records": [
+                    {
+                        "evidence_id": f"EV{index}",
+                        "source_refs": [{"span_ids": [f"S{index}"]}],
+                    }
+                ]
+            },
+        )
+        for index in range(count)
+    ]
+    session = FileAgentWorkflowSession(
+        config=FileAgentWorkflowConfig(
+            root=tmp_path,
+            harness="hermes-cli",
+            provider="openrouter",
+            comparison_model="comparison-model",
+            canonicalization_model="canonical-model",
+            canonical_audit_model="audit-model",
+        ),
+        paper_id="paper",
+        workspace_id="workspace",
+        candidates=candidates,
+        paper_context={"title": "Several findings"},
+        source_context_by_span_id={
+            f"S{index}": f"Finding {index} was observed." for index in range(count)
+        },
+    )
+    baseline = SilverRecord(
+        silver_record_id="silver",
+        paper_id="paper",
+        silver_units=[
+            SilverUnit(
+                silver_unit_id=f"unit_{index}",
+                paper_id="paper",
+                statement=candidate.statement,
+                equivalent_candidate_ids=[candidate.candidate_id],
+                evidence_ids=candidate.evidence_ids,
+                source_span_ids=candidate.source_span_ids,
+                source_quotes=[candidate.statement],
+            )
+            for index, candidate in enumerate(candidates)
+        ],
+    )
+    return session, baseline
+
+
+def _multi_draft_output(count: int) -> CanonicalizationAgentOutput:
+    return CanonicalizationAgentOutput(
+        units=[
+            CanonicalUnitProposal(
+                statement=f"Finding {index} was observed.",
+                importance="supporting",
+                candidate_ids=[f"c{index}"],
+            )
+            for index in range(count)
+        ]
+    )
+
+
+def _partial_audit_output(indexes: tuple[int, ...]) -> CanonicalAuditOutput:
+    return CanonicalAuditOutput(
+        units=[
+            CanonicalUnitProposal(
+                statement=f"Finding {index} was observed.",
+                importance="supporting",
+                candidate_ids=[f"c{index}"],
+            )
+            for index in indexes
+        ],
+        exclusions=[],
+        draft_unit_reviews=[
+            {
+                "draft_unit_id": f"u{index}",
+                "outcome": "retained",
+                "rationale": "The supported unit remains distinct.",
+            }
+            for index in indexes
         ],
         quality_checks=CanonicalQualityChecks(
             duplicate_or_split_attack_checked=True,

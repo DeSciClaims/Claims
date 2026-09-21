@@ -178,6 +178,22 @@ class CanonicalAuditOutput(CanonicalizationAgentOutput):
     findings: list[CanonicalAuditFinding] = Field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class _CanonicalAuditRecoveryContext:
+    expected_draft_unit_ids: set[str]
+    expected_aliases: set[str]
+    eligible_aliases: set[str]
+    required_exclusion_aliases: set[str]
+    must_link_groups: list[list[str]]
+
+
+@dataclass(frozen=True)
+class _CanonicalAuditWorkItem:
+    key: str
+    draft_unit_ids: tuple[str, ...]
+    candidate_ids: tuple[str, ...]
+
+
 def _constrained_canonical_output_model(
     output_model: type[BaseModel],
     task: dict[str, Any],
@@ -1034,9 +1050,11 @@ class FileAgentWorkflowSession:
         validator: Callable[[BaseModel], None] | None = None,
         retry_stage_key: str | None = None,
         retry_task_extra: dict[str, Any] | None = None,
+        audit_recovery: _CanonicalAuditRecoveryContext | None = None,
     ) -> tuple[BaseModel, str]:
         first_error = ""
         rejected_payload: BaseModel | None = None
+        rejected_payloads: list[CanonicalAuditOutput] = []
         for attempt in range(2):
             payload: BaseModel | None = None
             retrying = attempt == 1
@@ -1091,16 +1109,298 @@ class FileAgentWorkflowSession:
                         validator(payload)
                 return payload, first_error
             except Exception as exc:
+                recovered_payload = payload or self._read_canonical_stage_candidate(
+                    effective_stage_key,
+                    output_model,
+                )
+                if isinstance(recovered_payload, CanonicalAuditOutput):
+                    rejected_payloads.append(recovered_payload)
                 if not first_error:
                     first_error = f"{type(exc).__name__}: {exc}"
-                    if isinstance(payload, BaseModel):
-                        rejected_payload = payload
+                    if isinstance(recovered_payload, BaseModel):
+                        rejected_payload = recovered_payload
                     continue
+                if (
+                    audit_recovery is not None
+                    and issubclass(output_model, CanonicalAuditOutput)
+                    and validator is not None
+                ):
+                    repaired = self._run_canonical_audit_partial_recovery(
+                        stage_key=retry_stage_key or f"{stage_key}_retry",
+                        stage_label=stage_label,
+                        model=model,
+                        task=task,
+                        output_model=output_model,
+                        skill_path=skill_path,
+                        validator=validator,
+                        recovery=audit_recovery,
+                        rejected_payloads=rejected_payloads,
+                        previous_error=exc,
+                    )
+                    return repaired, first_error
                 raise FileAgentWorkflowError(
                     f"{stage_label} primary failed ({first_error}); structured DSPy "
                     f"recovery also failed ({type(exc).__name__}: {exc})"
                 ) from exc
         raise FileAgentWorkflowError(f"{stage_label} failed: {first_error}")
+
+    def _read_canonical_stage_candidate(
+        self,
+        stage_key: str,
+        output_model: type[BaseModel],
+    ) -> BaseModel | None:
+        stage_dir = self.root / "executions" / _safe_path(stage_key)
+        existing = _read_model(stage_dir / "output.json", output_model)
+        if existing is not None:
+            return existing
+        raw_container = _read_json_value(stage_dir / "output.json")
+        if raw_container is None:
+            raw_container = _read_json_value(stage_dir / "raw_response.json")
+        raw = (
+            raw_container.get("raw_response")
+            if isinstance(raw_container, dict)
+            and set(raw_container) == {"raw_response"}
+            else raw_container
+        )
+        try:
+            if isinstance(raw, str):
+                raw = json.loads(raw)
+            return output_model.model_validate(raw)
+        except (TypeError, ValueError, ValidationError):
+            if issubclass(output_model, CanonicalAuditOutput):
+                return _partial_canonical_audit_from_raw(raw)
+            return None
+
+    def _run_canonical_audit_partial_recovery(
+        self,
+        *,
+        stage_key: str,
+        stage_label: str,
+        model: str,
+        task: dict[str, Any],
+        output_model: type[BaseModel],
+        skill_path: Path,
+        validator: Callable[[BaseModel], None],
+        recovery: _CanonicalAuditRecoveryContext,
+        rejected_payloads: list[CanonicalAuditOutput],
+        previous_error: Exception,
+    ) -> BaseModel:
+        partial = _best_partial_canonical_audit(rejected_payloads, recovery=recovery)
+        work_items = _canonical_audit_work_items(task, recovery=recovery)
+        selected_keys = _canonical_audit_repair_keys(
+            partial,
+            work_items=work_items,
+            recovery=recovery,
+        )
+        selected_items = [item for item in work_items if item.key in selected_keys]
+        selected_items = _coalesce_canonical_audit_work_items(
+            selected_items,
+            partial=partial,
+            recovery=recovery,
+        )
+        if not selected_items:
+            raise FileAgentWorkflowError(
+                f"{stage_label} failed after structured recovery and exposed no "
+                f"repairable audit scope: {_exception_summary(previous_error)}"
+            ) from previous_error
+
+        repair_aliases = {
+            candidate_id
+            for item in selected_items
+            for candidate_id in item.candidate_ids
+        }
+        repair_unit_ids = {
+            draft_unit_id
+            for item in selected_items
+            for draft_unit_id in item.draft_unit_ids
+        }
+        preserved_units = [
+            unit
+            for unit in partial.units
+            if repair_aliases.isdisjoint(unit.candidate_ids)
+        ]
+        preserved_exclusions = [
+            exclusion
+            for exclusion in partial.exclusions
+            if repair_aliases.isdisjoint(exclusion.candidate_ids)
+        ]
+        preserved_reviews = [
+            review
+            for review in partial.draft_unit_reviews
+            if review.draft_unit_id not in repair_unit_ids
+        ]
+        recovered = self._run_canonical_audit_split_recovery(
+            stage_key=f"{stage_key}_partial",
+            stage_label=stage_label,
+            model=model,
+            task=task,
+            output_model=output_model,
+            skill_path=skill_path,
+            recovery=recovery,
+            work_items=selected_items,
+            previous_error=previous_error,
+        )
+        assert isinstance(recovered, CanonicalAuditOutput)
+        preserved_findings = [
+            finding
+            for finding in partial.findings
+            if repair_unit_ids.isdisjoint(finding.draft_unit_ids)
+        ]
+        combined = output_model.model_validate(
+            {
+                "units": [
+                    unit.model_dump(mode="json")
+                    for unit in [*preserved_units, *recovered.units]
+                ],
+                "exclusions": [
+                    exclusion.model_dump(mode="json")
+                    for exclusion in [*preserved_exclusions, *recovered.exclusions]
+                ],
+                "draft_unit_reviews": [
+                    review.model_dump(mode="json")
+                    for review in sorted(
+                        [*preserved_reviews, *recovered.draft_unit_reviews],
+                        key=lambda item: _canonical_ref_sort_key(item.draft_unit_id),
+                    )
+                ],
+                "quality_checks": recovered.quality_checks.model_dump(mode="json"),
+                "findings": [
+                    finding.model_dump(mode="json")
+                    for finding in [*preserved_findings, *recovered.findings]
+                ],
+            }
+        )
+        validator(combined)
+        recovery_dir = self.root / "executions" / _safe_path(
+            f"{stage_key}_partial_complete"
+        )
+        recovery_dir.mkdir(parents=True, exist_ok=True)
+        self._atomic_json(recovery_dir / "output.json", combined.model_dump(mode="json"))
+        self._record_manifest_stage(
+            {
+                "stage_key": f"{stage_key}_partial_complete",
+                "status": "complete",
+                "model": model,
+                "harness": "validator",
+                "recovery": "partial_recursive_canonical_audit",
+                "preserved_candidate_count": sum(
+                    len(item.candidate_ids)
+                    for item in [*preserved_units, *preserved_exclusions]
+                ),
+                "repaired_candidate_count": len(repair_aliases),
+                "repaired_draft_unit_count": len(repair_unit_ids),
+                "output_sha256": _sha256(recovery_dir / "output.json"),
+            }
+        )
+        return combined
+
+    def _run_canonical_audit_split_recovery(
+        self,
+        *,
+        stage_key: str,
+        stage_label: str,
+        model: str,
+        task: dict[str, Any],
+        output_model: type[BaseModel],
+        skill_path: Path,
+        recovery: _CanonicalAuditRecoveryContext,
+        work_items: list[_CanonicalAuditWorkItem],
+        previous_error: Exception,
+    ) -> BaseModel:
+        repair_task = _canonical_audit_repair_task(task, work_items=work_items)
+        aliases = {
+            candidate_id for item in work_items for candidate_id in item.candidate_ids
+        }
+        draft_unit_ids = {
+            draft_unit_id for item in work_items for draft_unit_id in item.draft_unit_ids
+        }
+
+        def fragment_validator(payload: BaseModel) -> None:
+            if not isinstance(payload, CanonicalAuditOutput):
+                raise FileAgentWorkflowError("Canonical audit repair returned the wrong output type.")
+            _validate_canonical_output(
+                payload,
+                expected_draft_unit_ids=draft_unit_ids,
+                expected_aliases=aliases,
+                eligible_aliases=aliases.intersection(recovery.eligible_aliases),
+                required_exclusion_aliases=aliases.intersection(
+                    recovery.required_exclusion_aliases
+                ),
+                must_link_groups=[
+                    group for group in recovery.must_link_groups if set(group).issubset(aliases)
+                ],
+            )
+
+        try:
+            return self._run_dspy_canonicalization_stage(
+                stage_key=stage_key,
+                stage_label=f"{stage_label} partial structured repair",
+                model=model,
+                task=repair_task,
+                output_model=output_model,
+                skill_path=skill_path,
+                validator=fragment_validator,
+            )
+        except Exception as split_error:
+            if len(work_items) == 1:
+                raise FileAgentWorkflowError(
+                    f"{stage_label} failed for isolated canonical audit scope "
+                    f"{work_items[0].key}: {_exception_summary(split_error)}"
+                ) from split_error
+            midpoint = len(work_items) // 2
+            recovered = [
+                self._run_canonical_audit_split_recovery(
+                    stage_key=f"{stage_key}_s{split_index}",
+                    stage_label=stage_label,
+                    model=model,
+                    task=task,
+                    output_model=output_model,
+                    skill_path=skill_path,
+                    recovery=recovery,
+                    work_items=split_items,
+                    previous_error=split_error,
+                )
+                for split_index, split_items in enumerate(
+                    (work_items[:midpoint], work_items[midpoint:])
+                )
+            ]
+            combined = output_model.model_validate(
+                {
+                    "units": [
+                        unit.model_dump(mode="json")
+                        for item in recovered
+                        if isinstance(item, CanonicalAuditOutput)
+                        for unit in item.units
+                    ],
+                    "exclusions": [
+                        exclusion.model_dump(mode="json")
+                        for item in recovered
+                        if isinstance(item, CanonicalAuditOutput)
+                        for exclusion in item.exclusions
+                    ],
+                    "draft_unit_reviews": [
+                        review.model_dump(mode="json")
+                        for item in recovered
+                        if isinstance(item, CanonicalAuditOutput)
+                        for review in item.draft_unit_reviews
+                    ],
+                    "quality_checks": {
+                        "duplicate_or_split_attack_checked": True,
+                        "paper_relevance_checked": True,
+                        "evidence_support_checked": True,
+                        "contradiction_checked": True,
+                        "importance_checked": True,
+                    },
+                    "findings": [
+                        finding.model_dump(mode="json")
+                        for item in recovered
+                        if isinstance(item, CanonicalAuditOutput)
+                        for finding in item.findings
+                    ],
+                }
+            )
+            fragment_validator(combined)
+            return combined
 
     def _run_dspy_canonicalization_stage(
         self,
@@ -1647,6 +1947,13 @@ class FileAgentWorkflowSession:
                     "do_not_drop_candidates_or_weaken_completed_quality_checks": True,
                 }
             },
+            audit_recovery=_CanonicalAuditRecoveryContext(
+                expected_draft_unit_ids=set(draft_unit_ids),
+                expected_aliases=expected_aliases,
+                eligible_aliases=expected_aliases.difference(required_exclusion_aliases),
+                required_exclusion_aliases=required_exclusion_aliases,
+                must_link_groups=must_link_aliases,
+            ),
         )
         assert isinstance(output, CanonicalAuditOutput)
         draft_runtime = (
@@ -2952,6 +3259,494 @@ def _ordered_case_refs(case_refs: set[str]) -> list[str]:
         return (0, int(suffix)) if suffix.isdigit() else (1, case_ref)
 
     return sorted(case_refs, key=sort_key)
+
+
+def _partial_canonical_audit_from_raw(raw: Any) -> CanonicalAuditOutput | None:
+    if not isinstance(raw, dict):
+        return None
+
+    def valid_rows(key: str, model: type[BaseModel]) -> list[BaseModel]:
+        rows = raw.get(key)
+        if not isinstance(rows, list):
+            return []
+        parsed: list[BaseModel] = []
+        for row in rows:
+            try:
+                parsed.append(model.model_validate(row))
+            except (TypeError, ValueError, ValidationError):
+                continue
+        return parsed
+
+    units = valid_rows("units", CanonicalUnitProposal)
+    exclusions = valid_rows("exclusions", CanonicalExclusionProposal)
+    reviews = valid_rows("draft_unit_reviews", CanonicalDraftUnitReview)
+    findings = valid_rows("findings", CanonicalAuditFinding)
+    try:
+        quality_checks = CanonicalQualityChecks.model_validate(raw.get("quality_checks"))
+    except (TypeError, ValueError, ValidationError):
+        quality_checks = CanonicalQualityChecks(
+            duplicate_or_split_attack_checked=False,
+            paper_relevance_checked=False,
+            evidence_support_checked=False,
+            contradiction_checked=False,
+            importance_checked=False,
+        )
+    if not any((units, exclusions, reviews, findings)):
+        return None
+    return CanonicalAuditOutput(
+        units=[item for item in units if isinstance(item, CanonicalUnitProposal)],
+        exclusions=[
+            item for item in exclusions if isinstance(item, CanonicalExclusionProposal)
+        ],
+        draft_unit_reviews=[
+            item for item in reviews if isinstance(item, CanonicalDraftUnitReview)
+        ],
+        quality_checks=quality_checks,
+        findings=[item for item in findings if isinstance(item, CanonicalAuditFinding)],
+    )
+
+
+def _best_partial_canonical_audit(
+    payloads: list[CanonicalAuditOutput],
+    *,
+    recovery: _CanonicalAuditRecoveryContext,
+) -> CanonicalAuditOutput:
+    if not payloads:
+        return CanonicalAuditOutput(
+            units=[],
+            exclusions=[],
+            draft_unit_reviews=[],
+            quality_checks=_complete_canonical_quality_checks(),
+            findings=[],
+        )
+
+    candidates = [
+        _sanitize_partial_canonical_audit(payload, recovery=recovery)
+        for payload in payloads
+    ]
+    best = max(
+        enumerate(candidates),
+        key=lambda item: (
+            len(_canonical_assigned_aliases(item[1])),
+            len(item[1].draft_unit_reviews),
+            item[0],
+        ),
+    )[1]
+    reviews_by_id = {review.draft_unit_id: review for review in best.draft_unit_reviews}
+    for payload in reversed(candidates):
+        for review in payload.draft_unit_reviews:
+            reviews_by_id.setdefault(review.draft_unit_id, review)
+    return best.model_copy(
+        update={
+            "draft_unit_reviews": sorted(
+                reviews_by_id.values(),
+                key=lambda item: _canonical_ref_sort_key(item.draft_unit_id),
+            )
+        }
+    )
+
+
+def _sanitize_partial_canonical_audit(
+    payload: CanonicalAuditOutput,
+    *,
+    recovery: _CanonicalAuditRecoveryContext,
+) -> CanonicalAuditOutput:
+    entries: list[tuple[str, CanonicalUnitProposal | CanonicalExclusionProposal]] = [
+        ("unit", unit) for unit in payload.units
+    ] + [("exclusion", exclusion) for exclusion in payload.exclusions]
+    valid_entries = [
+        (kind, entry)
+        for kind, entry in entries
+        if set(entry.candidate_ids).issubset(recovery.expected_aliases)
+    ]
+    counts: dict[str, int] = {}
+    for _kind, entry in valid_entries:
+        for alias in entry.candidate_ids:
+            counts[alias] = counts.get(alias, 0) + 1
+    invalid_aliases = {alias for alias, count in counts.items() if count > 1}
+    invalid_aliases.update(
+        alias
+        for kind, entry in valid_entries
+        if kind == "unit"
+        for alias in entry.candidate_ids
+        if alias in recovery.required_exclusion_aliases
+    )
+
+    unit_index_by_alias = {
+        alias: index
+        for index, (kind, entry) in enumerate(valid_entries)
+        if kind == "unit"
+        for alias in entry.candidate_ids
+    }
+    for group in recovery.must_link_groups:
+        included = [alias for alias in group if alias in unit_index_by_alias]
+        if included and (
+            len(included) != len(group)
+            or len({unit_index_by_alias[alias] for alias in included}) != 1
+        ):
+            invalid_aliases.update(group)
+
+    statements: dict[str, list[CanonicalUnitProposal]] = {}
+    for kind, entry in valid_entries:
+        if kind != "unit" or not isinstance(entry, CanonicalUnitProposal):
+            continue
+        normalized = normalize_statement(entry.statement)
+        if normalized:
+            statements.setdefault(normalized, []).append(entry)
+    for duplicate_units in statements.values():
+        if len(duplicate_units) > 1:
+            invalid_aliases.update(
+                alias for unit in duplicate_units for alias in unit.candidate_ids
+            )
+
+    changed = True
+    while changed:
+        changed = False
+        for _kind, entry in valid_entries:
+            aliases = set(entry.candidate_ids)
+            if aliases.intersection(invalid_aliases) and not aliases.issubset(invalid_aliases):
+                invalid_aliases.update(aliases)
+                changed = True
+    units = [
+        entry
+        for kind, entry in valid_entries
+        if kind == "unit"
+        and isinstance(entry, CanonicalUnitProposal)
+        and set(entry.candidate_ids).isdisjoint(invalid_aliases)
+    ]
+    exclusions = [
+        entry
+        for kind, entry in valid_entries
+        if kind == "exclusion"
+        and isinstance(entry, CanonicalExclusionProposal)
+        and set(entry.candidate_ids).isdisjoint(invalid_aliases)
+    ]
+    if recovery.eligible_aliases and not units:
+        units = []
+        exclusions = [
+            exclusion
+            for exclusion in exclusions
+            if set(exclusion.candidate_ids).isdisjoint(recovery.eligible_aliases)
+        ]
+
+    reviews_by_id: dict[str, CanonicalDraftUnitReview] = {}
+    duplicate_review_ids: set[str] = set()
+    for review in payload.draft_unit_reviews:
+        if review.draft_unit_id not in recovery.expected_draft_unit_ids:
+            continue
+        if review.draft_unit_id in reviews_by_id:
+            duplicate_review_ids.add(review.draft_unit_id)
+            continue
+        reviews_by_id[review.draft_unit_id] = review
+    for draft_unit_id in duplicate_review_ids:
+        reviews_by_id.pop(draft_unit_id, None)
+
+    findings = [
+        finding
+        for finding in payload.findings
+        if set(finding.draft_unit_ids).issubset(recovery.expected_draft_unit_ids)
+    ]
+    return CanonicalAuditOutput(
+        units=units,
+        exclusions=exclusions,
+        draft_unit_reviews=list(reviews_by_id.values()),
+        quality_checks=payload.quality_checks,
+        findings=findings,
+    )
+
+
+def _canonical_assigned_aliases(output: CanonicalizationAgentOutput) -> set[str]:
+    return {
+        alias
+        for item in [*output.units, *output.exclusions]
+        for alias in item.candidate_ids
+    }
+
+
+def _canonical_audit_work_items(
+    task: dict[str, Any],
+    *,
+    recovery: _CanonicalAuditRecoveryContext,
+) -> list[_CanonicalAuditWorkItem]:
+    draft = task.get("canonical_draft")
+    draft = draft if isinstance(draft, dict) else {}
+    items: list[_CanonicalAuditWorkItem] = []
+    owned_aliases: set[str] = set()
+    for index, row in enumerate(draft.get("units", [])):
+        if not isinstance(row, dict):
+            continue
+        draft_unit_id = str(row.get("draft_unit_id") or f"u{index}")
+        aliases = tuple(
+            sorted(
+                {
+                    str(alias)
+                    for alias in row.get("candidate_ids", [])
+                    if str(alias) in recovery.expected_aliases
+                },
+                key=_canonical_ref_sort_key,
+            )
+        )
+        owned_aliases.update(aliases)
+        items.append(
+            _CanonicalAuditWorkItem(
+                key=f"unit:{draft_unit_id}",
+                draft_unit_ids=(draft_unit_id,),
+                candidate_ids=aliases,
+            )
+        )
+    for index, row in enumerate(draft.get("exclusions", [])):
+        if not isinstance(row, dict):
+            continue
+        aliases = tuple(
+            sorted(
+                {
+                    str(alias)
+                    for alias in row.get("candidate_ids", [])
+                    if str(alias) in recovery.expected_aliases
+                },
+                key=_canonical_ref_sort_key,
+            )
+        )
+        owned_aliases.update(aliases)
+        if aliases:
+            items.append(
+                _CanonicalAuditWorkItem(
+                    key=f"exclusion:x{index}",
+                    draft_unit_ids=(),
+                    candidate_ids=aliases,
+                )
+            )
+    for alias in sorted(
+        recovery.expected_aliases.difference(owned_aliases),
+        key=_canonical_ref_sort_key,
+    ):
+        items.append(
+            _CanonicalAuditWorkItem(
+                key=f"candidate:{alias}",
+                draft_unit_ids=(),
+                candidate_ids=(alias,),
+            )
+        )
+    return items
+
+
+def _canonical_audit_repair_keys(
+    partial: CanonicalAuditOutput,
+    *,
+    work_items: list[_CanonicalAuditWorkItem],
+    recovery: _CanonicalAuditRecoveryContext,
+) -> set[str]:
+    assigned = _canonical_assigned_aliases(partial)
+    reviewed = {review.draft_unit_id for review in partial.draft_unit_reviews}
+    repair_aliases = set(recovery.expected_aliases.difference(assigned))
+    repair_unit_ids = set(recovery.expected_draft_unit_ids.difference(reviewed))
+    if any(not value for value in partial.quality_checks.model_dump().values()):
+        repair_aliases.update(recovery.expected_aliases)
+        repair_unit_ids.update(recovery.expected_draft_unit_ids)
+
+    key_by_alias = {
+        alias: item.key for item in work_items for alias in item.candidate_ids
+    }
+    key_by_unit = {
+        draft_unit_id: item.key
+        for item in work_items
+        for draft_unit_id in item.draft_unit_ids
+    }
+    selected = {
+        key_by_alias[alias] for alias in repair_aliases if alias in key_by_alias
+    }
+    selected.update(
+        key_by_unit[draft_unit_id]
+        for draft_unit_id in repair_unit_ids
+        if draft_unit_id in key_by_unit
+    )
+    changed = True
+    while changed:
+        changed = False
+        selected_aliases = {
+            alias
+            for item in work_items
+            if item.key in selected
+            for alias in item.candidate_ids
+        }
+        coupled_aliases = set(selected_aliases)
+        for entry in [*partial.units, *partial.exclusions]:
+            aliases = set(entry.candidate_ids)
+            if aliases.intersection(selected_aliases):
+                coupled_aliases.update(aliases)
+        for group in recovery.must_link_groups:
+            if set(group).intersection(selected_aliases):
+                coupled_aliases.update(group)
+        expanded = {
+            key_by_alias[alias] for alias in coupled_aliases if alias in key_by_alias
+        }
+        if not expanded.issubset(selected):
+            selected.update(expanded)
+            changed = True
+    return selected
+
+
+def _coalesce_canonical_audit_work_items(
+    work_items: list[_CanonicalAuditWorkItem],
+    *,
+    partial: CanonicalAuditOutput,
+    recovery: _CanonicalAuditRecoveryContext,
+) -> list[_CanonicalAuditWorkItem]:
+    if len(work_items) < 2:
+        return work_items
+    parent = {item.key: item.key for item in work_items}
+    key_by_alias = {
+        alias: item.key for item in work_items for alias in item.candidate_ids
+    }
+
+    def find(key: str) -> str:
+        while parent[key] != key:
+            parent[key] = parent[parent[key]]
+            key = parent[key]
+        return key
+
+    def union_aliases(aliases: set[str]) -> None:
+        keys = sorted({key_by_alias[alias] for alias in aliases if alias in key_by_alias})
+        if len(keys) < 2:
+            return
+        root = find(keys[0])
+        for key in keys[1:]:
+            other = find(key)
+            if root != other:
+                parent[other] = root
+
+    for entry in [*partial.units, *partial.exclusions]:
+        union_aliases(set(entry.candidate_ids))
+    for group in recovery.must_link_groups:
+        union_aliases(set(group))
+
+    grouped: dict[str, list[_CanonicalAuditWorkItem]] = {}
+    for item in work_items:
+        grouped.setdefault(find(item.key), []).append(item)
+    combined = [
+        _CanonicalAuditWorkItem(
+            key="+".join(sorted(item.key for item in group)),
+            draft_unit_ids=tuple(
+                sorted(
+                    {
+                        draft_unit_id
+                        for item in group
+                        for draft_unit_id in item.draft_unit_ids
+                    },
+                    key=_canonical_ref_sort_key,
+                )
+            ),
+            candidate_ids=tuple(
+                sorted(
+                    {
+                        alias for item in group for alias in item.candidate_ids
+                    },
+                    key=_canonical_ref_sort_key,
+                )
+            ),
+        )
+        for group in grouped.values()
+    ]
+    return sorted(combined, key=lambda item: item.key)
+
+
+def _canonical_audit_repair_task(
+    task: dict[str, Any],
+    *,
+    work_items: list[_CanonicalAuditWorkItem],
+) -> dict[str, Any]:
+    aliases = {
+        alias for item in work_items for alias in item.candidate_ids
+    }
+    draft_unit_ids = {
+        draft_unit_id for item in work_items for draft_unit_id in item.draft_unit_ids
+    }
+    accepted_candidates = [
+        row
+        for row in task.get("accepted_candidates", [])
+        if isinstance(row, dict) and str(row.get("candidate_id") or "") in aliases
+    ]
+    span_ids = {
+        str(span_id)
+        for row in accepted_candidates
+        for span_id in row.get("source_span_ids", [])
+    }
+    draft = task.get("canonical_draft")
+    draft = draft if isinstance(draft, dict) else {}
+    return {
+        **task,
+        "accepted_candidates": accepted_candidates,
+        "source_spans": {
+            span_id: text
+            for span_id, text in (task.get("source_spans") or {}).items()
+            if span_id in span_ids
+        },
+        "adjudication_consensus": [
+            row
+            for row in task.get("adjudication_consensus", [])
+            if isinstance(row, dict)
+            and aliases.intersection(row.get("accepted_candidate_ids", []))
+        ],
+        "mandatory_same_unit_groups": [
+            group
+            for group in task.get("mandatory_same_unit_groups", [])
+            if set(group).issubset(aliases)
+        ],
+        "mandatory_evidence_exclusions": [
+            row
+            for row in task.get("mandatory_evidence_exclusions", [])
+            if isinstance(row, dict) and str(row.get("candidate_id") or "") in aliases
+        ],
+        "expected_candidate_count": len(aliases),
+        "expected_draft_unit_count": len(draft_unit_ids),
+        "canonical_draft": {
+            "units": [
+                row
+                for row in draft.get("units", [])
+                if isinstance(row, dict)
+                and str(row.get("draft_unit_id") or "") in draft_unit_ids
+            ],
+            "exclusions": [
+                {
+                    **row,
+                    "candidate_ids": [
+                        alias for alias in row.get("candidate_ids", []) if alias in aliases
+                    ],
+                }
+                for row in draft.get("exclusions", [])
+                if isinstance(row, dict)
+                and aliases.intersection(row.get("candidate_ids", []))
+            ],
+        },
+        "validator_detected_draft_issues": [],
+        "validator_rejection": "The full audit omitted or invalidated this subset.",
+        "repair_scope": {
+            "return_exactly_these_candidate_ids": sorted(
+                aliases, key=_canonical_ref_sort_key
+            ),
+            "return_exactly_these_draft_unit_ids": sorted(
+                draft_unit_ids, key=_canonical_ref_sort_key
+            ),
+            "partition_each_candidate_exactly_once": True,
+            "do_not_return_items_outside_this_scope": True,
+        },
+    }
+
+
+def _complete_canonical_quality_checks() -> CanonicalQualityChecks:
+    return CanonicalQualityChecks(
+        duplicate_or_split_attack_checked=True,
+        paper_relevance_checked=True,
+        evidence_support_checked=True,
+        contradiction_checked=True,
+        importance_checked=True,
+    )
+
+
+def _canonical_ref_sort_key(value: str) -> tuple[str, int, str]:
+    prefix = value[:1]
+    suffix = value[1:] if len(value) > 1 else ""
+    return (prefix, int(suffix), "") if suffix.isdigit() else (prefix, -1, value)
 
 
 def _validate_canonical_audit(output: CanonicalAuditOutput, expected_draft_unit_ids: set[str]) -> None:

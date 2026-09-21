@@ -761,7 +761,10 @@ def test_file_canonicalizer_rejects_unit_without_linked_evidence(tmp_path) -> No
         )
 
     def invalid_structured_repair(_self, **kwargs):
-        assert kwargs["stage_key"] == "canonicalization_audit_repair"
+        assert kwargs["stage_key"] in {
+            "canonicalization_audit_repair",
+            "canonicalization_audit_repair_partial",
+        }
         assert draft_payload is not None
         payload = CanonicalAuditOutput(
             **draft_payload.model_dump(),

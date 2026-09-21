@@ -411,6 +411,11 @@ validation.
   12-case OpenRouter replays exceeded `8192`. CLI adjudication uses
   `CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER` plus the file-agent timeout and
   token limits below.
+- Canonicalization audit keeps valid units and draft-unit reviews from an
+  incomplete response, retries only the omitted or invalid scope through
+  DSPy, and recursively splits that scope when needed. The reconstructed
+  result must still pass the complete candidate-partition, evidence, link,
+  and quality-check gates before the paper is scored.
 
 - `CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES=true` requires different
   models for direct judges A and B.
