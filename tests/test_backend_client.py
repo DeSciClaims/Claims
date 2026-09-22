@@ -157,6 +157,86 @@ def test_miner_selection_state_client_uses_signed_validator_endpoints(monkeypatc
     ]
 
 
+def test_miner_consensus_client_materializes_cases(monkeypatch) -> None:
+    posted: list[tuple[str, dict]] = []
+
+    def fake_post(self, path, payload):
+        posted.append((path, payload))
+        if path.endswith("/materialize"):
+            return {"created": 2, "skipped": 0, "scanned": 2}
+        return {}
+
+    monkeypatch.setattr(ClaimsBackendClient, "post", fake_post)
+    client = ClaimsBackendClient(
+        "https://api.example.test",
+        wallet=SimpleNamespace(hotkey=_FakeHotkey()),
+        network="mainnet",
+    )
+
+    materialized = client.materialize_miner_consensus_cases(run_id="run_1", routes=["tiebreak"], limit=5)
+
+    assert materialized["created"] == 2
+    assert posted == [
+        (
+            "/validator/miner-consensus-cases/materialize",
+            {"network": "mainnet", "limit": 5, "run_id": "run_1", "routes": ["tiebreak"]},
+        )
+    ]
+
+
+def test_consensus_round_client_claims_and_completes_frozen_round(monkeypatch) -> None:
+    posted: list[tuple[str, dict]] = []
+
+    def fake_post(self, path, payload):
+        posted.append((path, payload))
+        if path.endswith("/claim"):
+            return {"round_id": "mcr_1", "status": "running"}
+        return {"round_id": "mcr_1", "status": "completed"}
+
+    monkeypatch.setattr(ClaimsBackendClient, "post", fake_post)
+    client = ClaimsBackendClient(
+        "https://api.example.test",
+        wallet=SimpleNamespace(hotkey=_FakeHotkey()),
+        network="mainnet",
+    )
+    claimed = client.claim_miner_consensus_round(
+        netuid=111,
+        worker_id="worker_1",
+        metagraph_block=99,
+        candidates=[
+            {
+                "uid": 7,
+                "hotkey": "hotkey_7",
+                "coldkey": "coldkey_7",
+                "axon_ip": "127.0.0.1",
+                "axon_port": 9000,
+                "is_serving": True,
+            }
+        ],
+    )
+    completed = client.complete_miner_consensus_round(
+        round_id="mcr_1",
+        worker_id="worker_1",
+        submissions=[
+            {
+                "uid": 7,
+                "hotkey": "hotkey_7",
+                "coldkey": "coldkey_7",
+                "submission_id": "consensus_round_1_uid_7",
+                "response_hash": "a" * 64,
+            }
+        ],
+    )
+
+    assert claimed["status"] == "running"
+    assert completed["status"] == "completed"
+    assert posted[0][0] == "/validator/miner-consensus-rounds/claim"
+    assert posted[0][1]["metagraph_block"] == 99
+    assert posted[0][1]["lease_seconds"] == 2100
+    assert posted[0][1]["deadline_seconds"] == 1800
+    assert posted[1][0] == "/validator/miner-consensus-rounds/mcr_1/complete"
+
+
 def test_silver_pipeline_upload_uses_bounded_chunks(monkeypatch) -> None:
     posted: list[dict] = []
 

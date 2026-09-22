@@ -20,7 +20,6 @@ from validator.agent_v1.adjudication_passes import StaticAdjudicationPass  # noq
 from validator.agent_v1.adjudication_models import AdjudicationContextBundle  # noqa: E402
 from validator.agent_v1.adjudication_queue import QueuedAdjudicationWorker, adjudication_job_payload  # noqa: E402
 from validator.agent_v1.backend_client import ClaimsBackendClient  # noqa: E402
-from validator.agent_v1.miner_consensus import MinerConsensusRule, MinerConsensusVote, aggregate_miner_consensus_votes, miner_consensus_outcome_payload  # noqa: E402
 from validator.agent_v1.orchestrator import MinerArtifactSubmission, run_paper_silver_pipeline  # noqa: E402
 
 
@@ -201,62 +200,6 @@ def main() -> None:
     }
     _post_json(f"http://127.0.0.1:{port}/review/adjudication-cases/{case.case_id}/review", review_payload)
     reviewed_cases = _get_json(f"http://127.0.0.1:{port}/review/adjudication-cases")
-    consensus_case = client.post_miner_consensus_case(
-        {
-            "consensus_case_id": "miner_consensus_e2e",
-            "network": "testnet",
-            "case_id": case.case_id,
-            "run_id": "run_e2e",
-            "batch_id": "batch_e2e",
-            "paper_id": "paper_e2e",
-            "status": "open",
-            "eligible_uids": [2, 3, 4],
-            "excluded_uids": [1],
-            "payload": {"case_id": case.case_id},
-        }
-    )
-    miner_votes = [
-        MinerConsensusVote(consensus_case_id="miner_consensus_e2e", case_id=case.case_id, uid=2, hotkey="h2", disposition="reference_error", confidence=0.9),
-        MinerConsensusVote(consensus_case_id="miner_consensus_e2e", case_id=case.case_id, uid=3, hotkey="h3", disposition="reference_error", confidence=0.88),
-        MinerConsensusVote(consensus_case_id="miner_consensus_e2e", case_id=case.case_id, uid=4, hotkey="h4", disposition="miner_error", confidence=0.8),
-    ]
-    for vote in miner_votes:
-        client.post_miner_consensus_vote(
-            {
-                "vote_id": f"miner_consensus_e2e_uid_{vote.uid}",
-                "network": "testnet",
-                "consensus_case_id": vote.consensus_case_id,
-                "case_id": vote.case_id,
-                "run_id": "run_e2e",
-                "batch_id": "batch_e2e",
-                "paper_id": "paper_e2e",
-                "uid": vote.uid,
-                "hotkey": vote.hotkey,
-                "disposition": vote.disposition,
-                "confidence": vote.confidence,
-                "rationale": vote.rationale,
-                "metadata": vote.metadata,
-            }
-        )
-    miner_consensus = aggregate_miner_consensus_votes(
-        case_id=case.case_id,
-        votes=miner_votes,
-        excluded_uids={1},
-        rule=MinerConsensusRule(min_votes=3, agreement_threshold=2 / 3),
-    )
-    consensus_outcome = client.post_miner_consensus_outcome(
-        miner_consensus_outcome_payload(
-            outcome_id="miner_consensus_outcome_e2e",
-            network="testnet",
-            consensus_case_id="miner_consensus_e2e",
-            run_id="run_e2e",
-            batch_id="batch_e2e",
-            paper_id="paper_e2e",
-            consensus=miner_consensus,
-        )
-    )
-    listed_consensus_cases = client.list_miner_consensus_cases(status="resolved")
-    listed_consensus_votes = client.list_miner_consensus_votes(consensus_case_id="miner_consensus_e2e")
     client.post_silver_record(run_id="run_e2e", batch_id="batch_e2e", silver_record=pipeline.silver_record)
     score = pipeline.scores[0]
     score_report = client.post_silver_score_report(
@@ -279,10 +222,6 @@ def main() -> None:
     assert listed_completed_jobs[0]["result"]["consensus"]["route"] == "direct"
     assert reviewed_cases[0]["latest_review"]["review_decision"]["effective_disposition"] == "reference_error"
     assert reviewed_cases[0]["decision"]["manual_review"]["reviewer_id"] == "reviewer_e2e"
-    assert consensus_case["status"] == "open"
-    assert consensus_outcome["status"] == "resolved"
-    assert listed_consensus_cases[0]["consensus_case_id"] == "miner_consensus_e2e"
-    assert len(listed_consensus_votes) == 3
     assert score_report["score"] == 1.0
     assert public_feedback[0]["score_report_id"] == "score_e2e"
     print(json.dumps({"bronze": fetched_bronze.bronze_record_id, "score": score_report["score"], "feedback": public_feedback[0]["score_report_id"]}))

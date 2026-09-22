@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -132,13 +133,27 @@ def ingest_text(text_path: Path, *, max_chars: int | None) -> InputDocument:
 
 def document_source_payload(document: InputDocument, *, max_chars: int | None) -> dict[str, Any]:
     spans = _truncate_spans(document.spans, max_chars=max_chars)
+    source_text = "\n\n".join(span.text for span in spans)
+    complete_text = "\n\n".join(span.text for span in document.spans)
+    truncated = len(spans) != len(document.spans) or source_text != complete_text
     return {
         "schema_version": SOURCE_PAYLOAD_SCHEMA_VERSION,
+        "policy_version": SOURCE_PAYLOAD_POLICY_VERSION,
         "paper": document.paper.model_dump(mode="json"),
         "source_type": document.source_type,
         "source_path": document.source_path,
         "source_metadata": document.raw_metadata,
         "spans": [span.model_dump(mode="json") for span in spans],
+        "source_integrity": {
+            "schema": "claims_source_payload_integrity_v1",
+            "truncated": truncated,
+            "span_count": len(spans),
+            "character_count": sum(len(span.text) for span in spans),
+            "page_count": len({span.page for span in spans if span.page is not None}),
+            "content_sha256": hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
+            "complete_span_count": len(document.spans),
+            "complete_character_count": sum(len(span.text) for span in document.spans),
+        },
     }
 
 

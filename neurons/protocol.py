@@ -41,5 +41,9 @@ class ClaimExtractionSynapse(Synapse):
     articles: list[dict[str, Any]] = []
     extraction: dict[str, Any] | None = None
     source_payload: dict[str, Any] | None = None
+    consensus_case_id: str = ""
+    consensus_round_id: str = ""
+    consensus_payload: dict[str, Any] | None = None
+    consensus_vote: dict[str, Any] | None = None
     miner_version: str = "agent_v1"
     error: str = ""

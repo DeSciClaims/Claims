@@ -95,6 +95,35 @@ Useful flags:
 - `--claims.agent-max-iters`: native agent loop iteration budget.
 - `--claims.pdf-extraction-method`: choose `pdf-inspector`, `pypdf`, or `grobid`.
 
+### V1 Consensus Review
+
+The same miner Axon accepts a second task type for V1 consensus rounds. A
+consensus assignment contains 20 shuffled review cases. Cases are grouped by
+paper; the miner downloads each original PDF and extracts a complete local
+source payload before evaluating that paper's cases with a structured DSPy
+request. Every response returns one listed option, confidence, rationale, and
+one to four verbatim evidence quotes. The backend independently matches those
+quotes against Bronze, so miner-local span IDs are informative but not trusted.
+
+```env
+SUBNET_CLAIMS_CONSENSUS_MODE=model
+# Optional overrides; otherwise consensus inherits SUBNET_CLAIMS_AGENT_*.
+SUBNET_CLAIMS_CONSENSUS_PROVIDER=openrouter
+SUBNET_CLAIMS_CONSENSUS_MODEL=deepseek/deepseek-v4-flash
+SUBNET_CLAIMS_CONSENSUS_API_BASE=https://openrouter.ai/api/v1
+SUBNET_CLAIMS_CONSENSUS_API_KEY_ENV=OPENROUTER_API_KEY
+SUBNET_CLAIMS_CONSENSUS_MAX_TOKENS=8192
+SUBNET_CLAIMS_CONSENSUS_TIMEOUT=1800
+```
+
+The reviewer uses structured DSPy calls. It inherits the miner's extraction
+provider and model unless the consensus-specific overrides are set, so
+OpenRouter and Chutes may be selected independently for the two workloads.
+Completed consensus responses are signed and uploaded to the miner-upload API;
+the Dendrite response contains only the durable submission manifest.
+`compatibility` mode exists for protocol tests only and should not be used for
+scored consensus work.
+
 ## Runtime Metrics
 
 Successful runs attach runtime metadata to `agent_output.json`:

@@ -13,16 +13,19 @@ from types import SimpleNamespace
 
 from miner.agent_v1.artifact import materialize_agent_artifact
 from miner.agent_v1.config import AgentV1Config
-from miner.agent_v1.provider import dspy_model_id
 from miner.agent_v1.ingest import (
     SOURCE_PAYLOAD_SCHEMA_VERSION,
     apply_paper_metadata_override,
     document_source_payload,
     ingest_pdf,
 )
+from miner.agent_v1.provider import dspy_model_id
 from miner.agent_v1.runner import AgentV1Runner, _runtime_source_payload_path
 from miner.agent_v1.runtime.base import AgentRequest, AgentResult
-from miner.agent_v1.runtime.langchain_agent import _structured_payload, _validation_status
+from miner.agent_v1.runtime.langchain_agent import (
+    _structured_payload,
+    _validation_status,
+)
 from miner.agent_v1.runtime.subprocess_cli import SubprocessAgentRuntime
 from miner.agent_v1.runtime.usage import (
     usage_from_codex_jsonl,
@@ -200,6 +203,8 @@ def test_agent_v1_pdf_inspector_reader_outputs_markdown_page_spans(monkeypatch, 
     assert document.spans[0].metadata["reader_span_id"] == "paper-p001-markdown"
     assert payload["schema_version"] == SOURCE_PAYLOAD_SCHEMA_VERSION
     assert payload["source_metadata"]["is_complex"] is True
+    assert payload["source_integrity"]["truncated"] is False
+    assert payload["source_integrity"]["character_count"] == len(document.spans[0].text)
 
 
 def test_agent_v1_source_payload_applies_task_paper_metadata_override(monkeypatch, tmp_path: Path) -> None:
@@ -408,6 +413,9 @@ def test_agent_v1_runner_uses_runtime_contract(monkeypatch, tmp_path: Path) -> N
         (output_dir / "data" / "agent_v1_source_payload.json").read_text(encoding="utf-8")
     )
     assert late_source in "".join(span["text"] for span in full_payload["spans"])
+    assert full_payload["source_integrity"]["truncated"] is False
+    limited_payload = json.loads((output_dir / "extraction_source_payload.json").read_text(encoding="utf-8"))
+    assert limited_payload["source_integrity"]["truncated"] is True
     assert archived_payload == full_payload
 
 
@@ -730,7 +738,11 @@ def test_miner_coalesces_duplicate_in_flight_paper_work() -> None:
 
 def test_miner_batch_forward_keeps_top_level_payload_compact(monkeypatch) -> None:
     miner = ClaimsMiner.__new__(ClaimsMiner)
-    miner.config = SimpleNamespace(claims_pipeline="agent_v1", claims_max_requests_per_hotkey_minute=0)
+    miner.config = SimpleNamespace(
+        claims_pipeline="agent_v1",
+        claims_max_requests_per_hotkey_minute=0,
+        claims_consensus_mode="compatibility",
+    )
     miner.bt_logging = SimpleNamespace(info=lambda *_args, **_kwargs: None, error=lambda *_args, **_kwargs: None)
     miner._run_batch_task = lambda _task, validator_hotkey: [
         {
@@ -753,6 +765,133 @@ def test_miner_batch_forward_keeps_top_level_payload_compact(monkeypatch) -> Non
     assert result.extraction is None
     assert result.source_payload is None
     assert result.paper_id == ""
+
+
+def test_miner_forward_answers_consensus_task() -> None:
+    miner = ClaimsMiner.__new__(ClaimsMiner)
+    miner.config = SimpleNamespace(
+        claims_pipeline="agent_v1",
+        claims_max_requests_per_hotkey_minute=0,
+        claims_consensus_mode="compatibility",
+    )
+    miner.uid = 42
+    miner.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="hotkey_42"))
+    miner.bt_logging = SimpleNamespace(info=lambda *_args, **_kwargs: None, error=lambda *_args, **_kwargs: None)
+    synapse = ClaimExtractionSynapse(
+        task_id="consensus_task",
+        task_type="agent_v1_consensus_vote",
+        consensus_case_id="mcc_case_1",
+        consensus_payload={
+            "consensus_case_id": "mcc_case_1",
+            "case_id": "case_1",
+            "run_id": "run_1",
+            "batch_id": "batch_1",
+            "paper_id": "paper_1",
+            "options": ["candidate_a", "candidate_b", "insufficient_information"],
+            "case": {
+                "adjudication_case": {
+                    "candidate_ids": ["bronze:C01", "miner:uid_7:C02"],
+                }
+            },
+        },
+    )
+
+    result = miner.forward(synapse)
+
+    assert result.error == ""
+    assert result.extraction is None
+    assert result.consensus_vote["schema"] == "claims_miner_consensus_vote_v1"
+    assert result.consensus_vote["consensus_case_id"] == "mcc_case_1"
+    assert result.consensus_vote["disposition"] == "candidate_a"
+
+
+def test_miner_forward_answers_complete_consensus_round() -> None:
+    miner = ClaimsMiner.__new__(ClaimsMiner)
+    miner.config = SimpleNamespace(
+        claims_pipeline="agent_v1",
+        claims_max_requests_per_hotkey_minute=0,
+        claims_consensus_mode="compatibility",
+    )
+    miner.uid = 42
+    miner.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="hotkey_42"))
+    miner.bt_logging = SimpleNamespace(info=lambda *_args, **_kwargs: None, error=lambda *_args, **_kwargs: None)
+    synapse = ClaimExtractionSynapse(
+        task_id="consensus_round",
+        task_type="agent_v1_consensus_vote",
+        consensus_round_id="mcr_1",
+        consensus_payload={
+            "round_id": "mcr_1",
+            "cases": [
+                {
+                    "item_id": "item_a",
+                    "options": ["candidate_a", "candidate_b"],
+                    "case": {"adjudication_case": {"candidate_ids": ["a", "b"]}},
+                },
+                {
+                    "item_id": "item_b",
+                    "options": ["candidate_a", "candidate_b"],
+                    "case": {"adjudication_case": {"candidate_ids": ["a", "b"]}},
+                },
+            ],
+        },
+    )
+
+    result = miner.forward(synapse)
+
+    assert result.error == ""
+    assert result.consensus_vote["schema"] == "claims_miner_consensus_round_response_v1"
+    assert result.consensus_vote["round_id"] == "mcr_1"
+    assert [row["item_id"] for row in result.consensus_vote["responses"]] == ["item_a", "item_b"]
+
+
+def test_miner_uploads_model_consensus_response_and_returns_manifest(monkeypatch) -> None:
+    class FakeBackend:
+        network = "testnet"
+
+        def __init__(self) -> None:
+            self.payload = None
+
+        def post_miner_consensus_submission(self, payload):
+            self.payload = payload
+            return payload
+
+    miner = ClaimsMiner.__new__(ClaimsMiner)
+    miner.config = SimpleNamespace(
+        claims_pipeline="agent_v1",
+        claims_max_requests_per_hotkey_minute=0,
+        claims_consensus_mode="model",
+    )
+    miner.uid = 42
+    miner.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="hotkey_42"))
+    miner.backend_client = FakeBackend()
+    miner.bt_logging = SimpleNamespace(info=lambda *_args, **_kwargs: None, error=lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "neurons.miner.review_consensus_assignment",
+        lambda _payload: {
+            "schema": "claims_miner_consensus_round_response_v1",
+            "round_id": "mcr_1",
+            "responses": [{"item_id": "item_a", "selected_option": "candidate_a"}],
+        },
+    )
+    synapse = ClaimExtractionSynapse(
+        task_id="consensus_round",
+        task_type="agent_v1_consensus_vote",
+        network="testnet",
+        consensus_round_id="mcr_1",
+        consensus_payload={
+            "round_id": "mcr_1",
+            "cases": [{"item_id": "item_a", "options": ["candidate_a", "candidate_b"]}],
+        },
+    )
+
+    result = miner.forward(synapse)
+
+    assert result.error == ""
+    assert result.consensus_vote["schema"] == "claims_miner_consensus_submission_manifest_v1"
+    assert result.consensus_vote["submission_id"] == "consensus_mcr_1_uid_42"
+    assert "responses" not in result.consensus_vote
+    assert miner.backend_client.payload["responses"][0]["item_id"] == "item_a"
+    assert miner.backend_client.payload["hotkey"] == "hotkey_42"
 
 
 def _valid_ara_payload() -> dict:
