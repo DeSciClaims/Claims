@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import unicodedata
 from typing import Any
 
 from neurons.tasks import download_pdf
@@ -224,10 +225,22 @@ def _parse_responses(
             raw_evidence = response.get("evidence")
         evidence = [item for item in (raw_evidence or []) if isinstance(item, dict)]
         if source_payload is not None:
-            evidence_error = _local_evidence_error(evidence, source_payload, paper_id=paper_id)
-            if evidence_error:
-                invalid_reasons[item_id] = evidence_error
+            if not 1 <= len(evidence) <= 4:
+                invalid_reasons[item_id] = "evidence_items must contain between 1 and 4 entries"
                 continue
+            valid_evidence = [
+                item
+                for item in evidence
+                if _local_evidence_error([item], source_payload, paper_id=paper_id) is None
+            ]
+            if not valid_evidence:
+                invalid_reasons[item_id] = _local_evidence_error(
+                    evidence[:1],
+                    source_payload,
+                    paper_id=paper_id,
+                ) or "no evidence item matches a source span"
+                continue
+            evidence = valid_evidence
         normalized[item_id] = {
             "item_id": item_id,
             "selected_option": selected,
@@ -321,4 +334,4 @@ def _local_evidence_error(
 
 
 def _normalize_text(value: str) -> str:
-    return _SPACE.sub(" ", value).strip()
+    return _SPACE.sub(" ", unicodedata.normalize("NFKC", value)).strip()

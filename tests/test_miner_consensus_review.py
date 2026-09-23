@@ -150,6 +150,49 @@ def test_parse_consensus_responses_reports_invalid_evidence_reason() -> None:
         )
 
 
+def test_parse_consensus_responses_discards_invalid_extra_evidence() -> None:
+    source_payload = {
+        "spans": [
+            {
+                "span_id": "paper_1-span-0001",
+                "paper_id": "paper_1",
+                "text": "Treatment A increased survival by 20%.",
+            }
+        ]
+    }
+
+    responses = _parse_responses(
+        json.dumps(
+            [
+                {
+                    "item_id": "item_a",
+                    "selected_option": "candidate_a",
+                    "evidence_items": [
+                        {
+                            "paper_id": "paper_1",
+                            "quote": "Treatment A ... increased survival.",
+                        },
+                        {
+                            "paper_id": "paper_1",
+                            "quote": "Treatment A increased survival by 20%.",
+                        },
+                    ],
+                }
+            ]
+        ),
+        [CASES[0]],
+        source_payload=source_payload,
+        paper_id="paper_1",
+    )
+
+    assert responses[0]["evidence_items"] == [
+        {
+            "paper_id": "paper_1",
+            "quote": "Treatment A increased survival by 20%.",
+        }
+    ]
+
+
 def test_parse_consensus_responses_requires_quotes_from_local_source() -> None:
     source_payload = {
         "spans": [
