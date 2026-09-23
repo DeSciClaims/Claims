@@ -5,6 +5,7 @@ import os
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 
@@ -164,11 +165,31 @@ class ClaimsConsensusValidator:
             for neuron in list(getattr(self.metagraph, "neurons", []) or [])
         }
         assignments = list(round_payload.get("assignments") or [])
+        case_count = 0
+        if assignments and isinstance(assignments[0].get("payload"), dict):
+            case_count = len(assignments[0]["payload"].get("cases") or [])
         self.bt_logging.info(
-            f"Querying consensus round={round_id} reviewers={len(assignments)} cases=20"
+            f"Querying consensus round={round_id} reviewers={len(assignments)} cases={case_count}"
         )
         submissions: list[dict[str, Any]] = []
         validator_failures: list[str] = []
+        remaining_seconds = _seconds_until_deadline(round_payload.get("deadline_at"))
+        if remaining_seconds <= 0:
+            completed = self.backend_client.complete_miner_consensus_round(
+                round_id=round_id,
+                worker_id=self.worker_id,
+                submissions=[],
+                validator_failed_hotkeys=[],
+            )
+            self.bt_logging.info(
+                f"Completed expired consensus round={round_id} responses=0/{len(assignments)} "
+                f"outcomes={len((completed.get('result') or {}).get('outcomes') or [])}"
+            )
+            return
+        query_timeout = min(
+            float(self.config.claims_consensus_query_timeout),
+            max(1.0, remaining_seconds),
+        )
         max_workers = min(len(assignments), int(self.config.claims_consensus_query_workers))
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
             futures = {
@@ -177,6 +198,7 @@ class ClaimsConsensusValidator:
                     round_payload,
                     assignment,
                     neurons_by_hotkey.get(str(assignment.get("hotkey") or "")),
+                    query_timeout,
                 ): assignment
                 for assignment in assignments
             }
@@ -209,6 +231,7 @@ class ClaimsConsensusValidator:
         round_payload: dict[str, Any],
         assignment: dict[str, Any],
         neuron: Any | None,
+        query_timeout: float,
     ) -> dict[str, Any] | None:
         if neuron is None or not _is_serving(neuron):
             raise RuntimeError("frozen reviewer is missing from the refreshed metagraph")
@@ -232,7 +255,7 @@ class ClaimsConsensusValidator:
             axons=[neuron.axon_info],
             synapse=synapse,
             deserialize=False,
-            timeout=float(self.config.claims_consensus_query_timeout),
+            timeout=float(query_timeout),
         )
         response = responses[0] if responses else None
         vote = getattr(response, "consensus_vote", None) if response is not None else None
@@ -273,6 +296,20 @@ def _metagraph_block(metagraph: Any) -> int:
         return max(0, int(block or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _seconds_until_deadline(value: Any, *, now: datetime | None = None) -> float:
+    text = str(value or "").strip()
+    if not text:
+        return 0.0
+    try:
+        deadline = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    return max(0.0, (deadline - current).total_seconds())
 
 
 def _sync_metagraph(
