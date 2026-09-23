@@ -630,8 +630,9 @@ and does not change the same batch's Silver scoring target.
 
 The backend materializes eligibility-tiebreak cases in FIFO order, owns the
 private certified synthetic challenge bank, and atomically assembles each
-round. A round currently contains 10 genuine and 10 synthetic cases and one
-frozen, dynamically sized reviewer panel. Multiple consensus
+round. It controls and freezes the genuine-case count, synthetic-case count,
+reviewer-panel size, and Gold quorum for each network. Validators only submit
+the current live candidate pool and cannot alter round composition. Multiple consensus
 validators may run because a complete round, rather than an individual case, is
 claimed with a lease. Hidden challenge answers never leave the backend. Reviewers
 download each assigned paper and extract their own complete source payload. Every
@@ -659,13 +660,8 @@ important runtime knobs are:
 
 - `CLAIMS_CONSENSUS_DEADLINE_SECONDS`: fixed `1800`-second miner response deadline.
 - `CLAIMS_CONSENSUS_LEASE_SECONDS`: worker lease; default `2100` leaves finalization grace.
-- `CLAIMS_CONSENSUS_QUERY_TIMEOUT`: miner deadline for the 20-case assignment.
+- `CLAIMS_CONSENSUS_QUERY_TIMEOUT`: miner deadline for the backend-configured assignment.
 - `CLAIMS_CONSENSUS_QUERY_WORKERS`: parallel reviewer requests; default `10`.
-- `CLAIMS_CONSENSUS_REVIEWERS_PER_ROUND`: reviewer panel size; defaults to the
-  number of `CLAIMS_TARGET_UIDS` for focused runs, otherwise `10`.
-- `CLAIMS_CONSENSUS_GOLD_QUORUM`: qualified coldkey-group votes required to
-  resolve a genuine case; default `7`. It may exceed a smoke-test panel size so
-  the transport test cannot create Gold outcomes.
 - `CLAIMS_TARGET_UIDS`: restrict consensus review to specific live UIDs.
 - `CLAIMS_CONSENSUS_INTERVAL`: sleep time between polling steps.
 - `CLAIMS_CONSENSUS_EXTRACTION_GATE=true`: enable the future-extraction gate

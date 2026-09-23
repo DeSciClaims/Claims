@@ -234,8 +234,8 @@ def test_consensus_round_client_claims_and_completes_frozen_round(monkeypatch) -
     assert posted[0][1]["metagraph_block"] == 99
     assert posted[0][1]["lease_seconds"] == 2100
     assert posted[0][1]["deadline_seconds"] == 1800
-    assert posted[0][1]["reviewers_per_round"] == 10
-    assert posted[0][1]["gold_quorum"] == 7
+    assert "reviewers_per_round" not in posted[0][1]
+    assert "gold_quorum" not in posted[0][1]
     assert posted[1][0] == "/validator/miner-consensus-rounds/mcr_1/complete"
 
 
