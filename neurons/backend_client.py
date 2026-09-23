@@ -347,6 +347,8 @@ class ClaimsBackendClient:
         candidates: list[dict[str, Any]],
         lease_seconds: int = 2100,
         deadline_seconds: int = 1800,
+        reviewers_per_round: int = 10,
+        gold_quorum: int = 7,
     ) -> dict[str, Any]:
         result = self.post(
             "/validator/miner-consensus-rounds/claim",
@@ -358,6 +360,8 @@ class ClaimsBackendClient:
                 "candidates": candidates,
                 "lease_seconds": int(lease_seconds),
                 "deadline_seconds": int(deadline_seconds),
+                "reviewers_per_round": int(reviewers_per_round),
+                "gold_quorum": int(gold_quorum),
             },
         )
         return result if isinstance(result, dict) else {}

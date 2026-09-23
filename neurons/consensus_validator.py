@@ -66,6 +66,28 @@ class ClaimsConsensusValidator:
         parser.add_argument("--claims.consensus-deadline-seconds", dest="claims_consensus_deadline_seconds", type=int, default=int(os.getenv("CLAIMS_CONSENSUS_DEADLINE_SECONDS", "1800")))
         parser.add_argument("--claims.consensus-query-timeout", dest="claims_consensus_query_timeout", type=float, default=float(os.getenv("CLAIMS_CONSENSUS_QUERY_TIMEOUT", "1800")))
         parser.add_argument("--claims.consensus-query-workers", dest="claims_consensus_query_workers", type=int, default=int(os.getenv("CLAIMS_CONSENSUS_QUERY_WORKERS", "10")))
+        parser.add_argument(
+            "--claims.target-uid",
+            dest="claims_target_uids",
+            action="append",
+            type=int,
+            default=_env_int_list("CLAIMS_TARGET_UIDS"),
+            help="Only consider the given reviewer UID. May be passed more than once for focused runs.",
+        )
+        parser.add_argument(
+            "--claims.consensus-reviewers-per-round",
+            dest="claims_consensus_reviewers_per_round",
+            type=int,
+            default=int(os.getenv("CLAIMS_CONSENSUS_REVIEWERS_PER_ROUND", "0")),
+            help="Reviewer panel size. Defaults to the target UID count when targeted, otherwise 10.",
+        )
+        parser.add_argument(
+            "--claims.consensus-gold-quorum",
+            dest="claims_consensus_gold_quorum",
+            type=int,
+            default=int(os.getenv("CLAIMS_CONSENSUS_GOLD_QUORUM", "7")),
+            help="Qualified coldkey-group votes required to resolve a genuine case.",
+        )
         parser.add_argument("--claims.consensus-interval", dest="claims_consensus_interval", type=float, default=float(os.getenv("CLAIMS_CONSENSUS_INTERVAL", "60")))
         parser.add_argument("--claims.max-steps", dest="claims_max_steps", type=int, default=int(os.getenv("CLAIMS_MAX_STEPS", "0")))
         parser.add_argument("--claims.materialize", dest="claims_materialize", action="store_true", default=_env_flag("CLAIMS_CONSENSUS_MATERIALIZE", False))
@@ -94,6 +116,16 @@ class ClaimsConsensusValidator:
             raise SystemExit("CLAIMS_CONSENSUS_LEASE_SECONDS must exceed the deadline by at least 60 seconds.")
         config.claims_consensus_query_timeout = max(1.0, float(parsed_args.claims_consensus_query_timeout))
         config.claims_consensus_query_workers = max(1, int(parsed_args.claims_consensus_query_workers))
+        config.claims_target_uids = sorted(set(parsed_args.claims_target_uids or []))
+        configured_reviewers = int(parsed_args.claims_consensus_reviewers_per_round)
+        reviewer_count = configured_reviewers or len(config.claims_target_uids) or 10
+        gold_quorum = int(parsed_args.claims_consensus_gold_quorum)
+        if not 1 <= reviewer_count <= 256:
+            raise SystemExit("CLAIMS_CONSENSUS_REVIEWERS_PER_ROUND must be between 1 and 256.")
+        if not 1 <= gold_quorum <= 256:
+            raise SystemExit("CLAIMS_CONSENSUS_GOLD_QUORUM must be between 1 and 256.")
+        config.claims_consensus_reviewers_per_round = reviewer_count
+        config.claims_consensus_gold_quorum = gold_quorum
         config.claims_consensus_interval = max(0.0, float(parsed_args.claims_consensus_interval))
         config.claims_max_steps = max(0, int(parsed_args.claims_max_steps))
         config.claims_materialize = bool(parsed_args.claims_materialize)
@@ -127,6 +159,8 @@ class ClaimsConsensusValidator:
                 candidates=self._reviewer_candidates(),
                 lease_seconds=self.config.claims_consensus_lease_seconds,
                 deadline_seconds=self.config.claims_consensus_deadline_seconds,
+                reviewers_per_round=self.config.claims_consensus_reviewers_per_round,
+                gold_quorum=self.config.claims_consensus_gold_quorum,
             )
             if round_payload.get("status") == "running":
                 self._process_round(round_payload)
@@ -141,13 +175,19 @@ class ClaimsConsensusValidator:
 
     def _reviewer_candidates(self) -> list[dict[str, Any]]:
         candidates: list[dict[str, Any]] = []
+        target_uids = set(
+            getattr(getattr(self, "config", None), "claims_target_uids", []) or []
+        )
         for neuron in list(getattr(self.metagraph, "neurons", []) or []):
             axon = getattr(neuron, "axon_info", None)
+            uid = int(getattr(neuron, "uid", -1))
+            if target_uids and uid not in target_uids:
+                continue
             if axon is None or not _is_serving(neuron):
                 continue
             candidates.append(
                 {
-                    "uid": int(getattr(neuron, "uid", -1)),
+                    "uid": uid,
                     "hotkey": str(getattr(neuron, "hotkey", "") or ""),
                     "coldkey": str(getattr(neuron, "coldkey", "") or ""),
                     "axon_ip": str(getattr(axon, "ip", "") or ""),
@@ -340,6 +380,15 @@ def _env_flag(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int_list(name: str) -> list[int]:
+    values: list[int] = []
+    for item in os.getenv(name, "").replace(" ", ",").split(","):
+        item = item.strip()
+        if item:
+            values.append(int(item))
+    return values
 
 
 def _subtensor_network_arg(parsed_args: argparse.Namespace) -> str:

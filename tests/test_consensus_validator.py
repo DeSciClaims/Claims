@@ -80,6 +80,31 @@ def test_reviewer_candidates_exclude_non_serving_axons() -> None:
     assert candidates[0]["is_serving"] is True
 
 
+def test_reviewer_candidates_respect_target_uids() -> None:
+    validator = ClaimsConsensusValidator.__new__(ClaimsConsensusValidator)
+    validator.config = SimpleNamespace(claims_target_uids=[1])
+    validator.metagraph = SimpleNamespace(
+        neurons=[
+            SimpleNamespace(
+                uid=1,
+                hotkey="hotkey_1",
+                coldkey="coldkey_1",
+                registration_block=10,
+                axon_info=SimpleNamespace(ip="127.0.0.1", port=8092, is_serving=True),
+            ),
+            SimpleNamespace(
+                uid=2,
+                hotkey="hotkey_2",
+                coldkey="coldkey_2",
+                registration_block=11,
+                axon_info=SimpleNamespace(ip="127.0.0.2", port=8093, is_serving=True),
+            ),
+        ]
+    )
+
+    assert [candidate["uid"] for candidate in validator._reviewer_candidates()] == [1]
+
+
 def test_seconds_until_deadline_handles_expired_and_future_values() -> None:
     now = datetime(2026, 9, 23, 16, 0, tzinfo=timezone.utc)
 
