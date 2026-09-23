@@ -36,7 +36,7 @@ class ClaimsConsensusValidator:
         self.wallet = self.Wallet(config=self.config)
         self.subtensor = self.Subtensor(network=self.config.claims_subtensor_network_arg, config=self.config)
         self.dendrite = self.Dendrite(wallet=self.wallet)
-        self.metagraph = self.subtensor.metagraph(netuid=self.config.netuid, lite=True)
+        self.metagraph = None
         self.backend_client = ClaimsBackendClient(
             base_url=self.config.claims_backend_url,
             wallet=self.wallet,
@@ -113,7 +113,11 @@ class ClaimsConsensusValidator:
                     batch_id=self.config.claims_materialize_batch_id or None,
                 )
                 self.bt_logging.info(f"Materialized miner consensus cases: {result}")
-            self.metagraph = self.subtensor.metagraph(netuid=self.config.netuid, lite=True)
+            self.metagraph = _sync_metagraph(
+                self.subtensor,
+                netuid=int(self.config.netuid),
+                logger=self.bt_logging,
+            )
             round_payload = self.backend_client.claim_miner_consensus_round(
                 netuid=int(self.config.netuid),
                 worker_id=self.worker_id,
@@ -268,6 +272,29 @@ def _metagraph_block(metagraph: Any) -> int:
         return max(0, int(block or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _sync_metagraph(
+    subtensor: Any,
+    *,
+    netuid: int,
+    logger: Any,
+    attempts: int = 3,
+    sleep_fn: Any = time.sleep,
+) -> Any:
+    last_error: Exception | None = None
+    for attempt in range(1, max(1, attempts) + 1):
+        try:
+            return subtensor.metagraph(netuid=netuid, lite=True)
+        except Exception as exc:
+            last_error = exc
+            if attempt >= max(1, attempts):
+                raise
+            logger.warning(
+                f"Consensus metagraph refresh failed attempt={attempt}/{attempts}: {exc}"
+            )
+            sleep_fn(float(attempt * 3))
+    raise RuntimeError("consensus metagraph refresh failed") from last_error
 
 
 def _env_flag(name: str, default: bool) -> bool:
