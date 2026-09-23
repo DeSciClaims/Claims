@@ -76,6 +76,7 @@ class ClaimsConsensusValidator:
         parsed_args, _ = parser.parse_known_args()
         config = self.Config(parser)
         _apply_bittensor_args(config, parsed_args)
+        config.netuid = int(parsed_args.netuid)
         config.claims_network = str(parsed_args.claims_network or "testnet")
         config.claims_backend_url = str(parsed_args.claims_backend_url or "").strip()
         if not config.claims_backend_url:
