@@ -244,7 +244,7 @@ def _parse_responses(
         normalized[item_id] = {
             "item_id": item_id,
             "selected_option": selected,
-            "confidence": max(0.0, min(1.0, float(response.get("confidence") or 0.0))),
+            "confidence": _normalize_confidence(response.get("confidence")),
             "rationale": str(response.get("rationale") or "").strip(),
             "evidence_items": evidence,
         }
@@ -335,3 +335,18 @@ def _local_evidence_error(
 
 def _normalize_text(value: str) -> str:
     return _SPACE.sub(" ", unicodedata.normalize("NFKC", value)).strip()
+
+
+def _normalize_confidence(value: Any) -> float:
+    labels = {
+        "high": 0.9,
+        "medium": 0.6,
+        "moderate": 0.6,
+        "low": 0.3,
+    }
+    if isinstance(value, str) and value.strip().lower() in labels:
+        return labels[value.strip().lower()]
+    try:
+        return max(0.0, min(1.0, float(value or 0.0)))
+    except (TypeError, ValueError):
+        return 0.0

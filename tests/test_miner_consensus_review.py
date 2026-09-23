@@ -193,6 +193,30 @@ def test_parse_consensus_responses_discards_invalid_extra_evidence() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("raw_confidence", "expected"),
+    [("high", 0.9), ("medium", 0.6), ("low", 0.3), ("unknown", 0.0)],
+)
+def test_parse_consensus_responses_normalizes_confidence_labels(
+    raw_confidence: str,
+    expected: float,
+) -> None:
+    responses = _parse_responses(
+        json.dumps(
+            [
+                {
+                    "item_id": "item_a",
+                    "selected_option": "candidate_a",
+                    "confidence": raw_confidence,
+                }
+            ]
+        ),
+        [CASES[0]],
+    )
+
+    assert responses[0]["confidence"] == expected
+
+
 def test_parse_consensus_responses_requires_quotes_from_local_source() -> None:
     source_payload = {
         "spans": [
