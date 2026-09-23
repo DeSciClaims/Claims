@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
+from types import SimpleNamespace
 
 import pytest
 
 from miner.agent_v1.config import AgentV1Config
-from miner.agent_v1.consensus_review import _consensus_lm_settings, _parse_responses
+from miner.agent_v1.consensus_review import (
+    _consensus_lm_settings,
+    _parse_responses,
+    _review_case_batch,
+)
 
 CASES = [
     {"item_id": "item_a", "options": ["candidate_a", "candidate_b"]},
@@ -44,6 +50,68 @@ def test_parse_consensus_responses_rejects_omitted_or_invalid_items() -> None:
             '[{"item_id":"item_a","selected_option":"not_an_option"}]',
             CASES,
         )
+
+
+def test_review_case_batch_splits_incomplete_batches_and_preserves_all_items() -> None:
+    source_payload = {
+        "spans": [
+            {
+                "span_id": "paper_1-span-0001",
+                "paper_id": "paper_1",
+                "text": "Treatment A increased survival by 20%.",
+            }
+        ]
+    }
+    cases = [
+        {"item_id": f"item_{index}", "options": ["candidate_a", "candidate_b"]}
+        for index in range(3)
+    ]
+    calls: list[list[str]] = []
+
+    def predictor(*, assignment_json: str) -> SimpleNamespace:
+        request_cases = json.loads(assignment_json)["cases"]
+        item_ids = [case["item_id"] for case in request_cases]
+        calls.append(item_ids)
+        returned_cases = request_cases[:-1] if len(request_cases) > 1 else request_cases
+        responses = [
+            {
+                "item_id": case["item_id"],
+                "selected_option": "candidate_a",
+                "confidence": 0.9,
+                "rationale": "Direct support.",
+                "evidence_items": [
+                    {
+                        "evidence_id": "E01",
+                        "paper_id": "paper_1",
+                        "quote": "Treatment A increased survival by 20%.",
+                        "local_span_id": "paper_1-span-0001",
+                    }
+                ],
+            }
+            for case in returned_cases
+        ]
+        return SimpleNamespace(responses_json=json.dumps(responses))
+
+    responses = _review_case_batch(
+        dspy_module=SimpleNamespace(context=lambda **_kwargs: nullcontext()),
+        lm=object(),
+        predictor=predictor,
+        request_context={"round_id": "round_1"},
+        cases=cases,
+        source_payload=source_payload,
+        paper_id="paper_1",
+    )
+
+    assert [response["item_id"] for response in responses] == ["item_0", "item_1", "item_2"]
+    assert calls == [
+        ["item_0", "item_1", "item_2"],
+        ["item_0", "item_1", "item_2"],
+        ["item_0"],
+        ["item_1", "item_2"],
+        ["item_1", "item_2"],
+        ["item_1"],
+        ["item_2"],
+    ]
 
 
 def test_parse_consensus_responses_requires_quotes_from_local_source() -> None:

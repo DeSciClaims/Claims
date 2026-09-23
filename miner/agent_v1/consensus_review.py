@@ -67,41 +67,84 @@ def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
     responses: list[dict[str, Any]] = []
     for source_document, source_cases in _cases_by_source_document(cases):
         source_payload = _extract_source_payload(source_document, config)
-        request = {
+        request_context = {
             "schema": str(payload.get("schema") or "claims_consensus_assignment_v1"),
             "round_id": str(payload.get("round_id") or ""),
             "source_document": source_document,
             "source_payload": source_payload,
-            "cases": source_cases,
         }
-        last_error: Exception | None = None
-        for _attempt in range(2):
-            try:
-                if hasattr(dspy, "context"):
-                    with dspy.context(lm=lm):
-                        result = predictor(assignment_json=json.dumps(request, ensure_ascii=False))
-                else:  # pragma: no cover - older DSPy compatibility.
-                    dspy.configure(lm=lm)
-                    result = predictor(assignment_json=json.dumps(request, ensure_ascii=False))
-                responses.extend(
-                    _parse_responses(
-                        getattr(result, "responses_json", result),
-                        source_cases,
-                        source_payload=source_payload,
-                        paper_id=str(source_document.get("paper_id") or ""),
-                    )
-                )
-                break
-            except Exception as exc:  # noqa: BLE001 - provider and parser failures are retried uniformly.
-                last_error = exc
-        else:
-            raise RuntimeError(f"consensus reviewer failed to return a complete valid response: {last_error}")
+        responses.extend(
+            _review_case_batch(
+                dspy_module=dspy,
+                lm=lm,
+                predictor=predictor,
+                request_context=request_context,
+                cases=source_cases,
+                source_payload=source_payload,
+                paper_id=str(source_document.get("paper_id") or ""),
+            )
+        )
     response_by_item = {response["item_id"]: response for response in responses}
     return {
         "schema": "claims_miner_consensus_round_response_v1",
         "round_id": str(payload.get("round_id") or ""),
         "responses": [response_by_item[str(case.get("item_id") or "")] for case in cases],
     }
+
+
+def _review_case_batch(
+    *,
+    dspy_module: Any,
+    lm: Any,
+    predictor: Any,
+    request_context: dict[str, Any],
+    cases: list[dict[str, Any]],
+    source_payload: dict[str, Any],
+    paper_id: str,
+) -> list[dict[str, Any]]:
+    request = {**request_context, "cases": cases}
+    last_error: Exception | None = None
+    for _attempt in range(2):
+        try:
+            if hasattr(dspy_module, "context"):
+                with dspy_module.context(lm=lm):
+                    result = predictor(assignment_json=json.dumps(request, ensure_ascii=False))
+            else:  # pragma: no cover - older DSPy compatibility.
+                dspy_module.configure(lm=lm)
+                result = predictor(assignment_json=json.dumps(request, ensure_ascii=False))
+            return _parse_responses(
+                getattr(result, "responses_json", result),
+                cases,
+                source_payload=source_payload,
+                paper_id=paper_id,
+            )
+        except Exception as exc:  # noqa: BLE001 - provider and parser failures are retried uniformly.
+            last_error = exc
+
+    if len(cases) > 1:
+        midpoint = len(cases) // 2
+        return _review_case_batch(
+            dspy_module=dspy_module,
+            lm=lm,
+            predictor=predictor,
+            request_context=request_context,
+            cases=cases[:midpoint],
+            source_payload=source_payload,
+            paper_id=paper_id,
+        ) + _review_case_batch(
+            dspy_module=dspy_module,
+            lm=lm,
+            predictor=predictor,
+            request_context=request_context,
+            cases=cases[midpoint:],
+            source_payload=source_payload,
+            paper_id=paper_id,
+        )
+
+    item_id = str(cases[0].get("item_id") or "") if cases else ""
+    raise RuntimeError(
+        f"consensus reviewer failed to return a complete valid response for item {item_id}: {last_error}"
+    )
 
 
 def _consensus_lm_settings(config: AgentV1Config) -> tuple[str, str, str, str]:
