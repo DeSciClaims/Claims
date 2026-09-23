@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from neurons.consensus_validator import _sync_metagraph
+from types import SimpleNamespace
+
+from neurons.consensus_validator import ClaimsConsensusValidator, _sync_metagraph
 
 
 class _Subtensor:
@@ -40,3 +42,31 @@ def test_sync_metagraph_retries_transient_runtime_failure() -> None:
     assert subtensor.calls == [(530, True), (530, True), (530, True)]
     assert sleeps == [3.0, 6.0]
     assert len(logger.messages) == 2
+
+
+def test_reviewer_candidates_exclude_non_serving_axons() -> None:
+    validator = ClaimsConsensusValidator.__new__(ClaimsConsensusValidator)
+    validator.metagraph = SimpleNamespace(
+        neurons=[
+            SimpleNamespace(
+                uid=1,
+                hotkey="hotkey_1",
+                coldkey="coldkey_1",
+                registration_block=10,
+                axon_info=SimpleNamespace(ip="127.0.0.1", port=8092, is_serving=True),
+            ),
+            SimpleNamespace(
+                uid=2,
+                hotkey="hotkey_2",
+                coldkey="coldkey_2",
+                registration_block=11,
+                axon_info=SimpleNamespace(ip="0.0.0.0", port=0, is_serving=False),
+            ),
+        ]
+    )
+
+    candidates = validator._reviewer_candidates()
+
+    assert [candidate["uid"] for candidate in candidates] == [1]
+    assert candidates[0]["axon_port"] == 8092
+    assert candidates[0]["is_serving"] is True

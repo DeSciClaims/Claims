@@ -142,7 +142,7 @@ class ClaimsConsensusValidator:
         candidates: list[dict[str, Any]] = []
         for neuron in list(getattr(self.metagraph, "neurons", []) or []):
             axon = getattr(neuron, "axon_info", None)
-            if axon is None:
+            if axon is None or not _is_serving(neuron):
                 continue
             candidates.append(
                 {
@@ -151,7 +151,7 @@ class ClaimsConsensusValidator:
                     "coldkey": str(getattr(neuron, "coldkey", "") or ""),
                     "axon_ip": str(getattr(axon, "ip", "") or ""),
                     "axon_port": int(getattr(axon, "port", 0) or 0),
-                    "is_serving": _is_serving(neuron),
+                    "is_serving": True,
                     "registration_block": int(getattr(neuron, "registration_block", 0) or 0),
                 }
             )
