@@ -36,7 +36,7 @@ class ClaimsConsensusValidator:
         self.wallet = self.Wallet(config=self.config)
         self.subtensor = self.Subtensor(network=self.config.claims_subtensor_network_arg, config=self.config)
         self.dendrite = self.Dendrite(wallet=self.wallet)
-        self.metagraph = self.subtensor.metagraph(netuid=self.config.netuid, lite=False)
+        self.metagraph = self.subtensor.metagraph(netuid=self.config.netuid, lite=True)
         self.backend_client = ClaimsBackendClient(
             base_url=self.config.claims_backend_url,
             wallet=self.wallet,
@@ -113,7 +113,7 @@ class ClaimsConsensusValidator:
                     batch_id=self.config.claims_materialize_batch_id or None,
                 )
                 self.bt_logging.info(f"Materialized miner consensus cases: {result}")
-            self.metagraph = self.subtensor.metagraph(netuid=self.config.netuid, lite=False)
+            self.metagraph = self.subtensor.metagraph(netuid=self.config.netuid, lite=True)
             round_payload = self.backend_client.claim_miner_consensus_round(
                 netuid=int(self.config.netuid),
                 worker_id=self.worker_id,
