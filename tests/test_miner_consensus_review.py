@@ -66,12 +66,12 @@ def test_review_case_batch_splits_incomplete_batches_and_preserves_all_items() -
         {"item_id": f"item_{index}", "options": ["candidate_a", "candidate_b"]}
         for index in range(3)
     ]
-    calls: list[list[str]] = []
+    calls: list[dict] = []
 
     def predictor(*, assignment_json: str) -> SimpleNamespace:
-        request_cases = json.loads(assignment_json)["cases"]
-        item_ids = [case["item_id"] for case in request_cases]
-        calls.append(item_ids)
+        request = json.loads(assignment_json)
+        request_cases = request["cases"]
+        calls.append(request)
         returned_cases = request_cases[:-1] if len(request_cases) > 1 else request_cases
         responses = [
             {
@@ -103,7 +103,7 @@ def test_review_case_batch_splits_incomplete_batches_and_preserves_all_items() -
     )
 
     assert [response["item_id"] for response in responses] == ["item_0", "item_1", "item_2"]
-    assert calls == [
+    assert [[case["item_id"] for case in call["cases"]] for call in calls] == [
         ["item_0", "item_1", "item_2"],
         ["item_0", "item_1", "item_2"],
         ["item_0"],
@@ -112,6 +112,42 @@ def test_review_case_batch_splits_incomplete_batches_and_preserves_all_items() -
         ["item_1"],
         ["item_2"],
     ]
+    assert "retry_feedback" not in calls[0]
+    assert "not returned" in calls[1]["retry_feedback"]
+    assert "retry_instruction" in calls[1]
+
+
+def test_parse_consensus_responses_reports_invalid_evidence_reason() -> None:
+    source_payload = {
+        "spans": [
+            {
+                "span_id": "paper_1-span-0001",
+                "paper_id": "paper_1",
+                "text": "Treatment A increased survival by 20%.",
+            }
+        ]
+    }
+
+    with pytest.raises(ValueError, match="not a verbatim substring"):
+        _parse_responses(
+            json.dumps(
+                [
+                    {
+                        "item_id": "item_a",
+                        "selected_option": "candidate_a",
+                        "evidence_items": [
+                            {
+                                "paper_id": "paper_1",
+                                "quote": "Treatment A improved survival.",
+                            }
+                        ],
+                    }
+                ]
+            ),
+            [CASES[0]],
+            source_payload=source_payload,
+            paper_id="paper_1",
+        )
 
 
 def test_parse_consensus_responses_requires_quotes_from_local_source() -> None:

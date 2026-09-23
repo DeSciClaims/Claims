@@ -50,7 +50,8 @@ def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
         Select exactly one listed option for every item by checking the supplied source payload.
         Prefer source-faithful, directly supported claims. Reject unsupported numerical,
         directional, population, intervention, and outcome changes. Return 1-4 verbatim source
-        quotes for every choice. Do not use the same choice mechanically across cases.
+        quotes for every choice. Each quote must be copied exactly from the text of a supplied
+        source span, apart from whitespace. Do not use the same choice mechanically across cases.
         """
 
         assignment_json: str = dspy.InputField()
@@ -101,10 +102,17 @@ def _review_case_batch(
     cases: list[dict[str, Any]],
     source_payload: dict[str, Any],
     paper_id: str,
+    retry_feedback: str = "",
 ) -> list[dict[str, Any]]:
-    request = {**request_context, "cases": cases}
     last_error: Exception | None = None
     for _attempt in range(2):
+        request = {**request_context, "cases": cases}
+        if retry_feedback:
+            request["retry_feedback"] = retry_feedback
+            request["retry_instruction"] = (
+                "Correct every listed validation error. Return all requested item IDs exactly once, "
+                "choose only a listed option, and copy each evidence quote verbatim from a source span."
+            )
         try:
             if hasattr(dspy_module, "context"):
                 with dspy_module.context(lm=lm):
@@ -120,6 +128,7 @@ def _review_case_batch(
             )
         except Exception as exc:  # noqa: BLE001 - provider and parser failures are retried uniformly.
             last_error = exc
+            retry_feedback = str(exc)
 
     if len(cases) > 1:
         midpoint = len(cases) // 2
@@ -131,6 +140,7 @@ def _review_case_batch(
             cases=cases[:midpoint],
             source_payload=source_payload,
             paper_id=paper_id,
+            retry_feedback=str(last_error or ""),
         ) + _review_case_batch(
             dspy_module=dspy_module,
             lm=lm,
@@ -139,6 +149,7 @@ def _review_case_batch(
             cases=cases[midpoint:],
             source_payload=source_payload,
             paper_id=paper_id,
+            retry_feedback=str(last_error or ""),
         )
 
     item_id = str(cases[0].get("item_id") or "") if cases else ""
@@ -194,19 +205,29 @@ def _parse_responses(
         for case in cases
     }
     normalized: dict[str, dict[str, Any]] = {}
+    invalid_reasons: dict[str, str] = {}
     for response in parsed:
         if not isinstance(response, dict):
             continue
         item_id = str(response.get("item_id") or "").strip()
         selected = str(response.get("selected_option") or "").strip()
-        if item_id not in expected or selected not in expected[item_id] or item_id in normalized:
+        if item_id not in expected:
+            continue
+        if selected not in expected[item_id]:
+            invalid_reasons[item_id] = f"selected_option {selected!r} is not listed"
+            continue
+        if item_id in normalized:
+            invalid_reasons[item_id] = "item_id was returned more than once"
             continue
         raw_evidence = response.get("evidence_items")
         if not isinstance(raw_evidence, list):
             raw_evidence = response.get("evidence")
         evidence = [item for item in (raw_evidence or []) if isinstance(item, dict)]
-        if source_payload is not None and not _valid_local_evidence(evidence, source_payload, paper_id=paper_id):
-            continue
+        if source_payload is not None:
+            evidence_error = _local_evidence_error(evidence, source_payload, paper_id=paper_id)
+            if evidence_error:
+                invalid_reasons[item_id] = evidence_error
+                continue
         normalized[item_id] = {
             "item_id": item_id,
             "selected_option": selected,
@@ -216,7 +237,8 @@ def _parse_responses(
         }
     missing = [item_id for item_id in expected if item_id not in normalized]
     if missing:
-        raise ValueError(f"consensus response omitted items: {missing}")
+        details = [f"{item_id}: {invalid_reasons.get(item_id, 'not returned')}" for item_id in missing]
+        raise ValueError(f"consensus response omitted items or returned invalid items: {details}")
     return [normalized[str(case["item_id"])] for case in cases]
 
 
@@ -271,8 +293,17 @@ def _valid_local_evidence(
     *,
     paper_id: str,
 ) -> bool:
+    return _local_evidence_error(evidence, source_payload, paper_id=paper_id) is None
+
+
+def _local_evidence_error(
+    evidence: list[dict[str, Any]],
+    source_payload: dict[str, Any],
+    *,
+    paper_id: str,
+) -> str | None:
     if not 1 <= len(evidence) <= 4:
-        return False
+        return "evidence_items must contain between 1 and 4 entries"
     source_spans = [
         _normalize_text(str(span.get("text") or ""))
         for span in source_payload.get("spans", [])
@@ -280,11 +311,13 @@ def _valid_local_evidence(
     ]
     for item in evidence:
         if str(item.get("paper_id") or paper_id) != paper_id:
-            return False
+            return "evidence paper_id does not match the assigned paper"
         quote = _normalize_text(str(item.get("quote") or ""))
-        if len(quote) < 8 or not any(quote in span for span in source_spans):
-            return False
-    return True
+        if len(quote) < 8:
+            return "evidence quote is shorter than 8 characters"
+        if not any(quote in span for span in source_spans):
+            return "evidence quote is not a verbatim substring of any source span"
+    return None
 
 
 def _normalize_text(value: str) -> str:
