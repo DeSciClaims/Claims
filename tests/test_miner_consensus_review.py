@@ -57,6 +57,30 @@ def test_consensus_review_jobs_run_concurrently_and_preserve_order() -> None:
     assert [batch[0]["item_id"] for batch in batches] == ["item_0", "item_1", "item_2"]
 
 
+def test_consensus_source_jobs_run_concurrently_and_preserve_order() -> None:
+    lock = threading.Lock()
+    active = 0
+    peak = 0
+
+    def job(index: int, delay: float) -> dict:
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(delay)
+        with lock:
+            active -= 1
+        return {"paper_id": f"paper_{index}"}
+
+    payloads = _run_ordered_jobs(
+        [lambda: job(0, 0.04), lambda: job(1, 0.01), lambda: job(2, 0.01)],
+        max_workers=2,
+    )
+
+    assert peak == 2
+    assert [payload["paper_id"] for payload in payloads] == ["paper_0", "paper_1", "paper_2"]
+
+
 def test_parse_consensus_responses_requires_complete_valid_option_set() -> None:
     responses = _parse_responses(
         json.dumps(

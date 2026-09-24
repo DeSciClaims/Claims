@@ -9,7 +9,7 @@ import unicodedata
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import partial
-from typing import Any
+from typing import Any, TypeVar
 
 from neurons.tasks import download_pdf
 
@@ -23,6 +23,7 @@ from .provider import (
 )
 
 _SPACE = re.compile(r"\s+")
+_T = TypeVar("_T")
 
 
 def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
@@ -75,9 +76,19 @@ def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
         32,
         max(1, int(os.getenv("SUBNET_CLAIMS_CONSENSUS_MAX_WORKERS", "4"))),
     )
+    source_max_workers = min(
+        32,
+        max(1, int(os.getenv("SUBNET_CLAIMS_CONSENSUS_SOURCE_MAX_WORKERS", "4"))),
+    )
+    source_started = time.perf_counter()
+    source_groups = _cases_by_source_document(cases)
+    source_payloads = _run_ordered_jobs(
+        [partial(_extract_source_payload, source_document, config) for source_document, _ in source_groups],
+        max_workers=source_max_workers,
+    )
+    source_seconds = time.perf_counter() - source_started
     jobs: list[Callable[[], list[dict[str, Any]]]] = []
-    for source_document, source_cases in _cases_by_source_document(cases):
-        source_payload = _extract_source_payload(source_document, config)
+    for (source_document, source_cases), source_payload in zip(source_groups, source_payloads, strict=True):
         request_context = {
             "schema": str(payload.get("schema") or "claims_consensus_assignment_v1"),
             "round_id": str(payload.get("round_id") or ""),
@@ -108,6 +119,9 @@ def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
             "model_batch_size": batch_size,
             "model_batch_count": len(jobs),
             "model_max_workers": min(max_workers, len(jobs)),
+            "source_document_count": len(source_groups),
+            "source_max_workers": min(source_max_workers, len(source_groups)),
+            "source_seconds": round(source_seconds, 6),
         },
     }
 
@@ -118,21 +132,21 @@ def _case_batches(cases: list[dict[str, Any]], batch_size: int) -> list[list[dic
 
 
 def _run_ordered_jobs(
-    jobs: list[Callable[[], list[dict[str, Any]]]],
+    jobs: list[Callable[[], _T]],
     *,
     max_workers: int,
-) -> list[list[dict[str, Any]]]:
+) -> list[_T]:
     if not jobs:
         return []
     workers = min(len(jobs), max(1, int(max_workers)))
     if workers == 1:
         return [job() for job in jobs]
-    ordered: list[list[dict[str, Any]] | None] = [None] * len(jobs)
+    ordered: list[_T | None] = [None] * len(jobs)
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {executor.submit(job): index for index, job in enumerate(jobs)}
         for future in as_completed(futures):
             ordered[futures[future]] = future.result()
-    return [batch or [] for batch in ordered]
+    return [item for item in ordered if item is not None]
 
 
 def _review_case_batch(

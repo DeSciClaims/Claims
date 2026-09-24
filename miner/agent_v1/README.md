@@ -116,11 +116,14 @@ SUBNET_CLAIMS_CONSENSUS_MAX_TOKENS=8192
 SUBNET_CLAIMS_CONSENSUS_TIMEOUT=1800
 SUBNET_CLAIMS_CONSENSUS_BATCH_SIZE=2
 SUBNET_CLAIMS_CONSENSUS_MAX_WORKERS=4
+SUBNET_CLAIMS_CONSENSUS_SOURCE_MAX_WORKERS=4
 ```
 
 The reviewer uses structured DSPy calls. It inherits the miner's extraction
 provider and model unless the consensus-specific overrides are set, so
 OpenRouter and Chutes may be selected independently for the two workloads.
+`SUBNET_CLAIMS_CONSENSUS_SOURCE_MAX_WORKERS` bounds concurrent PDF downloads
+and source-payload extraction independently from concurrent model batches.
 Completed consensus responses are signed and uploaded to the miner-upload API;
 the Dendrite response contains only the durable submission manifest.
 `compatibility` mode exists for protocol tests only and should not be used for
