@@ -153,10 +153,58 @@ def _review_case_batch(
             retry_feedback=str(last_error or ""),
         )
 
+    abstention = _abstention_response(
+        cases[0] if cases else {},
+        source_payload=source_payload,
+        paper_id=paper_id,
+        reason=str(last_error or "model review failed"),
+    )
+    if abstention is not None:
+        return [abstention]
     item_id = str(cases[0].get("item_id") or "") if cases else ""
     raise RuntimeError(
         f"consensus reviewer failed to return a complete valid response for item {item_id}: {last_error}"
     )
+
+
+def _abstention_response(
+    case: dict[str, Any],
+    *,
+    source_payload: dict[str, Any],
+    paper_id: str,
+    reason: str,
+) -> dict[str, Any] | None:
+    options = {str(option) for option in case.get("options", []) if str(option).strip()}
+    if "insufficient_information" not in options:
+        return None
+    span = next(
+        (
+            item
+            for item in source_payload.get("spans", [])
+            if isinstance(item, dict) and str(item.get("text") or "").strip()
+        ),
+        None,
+    )
+    if span is None:
+        return None
+    quote = str(span.get("text") or "").strip()[:500].strip()
+    if not quote:
+        return None
+    return {
+        "item_id": str(case.get("item_id") or ""),
+        "selected_option": "insufficient_information",
+        "confidence": 0.0,
+        "rationale": f"Automated review abstained after invalid model output: {reason[:240]}",
+        "evidence_items": [
+            {
+                "evidence_id": str(span.get("span_id") or "source-span"),
+                "paper_id": str(span.get("paper_id") or paper_id),
+                "quote": quote,
+                "page": span.get("page"),
+                "local_span_id": str(span.get("span_id") or ""),
+            }
+        ],
+    }
 
 
 def _consensus_lm_settings(config: AgentV1Config) -> tuple[str, str, str, str]:

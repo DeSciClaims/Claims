@@ -117,6 +117,42 @@ def test_review_case_batch_splits_incomplete_batches_and_preserves_all_items() -
     assert "retry_instruction" in calls[1]
 
 
+def test_review_case_batch_abstains_when_singleton_retries_fail() -> None:
+    source_payload = {
+        "spans": [
+            {
+                "span_id": "paper_1-span-0001",
+                "paper_id": "paper_1",
+                "page": 3,
+                "text": "Treatment A increased survival by 20%.",
+            }
+        ]
+    }
+
+    def predictor(*, assignment_json: str) -> SimpleNamespace:
+        assert json.loads(assignment_json)["cases"][0]["item_id"] == "item_a"
+        return SimpleNamespace(responses_json="")
+
+    responses = _review_case_batch(
+        dspy_module=SimpleNamespace(context=lambda **_kwargs: nullcontext()),
+        lm=object(),
+        predictor=predictor,
+        request_context={"round_id": "round_1"},
+        cases=[
+            {
+                "item_id": "item_a",
+                "options": ["candidate_a", "candidate_b", "insufficient_information"],
+            }
+        ],
+        source_payload=source_payload,
+        paper_id="paper_1",
+    )
+
+    assert responses[0]["selected_option"] == "insufficient_information"
+    assert responses[0]["confidence"] == 0.0
+    assert responses[0]["evidence_items"][0]["quote"] == source_payload["spans"][0]["text"]
+
+
 def test_parse_consensus_responses_reports_invalid_evidence_reason() -> None:
     source_payload = {
         "spans": [
