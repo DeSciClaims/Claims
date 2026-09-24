@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from contextlib import nullcontext
 from types import SimpleNamespace
 
@@ -12,6 +14,7 @@ from miner.agent_v1.consensus_review import (
     _consensus_lm_settings,
     _parse_responses,
     _review_case_batch,
+    _run_ordered_jobs,
 )
 
 CASES = [
@@ -28,6 +31,30 @@ def test_consensus_cases_are_bounded_before_model_review() -> None:
         ["item_2", "item_3"],
         ["item_4"],
     ]
+
+
+def test_consensus_review_jobs_run_concurrently_and_preserve_order() -> None:
+    lock = threading.Lock()
+    active = 0
+    peak = 0
+
+    def job(index: int, delay: float) -> list[dict]:
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(delay)
+        with lock:
+            active -= 1
+        return [{"item_id": f"item_{index}"}]
+
+    batches = _run_ordered_jobs(
+        [lambda: job(0, 0.04), lambda: job(1, 0.01), lambda: job(2, 0.01)],
+        max_workers=2,
+    )
+
+    assert peak == 2
+    assert [batch[0]["item_id"] for batch in batches] == ["item_0", "item_1", "item_2"]
 
 
 def test_parse_consensus_responses_requires_complete_valid_option_set() -> None:

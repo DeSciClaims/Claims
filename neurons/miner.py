@@ -10,6 +10,7 @@ import time
 import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Tuple
@@ -414,10 +415,33 @@ class ClaimsMiner:
                     isinstance(consensus_payload.get("cases"), list)
                     and str(getattr(self.config, "claims_consensus_mode", "model")) == "model"
                 ):
+                    review_started_at = datetime.now(timezone.utc)
+                    review_started = time.perf_counter()
                     consensus_vote = review_consensus_assignment(consensus_payload)
+                    review_seconds = time.perf_counter() - review_started
+                    review_completed_at = datetime.now(timezone.utc)
+                    upload_started = time.perf_counter()
                     synapse.consensus_vote = self._post_consensus_submission(
                         synapse=synapse,
                         consensus_vote=consensus_vote,
+                        timing={
+                            **dict(consensus_vote.get("metadata") or {}),
+                            "review_started_at": review_started_at.isoformat(),
+                            "review_completed_at": review_completed_at.isoformat(),
+                            "review_seconds": round(review_seconds, 6),
+                            "upload_started_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
+                    upload_seconds = time.perf_counter() - upload_started
+                    synapse.consensus_vote["timing"] = {
+                        "review_seconds": round(review_seconds, 6),
+                        "upload_seconds": round(upload_seconds, 6),
+                        "total_seconds": round(review_seconds + upload_seconds, 6),
+                    }
+                    self.bt_logging.info(
+                        f"Completed consensus task round={synapse.consensus_round_id} "
+                        f"review_seconds={review_seconds:.3f} upload_seconds={upload_seconds:.3f} "
+                        f"total_seconds={review_seconds + upload_seconds:.3f}"
                     )
                 else:
                     synapse.consensus_vote = build_consensus_vote(
@@ -469,6 +493,7 @@ class ClaimsMiner:
         *,
         synapse: ClaimExtractionSynapse,
         consensus_vote: dict[str, Any],
+        timing: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         if getattr(self, "backend_client", None) is None:
             raise RuntimeError(
@@ -498,6 +523,7 @@ class ClaimsMiner:
                 "miner_version": str(self.config.claims_pipeline),
                 "protocol_version": str(getattr(synapse, "protocol_version", "") or ""),
                 "schema_version": str(getattr(synapse, "schema_version", "") or ""),
+                "timing": dict(timing or {}),
             },
             "status": "completed",
         }

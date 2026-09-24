@@ -124,11 +124,14 @@ class ClaimsConsensusValidator:
                     batch_id=self.config.claims_materialize_batch_id or None,
                 )
                 self.bt_logging.info(f"Materialized miner consensus cases: {result}")
+            metagraph_started = time.perf_counter()
             self.metagraph = _sync_metagraph(
                 self.subtensor,
                 netuid=int(self.config.netuid),
                 logger=self.bt_logging,
             )
+            metagraph_seconds = time.perf_counter() - metagraph_started
+            claim_started = time.perf_counter()
             round_payload = self.backend_client.claim_miner_consensus_round(
                 netuid=int(self.config.netuid),
                 worker_id=self.worker_id,
@@ -136,6 +139,11 @@ class ClaimsConsensusValidator:
                 candidates=self._reviewer_candidates(),
                 lease_seconds=self.config.claims_consensus_lease_seconds,
                 deadline_seconds=self.config.claims_consensus_deadline_seconds,
+            )
+            claim_seconds = time.perf_counter() - claim_started
+            self.bt_logging.info(
+                f"Consensus round claim status={round_payload.get('status')} "
+                f"metagraph_seconds={metagraph_seconds:.3f} backend_claim_seconds={claim_seconds:.3f}"
             )
             if round_payload.get("status") == "running":
                 self._process_round(round_payload)
@@ -174,6 +182,7 @@ class ClaimsConsensusValidator:
         return candidates
 
     def _process_round(self, round_payload: dict[str, Any]) -> None:
+        process_started = time.perf_counter()
         round_id = str(round_payload.get("round_id") or "")
         neurons_by_hotkey = {
             str(getattr(neuron, "hotkey", "") or ""): neuron
@@ -206,6 +215,7 @@ class ClaimsConsensusValidator:
             max(1.0, remaining_seconds),
         )
         max_workers = min(len(assignments), int(self.config.claims_consensus_query_workers))
+        query_started = time.perf_counter()
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
             futures = {
                 executor.submit(
@@ -229,16 +239,30 @@ class ClaimsConsensusValidator:
                     validator_failures.append(hotkey)
                     continue
                 if result is not None:
+                    miner_timing = result.pop("_miner_timing", None)
+                    if isinstance(miner_timing, dict):
+                        self.bt_logging.info(
+                            f"Consensus reviewer timing round={round_id} uid={assignment.get('uid')} "
+                            f"review_seconds={_safe_duration(miner_timing.get('review_seconds')):.3f} "
+                            f"upload_seconds={_safe_duration(miner_timing.get('upload_seconds')):.3f} "
+                            f"total_seconds={_safe_duration(miner_timing.get('total_seconds')):.3f}"
+                        )
                     submissions.append(result)
+        query_seconds = time.perf_counter() - query_started
+        finalize_started = time.perf_counter()
         completed = self.backend_client.complete_miner_consensus_round(
             round_id=round_id,
             worker_id=self.worker_id,
             submissions=submissions,
             validator_failed_hotkeys=validator_failures,
         )
+        finalize_seconds = time.perf_counter() - finalize_started
+        process_seconds = time.perf_counter() - process_started
         self.bt_logging.info(
             f"Completed consensus round={round_id} responses={len(submissions)}/{len(assignments)} "
-            f"outcomes={len((completed.get('result') or {}).get('outcomes') or [])}"
+            f"outcomes={len((completed.get('result') or {}).get('outcomes') or [])} "
+            f"query_seconds={query_seconds:.3f} finalize_seconds={finalize_seconds:.3f} "
+            f"process_seconds={process_seconds:.3f}"
         )
 
     def _query_assignment(
@@ -289,6 +313,7 @@ class ClaimsConsensusValidator:
                 **submission,
                 "submission_id": submission_id,
                 "response_hash": str(vote.get("response_hash") or ""),
+                "_miner_timing": dict(vote.get("timing") or {}),
             }
         return None
 
@@ -301,6 +326,13 @@ def _is_serving(neuron: Any) -> bool:
         and int(getattr(axon, "port", 0) or 0) > 0
         and str(getattr(axon, "ip", "") or "") not in {"", "0", "0.0.0.0", "::", "[::]"}
     )
+
+
+def _safe_duration(value: Any) -> float:
+    try:
+        return max(0.0, float(value or 0.0))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _metagraph_block(metagraph: Any) -> int:
