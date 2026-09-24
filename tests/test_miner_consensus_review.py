@@ -8,6 +8,7 @@ import pytest
 
 from miner.agent_v1.config import AgentV1Config
 from miner.agent_v1.consensus_review import (
+    _case_batches,
     _consensus_lm_settings,
     _parse_responses,
     _review_case_batch,
@@ -17,6 +18,16 @@ CASES = [
     {"item_id": "item_a", "options": ["candidate_a", "candidate_b"]},
     {"item_id": "item_b", "options": ["candidate_a", "candidate_b"]},
 ]
+
+
+def test_consensus_cases_are_bounded_before_model_review() -> None:
+    cases = [{"item_id": f"item_{index}"} for index in range(5)]
+
+    assert [[item["item_id"] for item in batch] for batch in _case_batches(cases, 2)] == [
+        ["item_0", "item_1"],
+        ["item_2", "item_3"],
+        ["item_4"],
+    ]
 
 
 def test_parse_consensus_responses_requires_complete_valid_option_set() -> None:

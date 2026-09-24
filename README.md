@@ -492,7 +492,7 @@ Miner batch/PDF knobs:
 - PDF reader: `--claims.pdf-extraction-method pdf-inspector|pypdf|grobid` or `SUBNET_CLAIMS_PDF_READER=...`. Default is `pdf-inspector`; `grobid` also needs `GROBID_URL`.
 - Batch parallelism: `--claims.batch-max-workers N` or `CLAIMS_MINER_BATCH_MAX_WORKERS=N`. Default is `1`; use `2-3` when the model/provider can handle concurrent papers.
 - Miner uploads: set `--claims.backend-url` or `CLAIMS_BACKEND_URL` to the miner-upload API. Full extraction artifacts and V1 consensus submissions are signed by the miner and stored outside Dendrite responses.
-- Consensus model: structured DSPy review inherits `SUBNET_CLAIMS_AGENT_PROVIDER`, `SUBNET_CLAIMS_AGENT_MODEL`, API base, and key by default. Use `SUBNET_CLAIMS_CONSENSUS_PROVIDER`, `SUBNET_CLAIMS_CONSENSUS_MODEL`, `SUBNET_CLAIMS_CONSENSUS_API_BASE`, and `SUBNET_CLAIMS_CONSENSUS_API_KEY_ENV` to select a different provider or model for consensus.
+- Consensus model: structured DSPy review inherits `SUBNET_CLAIMS_AGENT_PROVIDER`, `SUBNET_CLAIMS_AGENT_MODEL`, API base, and key by default. Use `SUBNET_CLAIMS_CONSENSUS_PROVIDER`, `SUBNET_CLAIMS_CONSENSUS_MODEL`, `SUBNET_CLAIMS_CONSENSUS_API_BASE`, and `SUBNET_CLAIMS_CONSENSUS_API_KEY_ENV` to select a different provider or model for consensus. `SUBNET_CLAIMS_CONSENSUS_BATCH_SIZE` bounds each model request and defaults to `2`.
 
 For batch tasks, miners return one compact `articles[]` item per assigned
 paper. `agent_v1` articles carry `agent_output`; the top-level `extraction` and

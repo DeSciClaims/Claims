@@ -67,6 +67,7 @@ def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
 
     predictor = dspy.Predict(ConsensusReviewSignature)
     responses: list[dict[str, Any]] = []
+    batch_size = max(1, int(os.getenv("SUBNET_CLAIMS_CONSENSUS_BATCH_SIZE", "2")))
     for source_document, source_cases in _cases_by_source_document(cases):
         source_payload = _extract_source_payload(source_document, config)
         request_context = {
@@ -75,23 +76,29 @@ def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
             "source_document": source_document,
             "source_payload": source_payload,
         }
-        responses.extend(
-            _review_case_batch(
-                dspy_module=dspy,
-                lm=lm,
-                predictor=predictor,
-                request_context=request_context,
-                cases=source_cases,
-                source_payload=source_payload,
-                paper_id=str(source_document.get("paper_id") or ""),
+        for case_batch in _case_batches(source_cases, batch_size):
+            responses.extend(
+                _review_case_batch(
+                    dspy_module=dspy,
+                    lm=lm,
+                    predictor=predictor,
+                    request_context=request_context,
+                    cases=case_batch,
+                    source_payload=source_payload,
+                    paper_id=str(source_document.get("paper_id") or ""),
+                )
             )
-        )
     response_by_item = {response["item_id"]: response for response in responses}
     return {
         "schema": "claims_miner_consensus_round_response_v1",
         "round_id": str(payload.get("round_id") or ""),
         "responses": [response_by_item[str(case.get("item_id") or "")] for case in cases],
     }
+
+
+def _case_batches(cases: list[dict[str, Any]], batch_size: int) -> list[list[dict[str, Any]]]:
+    size = max(1, int(batch_size))
+    return [cases[offset : offset + size] for offset in range(0, len(cases), size)]
 
 
 def _review_case_batch(
