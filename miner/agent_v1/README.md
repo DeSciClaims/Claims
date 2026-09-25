@@ -97,13 +97,32 @@ Useful flags:
 
 ### V1 Consensus Review
 
-The same miner Axon accepts a second task type for V1 consensus rounds. A
-consensus assignment contains 20 shuffled review cases. Cases are grouped by
-paper; the miner downloads each original PDF and extracts a complete local
-source payload before evaluating that paper's cases with a structured DSPy
-request. Every response returns one listed option, confidence, rationale, and
-one to four verbatim evidence quotes. The backend independently matches those
-quotes against Bronze, so miner-local span IDs are informative but not trusted.
+The existing miner Axon accepts consensus review as a second task type. No
+second miner process, hotkey, Axon port, or registration is required. Production
+rounds target up to 100 genuine and 100 hidden synthetic cases; the backend may
+issue fewer genuine cases while retaining the synthetic quota. Cases are
+shuffled, are not labelled by type, and are grouped by paper so each source is
+downloaded and extracted once.
+
+For every case, the miner selects one listed option and returns confidence, a
+short rationale, and one to four verbatim evidence quotes. The backend matches
+those quotes against Bronze; miner-local span IDs are informative but are not
+trusted. Completed responses are signed and uploaded to the miner-upload API,
+while Dendrite returns only the durable submission manifest.
+
+Consensus review is not paid separately. Its hidden-case score gates future
+extraction eligibility. Never-reviewed miners are provisional; after the first
+review, the exact mean of up to the latest three scores must remain at least
+`0.75`. A normal non-response scores zero.
+
+#### Setup
+
+- Update the existing miner checkout and dependencies from `main`.
+- Keep `CLAIMS_BACKEND_URL=https://artifacts.claims111.ai`.
+- Set `SUBNET_CLAIMS_CONSENSUS_MODE=model`.
+- Configure the optional consensus provider/model overrides below, or omit them
+  to inherit the extraction provider and model.
+- Restart the existing miner process with its updated environment.
 
 ```env
 SUBNET_CLAIMS_CONSENSUS_MODE=model
@@ -119,13 +138,10 @@ SUBNET_CLAIMS_CONSENSUS_MAX_WORKERS=4
 SUBNET_CLAIMS_CONSENSUS_SOURCE_MAX_WORKERS=4
 ```
 
-The reviewer uses structured DSPy calls. It inherits the miner's extraction
-provider and model unless the consensus-specific overrides are set, so
-OpenRouter and Chutes may be selected independently for the two workloads.
+The reviewer uses structured DSPy calls. OpenRouter and Chutes may be selected
+independently for extraction and consensus.
 `SUBNET_CLAIMS_CONSENSUS_SOURCE_MAX_WORKERS` bounds concurrent PDF downloads
 and source-payload extraction independently from concurrent model batches.
-Completed consensus responses are signed and uploaded to the miner-upload API;
-the Dendrite response contains only the durable submission manifest.
 `compatibility` mode exists for protocol tests only and should not be used for
 scored consensus work.
 
