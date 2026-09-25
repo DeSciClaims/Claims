@@ -491,7 +491,8 @@ Miner batch/PDF knobs:
 
 - PDF reader: `--claims.pdf-extraction-method pdf-inspector|pypdf|grobid` or `SUBNET_CLAIMS_PDF_READER=...`. Default is `pdf-inspector`; `grobid` also needs `GROBID_URL`.
 - Batch parallelism: `--claims.batch-max-workers N` or `CLAIMS_MINER_BATCH_MAX_WORKERS=N`. Default is `1`; use `2-3` when the model/provider can handle concurrent papers.
-- Batch artifacts: set `--claims.backend-url` or `CLAIMS_BACKEND_URL` to the miner-upload API so full artifacts are uploaded outside dendrite responses.
+- Miner uploads: set `--claims.backend-url` or `CLAIMS_BACKEND_URL` to the miner-upload API. Full extraction artifacts and V1 consensus submissions are signed by the miner and stored outside Dendrite responses.
+- Consensus model: structured DSPy review inherits `SUBNET_CLAIMS_AGENT_PROVIDER`, `SUBNET_CLAIMS_AGENT_MODEL`, API base, and key by default. Use `SUBNET_CLAIMS_CONSENSUS_PROVIDER`, `SUBNET_CLAIMS_CONSENSUS_MODEL`, `SUBNET_CLAIMS_CONSENSUS_API_BASE`, and `SUBNET_CLAIMS_CONSENSUS_API_KEY_ENV` to select a different provider or model for consensus. `SUBNET_CLAIMS_CONSENSUS_BATCH_SIZE` bounds each model request and defaults to `2`; `SUBNET_CLAIMS_CONSENSUS_MAX_WORKERS` defaults to `4` concurrent model batches; `SUBNET_CLAIMS_CONSENSUS_SOURCE_MAX_WORKERS` defaults to `4` concurrent PDF download and ingestion jobs.
 
 For batch tasks, miners return one compact `articles[]` item per assigned
 paper. `agent_v1` articles carry `agent_output`; the top-level `extraction` and
@@ -617,7 +618,7 @@ Primary arguments:
   shared papers and 80% of their shared batch are excluded from overall and
   newcomer rewards. Raw Silver scores remain auditable, while selection
   history records an effective zero and applies the normal zero-score cooldown.
-  Semantic near-copy detection embeds uncapped claim and evidence text and
+Semantic near-copy detection embeds uncapped claim and evidence text and
   requires high one-to-one overlap across the same batch threshold. It defaults
   to `CLAIMS_DUPLICATE_SUBMISSION_SEMANTIC_MODE=shadow`, which records suspected
   groups without changing rewards; use `enforce` only after reviewing live
@@ -626,6 +627,71 @@ Primary arguments:
   `--claims.silver-enable` enable the current diagnostic and Silver scoring path.
 - `--claims.output-dir` stores local run artifacts. `--claims.timeout` is the
   miner-response deadline in seconds.
+
+### V1 Miner Consensus Validator
+
+V1 consensus runs as a separate validator process. The extraction validator
+continues to query miners, run diagnostics, build Bronze/Silver records, upload
+adjudication cases/votes/consensus, and set extraction weights. The consensus
+validator consumes stored disagreement cases later; it does not run extraction
+and does not change the same batch's Silver scoring target.
+
+The backend cron discovers completed extraction batches and materializes
+eligibility-tiebreak cases in resumable FIFO pages. It owns the private
+certified synthetic challenge bank and atomically assembles each
+round. It controls and freezes the genuine-case count, synthetic-case count,
+reviewer-panel size, and Gold quorum for each network. Validators only submit
+the current live candidate pool and cannot alter round composition. Multiple consensus
+validators may run because a complete round, rather than an individual case, is
+claimed with a lease. Hidden challenge answers never leave the backend. Reviewers
+download each assigned paper and extract their own complete source payload. Every
+response includes quoted evidence, which the backend checks against the complete
+Bronze source before accepting the choice. Miners upload the full response to
+the signed miner-upload API and return an immutable submission manifest over
+Dendrite; the consensus validator supplies that manifest when finalizing the
+round.
+
+Reviewer panels exclude the extraction miners, sibling hotkeys under the same
+coldkey, and miners in the same resolved funding-lineage cluster. Panels admit
+at most one reviewer from each known lineage; unresolved identities fall back
+to exact coldkey separation.
+
+```bash
+python -m dotenv -f .env run --override -- python -m neurons.consensus_validator \
+  --netuid 111 \
+  --wallet.name <VALIDATOR_WALLET> \
+  --wallet.hotkey <HOTKEY> \
+  --subtensor.network finney \
+  --claims.network mainnet \
+  --claims.backend-url https://api.claims111.ai \
+  --logging.info
+```
+
+The important runtime knobs are:
+
+- `CLAIMS_CONSENSUS_DEADLINE_SECONDS`: fixed `1800`-second miner response deadline.
+- `CLAIMS_CONSENSUS_LEASE_SECONDS`: worker lease; default `2100` leaves finalization grace.
+- `CLAIMS_CONSENSUS_QUERY_TIMEOUT`: miner deadline for the backend-configured assignment.
+- `CLAIMS_CONSENSUS_QUERY_WORKERS`: parallel reviewer requests; default `20`.
+- `CLAIMS_TARGET_UIDS`: restrict consensus review to specific live UIDs.
+- `CLAIMS_CONSENSUS_INTERVAL`: sleep time between polling steps.
+- `CLAIMS_CONSENSUS_EXTRACTION_GATE=true`: require the future-extraction gate
+  using the latest three consensus scores. This is enabled by default;
+  never-reviewed miners are provisional and reviewed miners require an exact
+  mean of at least `0.75`.
+
+Generate private source-certified challenges from stored genuine cases in the
+backend:
+
+```bash
+python scripts/generate_consensus_synthetic_bank.py --network mainnet
+```
+
+The generator admits a challenge only when the supported candidate has an exact
+witness in an explicitly complete Bronze source and the corrupted candidate is
+absent from that source. Rounds defer unless the bank contains five certified
+local-inconsistency and five certified cross-paper challenges and ten
+independent serving reviewers.
 - `--claims.max-steps` limits completed scoring cycles; `0` runs indefinitely.
   `--claims.query-interval` is the delay between cycles.
 - `--claims.force-new-canonical-batch` is a one-shot operator override that

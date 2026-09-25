@@ -11,7 +11,6 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
-
 SIGNATURE_DOMAIN = "CLAIMS_VALIDATOR_REQUEST_V1"
 
 
@@ -216,6 +215,9 @@ class ClaimsBackendClient:
     def post_miner_artifact(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/miner/artifacts", payload)
 
+    def post_miner_consensus_submission(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self.post("/miner/consensus-submissions", payload)
+
     def get_miner_artifact(self, *, artifact_id: str) -> dict[str, Any]:
         row = self.get(
             f"/validator/miner-artifacts/{quote(artifact_id)}",
@@ -311,8 +313,23 @@ class ClaimsBackendClient:
             {"worker_id": worker_id, "status": status, "result": result or {}, "error": error},
         )
 
-    def post_miner_consensus_case(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return self.post("/validator/miner-consensus-cases", payload)
+    def materialize_miner_consensus_cases(
+        self,
+        *,
+        run_id: str | None = None,
+        batch_id: str | None = None,
+        routes: list[str] | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"network": self.network, "limit": int(limit)}
+        if run_id:
+            payload["run_id"] = run_id
+        if batch_id:
+            payload["batch_id"] = batch_id
+        if routes:
+            payload["routes"] = routes
+        result = self.post("/validator/miner-consensus-cases/materialize", payload)
+        return result if isinstance(result, dict) else {}
 
     def list_miner_consensus_cases(self, *, status: str | None = None) -> list[dict[str, Any]]:
         query: dict[str, Any] = {"network": self.network}
@@ -321,15 +338,48 @@ class ClaimsBackendClient:
         result = self.get("/validator/miner-consensus-cases", query=query)
         return result if isinstance(result, list) else []
 
-    def post_miner_consensus_vote(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return self.post("/validator/miner-consensus-votes", payload)
+    def claim_miner_consensus_round(
+        self,
+        *,
+        netuid: int,
+        worker_id: str,
+        metagraph_block: int,
+        candidates: list[dict[str, Any]],
+        lease_seconds: int = 2100,
+        deadline_seconds: int = 1800,
+    ) -> dict[str, Any]:
+        result = self.post(
+            "/validator/miner-consensus-rounds/claim",
+            {
+                "network": self.network,
+                "netuid": int(netuid),
+                "worker_id": worker_id,
+                "metagraph_block": int(metagraph_block),
+                "candidates": candidates,
+                "lease_seconds": int(lease_seconds),
+                "deadline_seconds": int(deadline_seconds),
+            },
+        )
+        return result if isinstance(result, dict) else {}
 
-    def list_miner_consensus_votes(self, *, consensus_case_id: str) -> list[dict[str, Any]]:
-        result = self.get(f"/validator/miner-consensus-cases/{quote(consensus_case_id)}/votes", query={"network": self.network})
-        return result if isinstance(result, list) else []
-
-    def post_miner_consensus_outcome(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return self.post("/validator/miner-consensus-outcomes", payload)
+    def complete_miner_consensus_round(
+        self,
+        *,
+        round_id: str,
+        worker_id: str,
+        submissions: list[dict[str, Any]],
+        validator_failed_hotkeys: list[str] | None = None,
+    ) -> dict[str, Any]:
+        result = self.post(
+            f"/validator/miner-consensus-rounds/{quote(round_id)}/complete",
+            {
+                "network": self.network,
+                "worker_id": worker_id,
+                "submissions": submissions,
+                "validator_failed_hotkeys": validator_failed_hotkeys or [],
+            },
+        )
+        return result if isinstance(result, dict) else {}
 
     def post_silver_record(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/silver-records", payload)

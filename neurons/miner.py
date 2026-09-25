@@ -10,22 +10,37 @@ import time
 import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Tuple
 
 from dotenv import load_dotenv
 
 from miner.agent_v1.config import AgentV1Config
-from miner.agent_v1.ingest import PDF_READERS, SOURCE_PAYLOAD_SCHEMA_VERSION
+from miner.agent_v1.consensus_review import review_consensus_assignment
+from miner.agent_v1.ingest import (
+    PDF_READERS,
+    SOURCE_PAYLOAD_POLICY_VERSION,
+    SOURCE_PAYLOAD_SCHEMA_VERSION,
+)
 from miner.agent_v1.runner import AgentV1Runner
 from miner.v0.config import SectionContextV1Config
 from miner.v0.runner import SectionContextV1Runner
 from miner.v0.schema_models import ExtractionArtifact
 
 from .backend_client import BackendClientError, ClaimsBackendClient
+from .consensus import CONSENSUS_TASK_TYPE, build_consensus_vote
 from .harness_profiles import SUPPORTED_HARNESSES, quote_command, resolve_agent_harness
 from .protocol import ClaimExtractionSynapse
-from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsTask, download_pdf, safe_task_id, task_cache_key
+from .tasks import (
+    PROTOCOL_VERSION,
+    SCHEMA_VERSION,
+    ClaimsTask,
+    download_pdf,
+    safe_task_id,
+    task_cache_key,
+)
 
 
 def _require_bittensor() -> tuple[Any, Any, Any, Any, Any]:
@@ -145,11 +160,12 @@ class ClaimsMiner:
             help="agent_v1 runtime timeout in seconds.",
         )
         parser.add_argument(
+            "--claims.agent-max-extraction-source-chars",
             "--claims.agent-max-source-chars",
-            dest="claims_agent_max_source_chars",
+            dest="claims_agent_max_extraction_source_chars",
             type=int,
             default=None,
-            help="Maximum source characters passed into agent_v1.",
+            help="Maximum source characters passed into the extraction model; the persisted source payload remains complete.",
         )
         parser.add_argument(
             "--claims.agent-max-iters",
@@ -164,6 +180,13 @@ class ClaimsMiner:
             type=int,
             default=2,
             help="Maximum accepted extraction requests per validator hotkey per minute.",
+        )
+        parser.add_argument(
+            "--claims.consensus-mode",
+            dest="claims_consensus_mode",
+            choices=("model", "compatibility"),
+            default=os.getenv("SUBNET_CLAIMS_CONSENSUS_MODE", "model"),
+            help="Use model-backed consensus review. Compatibility mode is for protocol testing only.",
         )
         parser.add_argument(
             "--claims.batch-max-workers",
@@ -233,9 +256,10 @@ class ClaimsMiner:
         config.claims_agent_skill_dir = parsed_args.claims_agent_skill_dir
         config.claims_agent_cli_command = parsed_args.claims_agent_cli_command
         config.claims_agent_timeout = parsed_args.claims_agent_timeout
-        config.claims_agent_max_source_chars = parsed_args.claims_agent_max_source_chars
+        config.claims_agent_max_extraction_source_chars = parsed_args.claims_agent_max_extraction_source_chars
         config.claims_agent_max_iters = parsed_args.claims_agent_max_iters
         config.claims_max_requests_per_hotkey_minute = parsed_args.claims_max_requests_per_hotkey_minute
+        config.claims_consensus_mode = parsed_args.claims_consensus_mode
         config.claims_batch_max_workers = max(1, int(parsed_args.claims_batch_max_workers or 1))
         config.claims_batch_include_source_payload = bool(parsed_args.claims_batch_include_source_payload)
         config.claims_backend_url = str(parsed_args.claims_backend_url or "").strip()
@@ -322,8 +346,8 @@ class ClaimsMiner:
                 agent_config.skill_dir = Path(self.config.claims_agent_skill_dir)
             if self.config.claims_agent_timeout:
                 agent_config.timeout_seconds = int(self.config.claims_agent_timeout)
-            if self.config.claims_agent_max_source_chars:
-                agent_config.max_source_chars = int(self.config.claims_agent_max_source_chars)
+            if self.config.claims_agent_max_extraction_source_chars:
+                agent_config.max_extraction_source_chars = int(self.config.claims_agent_max_extraction_source_chars)
             if self.config.claims_agent_max_iters:
                 agent_config.max_agent_iters = int(self.config.claims_agent_max_iters)
             if self.config.claims_agent_cli_command:
@@ -373,6 +397,64 @@ class ClaimsMiner:
             self.bt_logging.info(
                 f"Accepted Claims task={task_label} from validator_hotkey={validator_hotkey[:12]}"
             )
+            if task.task_type == CONSENSUS_TASK_TYPE:
+                consensus_payload = getattr(synapse, "consensus_payload", None)
+                if not isinstance(consensus_payload, dict):
+                    raise ValueError("Consensus task missing consensus_payload.")
+                synapse.consensus_case_id = str(
+                    getattr(synapse, "consensus_case_id", "")
+                    or consensus_payload.get("consensus_case_id")
+                    or ""
+                )
+                synapse.consensus_round_id = str(
+                    getattr(synapse, "consensus_round_id", "")
+                    or consensus_payload.get("round_id")
+                    or ""
+                )
+                if (
+                    isinstance(consensus_payload.get("cases"), list)
+                    and str(getattr(self.config, "claims_consensus_mode", "model")) == "model"
+                ):
+                    review_started_at = datetime.now(timezone.utc)
+                    review_started = time.perf_counter()
+                    consensus_vote = review_consensus_assignment(consensus_payload)
+                    review_seconds = time.perf_counter() - review_started
+                    review_completed_at = datetime.now(timezone.utc)
+                    upload_started = time.perf_counter()
+                    synapse.consensus_vote = self._post_consensus_submission(
+                        synapse=synapse,
+                        consensus_vote=consensus_vote,
+                        timing={
+                            **dict(consensus_vote.get("metadata") or {}),
+                            "review_started_at": review_started_at.isoformat(),
+                            "review_completed_at": review_completed_at.isoformat(),
+                            "review_seconds": round(review_seconds, 6),
+                            "upload_started_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
+                    upload_seconds = time.perf_counter() - upload_started
+                    synapse.consensus_vote["timing"] = {
+                        "review_seconds": round(review_seconds, 6),
+                        "upload_seconds": round(upload_seconds, 6),
+                        "total_seconds": round(review_seconds + upload_seconds, 6),
+                    }
+                    self.bt_logging.info(
+                        f"Completed consensus task round={synapse.consensus_round_id} "
+                        f"review_seconds={review_seconds:.3f} upload_seconds={upload_seconds:.3f} "
+                        f"total_seconds={review_seconds + upload_seconds:.3f}"
+                    )
+                else:
+                    synapse.consensus_vote = build_consensus_vote(
+                        consensus_payload,
+                        uid=int(getattr(self, "uid", -1)),
+                        hotkey=str(getattr(getattr(self, "wallet", None), "hotkey", SimpleNamespace(ss58_address="")).ss58_address),
+                    )
+                synapse.extraction = None
+                synapse.source_payload = None
+                synapse.articles = []
+                synapse.miner_version = str(self.config.claims_pipeline)
+                synapse.error = ""
+                return synapse
             if task.papers:
                 articles = self._run_batch_task(task, validator_hotkey=validator_hotkey)
                 synapse.submission_id = f"sub_{task.task_id}_{uuid.uuid4().hex[:10]}"
@@ -406,12 +488,71 @@ class ClaimsMiner:
             synapse.error = str(exc)
         return synapse
 
+    def _post_consensus_submission(
+        self,
+        *,
+        synapse: ClaimExtractionSynapse,
+        consensus_vote: dict[str, Any],
+        timing: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if getattr(self, "backend_client", None) is None:
+            raise RuntimeError(
+                "V1 consensus requires CLAIMS_BACKEND_URL for signed submission uploads."
+            )
+        round_id = str(consensus_vote.get("round_id") or synapse.consensus_round_id or "").strip()
+        if not round_id:
+            raise RuntimeError("Consensus response is missing round_id.")
+        responses = consensus_vote.get("responses")
+        if not isinstance(responses, list) or not responses:
+            raise RuntimeError("Consensus response contains no responses.")
+        uid = int(getattr(self, "uid", -1))
+        hotkey = str(self.wallet.hotkey.ss58_address)
+        response_hash = _json_hash(responses)
+        submission_id = f"consensus_{safe_task_id(round_id)}_uid_{uid}"
+        payload = {
+            "submission_id": submission_id,
+            "network": str(getattr(synapse, "network", "") or self.backend_client.network),
+            "round_id": round_id,
+            "uid": uid,
+            "hotkey": hotkey,
+            "response_hash": response_hash,
+            "responses": responses,
+            "metadata": {
+                "transport": "backend_consensus_submission_v1",
+                "task_id": str(getattr(synapse, "task_id", "") or ""),
+                "miner_version": str(self.config.claims_pipeline),
+                "protocol_version": str(getattr(synapse, "protocol_version", "") or ""),
+                "schema_version": str(getattr(synapse, "schema_version", "") or ""),
+                "timing": dict(timing or {}),
+            },
+            "status": "completed",
+        }
+        try:
+            stored = self.backend_client.post_miner_consensus_submission(payload)
+        except BackendClientError as exc:
+            raise RuntimeError(f"Claims consensus submission upload failed: {exc}") from exc
+        return {
+            "schema": "claims_miner_consensus_submission_manifest_v1",
+            "round_id": round_id,
+            "submission_id": str(stored.get("submission_id") or submission_id),
+            "submission_uri": f"claims-api:/miner-consensus-submissions/{submission_id}",
+            "response_hash": response_hash,
+            "response_count": len(responses),
+            "transport": "backend_consensus_submission_v1",
+            "uid": uid,
+            "hotkey": hotkey,
+        }
+
     def _validate_synapse(self, synapse: ClaimExtractionSynapse) -> None:
         if synapse.protocol_version != PROTOCOL_VERSION:
             raise ValueError(f"Unsupported protocol_version: {synapse.protocol_version}")
         if synapse.schema_version != SCHEMA_VERSION:
             raise ValueError(f"Unsupported schema_version: {synapse.schema_version}")
         papers = getattr(synapse, "papers", []) or []
+        if getattr(synapse, "task_type", "") == CONSENSUS_TASK_TYPE:
+            if not isinstance(getattr(synapse, "consensus_payload", None), dict):
+                raise ValueError("Missing task input: provide consensus_payload.")
+            return
         if not papers and not synapse.artifact and not synapse.paper_url:
             raise ValueError("Missing task input: provide artifact or paper_url.")
 
@@ -748,9 +889,10 @@ class ClaimsMiner:
                 f"{runner_config.model}:"
                 f"{runner_config.pdf_reader}:"
                 f"{SOURCE_PAYLOAD_SCHEMA_VERSION}:"
+                f"{SOURCE_PAYLOAD_POLICY_VERSION}:"
                 f"{runner_config.skill_dir}:"
                 f"{runner_config.timeout_seconds}:"
-                f"{runner_config.max_source_chars}:"
+                f"{runner_config.max_extraction_source_chars}:"
                 f"{runner_config.max_agent_iters}:"
                 f"{' '.join(runner_config.cli_command)}"
             )

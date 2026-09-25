@@ -5,7 +5,8 @@ Return STRICT JSON ONLY. Do not include markdown fences or commentary.
 You receive:
 - `request.json`: task metadata and file paths.
 - `paper.json`: known paper metadata.
-- `source_payload.json`: ordered source spans using `agent_v1_source_payload_v1`.
+- `source_payload.json`: the complete ordered source spans using `agent_v1_source_payload_v1`.
+- `extraction_source_payload.json`: the bounded source view available to the extraction runtime.
   Every reader (`pdf-inspector`, `grobid`, `pypdf`, or JSON input) is normalized
   into the same span contract: each span has `span_id`, `paper_id`,
   `section_name`, `section_type`, optional `page`, optional `char_start` /

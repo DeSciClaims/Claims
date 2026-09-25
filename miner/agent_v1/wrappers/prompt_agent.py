@@ -199,7 +199,7 @@ def _build_prompt(run_dir: Path, skill_dir: Path, request_path: Path, output_pat
             "",
             "## Mandatory steps",
             "1. Read the skill instructions and Claims JSON contract.",
-            "2. Read `source_payload.json` and `agent_schema.json`.",
+            f"2. Read `{source_path.name}` and `agent_schema.json`.",
             "3. Compile a source-bounded ARA artifact.",
             "4. Validate internally against the schema as best you can.",
             f"5. Write the final JSON object to `{output_path}`.",

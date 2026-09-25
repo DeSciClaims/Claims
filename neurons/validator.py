@@ -419,6 +419,16 @@ class ClaimsValidator:
             help="Select all miners, adaptive UID V0 lanes, or the FIFO newcomer bucket policy.",
         )
         parser.add_argument(
+            "--claims.consensus-extraction-gate",
+            dest="claims_consensus_extraction_gate",
+            action="store_true",
+            default=_env_flag("CLAIMS_CONSENSUS_EXTRACTION_GATE", True),
+            help=(
+                "Require a provisional or >=0.75 rolling consensus score for extraction and "
+                "exclude miners with an active consensus assignment."
+            ),
+        )
+        parser.add_argument(
             "--claims.miner-sample-size",
             dest="claims_miner_sample_size",
             type=int,
@@ -1040,6 +1050,7 @@ class ClaimsValidator:
         config.claims_force_new_canonical_batch = parsed_args.claims_force_new_canonical_batch
         config.claims_target_uids = parsed_args.claims_target_uids
         config.claims_miner_selection_mode = parsed_args.claims_miner_selection_mode
+        config.claims_consensus_extraction_gate = parsed_args.claims_consensus_extraction_gate
         config.claims_miner_sample_size = parsed_args.claims_miner_sample_size
         config.claims_miner_immunity_period_blocks = parsed_args.claims_miner_immunity_period_blocks
         config.claims_miner_immunity_priority_blocks = parsed_args.claims_miner_immunity_priority_blocks
@@ -1227,7 +1238,13 @@ class ClaimsValidator:
         else:
             mode = str(getattr(self.config, "claims_miner_selection_mode", "all") or "all")
             history: list[dict[str, Any]] = []
-            if mode in {"adaptive", "bucket"} and self.backend_client is not None:
+            consensus_gate = bool(getattr(self.config, "claims_consensus_extraction_gate", True))
+            if consensus_gate and self.backend_client is None:
+                raise RuntimeError("V1 consensus extraction gating requires the Claims backend.")
+            if (
+                mode in {"adaptive", "bucket"}
+                or consensus_gate
+            ) and self.backend_client is not None:
                 try:
                     history = self.backend_client.sync_miner_selection_state(
                         netuid=int(self.config.netuid),
@@ -1243,12 +1260,35 @@ class ClaimsValidator:
                         ],
                     )
                 except (BackendClientError, ValueError) as exc:
-                    if mode == "bucket":
+                    if mode == "bucket" or consensus_gate:
                         raise RuntimeError(
-                            "Bucket miner selection requires backend evaluation history; "
+                            "Miner selection requires backend evaluation and consensus history; "
                             f"state sync failed: {exc}"
                         ) from exc
                     self.bt_logging.warning(f"Could not sync UID miner selection state; using new candidates: {exc}")
+            if consensus_gate:
+                history_by_hotkey = {
+                    str(row.get("miner_hotkey") or row.get("hotkey") or ""): row
+                    for row in history
+                }
+                before_gate = len(neurons)
+                neurons = [
+                    neuron
+                    for neuron in neurons
+                    if (
+                        not history_by_hotkey.get(str(getattr(neuron, "hotkey", "") or ""), {}).get(
+                            "consensus_active", False
+                        )
+                        and history_by_hotkey.get(
+                            str(getattr(neuron, "hotkey", "") or ""),
+                            {"consensus_qualified": True},
+                        ).get("consensus_qualified", True)
+                    )
+                ]
+                self.bt_logging.info(
+                    "Applied V1 consensus extraction gate: "
+                    f"eligible={len(neurons)}/{before_gate}"
+                )
             if mode == "bucket":
                 if self.backend_client is None or not batch_id:
                     raise RuntimeError("Bucket miner selection requires a canonical backend batch.")
@@ -6630,6 +6670,9 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
             getattr(config, "claims_force_new_canonical_batch", False)
         ),
         "claims_miner_selection_mode": str(getattr(config, "claims_miner_selection_mode", "all") or "all"),
+        "claims_consensus_extraction_gate": bool(
+            getattr(config, "claims_consensus_extraction_gate", True)
+        ),
         "claims_miner_sample_size": int(getattr(config, "claims_miner_sample_size", 15) or 15),
         "claims_miner_immunity_period_blocks": int(
             getattr(config, "claims_miner_immunity_period_blocks", 0) or 0
