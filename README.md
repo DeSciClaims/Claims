@@ -643,6 +643,11 @@ the signed miner-upload API and return an immutable submission manifest over
 Dendrite; the consensus validator supplies that manifest when finalizing the
 round.
 
+Reviewer panels exclude the extraction miners, sibling hotkeys under the same
+coldkey, and miners in the same resolved funding-lineage cluster. Panels admit
+at most one reviewer from each known lineage; unresolved identities fall back
+to exact coldkey separation.
+
 ```bash
 python -m dotenv -f .env run --override -- python -m neurons.consensus_validator \
   --netuid 111 \
@@ -662,9 +667,10 @@ The important runtime knobs are:
 - `CLAIMS_CONSENSUS_QUERY_WORKERS`: parallel reviewer requests; default `20`.
 - `CLAIMS_TARGET_UIDS`: restrict consensus review to specific live UIDs.
 - `CLAIMS_CONSENSUS_INTERVAL`: sleep time between polling steps.
-- `CLAIMS_CONSENSUS_EXTRACTION_GATE=true`: enable the future-extraction gate
-  using the latest three consensus scores. Never-reviewed miners are provisional;
-  reviewed miners require an exact mean of at least `0.75`.
+- `CLAIMS_CONSENSUS_EXTRACTION_GATE=true`: require the future-extraction gate
+  using the latest three consensus scores. This is enabled by default;
+  never-reviewed miners are provisional and reviewed miners require an exact
+  mean of at least `0.75`.
 
 Generate private source-certified challenges from stored genuine cases in the
 backend:

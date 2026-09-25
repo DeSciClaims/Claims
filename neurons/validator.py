@@ -422,7 +422,7 @@ class ClaimsValidator:
             "--claims.consensus-extraction-gate",
             dest="claims_consensus_extraction_gate",
             action="store_true",
-            default=_env_flag("CLAIMS_CONSENSUS_EXTRACTION_GATE", False),
+            default=_env_flag("CLAIMS_CONSENSUS_EXTRACTION_GATE", True),
             help=(
                 "Require a provisional or >=0.75 rolling consensus score for extraction and "
                 "exclude miners with an active consensus assignment."
@@ -1238,7 +1238,7 @@ class ClaimsValidator:
         else:
             mode = str(getattr(self.config, "claims_miner_selection_mode", "all") or "all")
             history: list[dict[str, Any]] = []
-            consensus_gate = bool(getattr(self.config, "claims_consensus_extraction_gate", False))
+            consensus_gate = bool(getattr(self.config, "claims_consensus_extraction_gate", True))
             if consensus_gate and self.backend_client is None:
                 raise RuntimeError("V1 consensus extraction gating requires the Claims backend.")
             if (
@@ -6652,7 +6652,7 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         ),
         "claims_miner_selection_mode": str(getattr(config, "claims_miner_selection_mode", "all") or "all"),
         "claims_consensus_extraction_gate": bool(
-            getattr(config, "claims_consensus_extraction_gate", False)
+            getattr(config, "claims_consensus_extraction_gate", True)
         ),
         "claims_miner_sample_size": int(getattr(config, "claims_miner_sample_size", 15) or 15),
         "claims_miner_immunity_period_blocks": int(
