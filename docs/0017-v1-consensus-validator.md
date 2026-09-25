@@ -12,20 +12,17 @@ V1 consensus runs as a separate validator process.
 
 ## Current Round Assembly
 
-- Genuine cases: up to `100` eligibility-tiebreak cases from one completed source
-  batch.
-- Synthetic cases: `50` local-inconsistency and `50` cross-paper challenges from
-  the network-wide certified bank.
+- Genuine cases: `100` same-batch adjudications, with every remaining tiebreak
+  selected before unanimous fillers.
 - Reviewers: `20` serving miners.
 - Consensus quorum: `11` qualified coldkey groups.
 - Deadline: `1800` seconds.
-- A source batch may currently issue fewer than 100 genuine cases; synthetic and
-  reviewer counts are not reduced.
+- Batches with more than 100 tiebreaks produce multiple round sequences.
 
 The backend materialization cron discovers completed extraction batches and
-materializes tiebreak cases in resumable FIFO pages. A complete consensus round,
-rather than an individual case, is claimed with a lease, so multiple consensus
-validator processes can operate safely.
+materializes tiebreak cases in resumable FIFO pages. A preparation cron adds only
+the unanimous cases needed for full rounds, prepares the hidden tests, and
+freezes each round sequence. Validators can claim only complete prepared rounds.
 
 ## Review Flow
 
@@ -36,9 +33,9 @@ validator processes can operate safely.
 - The backend checks quotes against the corresponding complete Bronze source.
 - Miners upload signed responses to the miner-upload API.
 - Dendrite returns only the immutable submission manifest.
-- Hidden synthetic answers never leave the backend.
+- Hidden test answers never leave the backend.
 
-Only reviewers scoring at least `0.75` on the current round's synthetic cases
+Only reviewers scoring at least `0.75` on the current round's hidden test cases
 contribute votes to genuine-case outcomes. A normal non-response scores zero;
 validator or system failures can void an assignment instead.
 
@@ -50,9 +47,8 @@ validator or system failures can void an assignment instead.
 - Admit at most one reviewer from each known lineage.
 - Fall back to exact coldkey separation for unresolved identities.
 
-The current global synthetic bank can contain challenges derived from older
-batches. Extractor cohorts behind those historical synthetic sources are not yet
-included in the reviewer exclusion set.
+All cases are scoped to one extraction batch, so the round's extractor
+exclusions cover every represented source.
 
 ## Extraction Gate
 
@@ -106,28 +102,3 @@ and model unless consensus-specific overrides are set.
 
 See [the miner configuration](../miner/agent_v1/README.md#v1-consensus-review)
 for details.
-
-## Synthetic Challenge Bank
-
-Replenishment is currently an operator task in `Claims-Backend-Service`:
-
-```bash
-uv run python scripts/generate_consensus_synthetic_bank.py \
-  --network mainnet \
-  --local 50 \
-  --cross-paper 50
-```
-
-The current generator:
-
-- Scans materialized consensus cases across every batch in the network.
-- Uses a global source pool that is currently tiebreak-derived.
-- Requires an exact witness in a complete Bronze source.
-- Requires the corrupted candidate to be absent from that source.
-- Defers rounds when either synthetic quota cannot be filled.
-
-## Before Production Activation
-
-- Fill genuine slots with tiebreak cases, then other adjudicated cases.
-- Generate batch-scoped synthetic challenges continuously.
-- Exclude reviewers linked to any represented source batch.

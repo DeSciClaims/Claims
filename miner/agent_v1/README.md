@@ -99,9 +99,8 @@ Useful flags:
 
 The existing miner Axon accepts consensus review as a second task type. No
 second miner process, hotkey, Axon port, or registration is required. Production
-rounds target up to 100 genuine and 100 hidden synthetic cases; the backend may
-issue fewer genuine cases while retaining the synthetic quota. Cases are
-shuffled, are not labelled by type, and are grouped by paper so each source is
+review assignments contain shuffled claim-comparison cases, including hidden
+test cases with known answers. Cases are grouped by paper so each source is
 downloaded and extracted once.
 
 For every case, the miner selects one listed option and returns confidence, a

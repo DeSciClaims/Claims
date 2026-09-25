@@ -640,7 +640,7 @@ Semantic near-copy detection embeds uncapped claim and evidence text and
 ### V1 Miner Consensus Validator
 
 V1 consensus runs as a separate process, does not set weights, and gates future
-extraction eligibility using miners' recent synthetic-review scores. See
+extraction eligibility using miners' recent consensus-review scores. See
 [V1 Consensus Validator](./docs/0017-v1-consensus-validator.md) for setup,
 round composition, reviewer independence, and current production gaps.
 
