@@ -65,7 +65,7 @@ class ClaimsConsensusValidator:
         parser.add_argument("--claims.consensus-lease-seconds", dest="claims_consensus_lease_seconds", type=int, default=int(os.getenv("CLAIMS_CONSENSUS_LEASE_SECONDS", "2100")))
         parser.add_argument("--claims.consensus-deadline-seconds", dest="claims_consensus_deadline_seconds", type=int, default=int(os.getenv("CLAIMS_CONSENSUS_DEADLINE_SECONDS", "1800")))
         parser.add_argument("--claims.consensus-query-timeout", dest="claims_consensus_query_timeout", type=float, default=float(os.getenv("CLAIMS_CONSENSUS_QUERY_TIMEOUT", "1800")))
-        parser.add_argument("--claims.consensus-query-workers", dest="claims_consensus_query_workers", type=int, default=int(os.getenv("CLAIMS_CONSENSUS_QUERY_WORKERS", "10")))
+        parser.add_argument("--claims.consensus-query-workers", dest="claims_consensus_query_workers", type=int, default=int(os.getenv("CLAIMS_CONSENSUS_QUERY_WORKERS", "20")))
         parser.add_argument(
             "--claims.target-uid",
             dest="claims_target_uids",
@@ -76,9 +76,6 @@ class ClaimsConsensusValidator:
         )
         parser.add_argument("--claims.consensus-interval", dest="claims_consensus_interval", type=float, default=float(os.getenv("CLAIMS_CONSENSUS_INTERVAL", "60")))
         parser.add_argument("--claims.max-steps", dest="claims_max_steps", type=int, default=int(os.getenv("CLAIMS_MAX_STEPS", "0")))
-        parser.add_argument("--claims.materialize", dest="claims_materialize", action="store_true", default=_env_flag("CLAIMS_CONSENSUS_MATERIALIZE", False))
-        parser.add_argument("--claims.materialize-run-id", dest="claims_materialize_run_id", default=os.getenv("CLAIMS_CONSENSUS_MATERIALIZE_RUN_ID", ""))
-        parser.add_argument("--claims.materialize-batch-id", dest="claims_materialize_batch_id", default=os.getenv("CLAIMS_CONSENSUS_MATERIALIZE_BATCH_ID", ""))
         self.Subtensor.add_args(parser)
         self.Wallet.add_args(parser)
         self.bt_logging.add_args(parser)
@@ -105,9 +102,6 @@ class ClaimsConsensusValidator:
         config.claims_target_uids = sorted(set(parsed_args.claims_target_uids or []))
         config.claims_consensus_interval = max(0.0, float(parsed_args.claims_consensus_interval))
         config.claims_max_steps = max(0, int(parsed_args.claims_max_steps))
-        config.claims_materialize = bool(parsed_args.claims_materialize)
-        config.claims_materialize_run_id = str(parsed_args.claims_materialize_run_id or "").strip()
-        config.claims_materialize_batch_id = str(parsed_args.claims_materialize_batch_id or "").strip()
         config.claims_subtensor_network_arg = _subtensor_network_arg(parsed_args)
         return config
 
@@ -118,12 +112,6 @@ class ClaimsConsensusValidator:
         steps = 0
         while True:
             steps += 1
-            if self.config.claims_materialize:
-                result = self.backend_client.materialize_miner_consensus_cases(
-                    run_id=self.config.claims_materialize_run_id or None,
-                    batch_id=self.config.claims_materialize_batch_id or None,
-                )
-                self.bt_logging.info(f"Materialized miner consensus cases: {result}")
             metagraph_started = time.perf_counter()
             self.metagraph = _sync_metagraph(
                 self.subtensor,

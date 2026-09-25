@@ -628,8 +628,9 @@ adjudication cases/votes/consensus, and set extraction weights. The consensus
 validator consumes stored disagreement cases later; it does not run extraction
 and does not change the same batch's Silver scoring target.
 
-The backend materializes eligibility-tiebreak cases in FIFO order, owns the
-private certified synthetic challenge bank, and atomically assembles each
+The backend cron discovers completed extraction batches and materializes
+eligibility-tiebreak cases in resumable FIFO pages. It owns the private
+certified synthetic challenge bank and atomically assembles each
 round. It controls and freezes the genuine-case count, synthetic-case count,
 reviewer-panel size, and Gold quorum for each network. Validators only submit
 the current live candidate pool and cannot alter round composition. Multiple consensus
@@ -650,18 +651,15 @@ python -m dotenv -f .env run --override -- python -m neurons.consensus_validator
   --subtensor.network finney \
   --claims.network mainnet \
   --claims.backend-url https://api.claims111.ai \
-  --claims.materialize \
   --logging.info
 ```
 
-Set `CLAIMS_CONSENSUS_MATERIALIZE=false` on follower consensus validators if
-only one process should create consensus cases from extraction records. The
-important runtime knobs are:
+The important runtime knobs are:
 
 - `CLAIMS_CONSENSUS_DEADLINE_SECONDS`: fixed `1800`-second miner response deadline.
 - `CLAIMS_CONSENSUS_LEASE_SECONDS`: worker lease; default `2100` leaves finalization grace.
 - `CLAIMS_CONSENSUS_QUERY_TIMEOUT`: miner deadline for the backend-configured assignment.
-- `CLAIMS_CONSENSUS_QUERY_WORKERS`: parallel reviewer requests; default `10`.
+- `CLAIMS_CONSENSUS_QUERY_WORKERS`: parallel reviewer requests; default `20`.
 - `CLAIMS_TARGET_UIDS`: restrict consensus review to specific live UIDs.
 - `CLAIMS_CONSENSUS_INTERVAL`: sleep time between polling steps.
 - `CLAIMS_CONSENSUS_EXTRACTION_GATE=true`: enable the future-extraction gate
