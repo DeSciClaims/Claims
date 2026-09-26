@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import time
@@ -216,7 +217,25 @@ class ClaimsBackendClient:
         return self.post("/miner/artifacts", payload)
 
     def post_miner_consensus_submission(self, payload: dict[str, Any]) -> dict[str, Any]:
-        return self.post("/miner/consensus-submissions", payload)
+        body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        if len(body) <= 3_500_000:
+            return self.post("/miner/consensus-submissions", payload)
+        compressed = gzip.compress(body, mtime=0)
+        if len(compressed) > 4_000_000:
+            raise BackendClientError("Compressed consensus submission exceeds transport size limit.")
+        path = "/miner/consensus-submissions/compressed"
+        data = self._open_with_retries(
+            method="POST",
+            path=path,
+            url=self._url(path),
+            query_string="",
+            body=compressed,
+            extra_headers={"content-type": "application/gzip", "content-encoding": "gzip"},
+        )
+        result = json.loads(data.decode("utf-8")) if data else {}
+        if not isinstance(result, dict):
+            raise BackendClientError("Consensus upload returned a non-object response.")
+        return result
 
     def get_miner_artifact(self, *, artifact_id: str) -> dict[str, Any]:
         row = self.get(
