@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import json
 from types import SimpleNamespace
 from urllib.error import URLError
@@ -58,6 +59,40 @@ def test_backend_client_retries_transient_errors_with_fresh_nonce(monkeypatch) -
     assert client.post("/validator/batches/select", {"network": "testnet"}) == {"ok": True}
     assert [timeout for _request, timeout in requests] == [7, 7]
     assert _header(requests[0][0], "X-Claims-Nonce") != _header(requests[1][0], "X-Claims-Nonce")
+
+
+def test_large_consensus_submission_uses_signed_gzip(monkeypatch) -> None:
+    requests = []
+
+    def fake_urlopen(request, *, timeout):
+        requests.append(request)
+        return _FakeResponse({"submission_id": "consensus_1"})
+
+    monkeypatch.setattr(backend_client_module, "urlopen", fake_urlopen)
+    client = ClaimsBackendClient("https://api.example.test", wallet=SimpleNamespace(hotkey=_FakeHotkey()))
+    payload = {"network": "testnet", "responses": [{"quote": "x" * 3_600_000}]}
+
+    assert client.post_miner_consensus_submission(payload)["submission_id"] == "consensus_1"
+    request = requests[0]
+    assert request.full_url.endswith("/miner/consensus-submissions/compressed")
+    assert _header(request, "Content-Encoding") == "gzip"
+    assert json.loads(gzip.decompress(request.data)) == payload
+    assert _header(request, "X-Claims-Network") == "testnet"
+
+
+def test_small_consensus_submission_uses_existing_json_endpoint(monkeypatch) -> None:
+    requests = []
+
+    def fake_urlopen(request, *, timeout):
+        requests.append(request)
+        return _FakeResponse({"submission_id": "consensus_1"})
+
+    monkeypatch.setattr(backend_client_module, "urlopen", fake_urlopen)
+    client = ClaimsBackendClient("https://api.example.test", wallet=SimpleNamespace(hotkey=_FakeHotkey()))
+    client.post_miner_consensus_submission({"network": "testnet", "responses": []})
+
+    assert requests[0].full_url.endswith("/miner/consensus-submissions")
+    assert _header(requests[0], "Content-Type") == "application/json"
 
 
 def test_model_usage_upload_chunks_and_verifies_stored_count(monkeypatch) -> None:
