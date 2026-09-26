@@ -11,7 +11,10 @@ import pytest
 from miner.agent_v1.config import AgentV1Config
 from miner.agent_v1.consensus_review import (
     _case_batches,
+    _configured_worker_count,
     _consensus_lm_settings,
+    _model_case,
+    _model_source_spans,
     _parse_responses,
     _review_case_batch,
     _run_ordered_jobs,
@@ -30,6 +33,97 @@ def test_consensus_cases_are_bounded_before_model_review() -> None:
         ["item_0", "item_1"],
         ["item_2", "item_3"],
         ["item_4"],
+    ]
+
+
+def test_consensus_model_worker_setting_supports_one_hundred_workers(monkeypatch) -> None:
+    monkeypatch.setenv("SUBNET_CLAIMS_CONSENSUS_MAX_WORKERS", "100")
+
+    assert _configured_worker_count(
+        "SUBNET_CLAIMS_CONSENSUS_MAX_WORKERS",
+        default=4,
+        maximum=128,
+    ) == 100
+
+
+def test_consensus_model_case_labels_candidates_and_removes_private_evidence() -> None:
+    model_case = _model_case(
+        {
+            "item_id": "item_a",
+            "options": ["candidate_a", "candidate_b", "both_valid", "both_invalid"],
+            "case": {
+                "adjudication_case": {
+                    "candidate_ids": ["bronze:C03", "miner:uid_13:C03"],
+                    "findings": [
+                        {
+                            "candidate_ref": "bronze:C03",
+                            "claim_text": "Treatment improved survival.",
+                            "sources": [{"quote": "Do not forward this supplied evidence."}],
+                        },
+                        {
+                            "candidate_ref": "miner:uid_13:C03",
+                            "statement": "Treatment improved survival by 20%.",
+                            "proof": ["E01"],
+                        },
+                    ],
+                }
+            },
+        }
+    )
+
+    assert model_case == {
+        "item_id": "item_a",
+        "candidates": {
+            "candidate_a": {"claim_text": "Treatment improved survival."},
+            "candidate_b": {"claim_text": "Treatment improved survival by 20%."},
+        },
+        "options": ["candidate_a", "candidate_b", "both_valid", "both_invalid"],
+    }
+
+
+def test_consensus_model_case_removes_two_candidate_options_for_singleton() -> None:
+    model_case = _model_case(
+        {
+            "item_id": "item_a",
+            "options": [
+                "candidate_a",
+                "candidate_b",
+                "both_valid",
+                "both_invalid",
+                "insufficient_information",
+            ],
+            "case": {
+                "adjudication_case": {
+                    "candidate_ids": ["miner:uid_13:C03"],
+                    "findings": [{"candidate_ref": "miner:uid_13:C03", "claim_text": "Claim."}],
+                }
+            },
+        }
+    )
+
+    assert model_case["candidates"] == {"candidate_a": {"claim_text": "Claim."}}
+    assert model_case["options"] == ["candidate_a", "both_invalid", "insufficient_information"]
+
+
+def test_consensus_model_source_spans_keep_only_review_fields() -> None:
+    assert _model_source_spans(
+        {
+            "spans": [
+                {
+                    "span_id": "paper_1-span-0001",
+                    "paper_id": "paper_1",
+                    "page": 2,
+                    "text": "Treatment improved survival.",
+                    "metadata": {"unused": True},
+                }
+            ]
+        }
+    ) == [
+        {
+            "span_id": "paper_1-span-0001",
+            "page": 2,
+            "text": "Treatment improved survival.",
+        }
     ]
 
 
@@ -179,7 +273,71 @@ def test_review_case_batch_splits_incomplete_batches_and_preserves_all_items() -
     assert "retry_instruction" in calls[1]
 
 
-def test_review_case_batch_abstains_when_singleton_retries_fail() -> None:
+def test_review_case_batch_places_explicit_candidates_before_source_spans() -> None:
+    source_payload = {
+        "spans": [
+            {
+                "span_id": "paper_1-span-0001",
+                "paper_id": "paper_1",
+                "text": "Treatment A increased survival by 20%.",
+            }
+        ]
+    }
+    requests: list[dict] = []
+
+    def predictor(*, assignment_json: str) -> SimpleNamespace:
+        request = json.loads(assignment_json)
+        requests.append(request)
+        return SimpleNamespace(
+            responses_json=json.dumps(
+                [
+                    {
+                        "item_id": "item_a",
+                        "selected_option": "candidate_a",
+                        "confidence": 0.9,
+                        "rationale": "Direct support.",
+                        "source_span_ids": ["paper_1-span-0001"],
+                    }
+                ]
+            )
+        )
+
+    _review_case_batch(
+        dspy_module=SimpleNamespace(context=lambda **_kwargs: nullcontext()),
+        lm=object(),
+        predictor=predictor,
+        request_context={
+            "schema": "claims_consensus_assignment_v1",
+            "round_id": "round_1",
+            "source_document": {"paper_id": "paper_1"},
+            "source_spans": _model_source_spans(source_payload),
+        },
+        cases=[
+            {
+                "item_id": "item_a",
+                "options": ["candidate_a", "both_invalid", "insufficient_information"],
+                "case": {
+                    "adjudication_case": {
+                        "candidate_ids": ["miner:uid_13:C03"],
+                        "findings": [
+                            {
+                                "candidate_ref": "miner:uid_13:C03",
+                                "claim_text": "Treatment A increased survival by 20%.",
+                            }
+                        ],
+                    }
+                },
+            }
+        ],
+        source_payload=source_payload,
+        paper_id="paper_1",
+    )
+
+    assert list(requests[0]) == ["schema", "round_id", "cases", "source_document", "source_spans"]
+    assert requests[0]["cases"][0]["candidates"]["candidate_a"]["claim_text"].endswith("20%.")
+
+
+def test_review_case_batch_reports_failure_when_singleton_retries_fail() -> None:
     source_payload = {
         "spans": [
             {
@@ -210,9 +368,46 @@ def test_review_case_batch_abstains_when_singleton_retries_fail() -> None:
         paper_id="paper_1",
     )
 
+    assert responses[0]["review_status"] == "failed"
+    assert responses[0]["error_code"] == "review_retries_exhausted"
+    assert responses[0]["selected_option"] == ""
+    assert responses[0]["confidence"] is None
+    assert responses[0]["evidence_items"] == []
+    assert responses[0]["evidence"] == []
+
+
+def test_review_timeout_reports_failure_without_fabricating_evidence() -> None:
+    attempts = 0
+
+    def predictor(**_kwargs):
+        nonlocal attempts
+        attempts += 1
+        raise TimeoutError("provider timed out")
+
+    responses = _review_case_batch(
+        dspy_module=SimpleNamespace(context=lambda **_kwargs: nullcontext()),
+        lm=object(), predictor=predictor, request_context={},
+        cases=[{"item_id": "item_a", "options": ["candidate_a"]}],
+        source_payload={}, paper_id="paper_1",
+    )
+    assert attempts == 2
+    assert responses[0]["review_status"] == "failed"
+    assert responses[0]["selected_option"] == ""
+    assert responses[0]["evidence"] == []
+    assert "provider timed out" in responses[0]["rationale"]
+
+
+def test_evidence_based_insufficient_information_is_not_a_review_failure() -> None:
+    responses = _parse_responses(
+        json.dumps([{"item_id": "item_a", "selected_option": "insufficient_information",
+                     "rationale": "The paper does not report the requested measurement.", "confidence": 0.8,
+                     "source_span_ids": ["span_1"]}]),
+        [{"item_id": "item_a", "options": ["candidate_a", "insufficient_information"]}],
+        source_payload={"spans": [{"span_id": "span_1", "text": "Survival was not measured in this study."}]},
+        paper_id="paper_1",
+    )
     assert responses[0]["selected_option"] == "insufficient_information"
-    assert responses[0]["confidence"] == 0.0
-    assert responses[0]["evidence_items"][0]["quote"] == source_payload["spans"][0]["text"]
+    assert responses[0].get("review_status") != "failed"
 
 
 def test_parse_consensus_responses_reports_invalid_evidence_reason() -> None:
@@ -239,6 +434,75 @@ def test_parse_consensus_responses_reports_invalid_evidence_reason() -> None:
                                 "quote": "Treatment A improved survival.",
                             }
                         ],
+                    }
+                ]
+            ),
+            [CASES[0]],
+            source_payload=source_payload,
+            paper_id="paper_1",
+        )
+
+
+def test_parse_consensus_responses_hydrates_compact_source_span_ids() -> None:
+    source_payload = {
+        "spans": [
+            {
+                "span_id": "paper_1-span-0001",
+                "paper_id": "paper_1",
+                "page": 2,
+                "text": "Treatment A increased survival by 20%.",
+            }
+        ]
+    }
+
+    responses = _parse_responses(
+        json.dumps(
+            [
+                {
+                    "item_id": "item_a",
+                    "selected_option": "candidate_a",
+                    "confidence": 0.9,
+                    "rationale": "Direct support.",
+                    "source_span_ids": ["paper_1-span-0001"],
+                }
+            ]
+        ),
+        [CASES[0]],
+        source_payload=source_payload,
+        paper_id="paper_1",
+    )
+
+    assert responses[0]["evidence_items"] == [
+        {
+            "evidence_id": "paper_1-span-0001",
+            "paper_id": "paper_1",
+            "quote": "Treatment A increased survival by 20%.",
+            "page": 2,
+            "local_span_id": "paper_1-span-0001",
+        }
+    ]
+    assert responses[0]["evidence"] == responses[0]["evidence_items"]
+
+
+def test_parse_consensus_responses_rejects_unknown_source_span_ids() -> None:
+    source_payload = {
+        "spans": [
+            {
+                "span_id": "paper_1-span-0001",
+                "paper_id": "paper_1",
+                "text": "Treatment A increased survival by 20%.",
+            }
+        ]
+    }
+
+    with pytest.raises(ValueError, match="unknown IDs"):
+        _parse_responses(
+            json.dumps(
+                [
+                    {
+                        "item_id": "item_a",
+                        "selected_option": "candidate_a",
+                        "source_span_ids": ["paper_1-span-missing"],
                     }
                 ]
             ),

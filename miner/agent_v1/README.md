@@ -114,6 +114,10 @@ extraction eligibility. Never-reviewed miners are provisional; after the first
 review, the exact mean of up to the latest three scores must remain at least
 `0.75`. A normal non-response scores zero.
 
+- Exhausted review retries return `review_status=failed` with no vote or evidence.
+- Failed test-case answers remain in the scoring denominator and earn zero.
+- `insufficient_information` is reserved for an evidence-based judgment, not a technical failure.
+
 #### Setup
 
 - Update the existing miner checkout and dependencies from `main`.

@@ -24,6 +24,8 @@ from .provider import (
 
 _SPACE = re.compile(r"\s+")
 _T = TypeVar("_T")
+_MAX_MODEL_WORKERS = 128
+_MAX_SOURCE_WORKERS = 32
 
 
 def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
@@ -54,31 +56,36 @@ def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
     class ConsensusReviewSignature(dspy.Signature):
         """Review every case independently against its supplied evidence and return strict JSON.
 
-        Select exactly one listed option for every item by checking the supplied source payload.
-        Prefer source-faithful, directly supported claims. Reject unsupported numerical,
-        directional, population, intervention, and outcome changes. Return 1-4 verbatim source
-        quotes for every choice. Each quote must be copied exactly from the text of a supplied
-        source span, apart from whitespace. Do not use the same choice mechanically across cases.
+        The claims to review are in cases[].candidates; they are hypotheses to check and are not
+        expected to appear in the paper under the names candidate_a or candidate_b. Compare each
+        candidate's claim_text with source_spans and select exactly one listed option. For a
+        singleton case, assess candidate_a by itself. Prefer source-faithful, directly supported
+        claims. Reject unsupported numerical, directional, population, intervention, and outcome
+        changes. Return only the IDs of 1-4 source spans that support the choice; the caller will
+        recover their text. Keep the rationale to one short sentence. Do not use the same choice
+        mechanically across cases.
         """
 
         assignment_json: str = dspy.InputField()
         responses_json: str = dspy.OutputField(
             desc=(
-                "JSON array with one object per item: item_id, selected_option, confidence, rationale. "
-                "Each object must also contain evidence_items, an array of 1-4 objects with "
-                "evidence_id, paper_id, quote, page (when known), and local_span_id. Use only "
-                "options listed for that item."
+                "A compact JSON array with exactly one object per item. Each object contains only "
+                "item_id, selected_option, confidence, rationale, and source_span_ids. "
+                "source_span_ids is an array of 1-4 IDs copied from source_spans. Use only options "
+                "listed for that item and do not repeat source text or other input fields."
             )
         )
 
     batch_size = max(1, int(os.getenv("SUBNET_CLAIMS_CONSENSUS_BATCH_SIZE", "2")))
-    max_workers = min(
-        32,
-        max(1, int(os.getenv("SUBNET_CLAIMS_CONSENSUS_MAX_WORKERS", "4"))),
+    max_workers = _configured_worker_count(
+        "SUBNET_CLAIMS_CONSENSUS_MAX_WORKERS",
+        default=4,
+        maximum=_MAX_MODEL_WORKERS,
     )
-    source_max_workers = min(
-        32,
-        max(1, int(os.getenv("SUBNET_CLAIMS_CONSENSUS_SOURCE_MAX_WORKERS", "4"))),
+    source_max_workers = _configured_worker_count(
+        "SUBNET_CLAIMS_CONSENSUS_SOURCE_MAX_WORKERS",
+        default=4,
+        maximum=_MAX_SOURCE_WORKERS,
     )
     source_started = time.perf_counter()
     source_groups = _cases_by_source_document(cases)
@@ -92,8 +99,11 @@ def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
         request_context = {
             "schema": str(payload.get("schema") or "claims_consensus_assignment_v1"),
             "round_id": str(payload.get("round_id") or ""),
-            "source_document": source_document,
-            "source_payload": source_payload,
+            "source_document": {
+                "paper_id": str(source_document.get("paper_id") or ""),
+                "title": str(source_document.get("title") or ""),
+            },
+            "source_spans": _model_source_spans(source_payload),
         }
         for case_batch in _case_batches(source_cases, batch_size):
             jobs.append(
@@ -131,6 +141,72 @@ def _case_batches(cases: list[dict[str, Any]], batch_size: int) -> list[list[dic
     return [cases[offset : offset + size] for offset in range(0, len(cases), size)]
 
 
+def _configured_worker_count(name: str, *, default: int, maximum: int) -> int:
+    return min(maximum, max(1, int(os.getenv(name, str(default)))))
+
+
+def _model_source_spans(source_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "span_id": str(span.get("span_id") or ""),
+            "page": span.get("page"),
+            "text": str(span.get("text") or ""),
+        }
+        for span in source_payload.get("spans", [])
+        if isinstance(span, dict) and str(span.get("span_id") or "").strip()
+    ]
+
+
+def _model_case(case: dict[str, Any]) -> dict[str, Any]:
+    case_payload = case.get("case") if isinstance(case.get("case"), dict) else {}
+    adjudication = (
+        case_payload.get("adjudication_case")
+        if isinstance(case_payload.get("adjudication_case"), dict)
+        else {}
+    )
+    findings = [
+        finding
+        for finding in adjudication.get("findings", [])
+        if isinstance(finding, dict)
+    ]
+    candidate_ids = [
+        str(candidate_id)
+        for candidate_id in adjudication.get("candidate_ids", [])
+        if str(candidate_id).strip()
+    ]
+    findings_by_ref = {
+        str(finding.get("candidate_ref") or ""): finding
+        for finding in findings
+        if str(finding.get("candidate_ref") or "").strip()
+    }
+    candidates: dict[str, dict[str, Any]] = {}
+    for index, label in enumerate(("candidate_a", "candidate_b")):
+        candidate_id = candidate_ids[index] if index < len(candidate_ids) else label
+        finding = findings_by_ref.get(label) or findings_by_ref.get(candidate_id)
+        if finding is None and index < len(findings):
+            finding = findings[index]
+        if finding is None:
+            continue
+        candidates[label] = {
+            key: value
+            for key, value in {
+                "claim_text": str(finding.get("claim_text") or finding.get("statement") or "").strip(),
+                "conditions": str(finding.get("conditions") or "").strip(),
+                "falsification_criteria": str(finding.get("falsification_criteria") or "").strip(),
+            }.items()
+            if value
+        }
+
+    options = [str(option) for option in case.get("options", []) if str(option).strip()]
+    if "candidate_b" not in candidates:
+        options = [option for option in options if option not in {"candidate_b", "both_valid"}]
+    return {
+        "item_id": str(case.get("item_id") or ""),
+        "candidates": candidates,
+        "options": options,
+    }
+
+
 def _run_ordered_jobs(
     jobs: list[Callable[[], _T]],
     *,
@@ -162,12 +238,18 @@ def _review_case_batch(
 ) -> list[dict[str, Any]]:
     last_error: Exception | None = None
     for _attempt in range(2):
-        request = {**request_context, "cases": cases}
+        request = {
+            "schema": request_context.get("schema"),
+            "round_id": request_context.get("round_id"),
+            "cases": [_model_case(case) for case in cases],
+            "source_document": request_context.get("source_document"),
+            "source_spans": request_context.get("source_spans"),
+        }
         if retry_feedback:
             request["retry_feedback"] = retry_feedback
             request["retry_instruction"] = (
                 "Correct every listed validation error. Return all requested item IDs exactly once, "
-                "choose only a listed option, and copy each evidence quote verbatim from a source span."
+                "choose only a listed option, and return only valid source_span_ids."
             )
         try:
             if hasattr(dspy_module, "context"):
@@ -208,57 +290,28 @@ def _review_case_batch(
             retry_feedback=str(last_error or ""),
         )
 
-    abstention = _abstention_response(
-        cases[0] if cases else {},
-        source_payload=source_payload,
-        paper_id=paper_id,
-        reason=str(last_error or "model review failed"),
-    )
-    if abstention is not None:
-        return [abstention]
+    if cases:
+        return [_failed_review_response(cases[0], reason=str(last_error or "model review failed"))]
     item_id = str(cases[0].get("item_id") or "") if cases else ""
     raise RuntimeError(
         f"consensus reviewer failed to return a complete valid response for item {item_id}: {last_error}"
     )
 
 
-def _abstention_response(
+def _failed_review_response(
     case: dict[str, Any],
     *,
-    source_payload: dict[str, Any],
-    paper_id: str,
     reason: str,
-) -> dict[str, Any] | None:
-    options = {str(option) for option in case.get("options", []) if str(option).strip()}
-    if "insufficient_information" not in options:
-        return None
-    span = next(
-        (
-            item
-            for item in source_payload.get("spans", [])
-            if isinstance(item, dict) and str(item.get("text") or "").strip()
-        ),
-        None,
-    )
-    if span is None:
-        return None
-    quote = str(span.get("text") or "").strip()[:500].strip()
-    if not quote:
-        return None
+) -> dict[str, Any]:
     return {
         "item_id": str(case.get("item_id") or ""),
-        "selected_option": "insufficient_information",
-        "confidence": 0.0,
-        "rationale": f"Automated review abstained after invalid model output: {reason[:240]}",
-        "evidence_items": [
-            {
-                "evidence_id": str(span.get("span_id") or "source-span"),
-                "paper_id": str(span.get("paper_id") or paper_id),
-                "quote": quote,
-                "page": span.get("page"),
-                "local_span_id": str(span.get("span_id") or ""),
-            }
-        ],
+        "review_status": "failed",
+        "error_code": "review_retries_exhausted",
+        "selected_option": "",
+        "confidence": None,
+        "rationale": f"Review failed after retries: {reason[:240]}",
+        "evidence_items": [],
+        "evidence": [],
     }
 
 
@@ -328,34 +381,78 @@ def _parse_responses(
             raw_evidence = response.get("evidence")
         evidence = [item for item in (raw_evidence or []) if isinstance(item, dict)]
         if source_payload is not None:
-            if not 1 <= len(evidence) <= 4:
-                invalid_reasons[item_id] = "evidence_items must contain between 1 and 4 entries"
-                continue
-            valid_evidence = [
-                item
-                for item in evidence
-                if _local_evidence_error([item], source_payload, paper_id=paper_id) is None
-            ]
-            if not valid_evidence:
-                invalid_reasons[item_id] = _local_evidence_error(
-                    evidence[:1],
-                    source_payload,
-                    paper_id=paper_id,
-                ) or "no evidence item matches a source span"
-                continue
-            evidence = valid_evidence
+            source_span_ids = response.get("source_span_ids")
+            if not isinstance(source_span_ids, list):
+                source_span_ids = response.get("evidence_span_ids")
+            if isinstance(source_span_ids, list):
+                try:
+                    evidence = _evidence_from_span_ids(
+                        source_span_ids,
+                        source_payload,
+                        paper_id=paper_id,
+                    )
+                except ValueError as exc:
+                    invalid_reasons[item_id] = str(exc)
+                    continue
+            else:
+                if not 1 <= len(evidence) <= 4:
+                    invalid_reasons[item_id] = "source_span_ids must contain between 1 and 4 entries"
+                    continue
+                valid_evidence = [
+                    item
+                    for item in evidence
+                    if _local_evidence_error([item], source_payload, paper_id=paper_id) is None
+                ]
+                if not valid_evidence:
+                    invalid_reasons[item_id] = _local_evidence_error(
+                        evidence[:1],
+                        source_payload,
+                        paper_id=paper_id,
+                    ) or "no evidence item matches a source span"
+                    continue
+                evidence = valid_evidence
         normalized[item_id] = {
             "item_id": item_id,
             "selected_option": selected,
             "confidence": _normalize_confidence(response.get("confidence")),
             "rationale": str(response.get("rationale") or "").strip(),
             "evidence_items": evidence,
+            "evidence": evidence,
         }
     missing = [item_id for item_id in expected if item_id not in normalized]
     if missing:
         details = [f"{item_id}: {invalid_reasons.get(item_id, 'not returned')}" for item_id in missing]
         raise ValueError(f"consensus response omitted items or returned invalid items: {details}")
     return [normalized[str(case["item_id"])] for case in cases]
+
+
+def _evidence_from_span_ids(
+    raw_span_ids: list[Any],
+    source_payload: dict[str, Any],
+    *,
+    paper_id: str,
+) -> list[dict[str, Any]]:
+    span_ids = list(dict.fromkeys(str(span_id).strip() for span_id in raw_span_ids if str(span_id).strip()))
+    if not 1 <= len(span_ids) <= 4:
+        raise ValueError("source_span_ids must contain between 1 and 4 unique entries")
+    spans_by_id = {
+        str(span.get("span_id") or ""): span
+        for span in source_payload.get("spans", [])
+        if isinstance(span, dict) and str(span.get("span_id") or "").strip()
+    }
+    unknown = [span_id for span_id in span_ids if span_id not in spans_by_id]
+    if unknown:
+        raise ValueError(f"source_span_ids contains unknown IDs: {unknown}")
+    return [
+        {
+            "evidence_id": span_id,
+            "paper_id": str(spans_by_id[span_id].get("paper_id") or paper_id),
+            "quote": str(spans_by_id[span_id].get("text") or "").strip(),
+            "page": spans_by_id[span_id].get("page"),
+            "local_span_id": span_id,
+        }
+        for span_id in span_ids
+    ]
 
 
 def _cases_by_source_document(
