@@ -3,7 +3,6 @@
 FROM ubuntu:24.04 AS claims-base
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG HERMES_INSTALL_URL=https://hermes-agent.nousresearch.com/install.sh
 ARG HERMES_COMMIT=""
 ARG CLAIMS_REVISION="unknown"
 
@@ -59,12 +58,11 @@ COPY examples ./examples
 RUN pip install --no-cache-dir --no-deps . \
     && python -c 'import bittensor, dspy, pdf_inspector; print("Claims runtime OK")'
 
-RUN curl -fsSL "${HERMES_INSTALL_URL}" -o /tmp/hermes-install.sh \
-    && if [ -n "${HERMES_COMMIT}" ]; then \
-         bash /tmp/hermes-install.sh --skip-setup --skip-browser --hermes-home /opt/hermes-seed --commit "${HERMES_COMMIT}"; \
-       else \
-         bash /tmp/hermes-install.sh --skip-setup --skip-browser --hermes-home /opt/hermes-seed; \
-       fi \
+# Keep the installer and checkout on the same version; the live installer can
+# require tooling that does not exist in an older pinned Hermes checkout.
+RUN test -n "${HERMES_COMMIT}" \
+    && curl -fsSL "https://raw.githubusercontent.com/NousResearch/hermes-agent/${HERMES_COMMIT}/scripts/install.sh" -o /tmp/hermes-install.sh \
+    && bash /tmp/hermes-install.sh --skip-setup --skip-browser --hermes-home /opt/hermes-seed --commit "${HERMES_COMMIT}" \
     && rm -f /tmp/hermes-install.sh \
     && hermes --help >/dev/null
 

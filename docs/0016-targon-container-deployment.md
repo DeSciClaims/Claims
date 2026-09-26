@@ -21,19 +21,21 @@ image. Runtime credentials and wallets belong on the persistent `/data` volume.
 docker buildx build \
   --file docker/Dockerfile \
   --target miner \
+  --build-arg HERMES_COMMIT="<verified-commit>" \
   --tag claims-miner:local \
   --load .
 
 docker buildx build \
   --file docker/Dockerfile \
   --target validator \
+  --build-arg HERMES_COMMIT="<verified-commit>" \
   --build-context claims_reference_miner=../claims-reference-miner \
   --tag claims-validator:local \
   --load .
 ```
 
-Pin Hermes in repeatable builds with
-`--build-arg HERMES_COMMIT=<verified-commit>`.
+Both images require `HERMES_COMMIT`. The installer and Hermes checkout use that
+same commit, avoiding incompatibilities with the latest upstream installer.
 
 ## Publish With GitHub Actions
 

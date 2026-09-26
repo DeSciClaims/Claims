@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -82,6 +83,50 @@ def test_container_context_excludes_runtime_secrets_and_state() -> None:
     assert ".git" in ignored
     assert "outputs" in ignored
     assert "validator/agent_v1/bronze" in ignored
+
+
+def test_container_uses_matching_hermes_installer_and_checkout() -> None:
+    dockerfile = (ROOT / "docker" / "Dockerfile").read_text()
+    install_step = next(
+        step for step in dockerfile.split("\n\n")
+        if "RUN test -n" in step and "/scripts/install.sh" in step
+    )
+    command = install_step[install_step.index("RUN ") + 4 :]
+    # Exercise the actual Docker RUN command without downloads or installation.
+    mocks = '''
+curl() { printf 'download %s\\n' "$*"; }
+bash() { printf 'install %s\\n' "$*"; }
+rm() { :; }
+hermes() { :; }
+'''
+    pin = "9df5f879b4a5925c0f8f947e7e16ed8e845932c3"
+    completed = subprocess.run(
+        ["sh", "-c", mocks + command],
+        env={**os.environ, "HERMES_COMMIT": pin},
+        capture_output=True, text=True, check=True,
+    )
+    assert f"hermes-agent/{pin}/scripts/install.sh" in completed.stdout
+    assert f"--commit {pin}" in completed.stdout
+    assert "--skip-setup --skip-browser --hermes-home /opt/hermes-seed" in completed.stdout
+    assert "hermes-agent.nousresearch.com/install.sh" not in dockerfile
+
+    missing_pin = subprocess.run(
+        ["sh", "-c", mocks + command],
+        env={**os.environ, "HERMES_COMMIT": ""},
+        capture_output=True, text=True,
+    )
+    assert missing_pin.returncode != 0
+    assert missing_pin.stdout == ""
+
+
+def test_both_container_jobs_require_hermes_pin() -> None:
+    workflow = (ROOT / ".github/workflows/container-images.yml").read_text()
+    miner, validator = workflow.split("  miner:\n", 1)[1].split("  validator:\n", 1)
+    for job in (miner, validator):
+        assert "HERMES_COMMIT repository variable is required" in job
+        assert job.index("HERMES_COMMIT repository variable is required") < job.index(
+            "docker/build-push-action@"
+        )
 
 
 def test_targon_guide_documents_manual_and_automatic_modes() -> None:
