@@ -150,9 +150,15 @@ class ClaimsConsensusValidator:
         target_uids = set(
             getattr(getattr(self, "config", None), "claims_target_uids", []) or []
         )
+        own_hotkey = str(
+            getattr(getattr(getattr(self, "wallet", None), "hotkey", None), "ss58_address", "") or ""
+        )
         for neuron in list(getattr(self.metagraph, "neurons", []) or []):
             axon = getattr(neuron, "axon_info", None)
             uid = int(getattr(neuron, "uid", -1))
+            hotkey = str(getattr(neuron, "hotkey", "") or "")
+            if bool(getattr(neuron, "validator_permit", False)) or (own_hotkey and hotkey == own_hotkey):
+                continue
             if target_uids and uid not in target_uids:
                 continue
             if axon is None or not _is_serving(neuron):
@@ -160,7 +166,7 @@ class ClaimsConsensusValidator:
             candidates.append(
                 {
                     "uid": uid,
-                    "hotkey": str(getattr(neuron, "hotkey", "") or ""),
+                    "hotkey": hotkey,
                     "coldkey": str(getattr(neuron, "coldkey", "") or ""),
                     "axon_ip": str(getattr(axon, "ip", "") or ""),
                     "axon_port": int(getattr(axon, "port", 0) or 0),

@@ -132,6 +132,44 @@ def test_reviewer_candidates_respect_target_uids() -> None:
     assert [candidate["uid"] for candidate in validator._reviewer_candidates()] == [1]
 
 
+@pytest.mark.parametrize("target_uids", [[], [0, 1, 2]])
+def test_reviewer_candidates_exclude_validators_even_when_targeted(target_uids) -> None:
+    validator = ClaimsConsensusValidator.__new__(ClaimsConsensusValidator)
+    validator.config = SimpleNamespace(claims_target_uids=target_uids)
+    validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="own_hotkey"))
+    validator.metagraph = SimpleNamespace(neurons=[
+        SimpleNamespace(
+            uid=uid,
+            hotkey=hotkey,
+            coldkey=f"coldkey_{uid}",
+            validator_permit=permit,
+            axon_info=SimpleNamespace(ip="127.0.0.1", port=8092, is_serving=True),
+        )
+        for uid, hotkey, permit in [
+            (0, "other_validator", True),
+            (1, "own_hotkey", False),
+            (2, "miner_hotkey", False),
+        ]
+    ])
+
+    assert [candidate["uid"] for candidate in validator._reviewer_candidates()] == [2]
+
+
+def test_reviewer_candidates_use_refreshed_permit_status() -> None:
+    validator = ClaimsConsensusValidator.__new__(ClaimsConsensusValidator)
+    neuron = SimpleNamespace(
+        uid=2,
+        hotkey="miner_hotkey",
+        coldkey="miner_coldkey",
+        validator_permit=False,
+        axon_info=SimpleNamespace(ip="127.0.0.1", port=8092, is_serving=True),
+    )
+    validator.metagraph = SimpleNamespace(neurons=[neuron])
+    assert len(validator._reviewer_candidates()) == 1
+    neuron.validator_permit = True
+    assert validator._reviewer_candidates() == []
+
+
 def test_seconds_until_deadline_handles_expired_and_future_values() -> None:
     now = datetime(2026, 9, 23, 16, 0, tzinfo=timezone.utc)
 
