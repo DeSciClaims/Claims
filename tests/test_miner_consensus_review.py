@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import threading
 import time
 from contextlib import nullcontext
@@ -9,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from miner.agent_v1.config import AgentV1Config
+from miner.agent_v1 import consensus_review
 from miner.agent_v1.consensus_review import (
     _case_batches,
     _configured_worker_count,
@@ -24,6 +26,52 @@ CASES = [
     {"item_id": "item_a", "options": ["candidate_a", "candidate_b"]},
     {"item_id": "item_b", "options": ["candidate_a", "candidate_b"]},
 ]
+
+
+@pytest.mark.parametrize("overrides,expected", [(None, (1, 50, 16)), ((2, 3, 2), (2, 3, 2))])
+def test_consensus_concurrency_defaults_and_overrides(monkeypatch, overrides, expected) -> None:
+    names = (
+        "SUBNET_CLAIMS_CONSENSUS_BATCH_SIZE",
+        "SUBNET_CLAIMS_CONSENSUS_MAX_WORKERS",
+        "SUBNET_CLAIMS_CONSENSUS_SOURCE_MAX_WORKERS",
+    )
+    for index, name in enumerate(names):
+        if overrides is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, str(overrides[index]))
+    monkeypatch.setenv("CONSENSUS_TEST_API_KEY", "test-key")
+    monkeypatch.setattr(AgentV1Config, "from_env", lambda: SimpleNamespace(timeout_seconds=60))
+    monkeypatch.setattr(consensus_review, "_consensus_lm_settings", lambda _config: (
+        "openrouter", "test-model", "https://example.invalid", "CONSENSUS_TEST_API_KEY",
+    ))
+    monkeypatch.setitem(sys.modules, "dspy", SimpleNamespace(
+        LM=lambda **_kwargs: object(), Signature=type("Signature", (), {}),
+        InputField=lambda: None, OutputField=lambda **_kwargs: None,
+        Predict=lambda _signature: object(),
+    ))
+    monkeypatch.setattr(consensus_review, "_cases_by_source_document", lambda cases: [({}, cases)])
+    monkeypatch.setattr(consensus_review, "_extract_source_payload", lambda *_args: {})
+    batch_sizes = []
+    worker_limits = []
+
+    def review(**kwargs):
+        batch_sizes.append(len(kwargs["cases"]))
+        return [{"item_id": case["item_id"]} for case in kwargs["cases"]]
+
+    def run_jobs(jobs, *, max_workers):
+        worker_limits.append(max_workers)
+        return [job() for job in jobs]
+
+    monkeypatch.setattr(consensus_review, "_review_case_batch", review)
+    monkeypatch.setattr(consensus_review, "_run_ordered_jobs", run_jobs)
+    result = consensus_review.review_consensus_assignment({"round_id": "test", "cases": CASES})
+
+    batch_size, model_workers, source_workers = expected
+    assert result["metadata"]["model_batch_size"] == batch_size
+    assert batch_sizes == ([1, 1] if batch_size == 1 else [2])
+    assert worker_limits == [source_workers, model_workers]
+    assert [row["item_id"] for row in result["responses"]] == [case["item_id"] for case in CASES]
 
 
 def test_consensus_cases_are_bounded_before_model_review() -> None:

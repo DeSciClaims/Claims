@@ -76,15 +76,15 @@ def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
             )
         )
 
-    batch_size = max(1, int(os.getenv("SUBNET_CLAIMS_CONSENSUS_BATCH_SIZE", "2")))
+    batch_size = max(1, int(os.getenv("SUBNET_CLAIMS_CONSENSUS_BATCH_SIZE", "1")))
     max_workers = _configured_worker_count(
         "SUBNET_CLAIMS_CONSENSUS_MAX_WORKERS",
-        default=4,
+        default=50,
         maximum=_MAX_MODEL_WORKERS,
     )
     source_max_workers = _configured_worker_count(
         "SUBNET_CLAIMS_CONSENSUS_SOURCE_MAX_WORKERS",
-        default=4,
+        default=16,
         maximum=_MAX_SOURCE_WORKERS,
     )
     source_started = time.perf_counter()
