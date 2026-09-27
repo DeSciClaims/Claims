@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -386,9 +387,13 @@ def _env_int_list(name: str) -> list[int]:
     return values
 
 
-def _subtensor_network_arg(parsed_args: argparse.Namespace) -> str:
-    subtensor = getattr(parsed_args, "subtensor", SimpleNamespace(network="test"))
-    return str(getattr(subtensor, "network", "test") or "test")
+def _subtensor_network_arg(parsed_args: argparse.Namespace) -> str | None:
+    # Bittensor's argparse destinations are dotted attributes, not nested namespaces.
+    if any(arg == "--subtensor.chain_endpoint" or arg.startswith("--subtensor.chain_endpoint=") for arg in sys.argv[1:]):
+        return getattr(parsed_args, "subtensor.chain_endpoint")
+    if any(arg == "--subtensor.network" or arg.startswith("--subtensor.network=") for arg in sys.argv[1:]):
+        return getattr(parsed_args, "subtensor.network")
+    return None
 
 
 def _apply_bittensor_args(config: Any, parsed_args: argparse.Namespace) -> None:

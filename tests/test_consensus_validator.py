@@ -1,13 +1,40 @@
 from __future__ import annotations
 
+import argparse
+import sys
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+
+import pytest
 
 from neurons.consensus_validator import (
     ClaimsConsensusValidator,
     _seconds_until_deadline,
+    _subtensor_network_arg,
     _sync_metagraph,
 )
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (["--subtensor.network", "finney"], "finney"),
+        (["--subtensor.network=finney"], "finney"),
+        (["--subtensor.network", "test"], "test"),
+        (["--subtensor.chain_endpoint", "wss://rpc.example.test"], "wss://rpc.example.test"),
+        (["--subtensor.chain_endpoint=wss://rpc.example.test"], "wss://rpc.example.test"),
+        (["--subtensor.network", "finney", "--subtensor.chain_endpoint", "wss://rpc.example.test"], "wss://rpc.example.test"),
+        ([], None),
+    ],
+)
+def test_consensus_subtensor_network_uses_dotted_cli_arguments(monkeypatch, args, expected) -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--subtensor.network", default="finney")
+    parser.add_argument("--subtensor.chain_endpoint", default="wss://default.example.test")
+    parsed = parser.parse_args(args)
+    monkeypatch.setattr(sys, "argv", ["consensus_validator", *args])
+
+    assert _subtensor_network_arg(parsed) == expected
 
 
 class _Subtensor:
