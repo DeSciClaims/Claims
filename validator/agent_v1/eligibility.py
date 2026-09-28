@@ -26,7 +26,7 @@ ELIGIBILITY_GATES: tuple[EligibilityGate, ...] = (
 EVIDENCE_REQUIRED_GATES: tuple[EligibilityGate, ...] = (
     "paper_original_support",
 )
-ELIGIBILITY_PROFILE_ID = "claim-adjudication-panel-v1"
+ELIGIBILITY_PROFILE_ID = "claim-adjudication-panel-v2"
 
 
 class _StrictModel(BaseModel):
@@ -52,6 +52,7 @@ class EligibilityCandidateAssessment(_StrictModel):
     claim_atoms: list[str] = Field(min_length=1)
     claim_atom_assessments: list[EligibilityClaimAtomAssessment] = Field(min_length=1)
     gates: list[EligibilityGateAssessment] = Field(min_length=len(ELIGIBILITY_GATES))
+    reviewed_span_ids: list[str] = Field(default_factory=list)
     rationale: str = Field(min_length=1)
 
 
@@ -63,10 +64,27 @@ class EligibilityAdjudicationCaseAssessment(_StrictModel):
     )
     selected_candidate_ref: str | None = None
     rationale: str = Field(min_length=1)
+    technical_unresolved: bool = False
+    technical_error: str = ""
 
 
 class EligibilityAdjudicationAgentOutput(_StrictModel):
     assessments: list[EligibilityAdjudicationCaseAssessment]
+
+
+class EligibilityBlindFinding(_StrictModel):
+    finding_ref: str = Field(min_length=1)
+    canonical_finding: str = Field(min_length=1)
+    assertion_anchor_ids: list[str] = Field(min_length=1)
+    original_support_ids: list[str] = Field(min_length=1)
+    support_path_ids: list[str] = Field(min_length=1)
+    salience_anchor_ids: list[str] = Field(min_length=1)
+    material_qualifications: list[str] = Field(default_factory=list)
+
+
+class EligibilityBlindReconstructionOutput(_StrictModel):
+    blind_findings: list[EligibilityBlindFinding] = Field(default_factory=list)
+    packet_limitations: list[str] = Field(default_factory=list)
 
 
 class EligibilityAdjudicationVote(BaseModel):
@@ -76,17 +94,21 @@ class EligibilityAdjudicationVote(BaseModel):
     candidate_assessments: list[EligibilityCandidateAssessment]
     rationale: str
     model: str = ""
+    technical_unresolved: bool = False
+    technical_error: str = ""
 
 
 class EligibilityAdjudicationDecision(BaseModel):
     case_id: str
     selected_candidate_id: str | None = None
     rejected_candidate_ids: list[str] = Field(default_factory=list)
-    consensus_route: Literal["unanimous", "tiebreak"]
+    consensus_route: Literal["unanimous", "tiebreak", "technical_unresolved"]
     primary_votes: list[EligibilityAdjudicationVote]
     tiebreak_vote: EligibilityAdjudicationVote | None = None
     cited_span_ids: list[str] = Field(default_factory=list)
     rationale: str
+    resolution_status: Literal["decided", "technical_unresolved"] = "decided"
+    blind_reconstruction_sha256: str = ""
 
 
 def validate_candidate_assessments(
@@ -129,6 +151,7 @@ def validate_eligibility_adjudication_output(
     output: EligibilityAdjudicationAgentOutput,
     *,
     expected_candidate_refs_by_case: dict[str, set[str]],
+    allow_technical_unresolved: bool = False,
 ) -> None:
     case_refs = [assessment.case_ref for assessment in output.assessments]
     if len(case_refs) != len(set(case_refs)):
@@ -141,6 +164,16 @@ def validate_eligibility_adjudication_output(
             f"missing={missing} unexpected={unexpected}."
         )
     for case in output.assessments:
+        if case.technical_unresolved:
+            if not allow_technical_unresolved:
+                raise ValueError(
+                    "Model eligibility output may not declare a technical failure."
+                )
+            if not case.technical_error:
+                raise ValueError(
+                    "A technical eligibility result must preserve its operational error."
+                )
+            continue
         expected_refs = expected_candidate_refs_by_case[case.case_ref]
         validate_candidate_assessments(
             case.candidate_assessments,
@@ -258,6 +291,20 @@ def eligibility_adjudication_vote_from_assessment(
     candidate_id_by_ref: dict[str, str],
     model: str,
 ) -> EligibilityAdjudicationVote:
+    if assessment.technical_unresolved:
+        return EligibilityAdjudicationVote(
+            case_id=case_id,
+            judge_role=judge_role,
+            selected_candidate_id=None,
+            candidate_assessments=[],
+            rationale=(
+                assessment.rationale
+                or "Eligibility adjudication was technically unresolved."
+            ),
+            model=model,
+            technical_unresolved=True,
+            technical_error=assessment.technical_error,
+        )
     normalized_assessments = [
         normalize_eligibility_assessment(item).model_copy(
             update={"candidate_ref": candidate_id_by_ref[item.candidate_ref]}
@@ -301,12 +348,21 @@ def decide_eligibility_adjudication(
     negative_vote: EligibilityAdjudicationVote,
     positive_vote: EligibilityAdjudicationVote,
     tiebreak_vote: EligibilityAdjudicationVote | None = None,
+    blind_reconstruction_sha256: str = "",
 ) -> EligibilityAdjudicationDecision:
     if len(candidate_ids) not in {1, 2} or len(set(candidate_ids)) != len(candidate_ids):
         raise ValueError("Eligibility adjudication requires one or two distinct candidates.")
     if negative_vote.case_id != case_id or positive_vote.case_id != case_id:
         raise ValueError("Primary eligibility adjudication vote case identity mismatch.")
     primary_votes = [negative_vote, positive_vote]
+    technical_votes = [vote for vote in primary_votes if vote.technical_unresolved]
+    if technical_votes:
+        return _technical_unresolved_decision(
+            case_id=case_id,
+            primary_votes=primary_votes,
+            rationale=" ".join(vote.rationale for vote in technical_votes),
+            blind_reconstruction_sha256=blind_reconstruction_sha256,
+        )
     if negative_vote.selected_candidate_id == positive_vote.selected_candidate_id:
         final_vote = negative_vote
         route: Literal["unanimous", "tiebreak"] = "unanimous"
@@ -319,6 +375,14 @@ def decide_eligibility_adjudication(
             raise ValueError("Split eligibility adjudication votes require a tiebreak vote.")
         if tiebreak_vote.case_id != case_id:
             raise ValueError("Eligibility adjudication tiebreak vote case identity mismatch.")
+        if tiebreak_vote.technical_unresolved:
+            return _technical_unresolved_decision(
+                case_id=case_id,
+                primary_votes=primary_votes,
+                tiebreak_vote=tiebreak_vote,
+                rationale=tiebreak_vote.rationale,
+                blind_reconstruction_sha256=blind_reconstruction_sha256,
+            )
         final_vote = tiebreak_vote
         route = "tiebreak"
         rationale = (
@@ -368,4 +432,30 @@ def decide_eligibility_adjudication(
         tiebreak_vote=tiebreak_vote,
         cited_span_ids=cited_span_ids,
         rationale=rationale,
+        blind_reconstruction_sha256=blind_reconstruction_sha256,
+    )
+
+
+def _technical_unresolved_decision(
+    *,
+    case_id: str,
+    primary_votes: list[EligibilityAdjudicationVote],
+    rationale: str,
+    tiebreak_vote: EligibilityAdjudicationVote | None = None,
+    blind_reconstruction_sha256: str = "",
+) -> EligibilityAdjudicationDecision:
+    return EligibilityAdjudicationDecision(
+        case_id=case_id,
+        selected_candidate_id=None,
+        rejected_candidate_ids=[],
+        consensus_route="technical_unresolved",
+        primary_votes=primary_votes,
+        tiebreak_vote=tiebreak_vote,
+        cited_span_ids=[],
+        rationale=(
+            "Eligibility adjudication was technically unresolved; no scientific "
+            f"acceptance or rejection was recorded. {rationale}"
+        ),
+        resolution_status="technical_unresolved",
+        blind_reconstruction_sha256=blind_reconstruction_sha256,
     )

@@ -32,17 +32,23 @@ from .adjudication_passes import (
 )
 from .adjudication_runner import AdjudicationPass
 from .canonicalization_dspy import DSPyCanonicalizationRuntime
+from .comparison_dspy import DSPyComparisonRuntime
 from .comparison_models import CandidatePairEdge, ComparisonCandidate, RelationType, SilverRecord, SilverUnit
 from .eligibility import (
     ELIGIBILITY_GATES,
     ELIGIBILITY_PROFILE_ID,
     EligibilityAdjudicationAgentOutput,
+    EligibilityAdjudicationCaseAssessment,
     EligibilityAdjudicationDecision,
     EligibilityAdjudicationVote,
+    EligibilityBlindReconstructionOutput,
     EligibilityCandidateAssessment,
+    EligibilityClaimAtomAssessment,
+    EligibilityGateAssessment,
     assessment_passes_hard_gates,
     decide_eligibility_adjudication,
     eligibility_adjudication_vote_from_assessment,
+    normalize_eligibility_assessment,
     validate_eligibility_adjudication_output,
 )
 from .eligibility_dspy import DSPyEligibilityRuntime
@@ -278,8 +284,10 @@ class FileAgentWorkflowConfig:
     adjudication_positive_model: str = ""
     adjudication_tiebreak_model: str = ""
     adjudication_batch_size: int = 8
+    adjudication_max_source_chars: int = 30000
     adjudication_max_workers: int = 4
     adjudication_max_tokens: int = 32768
+    adjudication_appellate_max_tokens: int = 8192
     adjudication_timeout_seconds: float = 120.0
     command_template: str = ""
     max_turns: int = 30
@@ -414,6 +422,16 @@ class FileAgentWorkflowConfig:
                 1,
                 int(os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE", "8") or 8),
             ),
+            adjudication_max_source_chars=max(
+                1000,
+                int(
+                    os.getenv(
+                        "CLAIMS_SILVER_ADJUDICATION_MAX_SOURCE_CHARS",
+                        "30000",
+                    )
+                    or 30000
+                ),
+            ),
             adjudication_max_workers=max(
                 1,
                 int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_WORKERS", "4") or 4),
@@ -421,6 +439,16 @@ class FileAgentWorkflowConfig:
             adjudication_max_tokens=max(
                 1024,
                 int(os.getenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "32768") or 32768),
+            ),
+            adjudication_appellate_max_tokens=max(
+                1024,
+                int(
+                    os.getenv(
+                        "CLAIMS_SILVER_ADJUDICATION_APPELLATE_MAX_TOKENS",
+                        "8192",
+                    )
+                    or 8192
+                ),
             ),
             adjudication_timeout_seconds=max(
                 1.0,
@@ -512,10 +540,17 @@ class FileAgentWorkflowSession:
         if not contexts:
             self._write_json("eligibility_adjudication/decisions.json", {"decisions": []})
             return []
-        batches = [
-            contexts[index : index + self.config.adjudication_batch_size]
-            for index in range(0, len(contexts), self.config.adjudication_batch_size)
-        ]
+        source_map = (
+            self.eligibility_source_context_by_span_id
+            if self.eligibility_source_context_by_span_id is not None
+            else self.source_context_by_span_id
+        )
+        batches = _eligibility_adjudication_batches(
+            contexts,
+            source_context_by_span_id=source_map,
+            max_cases=self.config.adjudication_batch_size,
+            max_source_chars=self.config.adjudication_max_source_chars,
+        )
         worker_count = max(1, min(self.config.adjudication_max_workers, len(batches)))
         if worker_count == 1:
             batch_decisions = [
@@ -537,12 +572,13 @@ class FileAgentWorkflowSession:
         self._write_json(
             "eligibility_adjudication/decisions.json",
             {
-                "schema": "claims_silver_eligibility_adjudication_v1",
+                "schema": "claims_silver_eligibility_adjudication_v2",
                 "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
                 "case_count": len(contexts),
                 "single_case_count": sum(len(context.candidates) == 1 for context in contexts),
                 "pair_case_count": sum(len(context.candidates) == 2 for context in contexts),
                 "batch_size": self.config.adjudication_batch_size,
+                "max_source_chars": self.config.adjudication_max_source_chars,
                 "batch_count": len(batches),
                 "decisions": [decision.model_dump(mode="json") for decision in decisions],
             },
@@ -589,6 +625,9 @@ class FileAgentWorkflowSession:
                     result,
                     expected_candidate_refs_by_case=expected,
                     known_span_ids=set(source_spans),
+                    source_span_ids_by_candidate_ref=(
+                        _eligibility_candidate_source_spans_by_ref(common_task)
+                    ),
                 ),
             )
             assert isinstance(payload, EligibilityAdjudicationAgentOutput)
@@ -631,51 +670,112 @@ class FileAgentWorkflowSession:
             )
             negative_votes[case_ref] = negative_vote
             positive_votes[case_ref] = positive_vote
-            if negative_vote.selected_candidate_id != positive_vote.selected_candidate_id:
+            if (
+                not negative_vote.technical_unresolved
+                and not positive_vote.technical_unresolved
+                and negative_vote.selected_candidate_id
+                != positive_vote.selected_candidate_id
+            ):
                 split_case_refs.append(case_ref)
 
         tiebreak_votes: dict[str, EligibilityAdjudicationVote] = {}
+        blind_reconstruction_sha256 = ""
         if split_case_refs:
             split_cases = [
                 case
                 for case in common_task["cases"]
                 if case["case_ref"] in split_case_refs
             ]
+            split_task = _eligibility_split_task(
+                common_task,
+                cases=split_cases,
+                parent_case_count=len(common_task["cases"]),
+            )
             split_expected = {
                 case_ref: expected[case_ref]
                 for case_ref in split_case_refs
             }
-            payload = self._run_eligibility_stage_with_retry(
-                stage_key=f"eligibility_adjudication_tiebreak{stage_suffix}",
-                stage_label="Eligibility adjudication tiebreak judge",
-                model=self.config.adjudication_tiebreak_model,
-                task={
-                    **common_task,
-                    "judge_role": "tiebreak",
-                    "cases": split_cases,
-                    "primary_assessments": [
-                        {
-                            "case_ref": case_ref,
-                            "negative": negative_by_ref[case_ref].model_dump(mode="json"),
-                            "positive": positive_by_ref[case_ref].model_dump(mode="json"),
-                        }
-                        for case_ref in split_case_refs
-                    ],
-                    "requirements": {
-                        **common_task["requirements"],
-                        "resolve_each_primary_disagreement": True,
-                        "return_only_disputed_cases": True,
+            try:
+                blind_output = self._run_blind_reconstruction_with_retry(
+                    stage_key=(
+                        f"eligibility_adjudication_blind_reconstruction{stage_suffix}"
+                    ),
+                    model=self.config.adjudication_tiebreak_model,
+                    task={
+                        "mode": "eligibility_blind_reconstruction",
+                        "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
+                        "paper": self.paper_context,
+                        "source_spans": split_task["source_spans"],
+                        "hard_gates": list(ELIGIBILITY_GATES),
+                        "requirements": {
+                            "candidate_must_not_be_available": True,
+                            "primary_assessments_must_not_be_available": True,
+                            "reconstruct_every_qualifying_finding": True,
+                            "do_not_rank_or_cap_findings": True,
+                            "cite_assertion_support_path_and_salience_anchors": True,
+                        },
                     },
-                },
-                output_model=EligibilityAdjudicationAgentOutput,
-                skill_path=_skill_path("claims-silver-eligibility-selection-tiebreak"),
-                validator=lambda result: _validate_eligibility_adjudication_payload(
-                    result,
-                    expected_candidate_refs_by_case=split_expected,
-                    known_span_ids=set(source_spans),
-                ),
-            )
-            assert isinstance(payload, EligibilityAdjudicationAgentOutput)
+                )
+                blind_payload = blind_output.model_dump(mode="json")
+                blind_reconstruction_sha256 = hashlib.sha256(
+                    json.dumps(
+                        blind_payload,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).hexdigest()
+                payload = self._run_eligibility_stage_with_retry(
+                    stage_key=f"eligibility_adjudication_tiebreak{stage_suffix}",
+                    stage_label="Eligibility adjudication appellate judge",
+                    model=self.config.adjudication_tiebreak_model,
+                    task={
+                        **split_task,
+                        "mode": "eligibility_appellate_comparison",
+                        "judge_role": "tiebreak",
+                        "blind_reconstruction": blind_payload,
+                        "blind_reconstruction_sha256": blind_reconstruction_sha256,
+                        "primary_assessments": [
+                            {
+                                "case_ref": case_ref,
+                                "negative": negative_by_ref[case_ref].model_dump(mode="json"),
+                                "positive": positive_by_ref[case_ref].model_dump(mode="json"),
+                            }
+                            for case_ref in split_case_refs
+                        ],
+                        "requirements": {
+                            **common_task["requirements"],
+                            "do_not_modify_blind_reconstruction": True,
+                            "resolve_each_primary_disagreement": True,
+                            "return_only_disputed_cases": True,
+                        },
+                    },
+                    output_model=EligibilityAdjudicationAgentOutput,
+                    skill_path=_skill_path("claims-silver-eligibility-selection-tiebreak"),
+                    validator=lambda result: _validate_eligibility_adjudication_payload(
+                        result,
+                        expected_candidate_refs_by_case=split_expected,
+                        known_span_ids=set(split_task["source_spans"]),
+                        source_span_ids_by_candidate_ref=(
+                            _eligibility_candidate_source_spans_by_ref(split_task)
+                        ),
+                    ),
+                )
+                assert isinstance(payload, EligibilityAdjudicationAgentOutput)
+            except Exception as exc:
+                LOGGER.warning(
+                    "Blind appellate adjudication failed for paper=%s batch=%s; "
+                    "marking disputed cases technically unresolved: %s",
+                    self.paper_id,
+                    batch_index,
+                    exc,
+                )
+                payload = EligibilityAdjudicationAgentOutput(
+                    assessments=[
+                        _technical_unresolved_case_assessment(case, error=exc)
+                        for case in split_cases
+                    ]
+                )
             for assessment in payload.assessments:
                 context = next(
                     item
@@ -700,6 +800,11 @@ class FileAgentWorkflowSession:
                     negative_vote=negative_votes[case_ref],
                     positive_vote=positive_votes[case_ref],
                     tiebreak_vote=tiebreak_votes.get(case_ref),
+                    blind_reconstruction_sha256=(
+                        blind_reconstruction_sha256
+                        if case_ref in split_case_refs
+                        else ""
+                    ),
                 )
             )
         self._write_json(
@@ -707,6 +812,68 @@ class FileAgentWorkflowSession:
             {"decisions": [decision.model_dump(mode="json") for decision in decisions]},
         )
         return decisions
+
+
+    def _run_blind_reconstruction_with_retry(
+        self,
+        *,
+        stage_key: str,
+        model: str,
+        task: dict[str, Any],
+    ) -> EligibilityBlindReconstructionOutput:
+        skill_path = _skill_path("claims-silver-eligibility-blind-reconstruction")
+        known_span_ids = set(task.get("source_spans") or {})
+
+        def validator(payload: BaseModel) -> None:
+            _validate_blind_reconstruction(
+                payload,
+                known_span_ids=known_span_ids,
+            )
+
+        try:
+            if self.config.adjudication_harness == "dspy":
+                payload = self._run_dspy_eligibility_stage(
+                    stage_key=stage_key,
+                    stage_label="Eligibility blind reconstruction",
+                    model=model,
+                    task=task,
+                    output_model=EligibilityBlindReconstructionOutput,
+                    skill_path=skill_path,
+                    validator=validator,
+                )
+            else:
+                result = self._run_stage(
+                    stage_key=stage_key,
+                    stage_label="Eligibility blind reconstruction",
+                    model=model,
+                    task=task,
+                    output_model=EligibilityBlindReconstructionOutput,
+                    skill_path=skill_path,
+                )
+                validator(result.payload)
+                payload = result.payload
+            assert isinstance(payload, EligibilityBlindReconstructionOutput)
+            return payload
+        except Exception as first_error:
+            retry_task = {
+                **task,
+                "operational_retry": {
+                    "attempt": 2,
+                    "previous_error": _exception_summary(first_error),
+                    "return_a_complete_fresh_output": True,
+                },
+            }
+            payload = self._run_dspy_eligibility_stage(
+                stage_key=f"{stage_key}_retry",
+                stage_label="Eligibility blind reconstruction",
+                model=model,
+                task=retry_task,
+                output_model=EligibilityBlindReconstructionOutput,
+                skill_path=skill_path,
+                validator=validator,
+            )
+            assert isinstance(payload, EligibilityBlindReconstructionOutput)
+            return payload
 
 
     def _run_eligibility_stage_with_retry(
@@ -778,7 +945,6 @@ class FileAgentWorkflowSession:
                 skill_path=skill_path,
                 previous_error=retry_error,
             )
-            validator(payload)
             return payload
 
     def _run_dspy_eligibility_split_recovery(
@@ -798,7 +964,7 @@ class FileAgentWorkflowSession:
                 f"{stage_label} cannot split a task without adjudication cases."
             )
         if len(cases) == 1:
-            return self._eligibility_fail_closed_output(
+            return self._eligibility_technical_unresolved_output(
                 stage_key=stage_key,
                 stage_label=stage_label,
                 model=model,
@@ -858,10 +1024,14 @@ class FileAgentWorkflowSession:
                 ]
             }
         )
-        _validate_eligibility_payload_for_task(payload, task)
+        _validate_eligibility_payload_for_task(
+            payload,
+            task,
+            allow_technical_unresolved=True,
+        )
         return payload
 
-    def _eligibility_fail_closed_output(
+    def _eligibility_technical_unresolved_output(
         self,
         *,
         stage_key: str,
@@ -872,83 +1042,42 @@ class FileAgentWorkflowSession:
         error: Exception,
     ) -> BaseModel:
         error_summary = _exception_summary(error)
-        reason = (
-            "Validator operational recovery could not obtain a complete adjudication "
-            f"for this isolated case: {error_summary}"
-        )
         cases = task.get("cases")
         if not isinstance(cases, list) or len(cases) != 1 or not isinstance(cases[0], dict):
             raise FileAgentWorkflowError(
-                f"{stage_label} fail-closed recovery requires exactly one case."
+                f"{stage_label} technical recovery requires exactly one case."
             )
         case = cases[0]
         LOGGER.warning(
-            "%s failed for isolated case %s; excluding that case without discarding the paper: %s",
+            "%s failed for isolated case %s; marking it technically unresolved "
+            "without discarding the paper: %s",
             stage_label,
             case.get("case_ref"),
             error_summary,
         )
-        candidates = case.get("candidates")
-        candidate_rows = candidates if isinstance(candidates, list) else []
         payload = output_model.model_validate(
             {
                 "assessments": [
-                    {
-                        "case_ref": str(case.get("case_ref") or ""),
-                        "candidate_assessments": [
-                            {
-                                "candidate_ref": str(candidate.get("candidate_ref") or ""),
-                                "claim_atoms": [
-                                    str(
-                                        candidate.get("statement")
-                                        or candidate.get("candidate_ref")
-                                        or "unknown"
-                                    )
-                                ],
-                                "claim_atom_assessments": [
-                                    {
-                                        "atom": str(
-                                            candidate.get("statement")
-                                            or candidate.get("candidate_ref")
-                                            or "unknown"
-                                        ),
-                                        "supported": False,
-                                        "cited_span_ids": [],
-                                        "rationale": reason,
-                                    }
-                                ],
-                                "gates": [
-                                    {
-                                        "gate": gate,
-                                        "passed": False,
-                                        "cited_span_ids": [],
-                                        "rationale": reason,
-                                    }
-                                    for gate in ELIGIBILITY_GATES
-                                ],
-                                "rationale": reason,
-                            }
-                            for candidate in candidate_rows
-                            if isinstance(candidate, dict)
-                        ],
-                        "selected_candidate_ref": None,
-                        "rationale": reason,
-                    }
+                    _technical_unresolved_case_assessment(
+                        case,
+                        error=error,
+                    ).model_dump(mode="json")
                 ]
             }
         )
-        _validate_eligibility_payload_for_task(payload, task)
-        recovery_dir = self.root / "executions" / _safe_path(f"{stage_key}_fail_closed")
+        recovery_dir = self.root / "executions" / _safe_path(
+            f"{stage_key}_technical_unresolved"
+        )
         recovery_dir.mkdir(parents=True, exist_ok=True)
         self._atomic_json(recovery_dir / "task.json", task)
         self._atomic_json(recovery_dir / "output.json", payload.model_dump(mode="json"))
         self._record_manifest_stage(
             {
-                "stage_key": f"{stage_key}_fail_closed",
+                "stage_key": f"{stage_key}_technical_unresolved",
                 "status": "complete",
                 "model": model,
                 "harness": "validator",
-                "recovery": "isolated_case_fail_closed",
+                "recovery": "isolated_case_technical_unresolved",
                 "error": error_summary,
                 "output_sha256": _sha256(recovery_dir / "output.json"),
             }
@@ -990,6 +1119,12 @@ class FileAgentWorkflowSession:
                 return existing_payload
         self._atomic_json(stage_dir / "task.json", enriched_task)
         self._atomic_json(stage_dir / "output_schema.json", output_model.model_json_schema())
+        max_tokens = (
+            self.config.adjudication_appellate_max_tokens
+            if task.get("mode")
+            in {"eligibility_blind_reconstruction", "eligibility_appellate_comparison"}
+            else self.config.adjudication_max_tokens
+        )
         started = time.perf_counter()
         try:
             with _request_slot(self.request_gate):
@@ -997,7 +1132,7 @@ class FileAgentWorkflowSession:
                     provider=self.config.adjudication_provider,
                     api_base=self.config.adjudication_api_base,
                     api_key_env=self.config.adjudication_api_key_env,
-                    max_tokens=self.config.adjudication_max_tokens,
+                    max_tokens=max_tokens,
                     timeout_seconds=self.config.adjudication_timeout_seconds,
                     usage_sink=self.usage_sink,
                     raw_output_sink=lambda raw: self._atomic_json(
@@ -1519,15 +1654,34 @@ class FileAgentWorkflowSession:
                 "allowed_relations": sorted(ACTIONABLE_RELATIONS),
             },
         }
-        result = self._run_stage(
-            stage_key="comparison",
-            stage_label="Comparison graph",
-            model=self.config.comparison_model,
-            task=task,
-            output_model=ComparisonAgentOutput,
-            skill_path=_skill_path("claims-silver-comparator"),
-        )
-        output = result.payload
+        try:
+            result = self._run_stage(
+                stage_key="comparison",
+                stage_label="Comparison graph",
+                model=self.config.comparison_model,
+                task=task,
+                output_model=ComparisonAgentOutput,
+                skill_path=_skill_path("claims-silver-comparator"),
+            )
+            output = result.payload
+        except Exception as first_error:
+            LOGGER.warning(
+                "File-agent comparison failed for paper=%s; attempting structured "
+                "DSPy recovery: %s",
+                self.paper_id,
+                first_error,
+            )
+            output = self._run_dspy_comparison_recovery(
+                task={
+                    **task,
+                    "operational_retry": {
+                        "previous_error": _exception_summary(first_error),
+                        "return_a_complete_fresh_output": True,
+                    },
+                },
+                candidates_by_alias=candidates_by_alias,
+                mandatory_pairs=mandatory_pairs,
+            )
         assert isinstance(output, ComparisonAgentOutput)
         comparison_repair_error = ""
         validation = _validate_comparison_output(
@@ -1695,6 +1849,75 @@ class FileAgentWorkflowSession:
             },
         )
         return sorted(edges, key=lambda edge: (-edge.confidence, edge.edge_id))
+
+    def _run_dspy_comparison_recovery(
+        self,
+        *,
+        task: dict[str, Any],
+        candidates_by_alias: dict[str, ComparisonCandidate],
+        mandatory_pairs: set[tuple[str, str]],
+    ) -> ComparisonAgentOutput:
+        stage_key = "comparison_dspy_recovery"
+        stage_dir = self.root / "executions" / stage_key
+        stage_dir.mkdir(parents=True, exist_ok=True)
+        enriched_task = {
+            **task,
+            "skill_instructions": _skill_path(
+                "claims-silver-comparator"
+            ).read_text(encoding="utf-8"),
+        }
+
+        def validator(payload: BaseModel) -> None:
+            if not isinstance(payload, ComparisonAgentOutput):
+                raise FileAgentWorkflowError(
+                    "Structured comparison recovery returned the wrong output type."
+                )
+            validation = _validate_comparison_output(
+                payload,
+                candidates_by_alias=candidates_by_alias,
+                mandatory_pairs=mandatory_pairs,
+            )
+            if validation.issues:
+                raise FileAgentWorkflowError(validation.repair_message)
+
+        self._atomic_json(stage_dir / "task.json", enriched_task)
+        self._atomic_json(
+            stage_dir / "output_schema.json",
+            ComparisonAgentOutput.model_json_schema(),
+        )
+        payload = DSPyComparisonRuntime(
+            provider=self.config.adjudication_provider,
+            api_base=self.config.adjudication_api_base,
+            api_key_env=self.config.adjudication_api_key_env,
+            max_tokens=self.config.adjudication_max_tokens,
+            timeout_seconds=self.config.adjudication_timeout_seconds,
+            usage_sink=self.usage_sink,
+            raw_output_sink=lambda raw: self._atomic_json(
+                stage_dir / "raw_response.json",
+                {"raw_response": raw},
+            ),
+        ).run(
+            task=enriched_task,
+            output_model=ComparisonAgentOutput,
+            model=self.config.comparison_model,
+            stage_key=stage_key,
+            paper_id=self.paper_id,
+            workspace_id=self.workspace_id,
+            validator=validator,
+        )
+        assert isinstance(payload, ComparisonAgentOutput)
+        self._atomic_json(stage_dir / "output.json", payload.model_dump(mode="json"))
+        self._record_manifest_stage(
+            {
+                "stage_key": stage_key,
+                "status": "complete",
+                "model": self.config.comparison_model,
+                "harness": "dspy",
+                "recovery": "file_agent_to_structured_dspy",
+                "output_sha256": _sha256(stage_dir / "output.json"),
+            }
+        )
+        return payload
 
     def record_comparison_cases(self, cases: list[Any]) -> None:
         self._write_json(
@@ -2742,11 +2965,22 @@ def _comparison_candidate_payload(candidate: ComparisonCandidate, alias: str) ->
     }
 
 
-def _eligibility_candidate_payload(candidate: ComparisonCandidate, alias: str) -> dict[str, Any]:
+def _eligibility_candidate_payload(
+    candidate: ComparisonCandidate,
+    alias: str,
+    *,
+    available_span_ids: set[str],
+) -> dict[str, Any]:
     return {
         "candidate_ref": alias,
         "statement": candidate.statement,
         "qualifier": candidate.qualifier,
+        "evidence_ids": list(candidate.evidence_ids),
+        "source_span_ids": [
+            span_id
+            for span_id in _eligibility_candidate_span_ids(candidate)
+            if span_id in available_span_ids
+        ],
     }
 
 
@@ -2762,7 +2996,11 @@ def build_eligibility_adjudication_task(
     }
     candidate_ids_by_case_alias: dict[str, dict[str, str]] = {}
     cases: list[dict[str, Any]] = []
-    all_candidates: list[ComparisonCandidate] = []
+    source_spans = _eligibility_source_spans(
+        [candidate for context in contexts for candidate in context.candidates],
+        source_context_by_span_id,
+    )
+    available_span_ids = set(source_spans)
     for context in contexts:
         case_ref = case_alias_by_id[context.case.case_id]
         candidate_id_by_ref = {
@@ -2770,23 +3008,22 @@ def build_eligibility_adjudication_task(
             for index, candidate in enumerate(context.candidates)
         }
         candidate_ids_by_case_alias[case_ref] = candidate_id_by_ref
-        all_candidates.extend(context.candidates)
         cases.append(
             {
                 "case_ref": case_ref,
                 "relation": _case_relation(context),
                 "candidates": [
-                    _eligibility_candidate_payload(candidate, candidate_ref)
+                    _eligibility_candidate_payload(
+                        candidate,
+                        candidate_ref,
+                        available_span_ids=available_span_ids,
+                    )
                     for candidate_ref, candidate_id in candidate_id_by_ref.items()
                     for candidate in context.candidates
                     if candidate.candidate_id == candidate_id
                 ],
             }
         )
-    source_spans = _eligibility_source_spans(
-        all_candidates,
-        source_context_by_span_id,
-    )
     task = {
         "mode": "eligibility_selection",
         "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
@@ -2810,6 +3047,8 @@ def build_eligibility_adjudication_task(
             "do_not_prefer_reference_or_submission_origin": True,
             "do_not_merge_rewrite_or_create_a_compromise_claim": True,
             "passed_original_support_gate_must_cite_decisive_source_spans": True,
+            "failed_candidate_must_list_reviewed_source_spans": True,
+            "inspect_each_candidates_linked_source_spans_before_rejecting": True,
             "citations_need_not_be_duplicated_across_other_gates": True,
         },
     }
@@ -2828,26 +3067,77 @@ def _eligibility_source_spans(
     candidates: list[ComparisonCandidate],
     source_context_by_span_id: dict[str, str],
 ) -> dict[str, str]:
-    span_ids = {span_id for candidate in candidates for span_id in candidate.source_span_ids}
-    for candidate in candidates:
-        records = candidate.metadata.get("evidence_records")
-        for record in (records if isinstance(records, list) else []):
-            if not isinstance(record, dict):
-                continue
-            refs = record.get("source_refs")
-            for ref in (refs if isinstance(refs, list) else []):
-                if not isinstance(ref, dict):
-                    continue
-                span_ids.update(
-                    str(span_id).strip()
-                    for span_id in ref.get("span_ids", [])
-                    if str(span_id).strip()
-                )
+    span_ids = {
+        span_id
+        for candidate in candidates
+        for span_id in _eligibility_candidate_span_ids(candidate)
+    }
     return {
         span_id: source_context_by_span_id[span_id]
         for span_id in sorted(span_ids)
         if span_id in source_context_by_span_id
     }
+
+
+def _eligibility_candidate_span_ids(candidate: ComparisonCandidate) -> list[str]:
+    span_ids = set(candidate.source_span_ids)
+    records = candidate.metadata.get("evidence_records")
+    for record in (records if isinstance(records, list) else []):
+        if not isinstance(record, dict):
+            continue
+        refs = record.get("source_refs")
+        for ref in (refs if isinstance(refs, list) else []):
+            if not isinstance(ref, dict):
+                continue
+            span_ids.update(
+                str(span_id).strip()
+                for span_id in ref.get("span_ids", [])
+                if str(span_id).strip()
+            )
+    return sorted(span_ids)
+
+
+def _eligibility_adjudication_batches(
+    contexts: list[AdjudicationContextBundle],
+    *,
+    source_context_by_span_id: dict[str, str],
+    max_cases: int,
+    max_source_chars: int,
+) -> list[list[AdjudicationContextBundle]]:
+    batches: list[list[AdjudicationContextBundle]] = []
+    current: list[AdjudicationContextBundle] = []
+    current_span_ids: set[str] = set()
+    current_chars = 0
+    for context in contexts:
+        context_span_ids = {
+            span_id
+            for candidate in context.candidates
+            for span_id in _eligibility_candidate_span_ids(candidate)
+            if span_id in source_context_by_span_id
+        }
+        added_span_ids = context_span_ids.difference(current_span_ids)
+        added_chars = sum(
+            len(source_context_by_span_id[span_id]) for span_id in added_span_ids
+        )
+        exceeds_case_limit = bool(current) and len(current) >= max_cases
+        exceeds_source_limit = (
+            bool(current) and current_chars + added_chars > max_source_chars
+        )
+        if exceeds_case_limit or exceeds_source_limit:
+            batches.append(current)
+            current = []
+            current_span_ids = set()
+            current_chars = 0
+            added_span_ids = context_span_ids
+            added_chars = sum(
+                len(source_context_by_span_id[span_id]) for span_id in added_span_ids
+            )
+        current.append(context)
+        current_span_ids.update(added_span_ids)
+        current_chars += added_chars
+    if current:
+        batches.append(current)
+    return batches
 
 
 def _eligibility_split_task(
@@ -2861,9 +3151,28 @@ def _eligibility_split_task(
         for case in cases
         if isinstance(case, dict) and case.get("case_ref")
     }
+    selected_span_ids = {
+        str(span_id)
+        for case in cases
+        if isinstance(case, dict)
+        for candidate in (
+            case.get("candidates") if isinstance(case.get("candidates"), list) else []
+        )
+        if isinstance(candidate, dict)
+        for span_id in candidate.get("source_span_ids", [])
+        if str(span_id)
+    }
+    source_spans = task.get("source_spans")
     split_task = {
         **task,
         "cases": cases,
+        "source_spans": {
+            span_id: text
+            for span_id, text in (
+                source_spans.items() if isinstance(source_spans, dict) else []
+            )
+            if span_id in selected_span_ids
+        },
         "recovery_split": {
             "parent_case_count": parent_case_count,
             "case_count": len(cases),
@@ -2881,6 +3190,63 @@ def _eligibility_split_task(
     return split_task
 
 
+def _technical_unresolved_case_assessment(
+    case: dict[str, Any],
+    *,
+    error: Exception,
+) -> EligibilityAdjudicationCaseAssessment:
+    reason = (
+        "Validator operational recovery could not obtain a valid adjudication: "
+        f"{_exception_summary(error)}"
+    )
+    candidates = case.get("candidates")
+    candidate_rows = candidates if isinstance(candidates, list) else []
+    return EligibilityAdjudicationCaseAssessment(
+        case_ref=str(case.get("case_ref") or ""),
+        candidate_assessments=[
+            EligibilityCandidateAssessment(
+                candidate_ref=str(candidate.get("candidate_ref") or ""),
+                claim_atoms=[
+                    str(
+                        candidate.get("statement")
+                        or candidate.get("candidate_ref")
+                        or "unknown"
+                    )
+                ],
+                claim_atom_assessments=[
+                    EligibilityClaimAtomAssessment(
+                        atom=str(
+                            candidate.get("statement")
+                            or candidate.get("candidate_ref")
+                            or "unknown"
+                        ),
+                        supported=False,
+                        cited_span_ids=[],
+                        rationale=reason,
+                    )
+                ],
+                gates=[
+                    EligibilityGateAssessment(
+                        gate=gate,
+                        passed=False,
+                        cited_span_ids=[],
+                        rationale=reason,
+                    )
+                    for gate in ELIGIBILITY_GATES
+                ],
+                reviewed_span_ids=[],
+                rationale=reason,
+            )
+            for candidate in candidate_rows
+            if isinstance(candidate, dict)
+        ],
+        selected_candidate_ref=None,
+        rationale=reason,
+        technical_unresolved=True,
+        technical_error=_exception_summary(error),
+    )
+
+
 def _exception_summary(error: Exception, *, max_chars: int = 1000) -> str:
     summary = " ".join(f"{type(error).__name__}: {error}".split())
     if len(summary) <= max_chars:
@@ -2891,6 +3257,8 @@ def _exception_summary(error: Exception, *, max_chars: int = 1000) -> str:
 def _validate_eligibility_payload_for_task(
     payload: BaseModel,
     task: dict[str, Any],
+    *,
+    allow_technical_unresolved: bool = False,
 ) -> None:
     cases = task.get("cases")
     case_rows = cases if isinstance(cases, list) else []
@@ -2912,6 +3280,10 @@ def _validate_eligibility_payload_for_task(
         payload,
         expected_candidate_refs_by_case=expected,
         known_span_ids=set(source_spans) if isinstance(source_spans, dict) else set(),
+        source_span_ids_by_candidate_ref=(
+            _eligibility_candidate_source_spans_by_ref(task)
+        ),
+        allow_technical_unresolved=allow_technical_unresolved,
     )
 
 
@@ -2920,25 +3292,84 @@ def _validate_eligibility_adjudication_payload(
     *,
     expected_candidate_refs_by_case: dict[str, set[str]],
     known_span_ids: set[str],
+    source_span_ids_by_candidate_ref: dict[str, set[str]],
+    allow_technical_unresolved: bool = False,
 ) -> None:
     if not isinstance(payload, EligibilityAdjudicationAgentOutput):
         raise FileAgentWorkflowError("Eligibility adjudication returned the wrong output type.")
     validate_eligibility_adjudication_output(
         payload,
         expected_candidate_refs_by_case=expected_candidate_refs_by_case,
+        allow_technical_unresolved=allow_technical_unresolved,
     )
     _validate_eligibility_citations(
         [
             candidate
             for case in payload.assessments
+            if not case.technical_unresolved
             for candidate in case.candidate_assessments
         ],
         known_span_ids=known_span_ids,
+        source_span_ids_by_candidate_ref=source_span_ids_by_candidate_ref,
     )
+
+
+def _validate_blind_reconstruction(
+    payload: BaseModel,
+    *,
+    known_span_ids: set[str],
+) -> None:
+    if not isinstance(payload, EligibilityBlindReconstructionOutput):
+        raise FileAgentWorkflowError(
+            "Eligibility blind reconstruction returned the wrong output type."
+        )
+    finding_refs = [finding.finding_ref for finding in payload.blind_findings]
+    if len(finding_refs) != len(set(finding_refs)):
+        raise FileAgentWorkflowError(
+            "Eligibility blind reconstruction returned duplicate finding references."
+        )
+    cited_span_ids = {
+        span_id
+        for finding in payload.blind_findings
+        for span_id in (
+            finding.assertion_anchor_ids
+            + finding.original_support_ids
+            + finding.support_path_ids
+            + finding.salience_anchor_ids
+        )
+    }
+    unknown = cited_span_ids.difference(known_span_ids)
+    if unknown:
+        raise FileAgentWorkflowError(
+            "Eligibility blind reconstruction cited unknown source spans: "
+            f"{sorted(unknown)}."
+        )
+
+
+def _eligibility_candidate_source_spans_by_ref(
+    task: dict[str, Any],
+) -> dict[str, set[str]]:
+    cases = task.get("cases")
+    return {
+        str(candidate.get("candidate_ref")): {
+            str(span_id)
+            for span_id in candidate.get("source_span_ids", [])
+            if str(span_id)
+        }
+        for case in (cases if isinstance(cases, list) else [])
+        if isinstance(case, dict)
+        for candidate in (
+            case.get("candidates") if isinstance(case.get("candidates"), list) else []
+        )
+        if isinstance(candidate, dict) and candidate.get("candidate_ref")
+    }
+
+
 def _validate_eligibility_citations(
     assessments: list[EligibilityCandidateAssessment],
     *,
     known_span_ids: set[str],
+    source_span_ids_by_candidate_ref: dict[str, set[str]],
 ) -> None:
     cited_span_ids = {
         span_id
@@ -2950,6 +3381,7 @@ def _validate_eligibility_citations(
                 for atom_assessment in assessment.claim_atom_assessments
                 for span_id in atom_assessment.cited_span_ids
             ]
+            + list(assessment.reviewed_span_ids)
         )
     }
     unknown = cited_span_ids.difference(known_span_ids)
@@ -2957,6 +3389,28 @@ def _validate_eligibility_citations(
         raise FileAgentWorkflowError(
             f"Eligibility output cited unknown source spans: {sorted(unknown)}."
         )
+    for assessment in assessments:
+        normalized = normalize_eligibility_assessment(assessment)
+        if assessment_passes_hard_gates(normalized):
+            continue
+        linked_span_ids = source_span_ids_by_candidate_ref.get(
+            assessment.candidate_ref,
+            set(),
+        )
+        if linked_span_ids and not assessment.reviewed_span_ids:
+            raise FileAgentWorkflowError(
+                "Eligibility rejection did not identify any reviewed source span for "
+                f"candidate {assessment.candidate_ref}; linked spans="
+                f"{sorted(linked_span_ids)}."
+            )
+        unlinked_reviews = set(assessment.reviewed_span_ids).difference(linked_span_ids)
+        if linked_span_ids and unlinked_reviews:
+            raise FileAgentWorkflowError(
+                "Eligibility rejection reviewed spans outside the candidate evidence packet "
+                f"for {assessment.candidate_ref}: {sorted(unlinked_reviews)}."
+            )
+
+
 def _canonical_candidate_payload(candidate: ComparisonCandidate, alias: str) -> dict[str, Any]:
     return {
         "candidate_id": alias,

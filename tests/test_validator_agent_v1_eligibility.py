@@ -21,6 +21,8 @@ from validator.agent_v1.eligibility import (
     EligibilityAdjudicationCaseAssessment,
     EligibilityAdjudicationDecision,
     EligibilityAdjudicationVote,
+    EligibilityBlindFinding,
+    EligibilityBlindReconstructionOutput,
     EligibilityCandidateAssessment,
     EligibilityClaimAtomAssessment,
     EligibilityGateAssessment,
@@ -34,8 +36,11 @@ from validator.agent_v1.eligibility_dspy import (
     _constrained_output_model,
 )
 from validator.agent_v1.file_agent_workflow import (
+    FileAgentWorkflowError,
     FileAgentWorkflowConfig,
     FileAgentWorkflowSession,
+    _eligibility_adjudication_batches,
+    _validate_eligibility_adjudication_payload,
 )
 from validator.agent_v1.orchestrator import (
     MinerArtifactSubmission,
@@ -181,6 +186,28 @@ def test_split_primary_votes_require_tiebreak() -> None:
     assert decision.consensus_route == "tiebreak"
 
 
+def test_technical_failure_does_not_become_scientific_rejection() -> None:
+    technical_vote = EligibilityAdjudicationVote(
+        case_id="case_0",
+        judge_role="negative",
+        candidate_assessments=[],
+        rationale="The structured recovery timed out.",
+        technical_unresolved=True,
+        technical_error="TimeoutError: request timed out",
+    )
+
+    decision = decide_eligibility_adjudication(
+        case_id="case_0",
+        candidate_ids=["candidate_a"],
+        negative_vote=technical_vote,
+        positive_vote=_vote("case_0", "positive", "candidate_a"),
+    )
+
+    assert decision.resolution_status == "technical_unresolved"
+    assert decision.selected_candidate_id is None
+    assert decision.rejected_candidate_ids == []
+
+
 def test_pairwise_cases_use_disjoint_highest_confidence_matching() -> None:
     bronze = _candidate("bronze:B01", "bronze", None)
     miner_a = _candidate("miner:uid_9:M01", "miner", "uid_9")
@@ -267,9 +294,29 @@ def test_primary_disagreement_sends_disputed_case_to_tiebreak(tmp_path) -> None:
     ]
     session = _session(tmp_path, candidates)
     tiebreak_case_refs: list[str] = []
+    blind_tasks: list[dict] = []
+    appellate_tasks: list[dict] = []
 
     def fake_stage(_self, **kwargs):
         task = kwargs["task"]
+        if task.get("mode") == "eligibility_blind_reconstruction":
+            blind_tasks.append(task)
+            assert "cases" not in task
+            assert "primary_assessments" not in task
+            return SimpleNamespace(
+                payload=EligibilityBlindReconstructionOutput(
+                    blind_findings=[
+                        EligibilityBlindFinding(
+                            finding_ref="finding_1",
+                            canonical_finding="Treatment reduced mortality.",
+                            assertion_anchor_ids=["S1"],
+                            original_support_ids=["S1"],
+                            support_path_ids=["S1"],
+                            salience_anchor_ids=["S1"],
+                        )
+                    ]
+                )
+            )
         role = task["judge_role"]
         assessments = []
         for case in task["cases"]:
@@ -279,6 +326,7 @@ def test_primary_disagreement_sends_disputed_case_to_tiebreak(tmp_path) -> None:
                 _output(case["case_ref"], refs, selected_ref=selected_ref).assessments
             )
         if role == "tiebreak":
+            appellate_tasks.append(task)
             tiebreak_case_refs.extend(case["case_ref"] for case in task["cases"])
         return SimpleNamespace(
             payload=EligibilityAdjudicationAgentOutput(assessments=assessments)
@@ -291,7 +339,91 @@ def test_primary_disagreement_sends_disputed_case_to_tiebreak(tmp_path) -> None:
 
     assert decisions[0].selected_candidate_id == "miner:uid_9:M01"
     assert decisions[0].consensus_route == "tiebreak"
+    assert decisions[0].blind_reconstruction_sha256
     assert tiebreak_case_refs == ["k0"]
+    assert len(blind_tasks) == 1
+    assert "cases" not in blind_tasks[0]
+    assert "primary_assessments" not in blind_tasks[0]
+    assert len(appellate_tasks) == 1
+    assert appellate_tasks[0]["blind_reconstruction_sha256"]
+    assert len(appellate_tasks[0]["primary_assessments"]) == 1
+
+
+def test_rejection_without_reviewing_linked_evidence_is_invalid() -> None:
+    payload = _output(
+        "k0",
+        ["k0_a"],
+        selected_ref=None,
+        failed_refs={"k0_a"},
+    )
+    payload.assessments[0].candidate_assessments[0].reviewed_span_ids = []
+
+    with pytest.raises(FileAgentWorkflowError, match="did not identify any reviewed"):
+        _validate_eligibility_adjudication_payload(
+            payload,
+            expected_candidate_refs_by_case={"k0": {"k0_a"}},
+            known_span_ids={"S1"},
+            source_span_ids_by_candidate_ref={"k0_a": {"S1"}},
+        )
+
+
+def test_dspy_blind_reconstruction_schema_rejects_unknown_spans() -> None:
+    output_model = _constrained_output_model(
+        EligibilityBlindReconstructionOutput,
+        {"source_spans": {"S1": "The treatment reduced mortality."}},
+    )
+    valid = {
+        "blind_findings": [
+            {
+                "finding_ref": "finding_1",
+                "canonical_finding": "Treatment reduced mortality.",
+                "assertion_anchor_ids": ["S1"],
+                "original_support_ids": ["S1"],
+                "support_path_ids": ["S1"],
+                "salience_anchor_ids": ["S1"],
+                "material_qualifications": [],
+            }
+        ],
+        "packet_limitations": [],
+    }
+
+    assert output_model.model_validate(valid).blind_findings
+    invalid = json.loads(json.dumps(valid))
+    invalid["blind_findings"][0]["assertion_anchor_ids"] = ["S2"]
+    with pytest.raises(ValueError):
+        output_model.model_validate(invalid)
+
+
+def test_source_aware_batching_splits_before_large_evidence_packet() -> None:
+    contexts = []
+    source_map = {}
+    for index in range(3):
+        span_id = f"S{index}"
+        source_map[span_id] = "x" * 12_000
+        candidate = _candidate(
+            f"miner:uid_{index}:M01",
+            "miner",
+            f"uid_{index}",
+        ).model_copy(
+            update={
+                "source_span_ids": [span_id],
+                "metadata": {
+                    "evidence_records": [
+                        {"source_refs": [{"span_ids": [span_id]}]}
+                    ]
+                },
+            }
+        )
+        contexts.append(_context(f"case_{index}", [candidate]))
+
+    batches = _eligibility_adjudication_batches(
+        contexts,
+        source_context_by_span_id=source_map,
+        max_cases=12,
+        max_source_chars=30_000,
+    )
+
+    assert [len(batch) for batch in batches] == [2, 1]
 
 
 def test_hermes_missing_output_retries_through_structured_dspy(tmp_path) -> None:
@@ -354,6 +486,7 @@ def test_failed_structured_batch_recovers_by_recursive_case_splitting(tmp_path) 
                     {
                         "candidate_ref": f"k{index}_a",
                         "statement": candidate.statement,
+                        "source_span_ids": ["S1"],
                     }
                 ],
             }
@@ -420,7 +553,7 @@ def test_failed_structured_batch_recovers_by_recursive_case_splitting(tmp_path) 
     ]
 
 
-def test_irrecoverable_single_case_fails_closed_without_discarding_batch(tmp_path) -> None:
+def test_irrecoverable_single_case_is_technical_without_discarding_batch(tmp_path) -> None:
     candidates = [
         _candidate(f"miner:uid_{index}:M01", "miner", f"uid_{index}")
         for index in range(2)
@@ -434,6 +567,7 @@ def test_irrecoverable_single_case_fails_closed_without_discarding_batch(tmp_pat
                     {
                         "candidate_ref": f"k{index}_a",
                         "statement": candidate.statement,
+                        "source_span_ids": ["S1"],
                     }
                 ],
             }
@@ -475,6 +609,7 @@ def test_irrecoverable_single_case_fails_closed_without_discarding_batch(tmp_pat
     failed_case, recovered_case = result.assessments
     assert failed_case.case_ref == "k0"
     assert failed_case.selected_candidate_ref is None
+    assert failed_case.technical_unresolved is True
     assert all(not gate.passed for gate in failed_case.candidate_assessments[0].gates)
     assert "operational recovery" in failed_case.rationale
     assert recovered_case.case_ref == "k1"
@@ -482,7 +617,7 @@ def test_irrecoverable_single_case_fails_closed_without_discarding_batch(tmp_pat
     assert (
         session.root
         / "executions"
-        / "eligibility_adjudication_positive_retry_s0_fail_closed"
+        / "eligibility_adjudication_positive_retry_s0_technical_unresolved"
         / "output.json"
     ).exists()
 
@@ -569,6 +704,8 @@ def test_config_uses_existing_adjudication_env_for_dspy_chutes(monkeypatch) -> N
     monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MODEL_B", "model-positive")
     monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL", "model-tiebreak")
     monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", "20000")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_APPELLATE_MAX_TOKENS", "7000")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_MAX_SOURCE_CHARS", "24000")
     monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_TIMEOUT", "180")
 
     config = FileAgentWorkflowConfig.from_env()
@@ -578,15 +715,65 @@ def test_config_uses_existing_adjudication_env_for_dspy_chutes(monkeypatch) -> N
     assert config.adjudication_api_base == "https://llm.chutes.ai/v1"
     assert config.adjudication_api_key_env == "CHUTES_API_KEY"
     assert config.adjudication_max_tokens == 20000
+    assert config.adjudication_appellate_max_tokens == 7000
+    assert config.adjudication_max_source_chars == 24000
     assert config.adjudication_timeout_seconds == 180.0
 
 
 def test_config_defaults_adjudication_output_limit_for_batched_responses(monkeypatch) -> None:
     monkeypatch.delenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", raising=False)
+    monkeypatch.delenv(
+        "CLAIMS_SILVER_ADJUDICATION_APPELLATE_MAX_TOKENS",
+        raising=False,
+    )
 
     config = FileAgentWorkflowConfig.from_env()
 
     assert config.adjudication_max_tokens == 32768
+    assert config.adjudication_appellate_max_tokens == 8192
+
+
+def test_dspy_uses_appellate_output_limit_for_both_appellate_stages(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    session = _session(tmp_path, [_candidate("bronze:B01", "bronze", None)])
+    session.config = replace(
+        session.config,
+        adjudication_max_tokens=20000,
+        adjudication_appellate_max_tokens=8192,
+    )
+    observed_max_tokens: list[int] = []
+
+    def fake_init(_self, **kwargs):
+        observed_max_tokens.append(kwargs["max_tokens"])
+
+    def fake_run(_self, **_kwargs):
+        return EligibilityBlindReconstructionOutput(blind_findings=[])
+
+    monkeypatch.setattr(DSPyEligibilityRuntime, "__init__", fake_init)
+    monkeypatch.setattr(DSPyEligibilityRuntime, "run", fake_run)
+    skill_path = tmp_path / "SKILL.md"
+    skill_path.write_text("Test instructions.", encoding="utf-8")
+
+    for index, mode in enumerate(
+        (
+            "eligibility_selection",
+            "eligibility_blind_reconstruction",
+            "eligibility_appellate_comparison",
+        )
+    ):
+        session._run_dspy_eligibility_stage(
+            stage_key=f"stage_{index}",
+            stage_label="Eligibility test",
+            model="model",
+            task={"mode": mode},
+            output_model=EligibilityBlindReconstructionOutput,
+            skill_path=skill_path,
+            validator=lambda _payload: None,
+        )
+
+    assert observed_max_tokens == [20000, 8192, 8192]
 
 
 def test_dspy_adjudication_api_base_selects_chutes_without_cli_provider(monkeypatch) -> None:
@@ -897,6 +1084,7 @@ def _assessment(
             )
             for gate in ELIGIBILITY_GATES
         ],
+        reviewed_span_ids=["S1"],
         rationale=(
             "At least one mandatory gate failed."
             if failed_gate

@@ -283,8 +283,14 @@ in the validator `.env`. Models used by Hermes file agents must support tool
 calling and the required context and output limits. Some Chutes non-streaming
 models reject completion caps above 8192; when using those models, cap the
 affected stage with `SUBNET_CLAIMS_VALIDATOR_AGENT_MAX_TOKENS=8192`,
-`CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS=8192`, or
+`CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS=8192`,
+`CLAIMS_SILVER_ADJUDICATION_APPELLATE_MAX_TOKENS=8192`, or
 `CLAIMS_SILVER_FILE_AGENT_MAX_TOKENS=8192`.
+
+Blind reconstruction and appellate comparison use
+`CLAIMS_SILVER_ADJUDICATION_APPELLATE_MAX_TOKENS` (default `8192`) so disputed
+cases cannot consume the larger output allowance reserved for batched primary
+adjudication.
 
 For the native DSPy rigor runtime, use the same catalog model ID and set:
 
@@ -394,18 +400,34 @@ validation.
   selects neither when both fail and the sole passing claim when only one
   passes; when both pass, the judges select the stronger representative. The
   stage does not merge, rewrite, or create a compromise claim.
+- Each candidate carries its validator-resolved source-span identifiers into
+  adjudication. A rejection is invalid unless the judge records which linked
+  spans it reviewed. This prevents an unsupported "the paper does not mention
+  it" decision when the candidate's cited evidence was never inspected.
+- When the primary judges disagree, appellate review has two locked stages.
+  First, the appellate model reconstructs eligible findings from the source
+  packet without candidate text or primary opinions. Then it receives the
+  candidates, primary assessments, and the hashed reconstruction to resolve
+  the disagreement without rewriting its independent evidence baseline.
 - `CLAIMS_SILVER_ADJUDICATION_HARNESS=dspy` runs bounded calls through
   `dspy.Predict`; a CLI harness such as `hermes-cli` uses the file workspace.
   Invalid or missing Hermes output retries once through the structured DSPy
   path, which validates and writes the result in validator code. A malformed
   batched DSPy retry is recursively split into smaller case groups. An
-  irrecoverable single case fails closed and is excluded with an operational
-  recovery rationale, while successfully adjudicated cases continue through
-  the paper pipeline.
+  irrecoverable single case is marked `technical_unresolved`, excluded from
+  that Silver construction without a scientific rejection or miner penalty,
+  and preserved in workflow metadata. Successfully adjudicated cases continue
+  through the paper pipeline.
 - `CLAIMS_SILVER_ADJUDICATION_MODEL_A`, `_MODEL_B`, and `_TIEBREAK_MODEL`
   select the negative, positive, and conditional tiebreak roles.
   `CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE` and `_MAX_WORKERS` control case
-  batching. `_MAX_IN_FLIGHT` is the shared hard limit across Silver calls.
+  batching. `CLAIMS_SILVER_ADJUDICATION_MAX_SOURCE_CHARS` also starts a new
+  batch when the unique linked evidence packet would exceed its limit; this
+  keeps large source packets from making an entire judge call blind.
+  `_MAX_IN_FLIGHT` is the shared hard limit across Silver calls.
+- If the file-agent comparison stage does not produce a valid output file, the
+  validator retries the complete comparison contract through structured DSPy
+  before the existing legacy comparison fallback is considered.
 - DSPy uses `CLAIMS_SILVER_ADJUDICATION_API_BASE`, `_API_KEY_ENV`,
   `_MAX_TOKENS`, and `_TIMEOUT`. `_MAX_TOKENS` defaults to `32768`; real
   12-case OpenRouter replays exceeded `8192`. CLI adjudication uses

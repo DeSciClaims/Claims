@@ -534,10 +534,16 @@ assignments, and uploaded artifacts remain isolated to their canonical batch.
 The profiles use eligibility-selection adjudication after comparison.
 Comparison assigns each claim to one singleton or paired case. Two
 role-specific judges apply six hard admission gates to every claim, with a
-tiebreak only when they disagree. A singleton survives only if it passes. For a
+two-stage blind appellate review only when they disagree. The appellate model
+first reconstructs eligible findings without seeing candidates or primary
+votes, then resolves the disagreement against that locked reconstruction. A
+singleton survives only if it passes. For a
 pair, code selects neither when both fail, selects the sole passing claim when
 only one passes, and uses the judges' relative preference only when both pass.
-Every substantive claim atom must have direct cited paper support. The stage
+Every substantive claim atom must have direct cited paper support. A rejecting
+judge must record the candidate-linked source spans it reviewed. Operationally
+unrecoverable cases are recorded as technically unresolved rather than
+converted into scientific rejection penalties. The stage
 supports the file-agent and bounded DSPy Predict harnesses. Full controls and
 failure behavior are in the
 [validator configuration reference](./validator/agent_v1/README.md#file-workspace-silver).

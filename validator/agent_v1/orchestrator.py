@@ -346,8 +346,18 @@ def run_paper_silver_pipeline(
     ))
 
     canonical_timer = _stage_start("silver_canonicalization", "Silver canonicalization")
+    technical_unresolved_case_ids = {
+        decision.case_id
+        for decision in eligibility_adjudication_decisions
+        if decision.resolution_status == "technical_unresolved"
+    }
     unresolved_candidate_ids = (
-        set()
+        {
+            candidate_id
+            for case in diff_cases
+            if case.case_id in technical_unresolved_case_ids
+            for candidate_id in case.candidate_ids
+        }
         if file_session is not None
         else _unresolved_candidate_ids(diff_cases, decisions)
     )
@@ -388,12 +398,13 @@ def run_paper_silver_pipeline(
         },
     )
     silver_record.metadata["eligibility_selection_adjudication"] = {
-        "schema": "claims_silver_eligibility_adjudication_v1",
+        "schema": "claims_silver_eligibility_adjudication_v2",
         "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
         "enabled": file_session is not None,
         "case_count": len(eligibility_adjudication_decisions),
         "pair_case_count": sum(len(case.candidate_ids) == 2 for case in diff_cases),
         "single_case_count": sum(len(case.candidate_ids) == 1 for case in diff_cases),
+        "technical_unresolved_case_count": len(technical_unresolved_case_ids),
         "decisions": [
             decision.model_dump(mode="json")
             for decision in eligibility_adjudication_decisions
@@ -853,6 +864,8 @@ def _silver_decisions_from_eligibility_adjudication(
     silver_decisions: list[AdjudicationDecision] = []
     for case in cases:
         decision = decisions_by_case_id[case.case_id]
+        if decision.resolution_status == "technical_unresolved":
+            continue
         selected_id = decision.selected_candidate_id
         if selected_id is not None and selected_id not in case.candidate_ids:
             raise RuntimeError(

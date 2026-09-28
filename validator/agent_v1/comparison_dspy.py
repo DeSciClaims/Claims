@@ -3,31 +3,20 @@ from __future__ import annotations
 import json
 import os
 import time
-from hashlib import sha256
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Literal
+from typing import Any, Callable
 
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel
 
 from miner.agent_v1.provider import dspy_model_id, normalize_provider
 from miner.agent_v1.runtime.usage import empty_usage, usage_from_dspy_lm
 
 from .model_usage import UsageSink
-from .eligibility import (
-    ELIGIBILITY_GATES,
-    EligibilityAdjudicationAgentOutput,
-    EligibilityAdjudicationCaseAssessment,
-    EligibilityBlindFinding,
-    EligibilityBlindReconstructionOutput,
-    EligibilityCandidateAssessment,
-    EligibilityClaimAtomAssessment,
-    EligibilityGateAssessment,
-)
 
 
 @dataclass
-class DSPyEligibilityRuntime:
+class DSPyComparisonRuntime:
     provider: str
     api_base: str
     api_key_env: str
@@ -46,7 +35,6 @@ class DSPyEligibilityRuntime:
         output_model: type[BaseModel],
         model: str,
         stage_key: str,
-        stage_label: str,
         paper_id: str,
         workspace_id: str,
         validator: Callable[[BaseModel], None] | None = None,
@@ -59,13 +47,12 @@ class DSPyEligibilityRuntime:
         lm = None
         try:
             program = self.program
-            schema_model = output_model
             if program is None:
                 dspy_module = self._dspy()
                 api_key = os.getenv(self.api_key_env, "").strip()
                 if not api_key:
                     raise RuntimeError(
-                        f"{self.api_key_env} is required for DSPy eligibility adjudication."
+                        f"{self.api_key_env} is required for DSPy comparison recovery."
                     )
                 lm = dspy_module.LM(
                     model=dspy_model_id(
@@ -80,21 +67,20 @@ class DSPyEligibilityRuntime:
                     timeout=self.timeout_seconds,
                     num_retries=0,
                 )
-                schema_model = _constrained_output_model(output_model, task)
-                program = self._program(dspy_module, schema_model)
+                program = self._program(dspy_module, output_model)
                 if hasattr(dspy_module, "context"):
                     with dspy_module.context(lm=lm):
-                        prediction = program(**_program_inputs(task, schema_model))
+                        prediction = program(**_program_inputs(task, output_model))
                 else:  # pragma: no cover - retained for older DSPy versions
                     dspy_module.configure(lm=lm)
-                    prediction = program(**_program_inputs(task, schema_model))
+                    prediction = program(**_program_inputs(task, output_model))
             else:
-                prediction = program(**_program_inputs(task, schema_model))
-            predicted_output = getattr(prediction, "eligibility", None)
+                prediction = program(**_program_inputs(task, output_model))
+            predicted_output = getattr(prediction, "comparison", None)
             if predicted_output is None:
                 predicted_output = getattr(
                     prediction,
-                    "eligibility_json",
+                    "comparison_json",
                     prediction if isinstance(prediction, (str, dict)) else "",
                 )
             if isinstance(predicted_output, BaseModel):
@@ -126,12 +112,15 @@ class DSPyEligibilityRuntime:
                     {
                         "paper_id": paper_id,
                         "stage_key": f"silver_{stage_key}",
-                        "stage_label": stage_label,
+                        "stage_label": "Comparison graph structured recovery",
                         "role": "validator",
                         "operation_id": f"{workspace_id}:{stage_key}",
                         "harness": "dspy",
                         "runtime": "dspy-predict",
-                        "provider": normalize_provider(self.provider, api_base=self.api_base),
+                        "provider": normalize_provider(
+                            self.provider,
+                            api_base=self.api_base,
+                        ),
                         "model": model,
                         "usage": usage,
                         "status": status,
@@ -140,7 +129,7 @@ class DSPyEligibilityRuntime:
                         "ended_at": datetime.now(timezone.utc),
                         "duration_seconds": time.perf_counter() - started,
                         "metadata": {
-                            "workflow": "eligibility_adjudication",
+                            "workflow": "comparison_recovery",
                             "workspace_id": workspace_id,
                         },
                     }
@@ -152,38 +141,35 @@ class DSPyEligibilityRuntime:
         try:
             import dspy as dspy_module
         except ImportError as exc:  # pragma: no cover - depends on local install
-            raise RuntimeError("dspy is required for DSPy eligibility adjudication.") from exc
+            raise RuntimeError("dspy is required for comparison recovery.") from exc
         self.dspy_module = dspy_module
         return dspy_module
 
     @staticmethod
     def _program(dspy_module, output_model: type[BaseModel]):
-        EligibilitySignature = type(
-            "EligibilitySignature",
+        ComparisonSignature = type(
+            "ComparisonSignature",
             (dspy_module.Signature,),
             {
                 "__doc__": (
-                    "Follow skill_instructions in task_json as the governing adjudication "
-                    "policy. Apply all Claims eligibility gates independently and obey the "
-                    "supplied JSON contract exactly. A PASS must be supported for every material "
-                    "claim atom; never invent support or repair the candidate. "
-                    "Cite only source-span identifiers that appear verbatim as keys in "
-                    "task_json. Never invent, shorten, renumber, or normalize an identifier."
+                    "Follow skill_instructions in task_json. Compare every submission "
+                    "candidate against all reference candidates and return one complete "
+                    "typed object matching required_json_schema. Use identifiers exactly "
+                    "as supplied and do not omit submission review rows."
                 ),
                 "__annotations__": {
                     "task_json": str,
                     "required_json_schema": str,
-                    "eligibility": output_model,
+                    "comparison": output_model,
                 },
                 "task_json": dspy_module.InputField(),
                 "required_json_schema": dspy_module.InputField(),
-                "eligibility": dspy_module.OutputField(
+                "comparison": dspy_module.OutputField(
                     desc="One typed object matching required_json_schema."
                 ),
             },
         )
-
-        return dspy_module.Predict(EligibilitySignature)
+        return dspy_module.Predict(ComparisonSignature)
 
 
 def _program_inputs(task: dict[str, Any], output_model: type[BaseModel]) -> dict[str, str]:
@@ -195,98 +181,6 @@ def _program_inputs(task: dict[str, Any], output_model: type[BaseModel]) -> dict
             sort_keys=True,
         ),
     }
-
-
-def _constrained_output_model(
-    output_model: type[BaseModel],
-    task: dict[str, Any],
-) -> type[BaseModel]:
-    source_refs = tuple(sorted(str(ref) for ref in dict(task.get("source_spans") or {})))
-    candidates = task.get("candidates")
-    flat_candidate_refs = {
-        str(candidate.get("candidate_ref"))
-        for candidate in (candidates if isinstance(candidates, list) else [])
-        if isinstance(candidate, dict) and candidate.get("candidate_ref")
-    }
-    cases = task.get("cases")
-    case_rows = cases if isinstance(cases, list) else []
-    pair_candidate_refs = {
-        str(candidate.get("candidate_ref"))
-        for case in case_rows
-        if isinstance(case, dict)
-        for candidate in (
-            case.get("candidates") if isinstance(case.get("candidates"), list) else []
-        )
-        if isinstance(candidate, dict) and candidate.get("candidate_ref")
-    }
-    candidate_refs = tuple(sorted(flat_candidate_refs | pair_candidate_refs))
-    case_refs = tuple(
-        sorted(
-            str(case.get("case_ref"))
-            for case in case_rows
-            if isinstance(case, dict) and case.get("case_ref")
-        )
-    )
-    suffix = sha256(
-        repr(
-            (output_model.__name__, source_refs, candidate_refs, case_refs)
-        ).encode(
-            "utf-8"
-        )
-    ).hexdigest()[:10]
-    span_type = _literal_type(source_refs)
-    if issubclass(output_model, EligibilityBlindReconstructionOutput):
-        finding_model = create_model(
-            f"DSPyEligibilityBlindFinding_{suffix}",
-            __base__=EligibilityBlindFinding,
-            assertion_anchor_ids=(list[span_type], Field(min_length=1)),
-            original_support_ids=(list[span_type], Field(min_length=1)),
-            support_path_ids=(list[span_type], Field(min_length=1)),
-            salience_anchor_ids=(list[span_type], Field(min_length=1)),
-        )
-        return create_model(
-            f"DSPyEligibilityBlindOutput_{suffix}",
-            __base__=EligibilityBlindReconstructionOutput,
-            blind_findings=(list[finding_model], Field(default_factory=list)),
-        )
-    candidate_type = _literal_type(candidate_refs)
-    case_type = _literal_type(case_refs)
-    gate_model = create_model(
-        f"DSPyEligibilityGate_{suffix}",
-        __base__=EligibilityGateAssessment,
-        cited_span_ids=(list[span_type], Field(default_factory=list)),
-    )
-    atom_model = create_model(
-        f"DSPyEligibilityClaimAtom_{suffix}",
-        __base__=EligibilityClaimAtomAssessment,
-        cited_span_ids=(list[span_type], Field(default_factory=list)),
-    )
-    assessment_model = create_model(
-        f"DSPyEligibilityAssessment_{suffix}",
-        __base__=EligibilityCandidateAssessment,
-        candidate_ref=(candidate_type, ...),
-        claim_atom_assessments=(list[atom_model], Field(min_length=1)),
-        gates=(list[gate_model], Field(min_length=len(ELIGIBILITY_GATES))),
-        reviewed_span_ids=(list[span_type], Field(default_factory=list)),
-    )
-    if issubclass(output_model, EligibilityAdjudicationAgentOutput):
-        case_model = create_model(
-            f"DSPyEligibilityAdjudicationCase_{suffix}",
-            __base__=EligibilityAdjudicationCaseAssessment,
-            case_ref=(case_type, ...),
-            candidate_assessments=(list[assessment_model], Field(min_length=1, max_length=2)),
-            selected_candidate_ref=(candidate_type | None, None),
-        )
-        return create_model(
-            f"DSPyEligibilityAdjudicationOutput_{suffix}",
-            __base__=EligibilityAdjudicationAgentOutput,
-            assessments=(list[case_model], ...),
-        )
-    return output_model
-
-
-def _literal_type(values: tuple[str, ...]):
-    return Literal.__getitem__(values) if values else str
 
 
 def _parse_json_object(raw: str) -> dict[str, Any]:
@@ -301,9 +195,9 @@ def _parse_json_object(raw: str) -> dict[str, Any]:
     try:
         payload = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"DSPy eligibility returned invalid JSON: {exc}") from exc
+        raise ValueError(f"DSPy comparison returned invalid JSON: {exc}") from exc
     if not isinstance(payload, dict):
-        raise ValueError("DSPy eligibility must return one JSON object.")
+        raise ValueError("DSPy comparison must return one JSON object.")
     return payload
 
 

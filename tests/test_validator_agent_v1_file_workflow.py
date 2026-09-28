@@ -8,6 +8,7 @@ from types import MethodType, SimpleNamespace
 import pytest
 import validator.agent_v1.file_agent_workflow as file_agent_workflow_module
 
+from validator.agent_v1.comparison_dspy import DSPyComparisonRuntime
 from validator.agent_v1.adjudication_models import (
     AdjudicationContextBundle,
     AdjudicationDecision,
@@ -96,6 +97,100 @@ def test_file_comparator_requires_complete_global_review_and_maps_anonymous_ids(
     assert edges[0].right_candidate_id == "miner:uid_9:C01"
     assert edges[0].relation == "compatible_refinement"
     assert edges[0].metadata["workflow"] == "file_agent"
+
+
+def test_file_comparator_recovers_missing_output_through_structured_dspy(tmp_path) -> None:
+    session = _session(
+        tmp_path,
+        [
+            _candidate("bronze:C01", "bronze", None, "Treatment reduced mortality."),
+            _candidate(
+                "miner:uid_9:C01",
+                "miner",
+                "uid_9",
+                "Treatment reduced 30-day mortality.",
+            ),
+        ],
+    )
+    recovery_tasks: list[dict] = []
+
+    def missing_file_stage(_self, **_kwargs):
+        raise FileAgentWorkflowError("comparison agent did not write a valid output file")
+
+    def structured_recovery(_self, **kwargs):
+        recovery_tasks.append(kwargs["task"])
+        return ComparisonAgentOutput(
+            submission_reviews=[
+                ComparisonSubmissionReview(
+                    submission_candidate_id="c1",
+                    reference_relations=[
+                        ComparisonReferenceRelation(
+                            reference_candidate_id="c0",
+                            relation="compatible_refinement",
+                            confidence=0.91,
+                            rationale=(
+                                "The submission adds a supported mortality time qualifier."
+                            ),
+                        )
+                    ],
+                )
+            ]
+        )
+
+    session._run_stage = MethodType(missing_file_stage, session)  # type: ignore[method-assign]
+    session._run_dspy_comparison_recovery = MethodType(  # type: ignore[method-assign]
+        structured_recovery,
+        session,
+    )
+
+    edges = session.run_comparison()
+
+    assert len(edges) == 1
+    assert edges[0].relation == "compatible_refinement"
+    assert len(recovery_tasks) == 1
+    assert "comparison agent did not write" in str(
+        recovery_tasks[0]["operational_retry"]["previous_error"]
+    )
+
+
+def test_structured_dspy_comparison_runtime_parses_typed_output() -> None:
+    runtime = DSPyComparisonRuntime(
+        provider="openrouter",
+        api_base="https://openrouter.ai/api/v1",
+        api_key_env="OPENROUTER_API_KEY",
+        program=lambda **_kwargs: SimpleNamespace(
+            comparison={
+                "submission_reviews": [
+                    {
+                        "submission_candidate_id": "c1",
+                        "reference_relations": [
+                            {
+                                "reference_candidate_id": "c0",
+                                "relation": "semantic_equivalent",
+                                "confidence": 0.94,
+                                "rationale": (
+                                    "Both candidates state the same supported mortality result."
+                                ),
+                            }
+                        ],
+                        "no_actionable_relation_reason": "",
+                    }
+                ]
+            }
+        ),
+    )
+
+    payload = runtime.run(
+        task={"candidates": []},
+        output_model=ComparisonAgentOutput,
+        model="test-model",
+        stage_key="comparison_dspy_recovery",
+        paper_id="paper",
+        workspace_id="workspace",
+    )
+
+    assert isinstance(payload, ComparisonAgentOutput)
+    assert payload.submission_reviews[0].reference_relations[0].confidence == 0.94
 
 
 def test_file_comparator_salvages_incomplete_review_set(tmp_path) -> None:

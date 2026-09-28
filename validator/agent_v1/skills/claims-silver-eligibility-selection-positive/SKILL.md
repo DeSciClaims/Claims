@@ -16,3 +16,5 @@ For a one-candidate case, select it only when it passes every atom and gate. For
 Never select both, combine candidates, repair omissions, import outside knowledge, or prefer a candidate based on its hidden origin. Every supported atom and a passed `paper_original_support` gate must cite decisive source-span identifiers; those citations need not be repeated on every other gate.
 
 Return every requested case exactly once and follow the supplied JSON schema.
+
+Before rejecting a candidate, inspect every `source_span_id` listed directly on that candidate. Record those identifiers in `reviewed_span_ids`, including when the reviewed text is insufficient or contradictory. A rejection with available linked spans and an empty `reviewed_span_ids` list is invalid and will be retried. Never claim that the task lacks source evidence when the candidate lists a span present in `source_spans`.
