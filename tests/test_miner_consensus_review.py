@@ -12,6 +12,7 @@ import pytest
 from miner.agent_v1.config import AgentV1Config
 from miner.agent_v1 import consensus_review
 from miner.agent_v1.consensus_review import (
+    ConsensusSourceError,
     _case_batches,
     _configured_worker_count,
     _consensus_lm_settings,
@@ -92,6 +93,32 @@ def test_consensus_model_worker_setting_supports_one_hundred_workers(monkeypatch
         default=4,
         maximum=128,
     ) == 100
+
+
+def test_source_extraction_reports_structured_technical_failure(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        consensus_review,
+        "download_pdf",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("missing %%EOF")),
+    )
+    config = SimpleNamespace(cache_dir=tmp_path)
+    with pytest.raises(ConsensusSourceError) as caught:
+        consensus_review._extract_source_payload(
+            {
+                "paper_id": "paper_1",
+                "source_url": "https://papers.example/paper.pdf",
+                "source_sha256": "abc123",
+            },
+            config,
+        )
+    payload = json.loads(caught.value.wire_payload())
+    assert payload == {
+        "schema": "claims_consensus_source_failure_v1",
+        "code": "source_download_or_parse_failed",
+        "paper_id": "paper_1",
+        "source_sha256": "abc123",
+        "cause_type": "ValueError",
+    }
 
 
 def test_consensus_model_case_labels_candidates_and_removes_private_evidence() -> None:

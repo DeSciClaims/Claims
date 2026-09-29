@@ -18,7 +18,7 @@ from typing import Any, Tuple
 from dotenv import load_dotenv
 
 from miner.agent_v1.config import AgentV1Config
-from miner.agent_v1.consensus_review import review_consensus_assignment
+from miner.agent_v1.consensus_review import ConsensusSourceError, review_consensus_assignment
 from miner.agent_v1.ingest import (
     PDF_READERS,
     SOURCE_PAYLOAD_POLICY_VERSION,
@@ -367,6 +367,7 @@ class ClaimsMiner:
         return False, "registered hotkey"
 
     def forward(self, synapse: ClaimExtractionSynapse) -> ClaimExtractionSynapse:
+        task: ClaimsTask | None = None
         try:
             self._validate_synapse(synapse)
             validator_hotkey = str(getattr(getattr(synapse, "dendrite", None), "hotkey", ""))
@@ -485,7 +486,14 @@ class ClaimsMiner:
         except Exception as exc:
             self.bt_logging.error(traceback.format_exc())
             synapse.extraction = None
-            synapse.error = str(exc)
+            synapse.consensus_vote = None
+            synapse.error = (
+                exc.wire_payload()
+                if task is not None
+                and task.task_type == CONSENSUS_TASK_TYPE
+                and isinstance(exc, ConsensusSourceError)
+                else str(exc)
+            )
         return synapse
 
     def _post_consensus_submission(

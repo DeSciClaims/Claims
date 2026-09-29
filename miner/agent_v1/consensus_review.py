@@ -26,6 +26,28 @@ _SPACE = re.compile(r"\s+")
 _T = TypeVar("_T")
 _MAX_MODEL_WORKERS = 128
 _MAX_SOURCE_WORKERS = 32
+CONSENSUS_SOURCE_FAILURE_SCHEMA = "claims_consensus_source_failure_v1"
+
+
+class ConsensusSourceError(RuntimeError):
+    def __init__(self, *, paper_id: str, source_sha256: str, cause: Exception):
+        super().__init__(f"consensus source failed paper={paper_id}: {cause}")
+        self.paper_id = paper_id
+        self.source_sha256 = source_sha256
+        self.cause_type = type(cause).__name__
+
+    def wire_payload(self) -> str:
+        return json.dumps(
+            {
+                "schema": CONSENSUS_SOURCE_FAILURE_SCHEMA,
+                "code": "source_download_or_parse_failed",
+                "paper_id": self.paper_id,
+                "source_sha256": self.source_sha256,
+                "cause_type": self.cause_type,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
 
 
 def review_consensus_assignment(payload: dict[str, Any]) -> dict[str, Any]:
@@ -479,21 +501,29 @@ def _extract_source_payload(source_document: dict[str, Any], config: AgentV1Conf
     source_url = str(source_document.get("source_url") or "")
     paper_id = str(source_document.get("paper_id") or "")
     cache_key = hashlib.sha256(source_url.encode("utf-8")).hexdigest()[:24]
-    download = download_pdf(
-        source_url,
-        output_dir=config.cache_dir / "consensus_sources" / cache_key,
-        expected_sha256=str(source_document.get("source_sha256") or ""),
-    )
-    document = ingest_pdf(
-        download.path,
-        max_chars=None,
-        reader=config.pdf_reader,
-        grobid_url=config.grobid_url,
-        grobid_cache_dir=config.cache_dir / "grobid",
-        grobid_timeout_s=config.grobid_timeout_s,
-        grobid_retries=config.grobid_retries,
-        grobid_retry_wait_s=config.grobid_retry_wait_s,
-    )
+    source_sha256 = str(source_document.get("source_sha256") or "")
+    try:
+        download = download_pdf(
+            source_url,
+            output_dir=config.cache_dir / "consensus_sources" / cache_key,
+            expected_sha256=source_sha256,
+        )
+        document = ingest_pdf(
+            download.path,
+            max_chars=None,
+            reader=config.pdf_reader,
+            grobid_url=config.grobid_url,
+            grobid_cache_dir=config.cache_dir / "grobid",
+            grobid_timeout_s=config.grobid_timeout_s,
+            grobid_retries=config.grobid_retries,
+            grobid_retry_wait_s=config.grobid_retry_wait_s,
+        )
+    except Exception as exc:
+        raise ConsensusSourceError(
+            paper_id=paper_id,
+            source_sha256=source_sha256,
+            cause=exc,
+        ) from exc
     document.paper.paper_id = paper_id
     for span in document.spans:
         span.paper_id = paper_id

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
+import tempfile
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -15,7 +18,9 @@ from dotenv import load_dotenv
 from .backend_client import ClaimsBackendClient
 from .consensus import CONSENSUS_TASK_TYPE
 from .protocol import ClaimExtractionSynapse
-from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION
+from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, download_pdf
+
+CONSENSUS_SOURCE_FAILURE_SCHEMA = "claims_consensus_source_failure_v1"
 
 
 def _require_bittensor() -> tuple[Any, Any, Any, Any, Any]:
@@ -191,7 +196,6 @@ class ClaimsConsensusValidator:
             f"Querying consensus round={round_id} reviewers={len(assignments)} cases={case_count}"
         )
         submissions: list[dict[str, Any]] = []
-        validator_failures: list[str] = []
         remaining_seconds = _seconds_until_deadline(round_payload.get("deadline_at"))
         if remaining_seconds <= 0:
             completed = self.backend_client.complete_miner_consensus_round(
@@ -205,11 +209,29 @@ class ClaimsConsensusValidator:
                 f"outcomes={len((completed.get('result') or {}).get('outcomes') or [])}"
             )
             return
+        validator_failures, source_preflight_failures = _preflight_consensus_sources(
+            assignments,
+            timeout=min(60.0, max(1.0, remaining_seconds)),
+            max_workers=min(8, int(self.config.claims_consensus_query_workers)),
+        )
+        failed_hotkeys = set(validator_failures)
+        for failure in source_preflight_failures:
+            self.bt_logging.warning(
+                f"Consensus source preflight failed round={round_id} "
+                f"paper={failure['paper_id']} affected_reviewers={failure['affected_reviewers']} "
+                f"reason={failure['reason']}"
+            )
+        source_failure_checks: dict[tuple[str, str], bool] = {}
         query_timeout = min(
             float(self.config.claims_consensus_query_timeout),
             max(1.0, remaining_seconds),
         )
-        max_workers = min(len(assignments), int(self.config.claims_consensus_query_workers))
+        query_assignments = [
+            assignment
+            for assignment in assignments
+            if str(assignment.get("hotkey") or "") not in failed_hotkeys
+        ]
+        max_workers = min(len(query_assignments), int(self.config.claims_consensus_query_workers))
         query_started = time.perf_counter()
         with ThreadPoolExecutor(max_workers=max(1, max_workers)) as executor:
             futures = {
@@ -220,7 +242,7 @@ class ClaimsConsensusValidator:
                     neurons_by_hotkey.get(str(assignment.get("hotkey") or "")),
                     query_timeout,
                 ): assignment
-                for assignment in assignments
+                for assignment in query_assignments
             }
             for future in as_completed(futures):
                 assignment = futures[future]
@@ -234,6 +256,31 @@ class ClaimsConsensusValidator:
                     validator_failures.append(hotkey)
                     continue
                 if result is not None:
+                    source_failure = result.pop("_source_failure", None)
+                    if isinstance(source_failure, dict):
+                        failure_key = (
+                            str(source_failure.get("paper_id") or ""),
+                            str(source_failure.get("source_sha256") or ""),
+                        )
+                        if failure_key not in source_failure_checks:
+                            source_failure_checks[failure_key] = _confirm_source_failure(
+                                assignment.get("payload") or {},
+                                source_failure,
+                                timeout=min(60.0, query_timeout),
+                            )
+                        if source_failure_checks[failure_key]:
+                            validator_failures.append(hotkey)
+                            self.bt_logging.warning(
+                                f"Voiding consensus reviewer for confirmed source failure "
+                                f"round={round_id} uid={assignment.get('uid')} "
+                                f"paper={source_failure.get('paper_id')}"
+                            )
+                        else:
+                            self.bt_logging.warning(
+                                f"Consensus reviewer reported an unconfirmed source failure "
+                                f"round={round_id} uid={assignment.get('uid')}"
+                            )
+                        continue
                     miner_timing = result.pop("_miner_timing", None)
                     if isinstance(miner_timing, dict):
                         self.bt_logging.info(
@@ -293,6 +340,16 @@ class ClaimsConsensusValidator:
         )
         response = responses[0] if responses else None
         vote = getattr(response, "consensus_vote", None) if response is not None else None
+        source_failure = _source_failure_payload(
+            getattr(response, "error", "") if response is not None else ""
+        )
+        if source_failure:
+            return {
+                "uid": int(assignment.get("uid") or -1),
+                "hotkey": str(assignment.get("hotkey") or ""),
+                "coldkey": str(assignment.get("coldkey") or ""),
+                "_source_failure": source_failure,
+            }
         if not isinstance(vote, dict):
             return None
         if str(vote.get("round_id") or "") != str(round_payload.get("round_id") or ""):
@@ -311,6 +368,145 @@ class ClaimsConsensusValidator:
                 "_miner_timing": dict(vote.get("timing") or {}),
             }
         return None
+
+
+def _source_failure_payload(value: Any) -> dict[str, str] | None:
+    try:
+        payload = json.loads(str(value or ""))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict) or payload.get("schema") != CONSENSUS_SOURCE_FAILURE_SCHEMA:
+        return None
+    paper_id = str(payload.get("paper_id") or "").strip()
+    source_sha256 = str(payload.get("source_sha256") or "").strip().lower()
+    if not paper_id or not source_sha256:
+        return None
+    return {
+        "schema": CONSENSUS_SOURCE_FAILURE_SCHEMA,
+        "code": str(payload.get("code") or "source_download_or_parse_failed"),
+        "paper_id": paper_id,
+        "source_sha256": source_sha256,
+    }
+
+
+def _confirm_source_failure(
+    assignment_payload: dict[str, Any],
+    failure: dict[str, str],
+    *,
+    timeout: float,
+) -> bool:
+    documents: dict[tuple[str, str], dict[str, Any]] = {}
+    for case in assignment_payload.get("cases") or []:
+        case_payload = case.get("case") if isinstance(case, dict) else None
+        document = case_payload.get("source_document") if isinstance(case_payload, dict) else None
+        if not isinstance(document, dict):
+            continue
+        key = (
+            str(document.get("paper_id") or "").strip(),
+            str(document.get("source_sha256") or "").strip().lower(),
+        )
+        documents[key] = document
+    key = (failure["paper_id"], failure["source_sha256"])
+    document = documents.get(key)
+    if document is None:
+        return False
+    source_url = str(document.get("source_url") or "").strip()
+    if not source_url:
+        return True
+    try:
+        with tempfile.TemporaryDirectory(prefix="claims-consensus-source-check-") as directory:
+            download_pdf(
+                source_url,
+                output_dir=Path(directory),
+                expected_sha256=failure["source_sha256"],
+                timeout_s=max(1.0, timeout),
+            )
+    except Exception:
+        return True
+    return False
+
+
+def _preflight_consensus_sources(
+    assignments: list[dict[str, Any]],
+    *,
+    timeout: float,
+    max_workers: int,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    documents: dict[tuple[str, str, str], dict[str, Any]] = {}
+    hotkeys_by_source: dict[tuple[str, str, str], set[str]] = {}
+    invalid_hotkeys: set[str] = set()
+    failures: list[dict[str, Any]] = []
+    for assignment in assignments:
+        hotkey = str(assignment.get("hotkey") or "")
+        payload = assignment.get("payload") if isinstance(assignment.get("payload"), dict) else {}
+        cases = payload.get("cases") if isinstance(payload.get("cases"), list) else []
+        if not cases:
+            continue
+        found_document = False
+        for case in cases:
+            case_payload = case.get("case") if isinstance(case, dict) else None
+            document = case_payload.get("source_document") if isinstance(case_payload, dict) else None
+            if not isinstance(document, dict):
+                continue
+            found_document = True
+            paper_id = str(document.get("paper_id") or "").strip()
+            source_url = str(document.get("source_url") or "").strip()
+            source_sha256 = str(document.get("source_sha256") or "").strip().lower()
+            if not paper_id or not source_url or not source_sha256:
+                invalid_hotkeys.add(hotkey)
+                failures.append(
+                    {
+                        "paper_id": paper_id or "unknown",
+                        "affected_reviewers": 1,
+                        "reason": "incomplete_source_document",
+                    }
+                )
+                continue
+            key = (paper_id, source_sha256, source_url)
+            documents[key] = document
+            hotkeys_by_source.setdefault(key, set()).add(hotkey)
+        if not found_document:
+            invalid_hotkeys.add(hotkey)
+            failures.append(
+                {
+                    "paper_id": "unknown",
+                    "affected_reviewers": 1,
+                    "reason": "missing_source_document",
+                }
+            )
+
+    def validate(item: tuple[tuple[str, str, str], dict[str, Any]]) -> tuple[tuple[str, str, str], str]:
+        key, document = item
+        try:
+            expected_size = document.get("source_size_bytes")
+            with tempfile.TemporaryDirectory(prefix="claims-consensus-source-preflight-") as directory:
+                download_pdf(
+                    key[2],
+                    output_dir=Path(directory),
+                    expected_sha256=key[1],
+                    expected_size_bytes=int(expected_size) if expected_size is not None else None,
+                    timeout_s=max(1.0, timeout),
+                )
+        except Exception as exc:
+            return key, type(exc).__name__
+        return key, ""
+
+    items = list(documents.items())
+    if items:
+        with ThreadPoolExecutor(max_workers=min(len(items), max(1, max_workers))) as executor:
+            for key, reason in executor.map(validate, items):
+                if not reason:
+                    continue
+                affected = hotkeys_by_source.get(key, set())
+                invalid_hotkeys.update(affected)
+                failures.append(
+                    {
+                        "paper_id": key[0],
+                        "affected_reviewers": len(affected),
+                        "reason": reason,
+                    }
+                )
+    return sorted(invalid_hotkeys), failures
 
 
 def _is_serving(neuron: Any) -> bool:

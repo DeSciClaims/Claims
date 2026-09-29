@@ -79,9 +79,14 @@ def download_pdf(url: str, path: Path, expected_sha: str, allowed_hosts: set[str
                     output.write(chunk)
             if digest.hexdigest() != expected_sha:
                 raise ValueError("downloaded PDF does not match the stored SHA-256")
-            with path.open("rb") as source:
-                if b"%PDF-" not in source.read(1024):
-                    raise ValueError("download is not a PDF")
+            if str(ROOT) not in sys.path:
+                sys.path.insert(0, str(ROOT))
+            from neurons.tasks import PDFValidationError, validate_pdf_file
+
+            try:
+                validate_pdf_file(path, expected_sha256=expected_sha, expected_size_bytes=size)
+            except PDFValidationError as exc:
+                raise ValueError(str(exc)) from exc
             return
         finally:
             connection.close()
@@ -199,11 +204,21 @@ class Backfill:
             source = document_source_payload(document, max_chars=None)
             receipt = self.client.request("POST", payload={"network": self.args.network, "bronze_record_id": bronze_id,
                 "pdf_sha256": digest, "extractor": reader, "extractor_version": version, "source_payload": source})
-            result = {"bronze_record_id": bronze_id, "status": "completed", **receipt}
+            result = {
+                "bronze_record_id": bronze_id,
+                "paper_id": str(item.get("paper_id") or ""),
+                "status": "completed",
+                **receipt,
+            }
         except Exception as exc:
             # Do not log HTTP bodies, source URLs, or provider credentials.
             safe = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
-            result = {"bronze_record_id": bronze_id, "status": "failed", "error": safe[:240]}
+            result = {
+                "bronze_record_id": bronze_id,
+                "paper_id": str(item.get("paper_id") or ""),
+                "status": "failed",
+                "error": safe[:240],
+            }
         with self.lock:
             with self.log.open("a", encoding="utf-8") as stream:
                 stream.write(json.dumps({**result, "network": self.args.network, "time": time.time()}) + "\n")
@@ -212,6 +227,7 @@ class Backfill:
 
 def run(args: argparse.Namespace, client: BackfillClient, worker: Backfill) -> int:
     after, successes, failures, pending = "", 0, 0, 0
+    unresolved: list[dict[str, str]] = []
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         while True:
             page = client.request("GET", params={"network": args.network, "after": after, "limit": args.page_size})
@@ -225,6 +241,14 @@ def run(args: argparse.Namespace, client: BackfillClient, worker: Backfill) -> i
                     result = future.result()
                     successes += result["status"] == "completed"
                     failures += result["status"] == "failed"
+                    if result["status"] == "failed":
+                        unresolved.append(
+                            {
+                                "bronze_record_id": str(result.get("bronze_record_id") or ""),
+                                "paper_id": str(result.get("paper_id") or ""),
+                                "error": str(result.get("error") or ""),
+                            }
+                        )
                     print(json.dumps(result), flush=True)
             cursor = page.get("next_cursor")
             if not cursor or (args.max_records and pending >= args.max_records):
@@ -232,7 +256,13 @@ def run(args: argparse.Namespace, client: BackfillClient, worker: Backfill) -> i
             if cursor <= after:
                 raise ValueError("backfill cursor did not advance")
             after = cursor
-    print(json.dumps({"pending_seen": pending, "completed": successes, "failed": failures, "dry_run": args.dry_run}))
+    print(json.dumps({
+        "pending_seen": pending,
+        "completed": successes,
+        "failed": failures,
+        "unresolved": unresolved,
+        "dry_run": args.dry_run,
+    }))
     return 1 if failures else 0
 
 

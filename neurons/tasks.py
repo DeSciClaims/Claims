@@ -16,6 +16,11 @@ PROTOCOL_VERSION = "claims.v0"
 SCHEMA_VERSION = "miner.v0.section_context_compat"
 SCORING_VERSION = "agent_v1_pass4_minor_cap_v1"
 DEFAULT_MAX_DOWNLOAD_BYTES = 80 * 1024 * 1024
+PDF_TRAILER_SCAN_BYTES = 64 * 1024
+
+
+class PDFValidationError(ValueError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -215,6 +220,7 @@ def download_pdf(
     *,
     output_dir: Path,
     expected_sha256: str = "",
+    expected_size_bytes: int | None = None,
     max_bytes: int = DEFAULT_MAX_DOWNLOAD_BYTES,
     timeout_s: float = 60.0,
 ) -> DownloadedPDF:
@@ -252,6 +258,11 @@ def download_pdf(
     if expected_sha256 and sha256.lower() != expected_sha256.lower():
         tmp_path.unlink(missing_ok=True)
         raise PDFDownloadError(f"Downloaded PDF hash mismatch: expected {expected_sha256}, got {sha256}")
+    if expected_size_bytes is not None and size != int(expected_size_bytes):
+        tmp_path.unlink(missing_ok=True)
+        raise PDFDownloadError(
+            f"Downloaded PDF size mismatch: expected {expected_size_bytes}, got {size}"
+        )
     if content_type and content_type not in {"application/pdf", "application/octet-stream"} and suffix != ".pdf":
         tmp_path.unlink(missing_ok=True)
         raise PDFDownloadError(f"Downloaded URL does not look like a PDF: content-type={content_type}")
@@ -261,7 +272,57 @@ def download_pdf(
         tmp_path.unlink(missing_ok=True)
     else:
         tmp_path.replace(final_path)
+    try:
+        validate_pdf_file(
+            final_path,
+            expected_sha256=expected_sha256 or sha256,
+            expected_size_bytes=expected_size_bytes,
+        )
+    except PDFValidationError:
+        final_path.unlink(missing_ok=True)
+        raise
     return DownloadedPDF(path=final_path, sha256=sha256, content_type=content_type, size_bytes=size)
+
+
+def validate_pdf_file(
+    path: Path,
+    *,
+    expected_sha256: str = "",
+    expected_size_bytes: int | None = None,
+) -> dict[str, Any]:
+    size = path.stat().st_size
+    if expected_size_bytes is not None and size != int(expected_size_bytes):
+        raise PDFValidationError(
+            f"PDF size mismatch: expected {expected_size_bytes}, got {size}"
+        )
+    hasher = hashlib.sha256()
+    with path.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            hasher.update(chunk)
+    digest = hasher.hexdigest()
+    if expected_sha256 and digest.lower() != expected_sha256.lower():
+        raise PDFValidationError(
+            f"PDF hash mismatch: expected {expected_sha256}, got {digest}"
+        )
+    with path.open("rb") as source:
+        if not source.read(1024).lstrip().startswith(b"%PDF-"):
+            raise PDFValidationError("PDF header is missing")
+        source.seek(max(0, size - PDF_TRAILER_SCAN_BYTES))
+        if b"%%EOF" not in source.read():
+            raise PDFValidationError("PDF trailer is missing %%EOF")
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(path, strict=False)
+        page_count = len(reader.pages)
+        if page_count < 1:
+            raise PDFValidationError("PDF contains no pages")
+        _ = reader.pages[0].mediabox
+    except PDFValidationError:
+        raise
+    except Exception as exc:
+        raise PDFValidationError(f"PDF parser rejected the document: {exc}") from exc
+    return {"sha256": digest, "size_bytes": size, "page_count": page_count}
 
 
 def load_task_manifest(path: Path) -> list[ClaimsTask]:

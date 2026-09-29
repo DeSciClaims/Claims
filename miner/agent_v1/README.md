@@ -148,6 +148,12 @@ and source-payload extraction independently from concurrent model batches.
 `compatibility` mode exists for protocol tests only and should not be used for
 scored consensus work.
 
+Consensus source downloads are checked against the assigned SHA-256 and must
+contain a valid PDF trailer and parse successfully before review begins. A
+source failure is returned as a structured technical result. The consensus
+validator independently reproduces that failure before voiding the affected
+assignment, so miners cannot opt out merely by reporting a source error.
+
 ## Runtime Metrics
 
 Successful runs attach runtime metadata to `agent_output.json`:

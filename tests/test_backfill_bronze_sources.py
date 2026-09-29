@@ -35,7 +35,13 @@ def test_dns_and_host_checks(monkeypatch):
 
 def test_download_hash_and_redirect_validation(monkeypatch, tmp_path):
     import io
-    content = b"%PDF-test"
+    from pypdf import PdfWriter
+
+    pdf = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.write(pdf)
+    content = pdf.getvalue()
     class Response(io.BytesIO):
         status = 200
         def getheader(self, key): return None
@@ -72,6 +78,29 @@ def test_empty_repaired_page_does_not_stop_iteration(tmp_path):
     class Worker:
         def process(self, item): return {**item, "status": "completed"}
     assert backfill.run(args(tmp_path), Client(), Worker()) == 0
+
+
+def test_failed_backfills_are_reported_with_paper_ids(tmp_path, capsys):
+    class Client:
+        def request(self, method, *, params):
+            return {
+                "items": [{"bronze_record_id": "b1", "paper_id": "paper_1"}],
+                "next_cursor": None,
+            }
+
+    class Worker:
+        def process(self, item):
+            return {**item, "status": "failed", "error": "PDF trailer is missing %%EOF"}
+
+    assert backfill.run(args(tmp_path), Client(), Worker()) == 1
+    summary = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert summary["unresolved"] == [
+        {
+            "bronze_record_id": "b1",
+            "paper_id": "paper_1",
+            "error": "PDF trailer is missing %%EOF",
+        }
+    ]
 
 
 def test_extraction_child_uses_existing_reader_without_truncation(tmp_path):

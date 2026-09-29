@@ -894,6 +894,44 @@ def test_miner_uploads_model_consensus_response_and_returns_manifest(monkeypatch
     assert miner.backend_client.payload["hotkey"] == "hotkey_42"
 
 
+def test_miner_returns_structured_consensus_source_failure(monkeypatch) -> None:
+    from miner.agent_v1.consensus_review import ConsensusSourceError
+
+    miner = ClaimsMiner.__new__(ClaimsMiner)
+    miner.config = SimpleNamespace(
+        claims_pipeline="agent_v1",
+        claims_max_requests_per_hotkey_minute=0,
+        claims_consensus_mode="model",
+    )
+    miner.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="hotkey_42"))
+    miner.bt_logging = SimpleNamespace(
+        info=lambda *_args, **_kwargs: None,
+        error=lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "neurons.miner.review_consensus_assignment",
+        lambda _payload: (_ for _ in ()).throw(
+            ConsensusSourceError(
+                paper_id="paper_1",
+                source_sha256="abc123",
+                cause=ValueError("missing %%EOF"),
+            )
+        ),
+    )
+    synapse = ClaimExtractionSynapse(
+        task_id="consensus_round",
+        task_type="agent_v1_consensus_vote",
+        network="testnet",
+        consensus_round_id="mcr_1",
+        consensus_payload={"round_id": "mcr_1", "cases": [{"item_id": "item_a"}]},
+    )
+
+    result = miner.forward(synapse)
+
+    assert result.consensus_vote is None
+    assert json.loads(result.error)["schema"] == "claims_consensus_source_failure_v1"
+
+
 def _valid_ara_payload() -> dict:
     return {
         "paper": {

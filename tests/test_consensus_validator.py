@@ -9,7 +9,10 @@ import pytest
 
 from neurons.consensus_validator import (
     ClaimsConsensusValidator,
+    _confirm_source_failure,
+    _preflight_consensus_sources,
     _seconds_until_deadline,
+    _source_failure_payload,
     _subtensor_network_arg,
     _sync_metagraph,
 )
@@ -178,6 +181,112 @@ def test_seconds_until_deadline_handles_expired_and_future_values() -> None:
     assert _seconds_until_deadline("not-a-time", now=now) == 0
 
 
+def test_consensus_source_failure_must_match_and_fail_validator_verification(monkeypatch) -> None:
+    failure = _source_failure_payload(
+        '{"schema":"claims_consensus_source_failure_v1","code":"source_download_or_parse_failed",'
+        '"paper_id":"paper_1","source_sha256":"abc123"}'
+    )
+    assert failure is not None
+    assignment = {
+        "cases": [
+            {
+                "case": {
+                    "source_document": {
+                        "paper_id": "paper_1",
+                        "source_url": "https://papers.example/paper.pdf",
+                        "source_sha256": "abc123",
+                    }
+                }
+            }
+        ]
+    }
+    monkeypatch.setattr(
+        "neurons.consensus_validator.download_pdf",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("truncated PDF")),
+    )
+    assert _confirm_source_failure(assignment, failure, timeout=10)
+
+    monkeypatch.setattr("neurons.consensus_validator.download_pdf", lambda *_args, **_kwargs: object())
+    assert not _confirm_source_failure(assignment, failure, timeout=10)
+    assert not _confirm_source_failure(
+        assignment,
+        {**failure, "paper_id": "paper_2"},
+        timeout=10,
+    )
+
+
+def test_consensus_source_failure_parser_rejects_unstructured_miner_errors() -> None:
+    assert _source_failure_payload("PDF download failed") is None
+    assert _source_failure_payload('{"schema":"other","paper_id":"p","source_sha256":"h"}') is None
+
+
+def test_consensus_source_preflight_deduplicates_and_isolates_bad_source(monkeypatch) -> None:
+    downloads: list[str] = []
+
+    def download(source_url, **_kwargs):
+        downloads.append(source_url)
+        if source_url.endswith("bad.pdf"):
+            raise ValueError("truncated PDF")
+        return object()
+
+    def assignment(hotkey: str, paper_id: str, source_url: str, source_sha256: str) -> dict:
+        return {
+            "hotkey": hotkey,
+            "payload": {
+                "cases": [
+                    {
+                        "case": {
+                            "source_document": {
+                                "paper_id": paper_id,
+                                "source_url": source_url,
+                                "source_sha256": source_sha256,
+                            }
+                        }
+                    }
+                ]
+            },
+        }
+
+    monkeypatch.setattr("neurons.consensus_validator.download_pdf", download)
+    failed, failures = _preflight_consensus_sources(
+        [
+            assignment("hotkey_bad_1", "paper_bad", "https://papers.example/bad.pdf", "bad"),
+            assignment("hotkey_bad_2", "paper_bad", "https://papers.example/bad.pdf", "bad"),
+            assignment("hotkey_good", "paper_good", "https://papers.example/good.pdf", "good"),
+        ],
+        timeout=10,
+        max_workers=4,
+    )
+
+    assert failed == ["hotkey_bad_1", "hotkey_bad_2"]
+    assert downloads.count("https://papers.example/bad.pdf") == 1
+    assert downloads.count("https://papers.example/good.pdf") == 1
+    assert failures == [
+        {
+            "paper_id": "paper_bad",
+            "affected_reviewers": 2,
+            "reason": "ValueError",
+        }
+    ]
+
+
+def test_consensus_source_preflight_rejects_missing_source_document() -> None:
+    failed, failures = _preflight_consensus_sources(
+        [{"hotkey": "hotkey_1", "payload": {"cases": [{"case": {}}]}}],
+        timeout=10,
+        max_workers=1,
+    )
+
+    assert failed == ["hotkey_1"]
+    assert failures == [
+        {
+            "paper_id": "unknown",
+            "affected_reviewers": 1,
+            "reason": "missing_source_document",
+        }
+    ]
+
+
 def test_expired_round_completes_without_querying_reviewers() -> None:
     completed: list[dict] = []
 
@@ -219,3 +328,70 @@ def test_expired_round_completes_without_querying_reviewers() -> None:
         }
     ]
     assert any("Completed expired consensus round" in message for message in validator.bt_logging.messages)
+
+
+def test_confirmed_source_failure_voids_only_affected_reviewer(monkeypatch) -> None:
+    completed: list[dict] = []
+
+    class _Backend:
+        def complete_miner_consensus_round(self, **kwargs):
+            completed.append(kwargs)
+            return {"result": {"outcomes": []}}
+
+    validator = ClaimsConsensusValidator.__new__(ClaimsConsensusValidator)
+    validator.metagraph = SimpleNamespace(
+        neurons=[
+            SimpleNamespace(hotkey="hotkey_bad", axon_info=SimpleNamespace()),
+            SimpleNamespace(hotkey="hotkey_good", axon_info=SimpleNamespace()),
+        ]
+    )
+    validator.backend_client = _Backend()
+    validator.worker_id = "worker_test"
+    validator.bt_logging = _Logger()
+    validator.config = SimpleNamespace(
+        claims_consensus_query_timeout=30,
+        claims_consensus_query_workers=2,
+    )
+
+    def query(_round, assignment, _neuron, _timeout):
+        if assignment["hotkey"] == "hotkey_bad":
+            return {
+                "uid": 1,
+                "hotkey": "hotkey_bad",
+                "_source_failure": {
+                    "paper_id": "paper_bad",
+                    "source_sha256": "hash_bad",
+                },
+            }
+        return {
+            "uid": 2,
+            "hotkey": "hotkey_good",
+            "submission_id": "submission_good",
+            "response_hash": "hash_good",
+        }
+
+    monkeypatch.setattr(validator, "_query_assignment", query)
+    monkeypatch.setattr(
+        "neurons.consensus_validator._confirm_source_failure",
+        lambda *_args, **_kwargs: True,
+    )
+    validator._process_round(
+        {
+            "round_id": "round_1",
+            "deadline_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+            "assignments": [
+                {"uid": 1, "hotkey": "hotkey_bad", "payload": {"cases": []}},
+                {"uid": 2, "hotkey": "hotkey_good", "payload": {"cases": []}},
+            ],
+        }
+    )
+
+    assert completed[0]["validator_failed_hotkeys"] == ["hotkey_bad"]
+    assert completed[0]["submissions"] == [
+        {
+            "uid": 2,
+            "hotkey": "hotkey_good",
+            "submission_id": "submission_good",
+            "response_hash": "hash_good",
+        }
+    ]
