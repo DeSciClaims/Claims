@@ -288,9 +288,8 @@ affected stage with `SUBNET_CLAIMS_VALIDATOR_AGENT_MAX_TOKENS=8192`,
 `CLAIMS_SILVER_FILE_AGENT_MAX_TOKENS=8192`.
 
 Blind reconstruction and appellate comparison use
-`CLAIMS_SILVER_ADJUDICATION_APPELLATE_MAX_TOKENS` (default `8192`) so disputed
-cases cannot consume the larger output allowance reserved for batched primary
-adjudication.
+`CLAIMS_SILVER_ADJUDICATION_APPELLATE_MAX_TOKENS` (default `32768`). This larger
+allowance prevents evidence-grounded appellate responses from being truncated.
 
 For the native DSPy rigor runtime, use the same catalog model ID and set:
 

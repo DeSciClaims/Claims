@@ -730,7 +730,7 @@ def test_config_defaults_adjudication_output_limit_for_batched_responses(monkeyp
     config = FileAgentWorkflowConfig.from_env()
 
     assert config.adjudication_max_tokens == 32768
-    assert config.adjudication_appellate_max_tokens == 8192
+    assert config.adjudication_appellate_max_tokens == 32768
 
 
 def test_dspy_uses_appellate_output_limit_for_both_appellate_stages(

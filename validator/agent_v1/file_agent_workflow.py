@@ -287,7 +287,7 @@ class FileAgentWorkflowConfig:
     adjudication_max_source_chars: int = 30000
     adjudication_max_workers: int = 4
     adjudication_max_tokens: int = 32768
-    adjudication_appellate_max_tokens: int = 8192
+    adjudication_appellate_max_tokens: int = 32768
     adjudication_timeout_seconds: float = 120.0
     command_template: str = ""
     max_turns: int = 30
@@ -445,9 +445,9 @@ class FileAgentWorkflowConfig:
                 int(
                     os.getenv(
                         "CLAIMS_SILVER_ADJUDICATION_APPELLATE_MAX_TOKENS",
-                        "8192",
+                        "32768",
                     )
-                    or 8192
+                    or 32768
                 ),
             ),
             adjudication_timeout_seconds=max(
