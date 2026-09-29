@@ -721,6 +721,7 @@ def test_config_uses_existing_adjudication_env_for_dspy_chutes(monkeypatch) -> N
 
 
 def test_config_defaults_adjudication_output_limit_for_batched_responses(monkeypatch) -> None:
+    monkeypatch.delenv("CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE", raising=False)
     monkeypatch.delenv("CLAIMS_SILVER_ADJUDICATION_MAX_TOKENS", raising=False)
     monkeypatch.delenv(
         "CLAIMS_SILVER_ADJUDICATION_APPELLATE_MAX_TOKENS",
@@ -729,6 +730,7 @@ def test_config_defaults_adjudication_output_limit_for_batched_responses(monkeyp
 
     config = FileAgentWorkflowConfig.from_env()
 
+    assert config.adjudication_batch_size == 4
     assert config.adjudication_max_tokens == 32768
     assert config.adjudication_appellate_max_tokens == 32768
 

@@ -283,7 +283,7 @@ class FileAgentWorkflowConfig:
     adjudication_negative_model: str = ""
     adjudication_positive_model: str = ""
     adjudication_tiebreak_model: str = ""
-    adjudication_batch_size: int = 8
+    adjudication_batch_size: int = 4
     adjudication_max_source_chars: int = 30000
     adjudication_max_workers: int = 4
     adjudication_max_tokens: int = 32768
@@ -420,7 +420,7 @@ class FileAgentWorkflowConfig:
             ).strip(),
             adjudication_batch_size=max(
                 1,
-                int(os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE", "8") or 8),
+                int(os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE", "4") or 4),
             ),
             adjudication_max_source_chars=max(
                 1000,

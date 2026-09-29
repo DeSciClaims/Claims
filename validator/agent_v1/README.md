@@ -419,8 +419,10 @@ validation.
   through the paper pipeline.
 - `CLAIMS_SILVER_ADJUDICATION_MODEL_A`, `_MODEL_B`, and `_TIEBREAK_MODEL`
   select the negative, positive, and conditional tiebreak roles.
-  `CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE` and `_MAX_WORKERS` control case
-  batching. `CLAIMS_SILVER_ADJUDICATION_MAX_SOURCE_CHARS` also starts a new
+  `CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE` (default `4`) and `_MAX_WORKERS`
+  control case batching. Keeping batches at four limits oversized judge
+  responses while preserving parallel throughput.
+  `CLAIMS_SILVER_ADJUDICATION_MAX_SOURCE_CHARS` also starts a new
   batch when the unique linked evidence packet would exceed its limit; this
   keeps large source packets from making an entire judge call blind.
   `_MAX_IN_FLIGHT` is the shared hard limit across Silver calls.

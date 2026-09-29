@@ -94,7 +94,7 @@ def run_paper_silver_pipeline(
     source_context_by_span_id: dict[str, str] | None = None,
     eligibility_source_context_by_span_id: dict[str, str] | None = None,
     adjudication_max_workers: int = 4,
-    adjudication_batch_size: int = 8,
+    adjudication_batch_size: int = 4,
     max_eligible_claims_per_miner: int = 10,
     filter_by_assessment: bool = False,
     max_adjudication_cases: int = 80,

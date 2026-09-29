@@ -828,7 +828,7 @@ class ClaimsValidator:
             "--claims.silver-adjudication-batch-size",
             dest="claims_silver_adjudication_batch_size",
             type=int,
-            default=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE", "8")),
+            default=int(os.getenv("CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE", "4")),
             help="Anonymous adjudication cases per model request; use 1 to disable batching.",
         )
         parser.add_argument(
@@ -3157,7 +3157,7 @@ class ClaimsValidator:
                         [bronze_source_payload]
                     ),
                     adjudication_max_workers=int(getattr(self.config, "claims_silver_adjudication_max_workers", 4)),
-                    adjudication_batch_size=int(getattr(self.config, "claims_silver_adjudication_batch_size", 8)),
+                    adjudication_batch_size=int(getattr(self.config, "claims_silver_adjudication_batch_size", 4)),
                     adjudication_progress_sink=lambda contexts, votes: self._persist_adjudication_progress(
                         run_id=run_id,
                         task=task,
@@ -6818,7 +6818,7 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
             getattr(config, "claims_silver_adjudication_max_workers", 1) or 1
         ),
         "claims_silver_adjudication_batch_size": int(
-            getattr(config, "claims_silver_adjudication_batch_size", 8) or 1
+            getattr(config, "claims_silver_adjudication_batch_size", 4) or 1
         ),
         "claims_silver_adjudication_max_in_flight": int(
             getattr(config, "claims_silver_adjudication_max_in_flight", 32)
