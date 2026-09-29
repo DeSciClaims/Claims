@@ -63,6 +63,19 @@ class ClaimsBackendClient:
     def select_batch(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.post("/validator/batches/select", payload)
 
+    def get_batch_readiness(self, *, netuid: int, task_type: str) -> dict[str, Any]:
+        result = self.get(
+            "/validator/batches/readiness",
+            query={
+                "network": self.network,
+                "netuid": int(netuid),
+                "task_type": task_type,
+            },
+        )
+        if not isinstance(result, dict) or not isinstance(result.get("ready"), bool):
+            raise BackendClientError("Backend batch readiness lookup returned an invalid response.")
+        return result
+
     def claim_batch_miner_selection(
         self,
         *,

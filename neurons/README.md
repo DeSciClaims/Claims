@@ -155,6 +155,10 @@ batch ID, papers, selection seed, and miner snapshot. The first request at or
 after expiry creates the successor atomically. The current validator profiles
 pass `--claims.allow-paper-reuse` through `CLAIMS_ALLOW_PAPER_REUSE=true`, so
 approved papers may appear in later canonical batches while the catalog grows.
+Set `CLAIMS_WAIT_FOR_DUE_CANONICAL_BATCH=true` to start the validator at any
+time without immediately reprocessing the active batch. It remains idle until
+the backend reports that the canonical window has elapsed; an expired batch
+without a successful Silver score is recovered instead of skipped.
 An operator hotkey explicitly authorized by the backend can force one immediate
 successor with `--claims.force-new-canonical-batch`. The backend must list that
 exact hotkey in `CLAIMS_BATCH_OVERRIDE_HOTKEY_ALLOWLIST`. The one-shot flag is

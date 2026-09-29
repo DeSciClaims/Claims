@@ -61,6 +61,39 @@ def test_backend_client_retries_transient_errors_with_fresh_nonce(monkeypatch) -
     assert _header(requests[0][0], "X-Claims-Nonce") != _header(requests[1][0], "X-Claims-Nonce")
 
 
+def test_batch_readiness_client_uses_signed_validator_endpoint(monkeypatch) -> None:
+    calls: list[tuple[str, dict]] = []
+
+    def fake_get(self, path, *, query=None):
+        calls.append((path, query or {}))
+        return {
+            "ready": False,
+            "reason": "canonical_window_active",
+            "next_due_at": "2026-09-30T04:00:00+00:00",
+        }
+
+    monkeypatch.setattr(ClaimsBackendClient, "get", fake_get)
+    client = ClaimsBackendClient(
+        "https://api.example.test",
+        wallet=SimpleNamespace(hotkey=_FakeHotkey()),
+        network="mainnet",
+    )
+
+    result = client.get_batch_readiness(netuid=111, task_type="agent_v1_claim_extraction")
+
+    assert result["ready"] is False
+    assert calls == [
+        (
+            "/validator/batches/readiness",
+            {
+                "network": "mainnet",
+                "netuid": 111,
+                "task_type": "agent_v1_claim_extraction",
+            },
+        )
+    ]
+
+
 def test_large_consensus_submission_uses_signed_gzip(monkeypatch) -> None:
     requests = []
 

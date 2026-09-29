@@ -2015,6 +2015,69 @@ def test_force_canonical_batch_override_is_sent_only_once() -> None:
     assert validator._force_new_canonical_batch_pending is False
 
 
+def test_validator_waits_until_backend_reports_batch_due(monkeypatch) -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_wait_for_due_canonical_batch=True,
+        claims_backend_url="https://api.example.test",
+        claims_batch_readiness_poll_seconds=60.0,
+        claims_task_type="agent_v1_claim_extraction",
+        netuid=111,
+    )
+    validator._force_new_canonical_batch_pending = False
+    validator._last_batch_readiness_log = None
+    responses = iter(
+        [
+            {
+                "ready": False,
+                "reason": "canonical_window_active",
+                "batch_id": "batch_active",
+                "next_due_at": "2099-01-01T00:00:00+00:00",
+            },
+            {
+                "ready": True,
+                "reason": "canonical_window_elapsed",
+                "batch_id": "batch_active",
+                "next_due_at": None,
+            },
+        ]
+    )
+    validator.backend_client = SimpleNamespace(
+        get_batch_readiness=lambda **_kwargs: next(responses)
+    )
+    info_messages: list[str] = []
+    validator.bt_logging = SimpleNamespace(
+        info=info_messages.append,
+        warning=lambda *_args: None,
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr("neurons.validator.time.sleep", sleeps.append)
+
+    validator._wait_for_due_canonical_batch()
+
+    assert sleeps == [60.0]
+    assert "validator is idle" in info_messages[0]
+    assert "proceeding with batch selection" in info_messages[1]
+
+
+def test_validator_batch_override_bypasses_due_wait() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        claims_wait_for_due_canonical_batch=True,
+        claims_backend_url="https://api.example.test",
+    )
+    validator._force_new_canonical_batch_pending = True
+    calls: list[str] = []
+    validator.backend_client = SimpleNamespace(
+        get_batch_readiness=lambda **_kwargs: calls.append("readiness")
+    )
+    validator.bt_logging = SimpleNamespace(info=lambda *_args: None)
+
+    validator._wait_for_due_canonical_batch()
+
+    assert calls == []
+
+
 def test_validator_failed_cycle_counts_toward_max_steps_and_records_error() -> None:
     validator = ClaimsValidator.__new__(ClaimsValidator)
     validator.config = SimpleNamespace(

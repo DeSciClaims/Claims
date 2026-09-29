@@ -636,6 +636,10 @@ Semantic near-copy detection embeds uncapped claim and evidence text and
 
 - `--claims.max-steps` limits completed scoring cycles; `0` runs indefinitely.
   `--claims.query-interval` is the delay between cycles.
+- `--claims.wait-for-due-canonical-batch` keeps a backend-connected validator
+  idle until the current canonical window expires. The validator polls the
+  signed readiness endpoint at `CLAIMS_BATCH_READINESS_POLL_SECONDS`, then
+  selects the due successor or recovers the expired unscored batch.
 - `--claims.force-new-canonical-batch` is a one-shot operator override that
   creates an immediate canonical successor. It requires the signing hotkey in
   the backend's `CLAIMS_BATCH_OVERRIDE_HOTKEY_ALLOWLIST` and does not cancel

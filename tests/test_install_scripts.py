@@ -132,7 +132,9 @@ def test_mainnet_profile_has_production_policy_without_prescribed_models() -> No
     assert "CLAIMS_TIMEOUT=3600" in profile
     assert "CLAIMS_OUTPUT_RETENTION_RUNS=5" in profile
     assert "CLAIMS_MAX_STEPS=4" in profile
-    assert "CLAIMS_QUERY_INTERVAL=10800" in profile
+    assert "CLAIMS_QUERY_INTERVAL=60" in profile
+    assert "CLAIMS_WAIT_FOR_DUE_CANONICAL_BATCH=true" in profile
+    assert "CLAIMS_BATCH_READINESS_POLL_SECONDS=60" in profile
     assert "CLAIMS_AUDIT_ONLY=false" in profile
     assert "CLAIMS_RIGOR_HARNESS=hermes-cli" in profile
     assert "CLAIMS_RIGOR_PROVIDER=openrouter" in profile

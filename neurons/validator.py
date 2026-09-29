@@ -250,6 +250,7 @@ class ClaimsValidator:
         self._canonical_batch_override_request_id = (
             f"override_{uuid.uuid4().hex}" if self._force_new_canonical_batch_pending else ""
         )
+        self._last_batch_readiness_log: tuple[str, str, str] | None = None
         if self.config.claims_dry_run:
             self.wallet = None
             self.subtensor = None
@@ -954,6 +955,20 @@ class ClaimsValidator:
             help="Seconds to wait after one validation round finishes before starting the next.",
         )
         parser.add_argument(
+            "--claims.wait-for-due-canonical-batch",
+            dest="claims_wait_for_due_canonical_batch",
+            action="store_true",
+            default=_env_flag("CLAIMS_WAIT_FOR_DUE_CANONICAL_BATCH"),
+            help="Wait for the backend canonical window before selecting and querying a batch.",
+        )
+        parser.add_argument(
+            "--claims.batch-readiness-poll-seconds",
+            dest="claims_batch_readiness_poll_seconds",
+            type=float,
+            default=float(os.getenv("CLAIMS_BATCH_READINESS_POLL_SECONDS", "60")),
+            help="Maximum seconds between backend canonical-batch readiness checks.",
+        )
+        parser.add_argument(
             "--claims.timeout",
             dest="claims_timeout",
             type=float,
@@ -1151,6 +1166,8 @@ class ClaimsValidator:
         if config.claims_output_retention_runs < 0:
             raise SystemExit("--claims.output-retention-runs must be non-negative.")
         config.claims_query_interval = parsed_args.claims_query_interval
+        config.claims_wait_for_due_canonical_batch = parsed_args.claims_wait_for_due_canonical_batch
+        config.claims_batch_readiness_poll_seconds = parsed_args.claims_batch_readiness_poll_seconds
         config.claims_timeout = parsed_args.claims_timeout
         config.claims_max_steps = parsed_args.claims_max_steps
         config.claims_audit_only = parsed_args.claims_audit_only
@@ -1733,6 +1750,7 @@ class ClaimsValidator:
             run_id = None
             run_started_at = None
             try:
+                self._wait_for_due_canonical_batch()
                 run_id = _make_run_id()
                 run_started_at = datetime.now(timezone.utc)
                 self._model_usage_upload_summary = {}
@@ -1921,6 +1939,65 @@ class ClaimsValidator:
         if getattr(self.config, "claims_backend_url", ""):
             return self._fetch_backend_task()
         return self.tasks[step % len(self.tasks)]
+
+    def _wait_for_due_canonical_batch(self) -> None:
+        if not bool(getattr(self.config, "claims_wait_for_due_canonical_batch", False)):
+            return
+        if not getattr(self.config, "claims_backend_url", ""):
+            return
+        if bool(getattr(self, "_force_new_canonical_batch_pending", False)):
+            self.bt_logging.info("Canonical batch override pending; bypassing due-window wait.")
+            return
+        if self.backend_client is None:
+            raise RuntimeError("Canonical batch waiting requires an initialized backend client.")
+
+        poll_seconds = max(
+            1.0,
+            float(getattr(self.config, "claims_batch_readiness_poll_seconds", 60.0) or 60.0),
+        )
+        while True:
+            try:
+                readiness = self.backend_client.get_batch_readiness(
+                    netuid=int(self.config.netuid),
+                    task_type=str(getattr(self.config, "claims_task_type", "agent_v1_claim_extraction")),
+                )
+            except KeyboardInterrupt:
+                raise
+            except Exception as exc:
+                self.bt_logging.warning(
+                    f"Could not check canonical batch readiness; retrying in {poll_seconds:.0f}s: {exc}"
+                )
+                time.sleep(poll_seconds)
+                continue
+
+            if readiness.get("ready") is True:
+                self._last_batch_readiness_log = None
+                self.bt_logging.info(
+                    "Canonical batch is due; proceeding with batch selection "
+                    f"reason={readiness.get('reason') or 'unknown'} "
+                    f"batch={readiness.get('batch_id') or 'none'}."
+                )
+                return
+
+            next_due_at = str(readiness.get("next_due_at") or "")
+            reason = str(readiness.get("reason") or "unknown")
+            batch_id = str(readiness.get("batch_id") or "")
+            log_key = (batch_id, next_due_at, reason)
+            if log_key != getattr(self, "_last_batch_readiness_log", None):
+                self.bt_logging.info(
+                    "Canonical batch is not due; validator is idle "
+                    f"batch={batch_id or 'none'} next_due_at={next_due_at or 'unknown'} "
+                    f"reason={reason}."
+                )
+                self._last_batch_readiness_log = log_key
+
+            sleep_seconds = poll_seconds
+            due_at = _parse_datetime(next_due_at)
+            if due_at is not None:
+                remaining = (due_at - datetime.now(timezone.utc)).total_seconds()
+                if remaining > 0:
+                    sleep_seconds = max(1.0, min(poll_seconds, remaining))
+            time.sleep(sleep_seconds)
 
     def _build_backend_client(self) -> ClaimsBackendClient | None:
         backend_url = str(getattr(self.config, "claims_backend_url", "") or "").strip()
@@ -6722,6 +6799,12 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         ),
         "claims_timeout": float(getattr(config, "claims_timeout", 0.0)),
         "claims_query_interval": float(getattr(config, "claims_query_interval", 0.0)),
+        "claims_wait_for_due_canonical_batch": bool(
+            getattr(config, "claims_wait_for_due_canonical_batch", False)
+        ),
+        "claims_batch_readiness_poll_seconds": float(
+            getattr(config, "claims_batch_readiness_poll_seconds", 60.0) or 60.0
+        ),
         "claims_output_retention_runs": int(
             getattr(config, "claims_output_retention_runs", 0) or 0
         ),
