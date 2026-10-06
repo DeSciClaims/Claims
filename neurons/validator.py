@@ -997,6 +997,13 @@ class ClaimsValidator:
             help="Convert final Silver batch scores into validator weights.",
         )
         parser.add_argument(
+            "--claims.miner-burn-fraction",
+            dest="claims_miner_burn_fraction",
+            type=float,
+            default=float(os.getenv("CLAIMS_MINER_BURN_FRACTION", "0")),
+            help="Fraction of miner weights assigned to the subnet owner hotkey; 0 disables miner burn.",
+        )
+        parser.add_argument(
             "--claims.payout-winner-share",
             dest="claims_payout_winner_share",
             type=float,
@@ -1172,6 +1179,9 @@ class ClaimsValidator:
         config.claims_max_steps = parsed_args.claims_max_steps
         config.claims_audit_only = parsed_args.claims_audit_only
         config.claims_payout_mode = parsed_args.claims_payout_mode
+        config.claims_miner_burn_fraction = parsed_args.claims_miner_burn_fraction
+        if not math.isfinite(config.claims_miner_burn_fraction) or not 0.0 <= config.claims_miner_burn_fraction < 1.0:
+            raise SystemExit("--claims.miner-burn-fraction must be at least zero and less than one.")
         config.claims_payout_winner_share = parsed_args.claims_payout_winner_share
         config.claims_payout_runner_up_slots = parsed_args.claims_payout_runner_up_slots
         config.claims_payout_runner_up_decay = parsed_args.claims_payout_runner_up_decay
@@ -1467,6 +1477,17 @@ class ClaimsValidator:
             if not proposed or not assignments:
                 raise RuntimeError("No eligible miners were available for the canonical batch assignment.")
             selection_algorithm = str(proposal.get("algorithm") or "unknown")
+            if selection_algorithm == "override":
+                # An explicit UID override may intentionally use miners behind one public IP.
+                # The backend's optional Axon IP field enforces diversity for normal draws;
+                # the actual serving Axons are still resolved from the live metagraph below.
+                seen_axon_ips: set[str] = set()
+                for assignment in assignments:
+                    axon_ip = str(assignment.get("axon_ip") or "").strip().lower().strip("[]")
+                    if axon_ip in seen_axon_ips:
+                        assignment["axon_ip"] = None
+                    elif axon_ip:
+                        seen_axon_ips.add(axon_ip)
             registration_price_tao = None
             miner_reward_snapshot = None
             if selection_algorithm == BUCKET_ALGORITHM_VERSION:
@@ -1690,6 +1711,9 @@ class ClaimsValidator:
                 params=[],
             )
             snapshot = _miner_reward_snapshot_from_chain(metagraph_info, owner_cut)
+            snapshot["miner_burn_fraction"] = float(
+                getattr(self.config, "claims_miner_burn_fraction", 0.0)
+            )
         except Exception as exc:
             raise RuntimeError(f"Could not read the on-chain miner reward snapshot: {exc}") from exc
         self.bt_logging.info(
@@ -1697,6 +1721,7 @@ class ClaimsValidator:
             f"block={snapshot['observed_block']} "
             f"alpha_out_per_block={snapshot['alpha_out_emission_per_block']:.9f} "
             f"owner_cut={snapshot['owner_cut_fraction']:.6f} "
+            f"configured_miner_burn={snapshot['miner_burn_fraction']:.6f} "
             f"spot_alpha_price_tao={snapshot['tao_reserve'] / snapshot['alpha_reserve']:.12f}"
         )
         return snapshot
@@ -5593,6 +5618,11 @@ class ClaimsValidator:
         if self.backend_client is None:
             return
         weights = (event or {}).get("weights", [])
+        effective_weights_by_uid = {
+            int(row["uid"]): float(row["weight"])
+            for row in weights
+            if isinstance(row, dict) and "uid" in row and "weight" in row
+        }
         status = str((event or {}).get("status") or "unknown")
         batch_outcome = dict(getattr(self, "_active_silver_batch_outcome", {}) or {})
         batch_miners = {
@@ -5614,7 +5644,10 @@ class ClaimsValidator:
                     "raw_rank": item.get("raw_rank"),
                     "rank": item.get("rank"),
                     "winner": bool(item.get("winner", False)),
-                    "payout_weight": float(item.get("payout_weight", 0.0) or 0.0),
+                    "payout_weight": effective_weights_by_uid.get(
+                        uid, float(item.get("payout_weight", 0.0) or 0.0)
+                    ),
+                    "base_payout_weight": float(item.get("payout_weight", 0.0) or 0.0),
                     "reward_eligible": bool(item.get("reward_eligible", True)),
                     "reward_exclusion_reason": item.get("reward_exclusion_reason"),
                     "selection_lane": item.get("selection_lane"),
@@ -5674,12 +5707,10 @@ class ClaimsValidator:
 
     def _set_weights(self, scores: dict[int, float]) -> dict[str, Any]:
         if not scores:
-            self.bt_logging.warning("No target miner scores available; skipping set_weights.")
-            return {"status": "no_scores", "weights": [], "calculated": False, "submitted": False}
+            return self._set_weights_from_existing("no_scores")
         total = sum(max(score, 0.0) for score in scores.values())
         if total <= 0:
-            self.bt_logging.warning("All target miner scores are zero; skipping set_weights.")
-            return {"status": "all_zero", "weights": [], "calculated": False, "submitted": False}
+            return self._set_weights_from_existing("all_zero")
         uids = sorted(scores)
         batch_outcome = dict(getattr(self, "_active_silver_batch_outcome", {}) or {})
         payout_mode = str(
@@ -5705,11 +5736,106 @@ class ClaimsValidator:
             )
             weights_by_uid = {uid: float(calculated.get(str(uid), 0.0)) for uid in uids}
         payout_total = sum(weights_by_uid.values())
-        if payout_total > 0.0:
-            weights_by_uid = {uid: weight / payout_total for uid, weight in weights_by_uid.items()}
+        if not math.isfinite(payout_total) or payout_total <= 0.0:
+            self.bt_logging.error("Calculated miner payout weights are unusable; skipping set_weights.")
+            return {"status": "invalid_payout", "weights": [], "calculated": False, "submitted": False}
+        weights_by_uid = {uid: weight / payout_total for uid, weight in weights_by_uid.items()}
+        burn_fraction = float(getattr(self.config, "claims_miner_burn_fraction", 0.0))
+        owner_uid = None
+        if burn_fraction > 0.0:
+            try:
+                owner_uid = self._owner_burn_uid(set(uids))
+            except Exception as exc:
+                self.bt_logging.error(f"Miner burn preflight failed; skipping set_weights: {exc}")
+                return {
+                    "status": "burn_preflight_failed",
+                    "weights": [],
+                    "calculated": False,
+                    "submitted": False,
+                    "error": str(exc),
+                }
+            weights_by_uid = {uid: weight * (1.0 - burn_fraction) for uid, weight in weights_by_uid.items()}
+            weights_by_uid[owner_uid] = burn_fraction
+        return self._submit_weight_vector(weights_by_uid, scores, payout_mode, burn_fraction, owner_uid)
+
+    def _set_weights_from_existing(self, status: str) -> dict[str, Any]:
+        """Apply a changed burn fraction without inventing payouts for a scoreless round."""
+        burn_fraction = float(getattr(self.config, "claims_miner_burn_fraction", 0.0))
+        unchanged = {"status": status, "weights": [], "calculated": False, "submitted": False}
+        try:
+            info = self.subtensor.get_metagraph_info(netuid=self.config.netuid)
+            owner_uid = self._owner_burn_uid(set(), info=info)
+            neuron_query = {"uid": self.uid, "netuid": self.config.netuid}
+            if getattr(info, "block", None) is not None:
+                neuron_query["block"] = int(info.block)
+            neuron = self.subtensor.neuron_for_uid(**neuron_query)
+            if getattr(neuron, "hotkey", None) != self.wallet.hotkey.ss58_address:
+                raise ValueError("on-chain validator hotkey does not match the signer")
+            raw_weights = list(getattr(neuron, "weights", []) or [])
+            if not raw_weights:
+                self.bt_logging.warning(f"{status}: no existing on-chain weights to reuse.")
+                return unchanged
+            hotkeys = list(info.hotkeys)
+            coldkeys = list(info.coldkeys)
+            owner_coldkey = str(info.owner_coldkey)
+            registration_blocks = list(getattr(info, "block_at_registration", []) or [])
+            last_weight_update = int(getattr(neuron, "last_update", 0) or 0)
+            if len(registration_blocks) != len(hotkeys) or last_weight_update <= 0:
+                raise ValueError("cannot verify registration history for existing weights")
+            miner_weights: dict[int, float] = {}
+            owner_weight = 0.0
+            for uid_raw, weight_raw in raw_weights:
+                uid, weight = int(uid_raw), float(weight_raw)
+                if uid < 0 or uid >= len(hotkeys) or not math.isfinite(weight) or weight < 0:
+                    raise ValueError("existing on-chain weights contain an invalid UID or weight")
+                if uid == owner_uid:
+                    owner_weight += weight
+                elif coldkeys[uid] == owner_coldkey:
+                    raise ValueError(f"existing weight on owner-associated UID {uid} cannot be reused")
+                elif int(registration_blocks[uid]) > last_weight_update:
+                    self.bt_logging.warning(f"{status}: ignoring UID {uid} registered after the last weight update.")
+                else:
+                    miner_weights[uid] = miner_weights.get(uid, 0.0) + weight
+            miner_total = sum(miner_weights.values())
+            if not math.isfinite(miner_total) or miner_total <= 0:
+                raise ValueError("existing on-chain weights contain no miner allocation to preserve")
+            current_burn = owner_weight / (owner_weight + miner_total)
+            if abs(current_burn - burn_fraction) <= 1e-4:
+                self.bt_logging.warning(f"{status}: burn fraction already matches on-chain weights; keeping them.")
+                return unchanged
+            weights_by_uid = {
+                uid: weight / miner_total * (1.0 - burn_fraction)
+                for uid, weight in miner_weights.items()
+                if weight > 0.0
+            }
+            if burn_fraction > 0.0:
+                weights_by_uid[owner_uid] = burn_fraction
+            self.bt_logging.warning(
+                f"{status}: adjusting on-chain burn from {current_burn:.4f} to {burn_fraction:.4f} "
+                "while preserving existing miner proportions."
+            )
+            return self._submit_weight_vector(weights_by_uid, {}, "existing_onchain", burn_fraction, owner_uid)
+        except Exception as exc:
+            self.bt_logging.error(f"{status}: cannot safely adjust miner burn from existing weights: {exc}")
+            return {**unchanged, "error": str(exc)}
+
+    def _submit_weight_vector(
+        self,
+        weights_by_uid: dict[int, float],
+        scores: dict[int, float],
+        payout_mode: str,
+        burn_fraction: float,
+        owner_uid: int | None,
+    ) -> dict[str, Any]:
+        uids = sorted(weights_by_uid)
         weights = [weights_by_uid[uid] for uid in uids]
         weight_rows = [
-            {"uid": uid, "score": float(scores[uid]), "weight": weight}
+            {
+                "uid": uid,
+                "score": float(scores.get(uid, 0.0)),
+                "weight": weight,
+                **({"purpose": "miner_burn"} if burn_fraction > 0.0 and uid == owner_uid else {}),
+            }
             for uid, weight in zip(uids, weights)
         ]
         if self.config.claims_audit_only:
@@ -5763,6 +5889,30 @@ class ClaimsValidator:
                 "payout_mode": payout_mode,
                 "error": str(exc),
             }
+
+    def _owner_burn_uid(self, scored_uids: set[int], *, info: Any = None) -> int:
+        """Resolve the current owner UID and refuse to burn to an unverified hotkey."""
+        if info is None:
+            info = self.subtensor.get_metagraph_info(netuid=self.config.netuid)
+        if info is None:
+            raise ValueError("subnet metagraph info is unavailable")
+        owner_hotkey = str(getattr(info, "owner_hotkey", "") or "")
+        owner_coldkey = str(getattr(info, "owner_coldkey", "") or "")
+        if not owner_hotkey or not owner_coldkey:
+            raise ValueError("subnet owner hotkey or coldkey is unavailable")
+        hotkeys = list(getattr(info, "hotkeys", []) or [])
+        coldkeys = list(getattr(info, "coldkeys", []) or [])
+        if len(hotkeys) != len(coldkeys) or owner_hotkey not in hotkeys:
+            raise ValueError("subnet owner UID cannot be verified from the metagraph")
+        owner_uid = hotkeys.index(owner_hotkey)
+        if self.uid < 0 or self.uid >= len(hotkeys) or hotkeys[self.uid] != self.wallet.hotkey.ss58_address:
+            raise ValueError("validator UID does not match the signer in the metagraph")
+        for uid in scored_uids:
+            if uid < 0 or uid >= len(hotkeys):
+                raise ValueError(f"scored miner UID {uid} is missing from the metagraph")
+            if uid == owner_uid or coldkeys[uid] == owner_coldkey:
+                raise ValueError(f"scored miner UID {uid} is owner associated and would add to miner burn")
+        return owner_uid
 
     def _preflight_validator(self) -> None:
         try:
@@ -6812,6 +6962,7 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_max_steps": int(getattr(config, "claims_max_steps", 0) or 0),
         "claims_audit_only": bool(getattr(config, "claims_audit_only", False)),
         "claims_payout_mode": str(getattr(config, "claims_payout_mode", "winner-takes-most") or "winner-takes-most"),
+        "claims_miner_burn_fraction": float(getattr(config, "claims_miner_burn_fraction", 0.0)),
         "claims_payout_winner_share": float(getattr(config, "claims_payout_winner_share", 0.70)),
         "claims_payout_runner_up_slots": int(getattr(config, "claims_payout_runner_up_slots", 4)),
         "claims_payout_runner_up_decay": float(getattr(config, "claims_payout_runner_up_decay", 0.5)),

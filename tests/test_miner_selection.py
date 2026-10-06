@@ -978,6 +978,48 @@ def test_task_selection_claims_one_canonical_miner_assignment() -> None:
     assert calls[0]["miner_reward_snapshot"]["observed_block"] == 850
 
 
+def test_manual_override_claims_two_miners_behind_one_axon_ip() -> None:
+    calls: list[dict] = []
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(netuid=530, claims_target_uids=[1, 70])
+    validator.bt_logging = SimpleNamespace(info=lambda *_args: None)
+    validator.backend_client = SimpleNamespace(
+        claim_batch_miner_selection=lambda **payload: calls.append(payload)
+        or {"created": True, "miner_selection_algorithm": "override", "target_miners": payload["target_miners"]}
+    )
+    validator._record_canonical_selection_state = lambda **_kwargs: None
+    validator._resolve_canonical_target_neurons = lambda assignments, **_kwargs: [
+        SimpleNamespace(uid=item["uid"]) for item in assignments
+    ]
+
+    def propose(**_kwargs):
+        validator._active_miner_selection = {
+            "algorithm": "override",
+            "metagraph_block": 900,
+            "assignments": [
+                {"uid": 1, "hotkey": "hotkey_1", "coldkey": "coldkey_1", "axon_ip": "160.202.128.217"},
+                {"uid": 70, "hotkey": "hotkey_70", "coldkey": "coldkey_70", "axon_ip": "160.202.128.217"},
+            ],
+        }
+        return [SimpleNamespace(uid=1), SimpleNamespace(uid=70)]
+
+    validator._load_target_neurons = propose
+    task = SimpleNamespace(
+        batch_id="batch_1",
+        task_id="task_1",
+        assignment_key="assignment_1",
+        selection_seed="canonical-seed",
+        miner_selection_recent_registration_block=0,
+        target_miners=(),
+    )
+
+    selected = validator._load_task_target_neurons(task, fallback_seed="fallback")
+
+    assert [item.uid for item in selected] == [1, 70]
+    assert calls[0]["selection_algorithm"] == "override"
+    assert [item["axon_ip"] for item in calls[0]["target_miners"]] == ["160.202.128.217", None]
+
+
 def test_miner_reward_snapshot_uses_live_emission_owner_cut_and_pool_reserves() -> None:
     from neurons.validator import _miner_reward_snapshot_from_chain
 
@@ -1004,6 +1046,24 @@ def test_miner_reward_snapshot_uses_live_emission_owner_cut_and_pool_reserves() 
         "tao_reserve": 6_500.0,
         "alpha_reserve": 1_000_000.0,
     }
+
+
+def test_miner_reward_snapshot_includes_configured_burn_fraction() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(netuid=111, claims_miner_burn_fraction=0.9)
+    validator.subtensor = SimpleNamespace(
+        get_metagraph_info=lambda *, netuid: SimpleNamespace(
+            block=100,
+            tempo=360,
+            alpha_out_emission=SimpleNamespace(tao=1.0),
+            tao_in=SimpleNamespace(tao=6_500.0),
+            alpha_in=SimpleNamespace(tao=1_000_000.0),
+        ),
+        substrate=SimpleNamespace(query=lambda **_kwargs: SimpleNamespace(value=0)),
+    )
+    validator.bt_logging = SimpleNamespace(info=lambda *_args: None)
+
+    assert validator._miner_reward_snapshot()["miner_burn_fraction"] == 0.9
 
 
 def test_miner_registration_price_uses_subnet_recycle_balance() -> None:

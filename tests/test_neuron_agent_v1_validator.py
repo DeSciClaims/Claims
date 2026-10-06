@@ -1563,10 +1563,127 @@ def test_audit_only_calculates_winner_takes_most_weights_without_submitting() ->
     ]
 
 
+def _owner_burn_metagraph_info(
+    *, miner_coldkey: str = "miner_coldkey", registered_owner_coldkey: str = "owner_coldkey"
+) -> SimpleNamespace:
+    hotkeys = [f"hotkey_{uid}" for uid in range(11)]
+    coldkeys = [f"coldkey_{uid}" for uid in range(11)]
+    hotkeys[0] = "owner_hotkey"
+    coldkeys[0] = registered_owner_coldkey
+    coldkeys[9] = miner_coldkey
+    return SimpleNamespace(
+        owner_hotkey="owner_hotkey",
+        owner_coldkey="owner_coldkey",
+        hotkeys=hotkeys,
+        coldkeys=coldkeys,
+        block_at_registration=[1] * len(hotkeys),
+    )
+
+
+def test_owner_miner_burn_scales_scored_miners_and_submits_owner_uid() -> None:
+    submitted: list[dict] = []
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        netuid=111,
+        claims_audit_only=False,
+        claims_payout_mode="winner-takes-most",
+        claims_miner_burn_fraction=0.9,
+        claims_weight_period=16,
+    )
+    validator.bt_logging = SimpleNamespace(**vars(_logger()), success=lambda *_args, **_kwargs: None)
+    validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="owner_hotkey"))
+    validator.uid = 0
+    validator.subtensor = SimpleNamespace(
+        get_metagraph_info=lambda **_kwargs: _owner_burn_metagraph_info(),
+        set_weights=lambda **kwargs: (submitted.append(kwargs), SimpleNamespace(success=True, extrinsic_fee=0))[1],
+    )
+    validator._active_silver_batch_outcome = {
+        "miners": [
+            {"miner_id": "uid_9", "payout_weight": 0.7},
+            {"miner_id": "uid_10", "payout_weight": 0.3},
+        ]
+    }
+
+    event = validator._set_weights({9: 0.8, 10: 0.5})
+
+    assert event["status"] == "success"
+    assert event["weights"] == [
+        {"uid": 0, "score": 0.0, "weight": 0.9, "purpose": "miner_burn"},
+        {"uid": 9, "score": 0.8, "weight": pytest.approx(0.07)},
+        {"uid": 10, "score": 0.5, "weight": pytest.approx(0.03)},
+    ]
+    assert submitted[0]["uids"] == [0, 9, 10]
+    assert submitted[0]["weights"] == pytest.approx([0.9, 0.07, 0.03])
+    assert sum(submitted[0]["weights"]) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("registered_owner_coldkey", ["owner_coldkey", "other_coldkey"])
+def test_other_validator_can_assign_burn_weight_to_owner_uid(registered_owner_coldkey: str) -> None:
+    submitted: list[dict] = []
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        netuid=111,
+        claims_audit_only=False,
+        claims_payout_mode="proportional",
+        claims_miner_burn_fraction=0.9,
+        claims_weight_period=16,
+    )
+    validator.bt_logging = SimpleNamespace(**vars(_logger()), success=lambda *_args, **_kwargs: None)
+    validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="hotkey_1"))
+    validator.uid = 1
+    validator.subtensor = SimpleNamespace(
+        get_metagraph_info=lambda **_kwargs: _owner_burn_metagraph_info(
+            registered_owner_coldkey=registered_owner_coldkey
+        ),
+        set_weights=lambda **kwargs: (submitted.append(kwargs), SimpleNamespace(success=True, extrinsic_fee=0))[1],
+    )
+
+    event = validator._set_weights({9: 0.8, 10: 0.2})
+
+    assert event["status"] == "success"
+    assert submitted[0]["uids"] == [0, 9, 10]
+    assert submitted[0]["weights"] == pytest.approx([0.9, 0.08, 0.02])
+
+
+@pytest.mark.parametrize("owner_hotkey,miner_coldkey", [
+    ("different_owner_hotkey", "miner_coldkey"),
+    ("owner_hotkey", "owner_coldkey"),
+])
+def test_owner_miner_burn_fails_closed_if_owner_target_is_unverified(
+    owner_hotkey: str, miner_coldkey: str
+) -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        netuid=111,
+        claims_audit_only=False,
+        claims_payout_mode="proportional",
+        claims_miner_burn_fraction=0.9,
+    )
+    validator.bt_logging = _logger()
+    validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="owner_hotkey"))
+    validator.uid = 0
+    info = _owner_burn_metagraph_info(miner_coldkey=miner_coldkey)
+    info.owner_hotkey = owner_hotkey
+    validator.subtensor = SimpleNamespace(get_metagraph_info=lambda **_kwargs: info)
+
+    event = validator._set_weights({9: 0.8})
+
+    assert event["status"] == "burn_preflight_failed"
+    assert event["submitted"] is False
+
+
 def test_all_zero_scores_keep_existing_chain_weights_untouched() -> None:
     validator = ClaimsValidator.__new__(ClaimsValidator)
-    validator.config = SimpleNamespace(claims_audit_only=False)
+    validator.config = SimpleNamespace(netuid=111, claims_audit_only=False)
     validator.bt_logging = _logger()
+    validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="owner_hotkey"))
+    validator.uid = 0
+    validator.subtensor = SimpleNamespace(
+        get_metagraph_info=lambda **_kwargs: _owner_burn_metagraph_info(),
+        neuron_for_uid=lambda **_kwargs: SimpleNamespace(
+            hotkey="owner_hotkey", last_update=100, weights=[(9, 70), (10, 30)]
+        ),
+    )
 
     event = validator._set_weights({9: 0.0, 10: 0.0})
 
@@ -1576,6 +1693,93 @@ def test_all_zero_scores_keep_existing_chain_weights_untouched() -> None:
         "calculated": False,
         "submitted": False,
     }
+
+
+@pytest.mark.parametrize(
+    "scores,existing_weights,burn_fraction,expected_uids,expected_weights",
+    [
+        ({}, [(9, 70), (10, 30)], 0.9, [0, 9, 10], [0.9, 0.07, 0.03]),
+        ({9: 0.0, 10: 0.0}, [(0, 9000), (9, 700), (10, 300)], 0.0, [9, 10], [0.7, 0.3]),
+    ],
+)
+def test_burn_change_uses_existing_miner_proportions_when_scores_are_missing(
+    scores: dict[int, float],
+    existing_weights: list[tuple[int, int]],
+    burn_fraction: float,
+    expected_uids: list[int],
+    expected_weights: list[float],
+) -> None:
+    submitted: list[dict] = []
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        netuid=111,
+        claims_audit_only=False,
+        claims_miner_burn_fraction=burn_fraction,
+        claims_weight_period=16,
+    )
+    validator.bt_logging = SimpleNamespace(**vars(_logger()), success=lambda *_args, **_kwargs: None)
+    validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="owner_hotkey"))
+    validator.uid = 0
+    validator.subtensor = SimpleNamespace(
+        get_metagraph_info=lambda **_kwargs: _owner_burn_metagraph_info(),
+        neuron_for_uid=lambda **_kwargs: SimpleNamespace(
+            hotkey="owner_hotkey", last_update=100, weights=existing_weights
+        ),
+        set_weights=lambda **kwargs: (submitted.append(kwargs), SimpleNamespace(success=True, extrinsic_fee=0))[1],
+    )
+
+    event = validator._set_weights(scores)
+
+    assert event["status"] == "success"
+    assert event["payout_mode"] == "existing_onchain"
+    assert submitted[0]["uids"] == expected_uids
+    assert submitted[0]["weights"] == pytest.approx(expected_weights)
+
+
+def test_scoreless_burn_change_refuses_existing_owner_only_weights() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(netuid=111, claims_audit_only=False, claims_miner_burn_fraction=0.0)
+    validator.bt_logging = _logger()
+    validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="owner_hotkey"))
+    validator.uid = 0
+    validator.subtensor = SimpleNamespace(
+        get_metagraph_info=lambda **_kwargs: _owner_burn_metagraph_info(),
+        neuron_for_uid=lambda **_kwargs: SimpleNamespace(
+            hotkey="owner_hotkey", last_update=100, weights=[(0, 65535)]
+        ),
+    )
+
+    event = validator._set_weights({})
+
+    assert event["status"] == "no_scores"
+    assert event["submitted"] is False
+    assert "no miner allocation" in event["error"]
+
+
+def test_scoreless_burn_change_does_not_reuse_a_reassigned_uid() -> None:
+    submitted: list[dict] = []
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        netuid=111, claims_audit_only=False, claims_miner_burn_fraction=0.9, claims_weight_period=16
+    )
+    validator.bt_logging = SimpleNamespace(**vars(_logger()), success=lambda *_args, **_kwargs: None)
+    validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="owner_hotkey"))
+    validator.uid = 0
+    info = _owner_burn_metagraph_info()
+    info.block_at_registration[9] = 101
+    validator.subtensor = SimpleNamespace(
+        get_metagraph_info=lambda **_kwargs: info,
+        neuron_for_uid=lambda **_kwargs: SimpleNamespace(
+            hotkey="owner_hotkey", last_update=100, weights=[(9, 70), (10, 30)]
+        ),
+        set_weights=lambda **kwargs: (submitted.append(kwargs), SimpleNamespace(success=True, extrinsic_fee=0))[1],
+    )
+
+    event = validator._set_weights({})
+
+    assert event["status"] == "success"
+    assert submitted[0]["uids"] == [0, 10]
+    assert submitted[0]["weights"] == pytest.approx([0.9, 0.1])
 
 
 def test_compact_batch_outcome_omits_large_per_paper_breakdowns() -> None:
@@ -1640,7 +1844,10 @@ def test_weight_event_persists_authoritative_batch_summary() -> None:
         {9: 0.8},
         {
             "status": "audit_only",
-            "weights": [{"uid": 9, "score": 0.8, "weight": 1.0}],
+            "weights": [
+                {"uid": 0, "score": 0.0, "weight": 0.9, "purpose": "miner_burn"},
+                {"uid": 9, "score": 0.8, "weight": 0.1},
+            ],
         },
     )
 
@@ -1650,7 +1857,9 @@ def test_weight_event_persists_authoritative_batch_summary() -> None:
     assert payload["scores"][0]["reward_eligible"] is False
     assert payload["scores"][0]["reward_exclusion_reason"] == "duplicate_scientific_content"
     assert payload["scores"][0]["validator_failed_paper_ids"] == ["paper2"]
-    assert payload["weights"][0]["weight"] == 1.0
+    assert payload["scores"][0]["payout_weight"] == 0.1
+    assert payload["scores"][0]["base_payout_weight"] == 1.0
+    assert payload["weights"][0]["purpose"] == "miner_burn"
 
 
 def test_neuron_builds_configurable_silver_adjudication_passes() -> None:
