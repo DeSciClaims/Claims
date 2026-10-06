@@ -15,6 +15,8 @@ from validator.agent_v1.file_agent_workflow import (
     CanonicalizationAgentOutput,
     FileAgentWorkflowConfig,
     FileAgentWorkflowSession,
+    _CanonicalAuditRecoveryContext,
+    _CanonicalAuditWorkItem,
     _constrained_canonical_output_model,
     _partial_canonical_audit_from_raw,
 )
@@ -265,6 +267,66 @@ def test_incomplete_audit_recovers_only_missing_units_with_recursive_splitting(
     ]
     assert len(record.silver_units) == 4
     assert record.metadata["file_agent_workflow"]["canonical_audit_repaired"] is True
+
+
+def test_isolated_candidate_audit_ignores_invented_draft_review(tmp_path) -> None:
+    session, _baseline = _session_and_baseline(tmp_path)
+    payload = CanonicalAuditOutput(
+        units=[
+            CanonicalUnitProposal(
+                statement="Treatment reduced mortality.",
+                importance="central",
+                candidate_ids=["c0"],
+            )
+        ],
+        draft_unit_reviews=[
+            {
+                "draft_unit_id": "u0",
+                "outcome": "retained",
+                "rationale": "Invented review for a candidate with no draft unit.",
+            }
+        ],
+        quality_checks=CanonicalQualityChecks(
+            duplicate_or_split_attack_checked=True,
+            paper_relevance_checked=True,
+            evidence_support_checked=True,
+            contradiction_checked=True,
+            importance_checked=True,
+        ),
+    )
+
+    def fake_dspy_stage(_self, **kwargs):
+        kwargs["validator"](payload)
+        return payload
+
+    session._run_dspy_canonicalization_stage = MethodType(  # type: ignore[method-assign]
+        fake_dspy_stage, session
+    )
+    recovered = session._run_canonical_audit_split_recovery(
+        stage_key="canonicalization_audit_repair_partial",
+        stage_label="Silver canonicalization audit",
+        model="audit-model",
+        task={"accepted_candidates": [{"candidate_id": "c0"}]},
+        output_model=CanonicalAuditOutput,
+        skill_path=tmp_path / "skill.md",
+        recovery=_CanonicalAuditRecoveryContext(
+            expected_draft_unit_ids=set(),
+            expected_aliases={"c0"},
+            eligible_aliases={"c0"},
+            required_exclusion_aliases=set(),
+            must_link_groups=[],
+        ),
+        work_items=[
+            _CanonicalAuditWorkItem(
+                key="candidate:c0", draft_unit_ids=(), candidate_ids=("c0",)
+            )
+        ],
+        previous_error=ValueError("incomplete full audit"),
+    )
+
+    assert isinstance(recovered, CanonicalAuditOutput)
+    assert [unit.candidate_ids for unit in recovered.units] == [["c0"]]
+    assert recovered.draft_unit_reviews == []
 
 
 def test_config_reads_dspy_canonicalization_provider(monkeypatch) -> None:

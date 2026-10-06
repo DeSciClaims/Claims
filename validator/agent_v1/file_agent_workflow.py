@@ -1450,11 +1450,30 @@ class FileAgentWorkflowSession:
             draft_unit_id for item in work_items for draft_unit_id in item.draft_unit_ids
         }
 
-        def fragment_validator(payload: BaseModel) -> None:
+        def scoped_fragment(payload: BaseModel) -> CanonicalAuditOutput:
             if not isinstance(payload, CanonicalAuditOutput):
                 raise FileAgentWorkflowError("Canonical audit repair returned the wrong output type.")
+            # Split repairs may create a unit for a candidate that had no draft unit.
+            # Its review of an invented draft ID has no meaning in this scope.
+            return payload.model_copy(
+                update={
+                    "draft_unit_reviews": [
+                        review
+                        for review in payload.draft_unit_reviews
+                        if review.draft_unit_id in draft_unit_ids
+                    ],
+                    "findings": [
+                        finding
+                        for finding in payload.findings
+                        if set(finding.draft_unit_ids).issubset(draft_unit_ids)
+                    ],
+                }
+            )
+
+        def fragment_validator(payload: BaseModel) -> None:
+            fragment = scoped_fragment(payload)
             _validate_canonical_output(
-                payload,
+                fragment,
                 expected_draft_unit_ids=draft_unit_ids,
                 expected_aliases=aliases,
                 eligible_aliases=aliases.intersection(recovery.eligible_aliases),
@@ -1467,7 +1486,7 @@ class FileAgentWorkflowSession:
             )
 
         try:
-            return self._run_dspy_canonicalization_stage(
+            repaired = self._run_dspy_canonicalization_stage(
                 stage_key=stage_key,
                 stage_label=f"{stage_label} partial structured repair",
                 model=model,
@@ -1476,6 +1495,7 @@ class FileAgentWorkflowSession:
                 skill_path=skill_path,
                 validator=fragment_validator,
             )
+            return scoped_fragment(repaired)
         except Exception as split_error:
             if len(work_items) == 1:
                 raise FileAgentWorkflowError(
