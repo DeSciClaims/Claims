@@ -79,12 +79,12 @@ Provider credentials, role-specific harnesses and models, concurrency, repair,
 and persistence controls belong in `.env`. Command-line arguments override the
 corresponding environment values.
 
-`CLAIMS_MINER_BURN_FRACTION` defaults to `0`. A value of `0.9` makes this
-validator assign 90% of its weights to the subnet owner UID and split the
-remaining 10% among miners using the existing payout rule. Every validator
-that adopts the burn uses the same owner UID, including validators that do not
-own the subnet. The setting does not transfer alpha to the owner wallet. When
-a round has no positive scores, the validator reuses the current on-chain
+`CLAIMS_MINER_BURN_FRACTION` defaults to `0.9`; the testnet example sets it to
+`0`. At `0.9`, this validator assigns 90% of its weights to the subnet owner UID
+and splits the remaining 10% among miners using the existing payout rule. Every
+validator that adopts the burn uses the same owner UID, including validators
+that do not own the subnet. The setting does not transfer alpha to the owner
+wallet. When a round has no positive scores, the validator reuses the current on-chain
 miner proportions only if it needs to change the burn fraction; if no valid
 miner allocation exists, it submits no new weights and logs the reason. The
 setting changes only this validator's weight vector and does not by itself

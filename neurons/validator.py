@@ -1000,7 +1000,7 @@ class ClaimsValidator:
             "--claims.miner-burn-fraction",
             dest="claims_miner_burn_fraction",
             type=float,
-            default=float(os.getenv("CLAIMS_MINER_BURN_FRACTION", "0")),
+            default=float(os.getenv("CLAIMS_MINER_BURN_FRACTION", "0.9")),
             help="Fraction of miner weights assigned to the subnet owner hotkey; 0 disables miner burn.",
         )
         parser.add_argument(
