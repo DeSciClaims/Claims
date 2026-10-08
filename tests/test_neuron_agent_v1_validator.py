@@ -106,6 +106,16 @@ def test_slash_style_model_id_is_classified_as_openrouter() -> None:
     assert _provider_from_model_or_base("openai/gpt-5.6-luna-pro", "") == "openrouter"
 
 
+def test_openai_api_base_is_classified_as_openai() -> None:
+    assert (
+        _provider_from_model_or_base(
+            "gpt-6-luna",
+            "https://api.openai.com/v1",
+        )
+        == "openai"
+    )
+
+
 def test_chutes_api_base_takes_precedence_over_slash_style_model_id() -> None:
     assert (
         _provider_from_model_or_base(
@@ -215,6 +225,8 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     monkeypatch.setenv("CLAIMS_SILVER_CONSOLIDATION_TOP_K", "7")
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_CANONICAL_AUDIT_MODEL", "qwen/qwen3.7-flash")
     monkeypatch.setenv("CLAIMS_SILVER_FILE_AGENT_REQUIRE_DISTINCT_JUDGES", "true")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_DECISIONS_MODEL", "gpt-6-luna")
+    monkeypatch.setenv("CLAIMS_SILVER_ADJUDICATION_DECISIONS_THRESHOLD", "0.6")
     config = SimpleNamespace(
         netuid=530,
         subtensor=SimpleNamespace(network="test"),
@@ -269,6 +281,8 @@ def test_run_config_snapshot_records_effective_non_secret_settings(monkeypatch) 
     assert snapshot["claims_silver_adjudication_batch_max_tokens"] == 24000
     assert snapshot["claims_silver_adjudication_batch_input_tokens"] == 90000
     assert snapshot["claims_silver_adjudication_batch_retries"] == 2
+    assert snapshot["claims_silver_adjudication_decisions_model"] == "gpt-6-luna"
+    assert snapshot["claims_silver_adjudication_decisions_threshold"] == 0.6
     assert snapshot["claims_silver_relation_batch_input_tokens"] == 80000
     assert snapshot["claims_silver_relation_wall_timeout"] == 600.0
     assert snapshot["claims_silver_pairing_max_dense_pairs"] == 48

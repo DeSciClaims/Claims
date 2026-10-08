@@ -324,6 +324,54 @@ CLAIMS_SILVER_ADJUDICATION_MODEL_B=deepseek-ai/DeepSeek-V4-Flash-0731-TEE
 CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL=deepseek-ai/DeepSeek-V4-Flash-0731-TEE
 ```
 
+The experimental fixed-question Decisions harness uses the dedicated Decisions
+endpoint for the positive, negative, and appellate selection calls:
+
+```env
+CLAIMS_SILVER_ADJUDICATION_HARNESS=decisions
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_TRANSPORT=openai
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_API_BASE=https://api.openai.com/v1
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_API_KEY_ENV=OPENAI_API_KEY
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_MODEL=gpt-6-luna
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_THRESHOLD=0.5
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_COST_PER_MILLION_USD=0.10
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_TOKENS_PER_SECOND=0
+```
+
+Each candidate receives one whole-claim support predicate and one predicate per
+eligibility gate. Paired cases also receive a fixed candidate-choice question.
+The validator projects those probabilities into the existing eligibility
+decision model and records them in its rationales. Decisions cannot generate
+the blind finding reconstruction, so that stage and any failed Decisions call
+use the existing structured DSPy provider and model configuration. This makes
+the harness suitable for controlled cost, latency, reliability, and agreement
+comparisons, but its one-atom projection is not behaviorally identical to the
+generative atom-decomposition contract.
+
+OpenRouter currently lists Luna for its ordinary generation API but does not
+serve `POST /v1/decisions`; configuring its base URL therefore produces an
+explicit endpoint error and invokes DSPy recovery. Do not compare an OpenRouter
+structured-output call as though it had Decisions pricing or behavior.
+
+The same harness can instead use TypeSafe's Jev System One API:
+
+```env
+CLAIMS_SILVER_ADJUDICATION_HARNESS=decisions
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_TRANSPORT=jev
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_API_BASE=https://api.typesafe.ai/v1
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_API_KEY_ENV=JEV_API_KEY
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_MODEL=jev-latest
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_THRESHOLD=0.5
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_COST_PER_MILLION_USD=0.042
+CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_TOKENS_PER_SECOND=100000
+```
+
+The workflow translates predicates to Jev `noul` questions and normalizes Jev's
+named answers back into the existing eligibility contract. A shared leaky-bucket
+limiter reserves estimated input tokens across all paper workers before requests,
+preventing concurrent adjudication batches from bursting past the configured
+account-wide token rate. Selecting `jev` supplies the values above as defaults.
+
 The runtime automatically adds DSPy/LiteLLM's OpenAI-compatible routing prefix
 to the Chutes catalog model ID. For example,
 `deepseek-ai/DeepSeek-V4-Flash-0731-TEE` becomes
@@ -420,7 +468,9 @@ validation.
   candidates, primary assessments, and the hashed reconstruction to resolve
   the disagreement without rewriting its independent evidence baseline.
 - `CLAIMS_SILVER_ADJUDICATION_HARNESS=dspy` runs bounded calls through
-  `dspy.Predict`; a CLI harness such as `hermes-cli` uses the file workspace.
+  `dspy.Predict`; `decisions` runs fixed predicate and choice questions through
+  the dedicated Decisions endpoint; a CLI harness such as `hermes-cli` uses the
+  file workspace.
   Invalid or missing Hermes output retries once through the structured DSPy
   path, which validates and writes the result in validator code. A malformed
   batched DSPy retry is recursively split into smaller case groups. An
@@ -444,7 +494,11 @@ validation.
   `_MAX_TOKENS`, and `_TIMEOUT`. `_MAX_TOKENS` defaults to `32768`; real
   12-case OpenRouter replays exceeded `8192`. CLI adjudication uses
   `CLAIMS_SILVER_ADJUDICATION_CLI_PROVIDER` plus the file-agent timeout and
-  token limits below.
+  token limits below. Decisions uses its separate `_DECISIONS_TRANSPORT`,
+  `_DECISIONS_API_BASE`, `_DECISIONS_API_KEY_ENV`, `_DECISIONS_MODEL`,
+  `_DECISIONS_THRESHOLD`, `_DECISIONS_INPUT_COST_PER_MILLION_USD`, and
+  `_DECISIONS_INPUT_TOKENS_PER_SECOND` controls so DSPy recovery can remain on
+  a different provider.
 - Canonicalization audit keeps valid units and draft-unit reviews from an
   incomplete response, retries only the omitted or invalid scope through
   DSPy, and recursively splits that scope when needed. The reconstructed

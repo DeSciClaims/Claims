@@ -52,6 +52,11 @@ from .eligibility import (
     validate_eligibility_adjudication_output,
 )
 from .eligibility_dspy import DSPyEligibilityRuntime
+from .eligibility_decisions import (
+    DecisionsEligibilityRuntime,
+    InputTokenRateLimiter,
+    normalize_decisions_transport,
+)
 from .model_usage import UsageSink, provider_from_model_or_base
 from .record_projection import normalize_statement
 
@@ -289,6 +294,13 @@ class FileAgentWorkflowConfig:
     adjudication_max_tokens: int = 32768
     adjudication_appellate_max_tokens: int = 32768
     adjudication_timeout_seconds: float = 120.0
+    adjudication_decisions_transport: str = "openai"
+    adjudication_decisions_api_base: str = "https://api.openai.com/v1"
+    adjudication_decisions_api_key_env: str = "OPENAI_API_KEY"
+    adjudication_decisions_model: str = "gpt-6-luna"
+    adjudication_decisions_threshold: float = 0.5
+    adjudication_decisions_input_cost_per_million_usd: float = 0.10
+    adjudication_decisions_input_tokens_per_second: int = 0
     command_template: str = ""
     max_turns: int = 30
     max_tokens: int = 32768
@@ -303,8 +315,13 @@ class FileAgentWorkflowConfig:
     def __post_init__(self) -> None:
         if self.canonicalization_harness not in {"file-agent", "dspy"}:
             raise ValueError("Canonicalization harness must be file-agent or dspy.")
-        if self.adjudication_harness not in {"file-agent", "dspy"}:
-            raise ValueError("Eligibility adjudication harness must be file-agent or dspy.")
+        if self.adjudication_harness not in {"file-agent", "dspy", "decisions"}:
+            raise ValueError(
+                "Eligibility adjudication harness must be file-agent, dspy, or decisions."
+            )
+        if not 0.0 <= self.adjudication_decisions_threshold <= 1.0:
+            raise ValueError("Decisions adjudication threshold must be between 0 and 1.")
+        normalize_decisions_transport(self.adjudication_decisions_transport)
 
     @classmethod
     def from_env(cls) -> FileAgentWorkflowConfig:
@@ -368,6 +385,29 @@ class FileAgentWorkflowConfig:
             ).strip(),
             api_base=canonicalization_api_base_explicit,
         )
+        decisions_transport = normalize_decisions_transport(
+            os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_DECISIONS_TRANSPORT",
+                "openai",
+            )
+        )
+        decisions_defaults = (
+            {
+                "api_base": "https://api.typesafe.ai/v1",
+                "api_key_env": "JEV_API_KEY",
+                "model": "jev-latest",
+                "input_cost": "0.042",
+                "input_tokens_per_second": "100000",
+            }
+            if decisions_transport == "jev"
+            else {
+                "api_base": "https://api.openai.com/v1",
+                "api_key_env": "OPENAI_API_KEY",
+                "model": "gpt-6-luna",
+                "input_cost": "0.10",
+                "input_tokens_per_second": "0",
+            }
+        )
         return cls(
             root=Path(os.getenv("CLAIMS_SILVER_FILE_WORKSPACE_ROOT", "/tmp/claims-silver-workspaces")).expanduser(),
             harness=harness,
@@ -395,7 +435,9 @@ class FileAgentWorkflowConfig:
                 os.getenv("CLAIMS_SILVER_CANONICALIZATION_API_KEY_ENV", ""),
             ),
             adjudication_harness=(
-                "dspy" if adjudication_harness == "dspy" else "file-agent"
+                adjudication_harness
+                if adjudication_harness in {"dspy", "decisions"}
+                else "file-agent"
             ),
             adjudication_provider=adjudication_provider,
             adjudication_api_base=provider_api_base(
@@ -454,6 +496,52 @@ class FileAgentWorkflowConfig:
                 1.0,
                 float(os.getenv("CLAIMS_SILVER_ADJUDICATION_TIMEOUT", "120") or 120),
             ),
+            adjudication_decisions_transport=decisions_transport,
+            adjudication_decisions_api_base=os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_DECISIONS_API_BASE",
+                decisions_defaults["api_base"],
+            ).strip().rstrip("/"),
+            adjudication_decisions_api_key_env=(
+                os.getenv(
+                    "CLAIMS_SILVER_ADJUDICATION_DECISIONS_API_KEY_ENV",
+                    decisions_defaults["api_key_env"],
+                ).strip()
+                or decisions_defaults["api_key_env"]
+            ),
+            adjudication_decisions_model=(
+                os.getenv(
+                    "CLAIMS_SILVER_ADJUDICATION_DECISIONS_MODEL",
+                    decisions_defaults["model"],
+                ).strip()
+                or decisions_defaults["model"]
+            ),
+            adjudication_decisions_threshold=float(
+                os.getenv(
+                    "CLAIMS_SILVER_ADJUDICATION_DECISIONS_THRESHOLD",
+                    "0.5",
+                )
+                or 0.5
+            ),
+            adjudication_decisions_input_cost_per_million_usd=max(
+                0.0,
+                float(
+                    os.getenv(
+                        "CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_COST_PER_MILLION_USD",
+                        decisions_defaults["input_cost"],
+                    )
+                    or decisions_defaults["input_cost"]
+                ),
+            ),
+            adjudication_decisions_input_tokens_per_second=max(
+                0,
+                int(
+                    os.getenv(
+                        "CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_TOKENS_PER_SECOND",
+                        decisions_defaults["input_tokens_per_second"],
+                    )
+                    or decisions_defaults["input_tokens_per_second"]
+                ),
+            ),
             command_template=os.getenv("CLAIMS_SILVER_FILE_AGENT_CLI_COMMAND_TEMPLATE", "").strip(),
             max_turns=max(1, int(os.getenv("CLAIMS_SILVER_FILE_AGENT_MAX_TURNS", "30") or 30)),
             max_tokens=max(
@@ -507,6 +595,7 @@ class FileAgentWorkflowSession:
     eligibility_source_context_by_span_id: dict[str, str] | None = None
     usage_sink: UsageSink | None = None
     request_gate: Any | None = None
+    decisions_rate_limiter: InputTokenRateLimiter | None = None
     root: Path = field(init=False)
     manifest: dict[str, Any] = field(init=False)
     initial_candidates: list[ComparisonCandidate] = field(init=False)
@@ -652,6 +741,16 @@ class FileAgentWorkflowSession:
         negative_votes: dict[str, EligibilityAdjudicationVote] = {}
         positive_votes: dict[str, EligibilityAdjudicationVote] = {}
         split_case_refs: list[str] = []
+        recorded_negative_model = (
+            self.config.adjudication_decisions_model
+            if self.config.adjudication_harness == "decisions"
+            else self.config.adjudication_negative_model
+        )
+        recorded_positive_model = (
+            self.config.adjudication_decisions_model
+            if self.config.adjudication_harness == "decisions"
+            else self.config.adjudication_positive_model
+        )
         for context in contexts:
             case_ref = case_alias_by_id[context.case.case_id]
             negative_vote = eligibility_adjudication_vote_from_assessment(
@@ -659,14 +758,14 @@ class FileAgentWorkflowSession:
                 judge_role="negative",
                 assessment=negative_by_ref[case_ref],
                 candidate_id_by_ref=candidate_ids_by_case_alias[case_ref],
-                model=self.config.adjudication_negative_model,
+                model=recorded_negative_model,
             )
             positive_vote = eligibility_adjudication_vote_from_assessment(
                 case_id=context.case.case_id,
                 judge_role="positive",
                 assessment=positive_by_ref[case_ref],
                 candidate_id_by_ref=candidate_ids_by_case_alias[case_ref],
-                model=self.config.adjudication_positive_model,
+                model=recorded_positive_model,
             )
             negative_votes[case_ref] = negative_vote
             positive_votes[case_ref] = positive_vote
@@ -787,7 +886,11 @@ class FileAgentWorkflowSession:
                     judge_role="tiebreak",
                     assessment=assessment,
                     candidate_id_by_ref=candidate_ids_by_case_alias[assessment.case_ref],
-                    model=self.config.adjudication_tiebreak_model,
+                    model=(
+                        self.config.adjudication_decisions_model
+                        if self.config.adjudication_harness == "decisions"
+                        else self.config.adjudication_tiebreak_model
+                    ),
                 )
 
         decisions = []
@@ -831,7 +934,7 @@ class FileAgentWorkflowSession:
             )
 
         try:
-            if self.config.adjudication_harness == "dspy":
+            if self.config.adjudication_harness in {"dspy", "decisions"}:
                 payload = self._run_dspy_eligibility_stage(
                     stage_key=stage_key,
                     stage_label="Eligibility blind reconstruction",
@@ -888,6 +991,15 @@ class FileAgentWorkflowSession:
         validator: Callable[[BaseModel], None],
     ) -> BaseModel:
         try:
+            if self.config.adjudication_harness == "decisions":
+                return self._run_decisions_eligibility_stage(
+                    stage_key=stage_key,
+                    stage_label=stage_label,
+                    task=task,
+                    output_model=output_model,
+                    skill_path=skill_path,
+                    validator=validator,
+                )
             if self.config.adjudication_harness == "dspy":
                 return self._run_dspy_eligibility_stage(
                     stage_key=stage_key,
@@ -1083,6 +1195,99 @@ class FileAgentWorkflowSession:
             }
         )
         return payload
+
+    def _run_decisions_eligibility_stage(
+        self,
+        *,
+        stage_key: str,
+        stage_label: str,
+        task: dict[str, Any],
+        output_model: type[BaseModel],
+        skill_path: Path,
+        validator: Callable[[BaseModel], None],
+    ) -> BaseModel:
+        if not issubclass(output_model, EligibilityAdjudicationAgentOutput):
+            raise FileAgentWorkflowError(
+                "Decisions adjudication supports fixed eligibility selections only."
+            )
+        stage_dir = self.root / "executions" / _safe_path(stage_key)
+        stage_dir.mkdir(parents=True, exist_ok=True)
+        enriched_task = {
+            **task,
+            "skill_instructions": skill_path.read_text(encoding="utf-8"),
+        }
+        output_path = stage_dir / "output.json"
+        if self.config.resume_existing_stages:
+            existing_task = _read_json_value(stage_dir / "task.json")
+            existing_payload = _read_model(output_path, output_model)
+            if existing_task == enriched_task and existing_payload is not None:
+                validator(existing_payload)
+                self._record_manifest_stage(
+                    {
+                        "stage_key": stage_key,
+                        "status": "resumed",
+                        "model": self.config.adjudication_decisions_model,
+                        "harness": "decisions",
+                        "output_sha256": _sha256(output_path),
+                    }
+                )
+                return existing_payload
+        self._atomic_json(stage_dir / "task.json", enriched_task)
+        self._atomic_json(stage_dir / "output_schema.json", output_model.model_json_schema())
+        started = time.perf_counter()
+        try:
+            with _request_slot(self.request_gate):
+                payload = DecisionsEligibilityRuntime(
+                    transport=self.config.adjudication_decisions_transport,
+                    api_base=self.config.adjudication_decisions_api_base,
+                    api_key_env=self.config.adjudication_decisions_api_key_env,
+                    model=self.config.adjudication_decisions_model,
+                    threshold=self.config.adjudication_decisions_threshold,
+                    timeout_seconds=self.config.adjudication_timeout_seconds,
+                    input_cost_per_million_usd=(
+                        self.config.adjudication_decisions_input_cost_per_million_usd
+                    ),
+                    usage_sink=self.usage_sink,
+                    rate_limiter=self.decisions_rate_limiter,
+                    raw_output_sink=lambda raw: self._atomic_json(
+                        stage_dir / "raw_response.json",
+                        {"raw_response": raw},
+                    ),
+                ).run(
+                    task=enriched_task,
+                    stage_key=stage_key,
+                    stage_label=stage_label,
+                    paper_id=self.paper_id,
+                    workspace_id=self.workspace_id,
+                    api_key=os.getenv(
+                        self.config.adjudication_decisions_api_key_env,
+                        "",
+                    ),
+                )
+            validator(payload)
+            self._atomic_json(output_path, payload.model_dump(mode="json"))
+            self._record_manifest_stage(
+                {
+                    "stage_key": stage_key,
+                    "status": "complete",
+                    "model": self.config.adjudication_decisions_model,
+                    "harness": "decisions",
+                    "duration_seconds": round(time.perf_counter() - started, 3),
+                    "output_sha256": _sha256(output_path),
+                }
+            )
+            return payload
+        except Exception as exc:
+            self._record_manifest_stage(
+                {
+                    "stage_key": stage_key,
+                    "status": "failed",
+                    "model": self.config.adjudication_decisions_model,
+                    "harness": "decisions",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            raise
 
     def _run_dspy_eligibility_stage(
         self,
@@ -2617,6 +2822,7 @@ class FileAgentSilverWorkflow:
     config: FileAgentWorkflowConfig
     usage_sink: UsageSink | None = None
     request_gate: Any | None = None
+    decisions_rate_limiter: InputTokenRateLimiter | None = None
 
     @classmethod
     def from_env(
@@ -2625,10 +2831,18 @@ class FileAgentSilverWorkflow:
         usage_sink: UsageSink | None = None,
         request_gate: Any | None = None,
     ) -> FileAgentSilverWorkflow:
+        config = FileAgentWorkflowConfig.from_env()
         return cls(
-            config=FileAgentWorkflowConfig.from_env(),
+            config=config,
             usage_sink=usage_sink,
             request_gate=request_gate,
+            decisions_rate_limiter=(
+                InputTokenRateLimiter(
+                    config.adjudication_decisions_input_tokens_per_second
+                )
+                if config.adjudication_decisions_input_tokens_per_second > 0
+                else None
+            ),
         )
 
     def start_session(
@@ -2651,6 +2865,7 @@ class FileAgentSilverWorkflow:
             eligibility_source_context_by_span_id=eligibility_source_context_by_span_id,
             usage_sink=self.usage_sink,
             request_gate=self.request_gate,
+            decisions_rate_limiter=self.decisions_rate_limiter,
         )
 
 

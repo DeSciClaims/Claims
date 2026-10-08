@@ -543,9 +543,11 @@ only one passes, and uses the judges' relative preference only when both pass.
 Every substantive claim atom must have direct cited paper support. A rejecting
 judge must record the candidate-linked source spans it reviewed. Operationally
 unrecoverable cases are recorded as technically unresolved rather than
-converted into scientific rejection penalties. The stage
-supports the file-agent and bounded DSPy Predict harnesses. Full controls and
-failure behavior are in the
+converted into scientific rejection penalties. The stage supports the
+file-agent, bounded DSPy Predict, and experimental fixed-question Decisions
+harnesses. Decisions can use OpenAI Luna or TypeSafe Jev predicates and choices
+for primary selection while retaining DSPy for generative blind reconstruction
+and operational recovery. Full controls and failure behavior are in the
 [validator configuration reference](./validator/agent_v1/README.md#file-workspace-silver).
 Canonical draft and audit operate globally over each paper's accepted candidates.
 They use the configured file agent by default. Missing or malformed draft output,

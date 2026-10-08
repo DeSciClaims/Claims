@@ -472,6 +472,60 @@ def test_hermes_missing_output_retries_through_structured_dspy(tmp_path) -> None
     assert structured_calls == ["eligibility_adjudication_negative_retry"]
 
 
+def test_decisions_failure_retries_through_structured_dspy(tmp_path) -> None:
+    candidate = _candidate("miner:uid_9:M01", "miner", "uid_9")
+    session = _session(tmp_path, [candidate])
+    session.config = replace(session.config, adjudication_harness="decisions")
+    task = {
+        "cases": [
+            {
+                "case_ref": "k0",
+                "candidates": [{"candidate_ref": "k0_a"}],
+            }
+        ],
+        "source_spans": {},
+    }
+    calls: list[str] = []
+
+    def failed_decisions(_self, **kwargs):
+        calls.append(f"decisions:{kwargs['stage_key']}")
+        raise RuntimeError("Decisions endpoint unavailable")
+
+    def structured_retry(_self, **kwargs):
+        calls.append(f"dspy:{kwargs['stage_key']}")
+        payload = _output("k0", ["k0_a"], selected_ref="k0_a")
+        kwargs["validator"](payload)
+        return payload
+
+    session._run_decisions_eligibility_stage = MethodType(  # type: ignore[method-assign]
+        failed_decisions,
+        session,
+    )
+    session._run_dspy_eligibility_stage = MethodType(  # type: ignore[method-assign]
+        structured_retry,
+        session,
+    )
+
+    result = session._run_eligibility_stage_with_retry(
+        stage_key="eligibility_adjudication_negative",
+        stage_label="Eligibility adjudication negative judge",
+        model="fallback-model",
+        task=task,
+        output_model=EligibilityAdjudicationAgentOutput,
+        skill_path=Path(__file__),
+        validator=lambda output: validate_eligibility_adjudication_output(
+            output,
+            expected_candidate_refs_by_case={"k0": {"k0_a"}},
+        ),
+    )
+
+    assert isinstance(result, EligibilityAdjudicationAgentOutput)
+    assert calls == [
+        "decisions:eligibility_adjudication_negative",
+        "dspy:eligibility_adjudication_negative_retry",
+    ]
+
+
 def test_failed_structured_batch_recovers_by_recursive_case_splitting(tmp_path) -> None:
     candidates = [
         _candidate(f"miner:uid_{index}:M01", "miner", f"uid_{index}")

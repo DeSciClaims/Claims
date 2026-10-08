@@ -43,6 +43,10 @@ from validator.agent_v1.duplicate_submissions import (
     detect_duplicate_submissions,
     detect_semantic_duplicate_submissions,
 )
+from validator.agent_v1.eligibility_decisions import (
+    decisions_provider,
+    decisions_runtime_id,
+)
 from validator.agent_v1.file_agent_workflow import (
     FileAgentSilverWorkflow,
     FileAgentWorkflowConfig,
@@ -3705,15 +3709,30 @@ class ClaimsValidator:
             )
         except Exception as exc:
             raise RuntimeError(f"Silver file-agent workflow configuration failed: {exc}") from exc
+        if workflow.config.adjudication_harness == "decisions":
+            adjudication_provider = decisions_provider(
+                workflow.config.adjudication_decisions_transport,
+                model=workflow.config.adjudication_decisions_model,
+                api_base=workflow.config.adjudication_decisions_api_base,
+            )
+            adjudication_models = ",".join(
+                [workflow.config.adjudication_decisions_model] * 3
+            )
+        else:
+            adjudication_provider = workflow.config.adjudication_provider
+            adjudication_models = ",".join(
+                [
+                    workflow.config.adjudication_negative_model,
+                    workflow.config.adjudication_positive_model,
+                    workflow.config.adjudication_tiebreak_model,
+                ]
+            )
         self.bt_logging.info(
             "Silver file-agent workflow enabled: "
             f"harness={workflow.config.harness} "
             f"adjudication_harness={workflow.config.adjudication_harness} "
-            f"adjudication_provider={workflow.config.adjudication_provider} "
-            f"adjudication_models="
-            f"{workflow.config.adjudication_negative_model},"
-            f"{workflow.config.adjudication_positive_model},"
-            f"{workflow.config.adjudication_tiebreak_model} "
+            f"adjudication_provider={adjudication_provider} "
+            f"adjudication_models={adjudication_models} "
             f"comparison_model={workflow.config.comparison_model} "
             f"canonicalization_model={workflow.config.canonicalization_model} "
             f"canonical_audit_model={workflow.config.canonical_audit_model or workflow.config.canonicalization_model}"
@@ -5374,8 +5393,25 @@ class ClaimsValidator:
         if workflow is None:
             return []
         config = workflow.config
-        adjudication_runtime = (
-            "dspy" if config.adjudication_harness == "dspy" else config.harness
+        adjudication_runtime = {
+            "dspy": "dspy",
+            "decisions": decisions_runtime_id(
+                config.adjudication_decisions_transport
+            ),
+        }.get(config.adjudication_harness, config.harness)
+        adjudication_model = (
+            config.adjudication_decisions_model
+            if config.adjudication_harness == "decisions"
+            else config.adjudication_negative_model
+        )
+        adjudication_provider = (
+            decisions_provider(
+                config.adjudication_decisions_transport,
+                model=config.adjudication_decisions_model,
+                api_base=config.adjudication_decisions_api_base,
+            )
+            if config.adjudication_harness == "decisions"
+            else config.adjudication_provider
         )
         return [
             _drop_empty_model_fields(
@@ -5396,25 +5432,33 @@ class ClaimsValidator:
                     "silver_adjudication",
                     "Eligibility selection negative judge",
                     "silver_adjudication_negative",
-                    config.adjudication_negative_model,
+                    adjudication_model,
                     adjudication_runtime,
-                    config.adjudication_provider,
+                    adjudication_provider,
                 ),
                 (
                     "silver_adjudication",
                     "Eligibility selection positive judge",
                     "silver_adjudication_positive",
-                    config.adjudication_positive_model,
+                    (
+                        config.adjudication_decisions_model
+                        if config.adjudication_harness == "decisions"
+                        else config.adjudication_positive_model
+                    ),
                     adjudication_runtime,
-                    config.adjudication_provider,
+                    adjudication_provider,
                 ),
                 (
                     "silver_adjudication",
                     "Eligibility selection tiebreak judge",
                     "silver_adjudication_tiebreak",
-                    config.adjudication_tiebreak_model,
+                    (
+                        config.adjudication_decisions_model
+                        if config.adjudication_harness == "decisions"
+                        else config.adjudication_tiebreak_model
+                    ),
                     adjudication_runtime,
-                    config.adjudication_provider,
+                    adjudication_provider,
                 ),
                 (
                     "silver_comparison",
@@ -6319,6 +6363,8 @@ def _model_id_or_empty(value: Any) -> str:
 def _provider_from_model_or_base(model: str, api_base: str = "") -> str:
     if "chutes.ai" in api_base:
         return "chutes"
+    if "api.openai.com" in api_base:
+        return "openai"
     if model.startswith("openrouter/") or "/" in model or "openrouter.ai/api" in api_base:
         return "openrouter"
     if api_base:
@@ -6883,6 +6929,25 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
     """Return effective, replay-relevant validator settings without secrets or local paths."""
 
     subtensor = getattr(config, "subtensor", None)
+    decisions_transport = str(
+        os.getenv("CLAIMS_SILVER_ADJUDICATION_DECISIONS_TRANSPORT", "openai")
+        or "openai"
+    ).strip().lower()
+    decisions_defaults = (
+        {
+            "api_base": "https://api.typesafe.ai/v1",
+            "model": "jev-latest",
+            "input_cost": "0.042",
+            "input_tokens_per_second": "100000",
+        }
+        if decisions_transport in {"jev", "typesafe", "typesafe-jev", "systemone"}
+        else {
+            "api_base": "https://api.openai.com/v1",
+            "model": "gpt-6-luna",
+            "input_cost": "0.10",
+            "input_tokens_per_second": "0",
+        }
+    )
     return {
         "schema": "claims_validator_config_v2",
         "netuid": int(getattr(config, "netuid", 0) or 0),
@@ -7038,6 +7103,42 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_silver_adjudication_model_b": str(getattr(config, "claims_silver_adjudication_model_b", "") or ""),
         "claims_silver_adjudication_tiebreak_model": str(
             getattr(config, "claims_silver_adjudication_tiebreak_model", "") or ""
+        ),
+        "claims_silver_adjudication_decisions_api_base": str(
+            os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_DECISIONS_API_BASE",
+                decisions_defaults["api_base"],
+            )
+            or decisions_defaults["api_base"]
+        ),
+        "claims_silver_adjudication_decisions_transport": decisions_transport,
+        "claims_silver_adjudication_decisions_model": str(
+            os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_DECISIONS_MODEL",
+                decisions_defaults["model"],
+            )
+            or decisions_defaults["model"]
+        ),
+        "claims_silver_adjudication_decisions_threshold": float(
+            os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_DECISIONS_THRESHOLD",
+                "0.5",
+            )
+            or 0.5
+        ),
+        "claims_silver_adjudication_decisions_input_cost_per_million_usd": float(
+            os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_COST_PER_MILLION_USD",
+                decisions_defaults["input_cost"],
+            )
+            or decisions_defaults["input_cost"]
+        ),
+        "claims_silver_adjudication_decisions_input_tokens_per_second": int(
+            os.getenv(
+                "CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_TOKENS_PER_SECOND",
+                decisions_defaults["input_tokens_per_second"],
+            )
+            or decisions_defaults["input_tokens_per_second"]
         ),
         "claims_silver_adjudication_cli_prompt_mode": str(
             getattr(config, "claims_silver_adjudication_cli_prompt_mode", "auto") or "auto"
