@@ -90,6 +90,15 @@ miner allocation exists, it submits no new weights and logs the reason. The
 setting changes only this validator's weight vector and does not by itself
 guarantee an exact network-wide `MinerBurned` value.
 
+`CLAIMS_OPERATOR_SHARE` defaults to `0`. To route the 90% allocation to the
+operator instead, set `CLAIMS_MINER_BURN_FRACTION=0` and
+`CLAIMS_OPERATOR_SHARE=0.9`. The validator resolves `CLAIMS_OPERATOR_HOTKEY`
+to its current UID and checks that its registered coldkey matches
+`CLAIMS_OPERATOR_COLDKEY` and differs from the subnet owner coldkey. It
+reserves the operator share and divides the remainder among scored miners.
+Scoreless rounds assign the full vector to the operator. The backend uses the
+remaining competition share for its reward estimates.
+
 ### Run Identity And Scheduling
 
 - `--netuid`, `--wallet.name`, and `--wallet.hotkey` identify the registered
