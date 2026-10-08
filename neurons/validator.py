@@ -89,6 +89,8 @@ from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsPaperTask, ClaimsTask
 _CODE_STATE_CACHE: dict[str, Any] | None = None
 _CLAIMS_REPO_ROOT = Path(__file__).resolve().parents[1]
 _U16_MAX = 65_535
+DEFAULT_OPERATOR_HOTKEY = "5DkRv8mabzsVYSgGzcozFYXiS5QXfn7LHRUyrYchDhnFFpZY"
+DEFAULT_OPERATOR_COLDKEY = "5Go1uNA66x3ECirzsksuhZ3JgnF76QVjiNxYuHYRuosadpEG"
 
 
 @dataclass(frozen=True)
@@ -268,6 +270,8 @@ class ClaimsValidator:
         self.metagraph = self.subtensor.metagraph(netuid=self.config.netuid, lite=False)
         self.uid = self._registered_uid()
         self._preflight_validator()
+        if self.config.claims_operator_share > 0.0:
+            self._operator_uid(set())
         self.tasks = self._load_tasks()
         self.backend_client = self._build_backend_client()
         if self.backend_client is not None:
@@ -1004,6 +1008,23 @@ class ClaimsValidator:
             help="Fraction of miner weights assigned to the subnet owner hotkey; 0 disables miner burn.",
         )
         parser.add_argument(
+            "--claims.operator-share",
+            dest="claims_operator_share",
+            type=float,
+            default=float(os.getenv("CLAIMS_OPERATOR_SHARE", "0")),
+            help="Fraction of validator weight assigned to the registered operator miner.",
+        )
+        parser.add_argument(
+            "--claims.operator-hotkey",
+            dest="claims_operator_hotkey",
+            default=os.getenv("CLAIMS_OPERATOR_HOTKEY", DEFAULT_OPERATOR_HOTKEY),
+        )
+        parser.add_argument(
+            "--claims.operator-coldkey",
+            dest="claims_operator_coldkey",
+            default=os.getenv("CLAIMS_OPERATOR_COLDKEY", DEFAULT_OPERATOR_COLDKEY),
+        )
+        parser.add_argument(
             "--claims.payout-winner-share",
             dest="claims_payout_winner_share",
             type=float,
@@ -1182,6 +1203,17 @@ class ClaimsValidator:
         config.claims_miner_burn_fraction = parsed_args.claims_miner_burn_fraction
         if not math.isfinite(config.claims_miner_burn_fraction) or not 0.0 <= config.claims_miner_burn_fraction < 1.0:
             raise SystemExit("--claims.miner-burn-fraction must be at least zero and less than one.")
+        config.claims_operator_share = parsed_args.claims_operator_share
+        config.claims_operator_hotkey = str(parsed_args.claims_operator_hotkey).strip()
+        config.claims_operator_coldkey = str(parsed_args.claims_operator_coldkey).strip()
+        if not math.isfinite(config.claims_operator_share) or not 0.0 <= config.claims_operator_share <= 1.0:
+            raise SystemExit("--claims.operator-share must be between zero and one.")
+        if config.claims_miner_burn_fraction + config.claims_operator_share > 1.0:
+            raise SystemExit("Miner burn fraction plus operator share must not exceed one.")
+        if config.claims_operator_share > 0.0 and (
+            not config.claims_operator_hotkey or not config.claims_operator_coldkey
+        ):
+            raise SystemExit("Operator hotkey and coldkey are required when operator share is positive.")
         config.claims_payout_winner_share = parsed_args.claims_payout_winner_share
         config.claims_payout_runner_up_slots = parsed_args.claims_payout_runner_up_slots
         config.claims_payout_runner_up_decay = parsed_args.claims_payout_runner_up_decay
@@ -1714,6 +1746,11 @@ class ClaimsValidator:
             snapshot["miner_burn_fraction"] = float(
                 getattr(self.config, "claims_miner_burn_fraction", 0.0)
             )
+            operator_share = float(getattr(self.config, "claims_operator_share", 0.0))
+            if operator_share > 0.0 and self._operator_uid(set(), info=metagraph_info) is None:
+                self.bt_logging.error("Operator hotkey is not registered; reporting zero operator allocation.")
+                operator_share = 0.0
+            snapshot["operator_share"] = operator_share
         except Exception as exc:
             raise RuntimeError(f"Could not read the on-chain miner reward snapshot: {exc}") from exc
         self.bt_logging.info(
@@ -1722,6 +1759,7 @@ class ClaimsValidator:
             f"alpha_out_per_block={snapshot['alpha_out_emission_per_block']:.9f} "
             f"owner_cut={snapshot['owner_cut_fraction']:.6f} "
             f"configured_miner_burn={snapshot['miner_burn_fraction']:.6f} "
+            f"configured_operator_share={snapshot['operator_share']:.6f} "
             f"spot_alpha_price_tao={snapshot['tao_reserve'] / snapshot['alpha_reserve']:.12f}"
         )
         return snapshot
@@ -1748,6 +1786,11 @@ class ClaimsValidator:
         if getattr(neuron, "is_null", True):
             return False
         if str(getattr(neuron, "hotkey", "")) == self.wallet.hotkey.ss58_address:
+            return False
+        if (
+            float(getattr(self.config, "claims_operator_share", 0.0)) > 0.0
+            and str(getattr(neuron, "hotkey", "")) == str(getattr(self.config, "claims_operator_hotkey", ""))
+        ):
             return False
         axon = getattr(neuron, "axon_info", None)
         axon_port = int(getattr(axon, "port", 0) or 0)
@@ -5672,6 +5715,8 @@ class ClaimsValidator:
                     "moving_average_scores": [],
                     "weights": weights,
                     "status": status,
+                    "operator_share": float((event or {}).get("operator_share") or 0.0),
+                    "operator_uid": (event or {}).get("operator_uid"),
                 },
             )
         except BackendClientError as exc:
@@ -5741,7 +5786,9 @@ class ClaimsValidator:
             return {"status": "invalid_payout", "weights": [], "calculated": False, "submitted": False}
         weights_by_uid = {uid: weight / payout_total for uid, weight in weights_by_uid.items()}
         burn_fraction = float(getattr(self.config, "claims_miner_burn_fraction", 0.0))
+        operator_share = float(getattr(self.config, "claims_operator_share", 0.0))
         owner_uid = None
+        operator_uid = None
         if burn_fraction > 0.0:
             try:
                 owner_uid = self._owner_burn_uid(set(uids))
@@ -5754,16 +5801,49 @@ class ClaimsValidator:
                     "submitted": False,
                     "error": str(exc),
                 }
-            weights_by_uid = {uid: weight * (1.0 - burn_fraction) for uid, weight in weights_by_uid.items()}
+        if operator_share > 0.0:
+            try:
+                operator_uid = self._operator_uid(set(uids))
+            except Exception as exc:
+                self.bt_logging.error(f"Operator weight preflight failed; skipping set_weights: {exc}")
+                return {
+                    "status": "operator_preflight_failed",
+                    "weights": [],
+                    "calculated": False,
+                    "submitted": False,
+                    "error": str(exc),
+                }
+            if operator_uid is None:
+                self.bt_logging.error("Operator hotkey is not registered; submitting the normal miner allocation.")
+                operator_share = 0.0
+        if burn_fraction > 0.0 or operator_share > 0.0:
+            miner_share = 1.0 - burn_fraction - operator_share
+            weights_by_uid = {
+                uid: weight * miner_share for uid, weight in weights_by_uid.items() if weight * miner_share > 0.0
+            }
+        if burn_fraction > 0.0:
             weights_by_uid[owner_uid] = burn_fraction
-        return self._submit_weight_vector(weights_by_uid, scores, payout_mode, burn_fraction, owner_uid)
+        if operator_uid is not None:
+            weights_by_uid[operator_uid] = operator_share
+        return self._submit_weight_vector(
+            weights_by_uid, scores, payout_mode, burn_fraction, owner_uid, operator_uid
+        )
 
     def _set_weights_from_existing(self, status: str) -> dict[str, Any]:
         """Apply a changed burn fraction without inventing payouts for a scoreless round."""
         burn_fraction = float(getattr(self.config, "claims_miner_burn_fraction", 0.0))
+        operator_share = float(getattr(self.config, "claims_operator_share", 0.0))
         unchanged = {"status": status, "weights": [], "calculated": False, "submitted": False}
         try:
             info = self.subtensor.get_metagraph_info(netuid=self.config.netuid)
+            if operator_share > 0.0:
+                operator_uid = self._operator_uid(set(), info=info)
+                if operator_uid is not None:
+                    self.bt_logging.warning(f"{status}: submitting operator-only weights for a scoreless round.")
+                    return self._submit_weight_vector(
+                        {operator_uid: 1.0}, {}, "operator_only", 0.0, None, operator_uid
+                    )
+                self.bt_logging.error(f"{status}: operator hotkey is not registered; preserving prior miner weights.")
             owner_uid = self._owner_burn_uid(set(), info=info)
             neuron_query = {"uid": self.uid, "netuid": self.config.netuid}
             if getattr(info, "block", None) is not None:
@@ -5826,6 +5906,7 @@ class ClaimsValidator:
         payout_mode: str,
         burn_fraction: float,
         owner_uid: int | None,
+        operator_uid: int | None = None,
     ) -> dict[str, Any]:
         uids = sorted(weights_by_uid)
         weights = [weights_by_uid[uid] for uid in uids]
@@ -5835,9 +5916,14 @@ class ClaimsValidator:
                 "score": float(scores.get(uid, 0.0)),
                 "weight": weight,
                 **({"purpose": "miner_burn"} if burn_fraction > 0.0 and uid == owner_uid else {}),
+                **({"role": "operator"} if uid == operator_uid else {}),
             }
             for uid, weight in zip(uids, weights)
         ]
+        operator_fields = {
+            "operator_uid": operator_uid,
+            "operator_share": float(weights_by_uid[operator_uid]) if operator_uid is not None else 0.0,
+        }
         if self.config.claims_audit_only:
             self.bt_logging.info(f"Audit-only mode enabled; calculated weights: {list(zip(uids, weights))}")
             return {
@@ -5846,6 +5932,7 @@ class ClaimsValidator:
                 "calculated": True,
                 "submitted": False,
                 "payout_mode": payout_mode,
+                **operator_fields,
             }
         self.bt_logging.info(f"Setting weights: {list(zip(uids, weights))}")
         try:
@@ -5866,6 +5953,7 @@ class ClaimsValidator:
                     "calculated": True,
                     "submitted": True,
                     "payout_mode": payout_mode,
+                    **operator_fields,
                 }
             else:
                 self.bt_logging.error(
@@ -5878,6 +5966,7 @@ class ClaimsValidator:
                     "calculated": True,
                     "submitted": False,
                     "payout_mode": payout_mode,
+                    **operator_fields,
                 }
         except Exception as exc:
             self.bt_logging.error(f"Failed to set weights: {type(exc).__name__}: {exc}")
@@ -5888,7 +5977,37 @@ class ClaimsValidator:
                 "submitted": False,
                 "payout_mode": payout_mode,
                 "error": str(exc),
+                **operator_fields,
             }
+
+    def _operator_uid(self, scored_uids: set[int], *, info: Any = None) -> int | None:
+        """Resolve the configured operator hotkey and verify its receiving coldkey."""
+        if info is None:
+            info = self.subtensor.get_metagraph_info(netuid=self.config.netuid)
+        if info is None:
+            raise ValueError("subnet metagraph info is unavailable")
+        hotkey = str(getattr(self.config, "claims_operator_hotkey", "") or "").strip()
+        coldkey = str(getattr(self.config, "claims_operator_coldkey", "") or "").strip()
+        owner_hotkey = str(getattr(info, "owner_hotkey", "") or "")
+        owner_coldkey = str(getattr(info, "owner_coldkey", "") or "")
+        if not hotkey or not coldkey or not owner_hotkey or not owner_coldkey:
+            raise ValueError("operator or owner identity is unavailable")
+        if hotkey == owner_hotkey or coldkey == owner_coldkey:
+            raise ValueError("operator identity is owner-associated and would burn miner emission")
+        hotkeys = list(getattr(info, "hotkeys", []) or [])
+        coldkeys = list(getattr(info, "coldkeys", []) or [])
+        if len(hotkeys) != len(coldkeys):
+            raise ValueError("metagraph hotkey and coldkey lists differ")
+        if self.uid < 0 or self.uid >= len(hotkeys) or hotkeys[self.uid] != self.wallet.hotkey.ss58_address:
+            raise ValueError("validator UID does not match the signer in the metagraph")
+        if hotkey not in hotkeys:
+            return None
+        uid = hotkeys.index(hotkey)
+        if coldkeys[uid] != coldkey:
+            raise ValueError("operator hotkey is registered under a different coldkey")
+        if uid in scored_uids:
+            raise ValueError("operator UID is also a scored miner in this round")
+        return uid
 
     def _owner_burn_uid(self, scored_uids: set[int], *, info: Any = None) -> int:
         """Resolve the current owner UID and refuse to burn to an unverified hotkey."""
@@ -6963,6 +7082,9 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_audit_only": bool(getattr(config, "claims_audit_only", False)),
         "claims_payout_mode": str(getattr(config, "claims_payout_mode", "winner-takes-most") or "winner-takes-most"),
         "claims_miner_burn_fraction": float(getattr(config, "claims_miner_burn_fraction", 0.0)),
+        "claims_operator_share": float(getattr(config, "claims_operator_share", 0.0)),
+        "claims_operator_hotkey": str(getattr(config, "claims_operator_hotkey", "") or ""),
+        "claims_operator_coldkey": str(getattr(config, "claims_operator_coldkey", "") or ""),
         "claims_payout_winner_share": float(getattr(config, "claims_payout_winner_share", 0.70)),
         "claims_payout_runner_up_slots": int(getattr(config, "claims_payout_runner_up_slots", 4)),
         "claims_payout_runner_up_decay": float(getattr(config, "claims_payout_runner_up_decay", 0.5)),

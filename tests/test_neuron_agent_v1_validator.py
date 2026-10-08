@@ -14,6 +14,8 @@ import pytest
 from neurons.protocol import ClaimExtractionSynapse
 from neurons.tasks import PROTOCOL_VERSION, SCHEMA_VERSION, ClaimsTask
 from neurons.validator import (
+    DEFAULT_OPERATOR_COLDKEY,
+    DEFAULT_OPERATOR_HOTKEY,
     ClaimsValidator,
     _bronze_artifact_from_record,
     _compact_silver_batch_outcome,
@@ -1578,6 +1580,118 @@ def _owner_burn_metagraph_info(
         coldkeys=coldkeys,
         block_at_registration=[1] * len(hotkeys),
     )
+
+
+def _operator_metagraph_info(*, registered_coldkey: str = DEFAULT_OPERATOR_COLDKEY) -> SimpleNamespace:
+    info = _owner_burn_metagraph_info()
+    info.hotkeys[2] = DEFAULT_OPERATOR_HOTKEY
+    info.coldkeys[2] = registered_coldkey
+    return info
+
+
+def _operator_validator(*, share: float, info: SimpleNamespace) -> tuple[ClaimsValidator, list[dict]]:
+    submitted: list[dict] = []
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(
+        netuid=111,
+        claims_audit_only=False,
+        claims_payout_mode="proportional",
+        claims_miner_burn_fraction=0.0,
+        claims_operator_share=share,
+        claims_operator_hotkey=DEFAULT_OPERATOR_HOTKEY,
+        claims_operator_coldkey=DEFAULT_OPERATOR_COLDKEY,
+        claims_weight_period=16,
+    )
+    validator.bt_logging = SimpleNamespace(**vars(_logger()), success=lambda *_args, **_kwargs: None)
+    validator.wallet = SimpleNamespace(hotkey=SimpleNamespace(ss58_address="owner_hotkey"))
+    validator.uid = 0
+    validator.subtensor = SimpleNamespace(
+        get_metagraph_info=lambda **_kwargs: info,
+        set_weights=lambda **kwargs: (submitted.append(kwargs), SimpleNamespace(success=True, extrinsic_fee=0))[1],
+    )
+    return validator, submitted
+
+
+def test_operator_share_zero_keeps_miner_weights() -> None:
+    validator, submitted = _operator_validator(share=0.0, info=_operator_metagraph_info())
+
+    event = validator._set_weights({9: 0.7, 10: 0.3})
+
+    assert event["status"] == "success"
+    assert submitted[0]["uids"] == [9, 10]
+    assert submitted[0]["weights"] == pytest.approx([0.7, 0.3])
+
+
+def test_operator_share_routes_to_verified_hotkey_and_preserves_miner_ratios() -> None:
+    validator, submitted = _operator_validator(share=0.7, info=_operator_metagraph_info())
+
+    event = validator._set_weights({9: 0.7, 10: 0.3})
+
+    assert event["status"] == "success"
+    assert event["operator_uid"] == 2
+    assert event["operator_share"] == pytest.approx(0.7)
+    assert event["weights"][0] == {"uid": 2, "score": 0.0, "weight": 0.7, "role": "operator"}
+    assert submitted[0]["uids"] == [2, 9, 10]
+    assert submitted[0]["weights"] == pytest.approx([0.7, 0.21, 0.09])
+
+
+def test_operator_share_scoreless_round_submits_operator_only() -> None:
+    validator, submitted = _operator_validator(share=0.9, info=_operator_metagraph_info())
+
+    event = validator._set_weights({})
+
+    assert event["status"] == "success"
+    assert event["payout_mode"] == "operator_only"
+    assert submitted[0]["uids"] == [2]
+    assert submitted[0]["weights"] == [1.0]
+
+
+def test_unregistered_operator_falls_back_to_miner_weights() -> None:
+    validator, submitted = _operator_validator(share=0.9, info=_owner_burn_metagraph_info())
+
+    event = validator._set_weights({9: 0.7, 10: 0.3})
+
+    assert event["status"] == "success"
+    assert event["operator_uid"] is None
+    assert submitted[0]["uids"] == [9, 10]
+    assert submitted[0]["weights"] == pytest.approx([0.7, 0.3])
+
+
+@pytest.mark.parametrize("registered_coldkey", ["owner_coldkey", "wrong_operator_coldkey"])
+def test_operator_refuses_wrong_coldkey(registered_coldkey: str) -> None:
+    validator, submitted = _operator_validator(
+        share=0.9, info=_operator_metagraph_info(registered_coldkey=registered_coldkey)
+    )
+
+    with pytest.raises(ValueError, match="different coldkey"):
+        validator._operator_uid(set())
+    assert validator._set_weights({9: 0.7})["status"] == "operator_preflight_failed"
+    assert not submitted
+
+
+def test_operator_refuses_owner_coldkey_at_startup() -> None:
+    validator, _ = _operator_validator(share=0.9, info=_operator_metagraph_info())
+    validator.config.claims_operator_coldkey = "owner_coldkey"
+
+    with pytest.raises(ValueError, match="owner-associated"):
+        validator._operator_uid(set())
+
+
+def test_operator_weight_event_marks_operator_without_miner_score() -> None:
+    posted: list[dict] = []
+    validator, _ = _operator_validator(share=0.9, info=_operator_metagraph_info())
+    validator.backend_client = SimpleNamespace(post=lambda _path, payload: posted.append(payload))
+    validator.config.claims_network = "mainnet"
+    validator._active_silver_batch_outcome = {}
+    event = validator._set_weights({9: 0.8})
+
+    validator._post_weight_event("operator_run", {9: 0.8}, event)
+
+    [payload] = posted
+    assert payload["operator_uid"] == 2
+    assert payload["operator_share"] == pytest.approx(0.9)
+    assert payload["weights"][0]["role"] == "operator"
+    assert [row["uid"] for row in payload["scores"]] == [9]
 
 
 def test_owner_miner_burn_scales_scored_miners_and_submits_owner_uid() -> None:
