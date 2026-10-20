@@ -41,6 +41,10 @@ def usage(events):
             for e in rows
         )
         values["cost_kinds"] = dict(Counter(e.get("cost_kind") for e in rows))
+        values["cache_read_tokens"] = sum(e.get("cache_read_tokens") or 0 for e in rows)
+        values["cache_read_counter_events"] = sum(
+            e.get("cache_read_tokens") is not None for e in rows
+        )
     return result
 
 
@@ -152,6 +156,9 @@ def analyze(inputs, replay, output):
                 }
                 row.update(
                     decision_units=len(sr["silver_units"]),
+                    technical_unresolved_cases=sr.get("metadata", {})
+                    .get("eligibility_selection_adjudication", {})
+                    .get("technical_unresolved_case_count", 0),
                     decision_contributors=len(retained(sr)),
                     decision_importance=dict(
                         Counter(u["importance"] for u in sr["silver_units"])
