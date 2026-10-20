@@ -448,6 +448,43 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
                 "The anchor must be a retained member of the same final unit. Choose the most faithful existing claim.",
             },
         )
+        session._write_json("silver/decision_assignments_initial.json", values)
+        bad_refs = _dangling_assignment_refs(values)
+        if bad_refs:
+            schema = slots_model("CanonicalAnchorRepair", sorted(bad_refs), Assignment)
+            repair_error = "Assignments point to an excluded or unknown anchor."
+            for attempt in range(2):
+                try:
+                    repaired = call(
+                        session,
+                        stage=stage_key
+                        + "_anchor_repair"
+                        + ("_retry" if attempt else ""),
+                        model=model,
+                        policy=instruction,
+                        task={
+                            **task,
+                            "draft_assignments": values,
+                            "repair_slots": sorted(bad_refs),
+                            "validation_error": repair_error,
+                            "instructions": "Resolve only these assignment slots using their own evidence. "
+                            "A selected anchor must remain retained. Keep mandatory exclusions. "
+                            "Do not automatically retain an excluded anchor; select another supported member, "
+                            "split the finding, or exclude an unsupported member as evidence requires.",
+                        },
+                        output_model=schema,
+                        validator=lambda output: _assignment_partition(
+                            {**values, **output.model_dump(mode="json")}, catalog
+                        ),
+                    )
+                    values.update(repaired.model_dump(mode="json"))
+                    break
+                except Exception as exc:
+                    repair_error = f"{type(exc).__name__}: {exc}"
+            else:
+                raise ValueError(
+                    f"Canonical anchor repair remains unresolved: {repair_error}"
+                )
         session._write_json("silver/decision_assignments_draft.json", values)
     else:
         draft_path = session.root / "silver/decision_assignments_draft.json"
@@ -578,6 +615,25 @@ def _draft_review_outcome(draft, final_units):
     if set(final.candidate_ids) != original:
         return "merged"
     return "retained" if final.statement == draft["statement"] else "rewritten"
+
+
+def _dangling_assignment_refs(values):
+    """Identify invalid reference chains without changing scientific decisions."""
+    affected = set()
+    for ref in values:
+        if values[ref]["unit"] == "exclude":
+            continue
+        trail = []
+        target = ref
+        while target not in trail:
+            if target not in values or values[target]["unit"] == "exclude":
+                affected.update(trail)
+                if target in values:
+                    affected.add(target)
+                break
+            trail.append(target)
+            target = values[target]["unit"]
+    return affected
 
 
 def _assignment_partition(values, catalog):

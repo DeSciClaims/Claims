@@ -246,6 +246,17 @@ def analyze(inputs, replay, output):
                         decision_historical_diagnostics_rank=shared_fixed[mid]["rank"],
                     )
                 )
+        after_ids = [e["usage_event_id"] for e in after]
+        if len(after_ids) != len(set(after_ids)):
+            raise ValueError("Duplicate decision usage event IDs")
+        response_ids = [
+            e.get("metadata", {}).get("provider_response_id") for e in after
+        ]
+        duplicate_responses = {
+            key: count
+            for key, count in Counter(response_ids).items()
+            if key and count > 1
+        }
         audits = audit_usage(after)
         issues = [
             {
@@ -284,6 +295,7 @@ def analyze(inputs, replay, output):
                 historical_missing_counter_events=issues,
                 decision_counter_audit=dict(
                     events=len(audits),
+                    duplicate_provider_response_ids=duplicate_responses,
                     verified=sum(r["output_matches_provider"] is True for r in audits),
                     mismatches=sum(
                         r["output_matches_provider"] is False for r in audits

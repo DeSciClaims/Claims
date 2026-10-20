@@ -610,3 +610,56 @@ def test_blind_reconstruction_retries_truncation_with_separate_budget(monkeypatc
     assert [c["max_tokens"] for c in calls] == [16384, 32768]
     assert calls[0]["task"] == calls[1]["task"]
     assert calls[1]["stage"].endswith("_retry")
+
+
+def test_canonical_draft_repairs_cross_packet_excluded_anchor_without_automatic_admission(
+    monkeypatch, tmp_path
+):
+    from types import SimpleNamespace
+    from validator.agent_v1 import decision_workflow as w
+
+    initial = {
+        "c0": {"unit": "exclude", "importance": "supporting"},
+        "c1": {"unit": "c0", "importance": "supporting"},
+        "c2": {"unit": "c1", "importance": "supporting"},
+    }
+    monkeypatch.setattr(w, "classify_slots", lambda *args, **kwargs: initial.copy())
+
+    def write(name, value):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+
+    session = SimpleNamespace(root=tmp_path, _write_json=write)
+    calls = []
+
+    def invoke(session, **kwargs):
+        calls.append(kwargs)
+        fixed = {
+            "c0": {"unit": "exclude", "importance": "supporting"},
+            "c1": {"unit": "c1", "importance": "supporting"},
+            "c2": {"unit": "c1", "importance": "supporting"},
+        }
+        result = kwargs["output_model"].model_validate(fixed)
+        kwargs["validator"](result)
+        return result
+
+    monkeypatch.setattr(w, "call", invoke)
+    task = dict(
+        accepted_candidates=[{"candidate_id": r, "statement": r} for r in initial],
+        candidate_admission_status={
+            r: "pending_source_support_review" for r in initial
+        },
+        mandatory_evidence_exclusions=[],
+        mandatory_same_unit_groups=[],
+    )
+    result, _ = w.canonical_stage(
+        session, stage_key="canonicalization_draft", model="m", task=task
+    )
+    assert len(calls) == 1 and calls[0]["task"]["repair_slots"] == ["c0", "c1", "c2"]
+    assert result.units[0].candidate_ids == ["c1", "c2"]
+    assert result.exclusions[0].candidate_ids == ["c0"]
+    assert (
+        json.loads((tmp_path / "silver/decision_assignments_initial.json").read_text())
+        == initial
+    )
