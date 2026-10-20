@@ -196,6 +196,9 @@ def run_diagnostic_batch(
     paper_id: str,
     submissions: list[DiagnosticBatchSubmission],
 ) -> DiagnosticBatchExecution:
+    if os.getenv("CLAIMS_ELIGIBILITY_OUTPUT_CONTRACT", "compact").strip().lower() == "decision":
+        from .decision_diagnostics import run_decision_diagnostics
+        return run_decision_diagnostics(config=config, run_id=run_id, paper_id=paper_id, submissions=submissions)
     operation_id = f"{run_id}:{paper_id}:diagnostic-paper"
     root = config.root / _safe_path(run_id) / _safe_path(paper_id) / "paper"
     root.mkdir(parents=True, exist_ok=True)

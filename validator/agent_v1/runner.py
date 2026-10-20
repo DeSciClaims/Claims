@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 import time
@@ -203,6 +204,23 @@ class AgentV1ValidatorRunner:
             _write_rigor_findings(run_dir, findings)
             return findings, {"runtime": "not_reviewable", "usage": empty_usage("not_reviewable"), "elapsed_seconds": 0.0}
 
+        if os.getenv("CLAIMS_ELIGIBILITY_OUTPUT_CONTRACT", "compact").lower() == "decision":
+            from types import SimpleNamespace
+            from .decision_diagnostics import run_decision_diagnostics
+            from .diagnostic_batch import DiagnosticBatchSubmission
+            execution = run_decision_diagnostics(
+                config=SimpleNamespace(root=run_dir / "decisions", model=self.config.model),
+                run_id="single", paper_id=run_dir.name,
+                submissions=[DiagnosticBatchSubmission(submission_ref="S0",
+                    artifact=_read_json_object(run_dir / "agent_output.json") or {},
+                    source_payload=_read_json_object(run_dir / "source_payload.json"),
+                    structural_findings=json.loads((run_dir / "structural_findings.json").read_text()),
+                    grounding_findings=json.loads((run_dir / "grounding_findings.json").read_text()))])
+            payload = execution.reports["S0"]
+            (run_dir / "rigor_findings.json").write_text(json.dumps(payload))
+            return _parse_rigor_findings(run_dir / "rigor_findings.json"), {
+                "runtime": "decision", "usage": execution.usage,
+                "elapsed_seconds": execution.duration_seconds}
         skill_pack = load_skill_pack(self.config.skill_dir)
         runtime = build_rigor_runtime(self.config)
         request = RigorAgentRequest()

@@ -70,6 +70,8 @@ class ModelUsageCollector:
             "duration_seconds": _optional_float(event.get("duration_seconds")),
             "metadata": event.get("metadata") if isinstance(event.get("metadata"), dict) else {},
         }
+        if isinstance(usage.get("usage_audit"), dict):
+            row["metadata"] = {**row["metadata"], "usage_audit": usage["usage_audit"]}
         checkpoint_events: list[dict[str, Any]] | None = None
         with self._lock:
             self._events.append(row)

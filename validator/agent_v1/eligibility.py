@@ -88,6 +88,8 @@ class EligibilityBlindReconstructionOutput(_StrictModel):
 
 
 class EligibilityAdjudicationVote(BaseModel):
+    accepted_candidate_ids: list[str] | None = None
+    candidate_decisions: dict[str, dict] = Field(default_factory=dict)
     case_id: str
     judge_role: EligibilityAdjudicationJudgeRole
     selected_candidate_id: str | None = None
@@ -96,11 +98,12 @@ class EligibilityAdjudicationVote(BaseModel):
     model: str = ""
     technical_unresolved: bool = False
     technical_error: str = ""
-    output_contract: Literal["verbose", "compact"] = "verbose"
+    output_contract: Literal["verbose", "compact", "decision"] = "verbose"
     cited_span_ids: list[str] = Field(default_factory=list)
 
 
 class EligibilityAdjudicationDecision(BaseModel):
+    accepted_candidate_ids: list[str] | None = None
     case_id: str
     selected_candidate_id: str | None = None
     rejected_candidate_ids: list[str] = Field(default_factory=list)

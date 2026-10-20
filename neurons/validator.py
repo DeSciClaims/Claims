@@ -3225,7 +3225,7 @@ class ClaimsValidator:
 
         verbose_sample = None
         if (file_agent_workflow is not None
-                and file_agent_workflow.config.eligibility_output_contract == "compact"
+                and file_agent_workflow.config.eligibility_output_contract in {"compact", "decision"}
                 and file_agent_workflow.config.eligibility_sample_verbose_paper):
             verbose_sample = sampled_verbose_paper(
                 task.batch_id or task.task_id,

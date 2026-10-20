@@ -407,7 +407,10 @@ def usage_from_hermes_sessions_jsonl(jsonl: str) -> dict[str, Any]:
                 "source": "hermes_sessions_export",
             }
         )
-    return merge_usage(usages)
+    merged = merge_usage(usages)
+    merged["usage_audit"] = {"kind": "hermes_session_counters", "records": usages,
+                            "note": "Session totals; tool turns are included, not just final JSON."}
+    return merged
 
 
 def _usage_from_records(records: Any, *, source: str) -> dict[str, Any]:
@@ -421,6 +424,9 @@ def _usage_from_records(records: Any, *, source: str) -> dict[str, Any]:
             if normalized is None:
                 normalized = candidate_usage
             else:
+                if candidate_usage.get("cost_kind") == "actual":
+                    normalized["cost_usd"] = candidate_usage["cost_usd"]
+                    normalized["cost_kind"] = "actual"
                 for key, value in candidate_usage.items():
                     if key not in {"source", "cost_kind"} and normalized.get(key) is None and value is not None:
                         normalized[key] = value
@@ -432,7 +438,7 @@ def _usage_from_records(records: Any, *, source: str) -> dict[str, Any]:
         if normalized is None:
             normalized = empty_usage(source)
         record_cost = _float_value(record, "actual_cost_usd", "cost_usd", "cost")
-        if record_cost is not None:
+        if record_cost is not None and normalized.get("cost_kind") != "actual":
             normalized["cost_usd"] = record_cost
             normalized["cost_kind"] = "actual" if _float_value(record, "actual_cost_usd") is not None else "estimated"
         if any(normalized.get(key) is not None for key in ("prompt_tokens", "completion_tokens", "total_tokens", "cost_usd")):
@@ -458,14 +464,14 @@ def _hermes_command_prefix(command: list[str]) -> list[str] | None:
 def _usage_candidates(record: dict[str, Any]) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     for key in ("usage", "token_usage", "usage_metadata"):
-        value = record.get(key)
-        if isinstance(value, dict):
+        value = _usage_mapping(record.get(key))
+        if value:
             candidates.append(value)
-    response = record.get("response")
-    if isinstance(response, dict):
+    response = _usage_mapping(record.get("response"))
+    if response:
         for key in ("usage", "token_usage", "usage_metadata"):
-            value = response.get(key)
-            if isinstance(value, dict):
+            value = _usage_mapping(response.get(key))
+            if value:
                 candidates.append(value)
         hidden = response.get("_hidden_params")
         if isinstance(hidden, dict):
@@ -479,8 +485,8 @@ def _usage_candidates(record: dict[str, Any]) -> list[dict[str, Any]]:
 def _normalize_usage_dict(raw: dict[str, Any], *, source: str) -> dict[str, Any]:
     prompt_tokens = _int_value(raw, "prompt_tokens", "input_tokens")
     completion_tokens = _int_value(raw, "completion_tokens", "output_tokens")
-    prompt_details = raw.get("prompt_tokens_details") if isinstance(raw.get("prompt_tokens_details"), dict) else {}
-    completion_details = raw.get("completion_tokens_details") if isinstance(raw.get("completion_tokens_details"), dict) else {}
+    prompt_details = _usage_mapping(raw.get("prompt_tokens_details"))
+    completion_details = _usage_mapping(raw.get("completion_tokens_details"))
     cache_read_tokens = _int_value(raw, "cache_read_tokens", "cached_tokens")
     if cache_read_tokens is None:
         cache_read_tokens = _int_value(prompt_details, "cached_tokens")
@@ -490,7 +496,8 @@ def _normalize_usage_dict(raw: dict[str, Any], *, source: str) -> dict[str, Any]
         reasoning_tokens = _int_value(completion_details, "reasoning_tokens")
     total_tokens = _int_value(raw, "total_tokens")
     if total_tokens is None and prompt_tokens is not None and completion_tokens is not None:
-        total_tokens = prompt_tokens + completion_tokens + (reasoning_tokens or 0)
+        # OpenAI-compatible completion_tokens already includes reasoning tokens.
+        total_tokens = prompt_tokens + completion_tokens
     actual_cost = _float_value(raw, "actual_cost_usd", "cost_usd", "cost")
     estimated_cost = _float_value(raw, "estimated_cost_usd", "response_cost")
     cost = actual_cost if actual_cost is not None else estimated_cost
@@ -623,3 +630,33 @@ def _float_value(raw: dict[str, Any], *keys: str) -> float | None:
 
 def _has_usage(usage: dict[str, Any]) -> bool:
     return any(usage.get(key) is not None for key in ("prompt_tokens", "completion_tokens", "total_tokens", "cost_usd"))
+
+
+def dspy_usage_audit(lm: Any) -> list[dict[str, Any]]:
+    """Keep provider counters and final response size separate from token estimates.
+
+    No prompts, credentials or hidden reasoning text are included in this audit.
+    """
+    rows = []
+    for record in getattr(lm, 'history', None) or []:
+        response = record.get('response')
+        data = _usage_mapping(response)
+        provider_usage = _usage_mapping(data.get('usage'))
+        if not provider_usage:
+            provider_usage = _usage_mapping(record.get('usage'))
+        choices = data.get('choices') or []
+        content = ''.join(str((_usage_mapping(c).get('message') or {}).get('content') or '') for c in choices)
+        rows.append({'response_id': data.get('id'), 'provider_usage': provider_usage,
+                     'history_cost_estimate': record.get('cost'),
+                     'final_content_characters': len(content),
+                     'normalized_usage': _normalize_usage_dict(provider_usage, source='dspy_provider_audit')})
+    return rows
+
+
+def _usage_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    dump = getattr(value, 'model_dump', None)
+    if callable(dump):
+        return dump()
+    return {}

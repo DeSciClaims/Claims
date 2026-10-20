@@ -910,6 +910,18 @@ def _silver_decisions_from_eligibility_adjudication(
         decision = decisions_by_case_id[case.case_id]
         if decision.resolution_status == "technical_unresolved":
             continue
+        if decision.accepted_candidate_ids is not None:
+            accepted = decision.accepted_candidate_ids
+            if len(set(accepted)) != len(accepted) or not set(accepted).issubset(case.candidate_ids):
+                raise RuntimeError("Decision mode returned invalid accepted candidates")
+            rejected = [cid for cid in case.candidate_ids if cid not in accepted]
+            silver_decisions.append(AdjudicationDecision(
+                case_id=case.case_id,
+                disposition="both_valid" if len(accepted) == 2 else "accepted_improvement" if accepted else "both_invalid",
+                accepted_candidate_ids=accepted, rejected_candidate_ids=rejected,
+                same_silver_unit=False, creates_required_silver_unit=bool(accepted),
+                creates_optional_improvement_unit=False, rationale=""))
+            continue
         selected_id = decision.selected_candidate_id
         if selected_id is not None and selected_id not in case.candidate_ids:
             raise RuntimeError(

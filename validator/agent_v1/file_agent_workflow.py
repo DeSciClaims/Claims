@@ -289,6 +289,9 @@ class FileAgentWorkflowConfig:
     adjudication_tiebreak_model: str = ""
     eligibility_output_contract: str = "verbose"
     eligibility_sample_verbose_paper: bool = True
+    decision_batch_size: int = 24
+    decision_max_tokens: int = 4096
+    decision_reasoning_enabled: bool = False
     adjudication_batch_size: int = 4
     adjudication_max_source_chars: int = 30000
     adjudication_max_workers: int = 4
@@ -307,8 +310,8 @@ class FileAgentWorkflowConfig:
     resume_existing_stages: bool = False
 
     def __post_init__(self) -> None:
-        if self.eligibility_output_contract not in {"verbose", "compact"}:
-            raise ValueError("Eligibility output contract must be verbose or compact.")
+        if self.eligibility_output_contract not in {"verbose", "compact", "decision"}:
+            raise ValueError("Eligibility output contract must be verbose, compact, or decision.")
         if self.canonicalization_harness not in {"file-agent", "dspy"}:
             raise ValueError("Canonicalization harness must be file-agent or dspy.")
         if self.adjudication_harness not in {"file-agent", "dspy"}:
@@ -428,6 +431,9 @@ class FileAgentWorkflowConfig:
                 tiebreak_model,
             ).strip(),
             eligibility_output_contract=os.getenv("CLAIMS_ELIGIBILITY_OUTPUT_CONTRACT", "compact").strip().lower(),
+            decision_batch_size=max(1, int(os.getenv("CLAIMS_DECISION_BATCH_SIZE", "24"))),
+            decision_max_tokens=max(256, int(os.getenv("CLAIMS_DECISION_MAX_TOKENS", "4096"))),
+            decision_reasoning_enabled=os.getenv("CLAIMS_DECISION_REASONING_ENABLED", "false").lower() in {"true", "1"},
             eligibility_sample_verbose_paper=os.getenv("CLAIMS_ELIGIBILITY_SAMPLE_VERBOSE_PAPER", "true").strip().lower() in {"true", "1", "yes", "on"},
             adjudication_batch_size=max(
                 1,
@@ -549,6 +555,9 @@ class FileAgentWorkflowSession:
     ) -> list[EligibilityAdjudicationDecision]:
         if any(len(context.candidates) not in {1, 2} for context in contexts):
             raise ValueError("Eligibility adjudication accepts one- or two-candidate cases.")
+        if self.config.eligibility_output_contract == "decision":
+            from .decision_workflow import run_eligibility
+            return run_eligibility(self, contexts)
         if not contexts:
             self._write_json("eligibility_adjudication/decisions.json", {"decisions": []})
             return []
@@ -1203,6 +1212,9 @@ class FileAgentWorkflowSession:
         retry_task_extra: dict[str, Any] | None = None,
         audit_recovery: _CanonicalAuditRecoveryContext | None = None,
     ) -> tuple[BaseModel, str]:
+        if self.config.eligibility_output_contract == "decision":
+            from .decision_workflow import canonical_stage
+            return canonical_stage(self, stage_key=stage_key, model=model, task=task, validator=validator)
         first_error = ""
         rejected_payload: BaseModel | None = None
         rejected_payloads: list[CanonicalAuditOutput] = []
@@ -1663,6 +1675,9 @@ class FileAgentWorkflowSession:
             raise
 
     def run_comparison(self) -> list[CandidatePairEdge]:
+        if self.config.eligibility_output_contract == "decision":
+            from .decision_workflow import run_comparison
+            return run_comparison(self)
         self.confirmed_equivalence_groups = []
         self._write_json("comparison/equivalence_groups.json", {
             "schema": "claims_comparison_equivalence_groups_v1",
@@ -2384,6 +2399,15 @@ class FileAgentWorkflowSession:
             "mandatory_same_unit_group_count": len(must_link_aliases),
             "mandatory_evidence_exclusion_count": len(required_exclusion_aliases),
         }
+        if self.config.eligibility_output_contract == "decision":
+            metadata["decision_mode"] = {"schema": "claims_decision_v1", "canonical_representation": "claim_set"}
+            for unit in canonical_units:
+                unit.metadata["description_claims"] = [
+                    {"candidate_id": cid, "statement": candidates_by_id[cid].statement}
+                    for cid in unit.equivalent_candidate_ids]
+                unit.metadata["representative_candidate_ids"] = [
+                    cid for cid in unit.equivalent_candidate_ids
+                    if candidates_by_id[cid].statement.strip() == unit.statement]
         record = baseline_record.model_copy(
             update={"silver_units": canonical_units, "metadata": metadata}
         )

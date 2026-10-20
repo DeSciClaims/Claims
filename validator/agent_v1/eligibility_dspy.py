@@ -11,7 +11,7 @@ from typing import Any, Callable, Literal
 from pydantic import BaseModel, Field, create_model
 
 from miner.agent_v1.provider import dspy_model_id, normalize_provider
-from miner.agent_v1.runtime.usage import empty_usage, usage_from_dspy_lm
+from miner.agent_v1.runtime.usage import empty_usage, usage_from_dspy_lm, dspy_usage_audit
 
 from .eligibility_compact import (CompactEligibilityOutput, CompactVerdict, CompactBlindOutput, CompactBlindFinding)
 from .model_usage import UsageSink
@@ -141,6 +141,7 @@ class DSPyEligibilityRuntime:
                         "ended_at": datetime.now(timezone.utc),
                         "duration_seconds": time.perf_counter() - started,
                         "metadata": {
+                            "provider_usage_audit": dspy_usage_audit(lm) if lm is not None else [],
                             "workflow": "eligibility_adjudication",
                             "workspace_id": workspace_id,
                             "output_contract": (task.get("output_contract") or {}).get("version", "verbose"),
