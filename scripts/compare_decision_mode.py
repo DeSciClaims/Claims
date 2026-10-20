@@ -325,12 +325,25 @@ def main():
     items = read(args.manifest)[: args.limit]
     if not items or len({i["paper_id"] for i in items}) != len(items):
         raise ValueError("Distinct fixtures required")
+    fingerprints = {}
     for item in items:
-        fixture_inputs(item, args.manifest.parent)
+        bronze, source, miners, _, _ = fixture_inputs(item, args.manifest.parent)
+        from validator.agent_v1.decision_runtime import digest
+
+        fingerprints[item["paper_id"]] = digest(
+            {
+                "bronze": bronze,
+                "source": source,
+                "miners": [
+                    {"miner_id": m.miner_id, "artifact": m.artifact} for m in miners
+                ],
+            }
+        )
     write(
         args.output_dir / "plan.json",
         {
             "items": items,
+            "fixture_sha256": fingerprints,
             "modes": args.modes,
             "commit": subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], text=True

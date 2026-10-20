@@ -185,6 +185,8 @@ def run_paper_silver_pipeline(
             comparison_edges = file_session.run_comparison()
             comparison_mode = "file_agent"
         except Exception as exc:
+            if getattr(file_session.config, "eligibility_output_contract", "verbose") == "decision":
+                raise RuntimeError("Decision comparison remained unresolved; no legacy fallback was used") from exc
             LOGGER.exception(
                 "File-agent comparison failed for paper=%s; using legacy comparison to keep paper adjudicable.",
                 paper_id,
@@ -204,7 +206,9 @@ def run_paper_silver_pipeline(
         )
     candidate_graph_edges = _dedupe_candidate_graph_edges(comparison_edges)
     case_builder = (
-        _pairwise_comparison_cases_from_graph
+        _decision_comparison_cases_from_graph
+        if file_session is not None and getattr(file_session.config, "eligibility_output_contract", "verbose") == "decision"
+        else _pairwise_comparison_cases_from_graph
         if file_session is not None
         else _comparison_cases_from_graph
     )
@@ -1647,3 +1651,27 @@ def _paper_context_from_artifact(artifact: dict) -> dict:
         "abstract": paper.get("abstract") or paper.get("summary") or "",
         "claims_summary": logic.get("claims_summary") or "",
     }
+
+
+def _decision_comparison_cases_from_graph(*, paper_id, bronze_candidates, miner_submissions, candidate_graph_edges):
+    """One candidate per case keeps decision-mode consensus records interoperable.
+
+    Both members of a formerly paired case may pass independently; grouping is
+    still decided by canonicalization, not by forcing a preferred candidate.
+    """
+    candidates = [*bronze_candidates, *[c for s in miner_submissions for c in s.candidates]]
+    cases = []
+    for candidate in sorted(candidates, key=lambda c: c.candidate_id):
+        edges = [e for e in candidate_graph_edges
+                 if candidate.candidate_id in {e.left_candidate_id, e.right_candidate_id}]
+        bronze = candidate.origin == "bronze"
+        cases.append(BronzeDiffCase(
+            case_id=_graph_case_id(paper_id, "MISSING_FROM_MINER" if bronze else "EXTRA_FROM_MINER", [candidate.candidate_id]),
+            paper_id=paper_id, miner_id=candidate.miner_id or "graph",
+            mismatch_type="MISSING_FROM_MINER" if bronze else "EXTRA_FROM_MINER",
+            candidate_ids=[candidate.candidate_id],
+            bronze_candidate_id=candidate.candidate_id if bronze else None,
+            miner_candidate_id=None if bronze else candidate.candidate_id,
+            question="Does this candidate independently satisfy all scientific eligibility gates?",
+            metadata={"decision_mode": True, "candidate_graph_edges": [e.model_dump(mode="json") for e in edges]}))
+    return cases

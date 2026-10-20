@@ -444,37 +444,133 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
             checks: CanonicalQualityChecks
 
         def validate_audit(out):
-            if out.approved and out.corrections:
-                raise ValueError("Approval cannot also change assignments")
-            if not out.approved and not out.corrections:
-                raise ValueError("Rejected partition requires specific corrections")
+            if not out.approved:
+                raise ValueError(
+                    "Auditor did not approve the final partition after corrections"
+                )
             targets = [c.candidate for c in out.corrections]
             if len(targets) != len(set(targets)):
                 raise ValueError("Duplicate correction slots")
             if not all(out.checks.model_dump().values()):
                 raise ValueError("Scientific audit checks incomplete")
+            corrected = {
+                **values,
+                **{
+                    c.candidate: c.model_dump(exclude={"candidate"})
+                    for c in out.corrections
+                },
+            }
+            proposal = _assignment_partition(corrected, catalog)
+            issues = _canonical_partition_issues(
+                proposal,
+                expected_aliases=set(refs),
+                eligible_aliases={
+                    r
+                    for r in refs
+                    if task["candidate_admission_status"][r] == "adjudicated"
+                }
+                - {x["candidate_id"] for x in task["mandatory_evidence_exclusions"]},
+                required_exclusion_aliases={
+                    x["candidate_id"] for x in task["mandatory_evidence_exclusions"]
+                },
+                must_link_groups=task["mandatory_same_unit_groups"],
+            )
+            if issues:
+                raise ValueError(f"Invalid corrected partition: {issues}")
 
         # Audit is global, but only changed assignments are returned. One repair
         # request can address precise structural errors; never silently accept.
-        out = call(
-            session,
-            stage=stage_key,
-            model=model,
-            policy=instruction,
-            task={
-                **task,
-                "draft_assignments": values,
-                "instructions": "Inspect all assignments and evidence. Return approval with no corrections when valid; "
-                "otherwise only changed candidate assignments. checks means each scientific check was completed.",
-            },
-            output_model=Audit,
-            validator=validate_audit,
-        )
+        audit_task = {
+            **task,
+            "draft_assignments": values,
+            "instructions": "Inspect all assignments and evidence. Emit only changed assignments, not the full partition. "
+            "approved means the FINAL partition after applying corrections is scientifically valid. "
+            "It may be true with corrections. Return no corrections when the draft is already valid. "
+            "checks means each scientific check was completed.",
+        }
+        audit_error = ""
+        for attempt in range(2):
+            try:
+                out = call(
+                    session,
+                    stage=stage_key + ("_repair" if attempt else ""),
+                    model=model,
+                    policy=instruction,
+                    task={**audit_task, "validation_error": audit_error},
+                    output_model=Audit,
+                    validator=validate_audit,
+                )
+                break
+            except Exception as exc:
+                audit_error = f"{type(exc).__name__}: {exc}"
+        else:
+            raise ValueError(f"Decision audit remains unresolved: {audit_error}")
         for correction in out.corrections:
             values[correction.candidate] = correction.model_dump(exclude={"candidate"})
 
-    # Resolve anchor chains into final units, retaining a selected member as the
-    # display statement for old consumers. Complete description sets stay in metadata.
+    result = _assignment_partition(values, catalog)
+    # Required exclusions and must-link consistency are mechanical invariants.
+    expected = set(refs)
+    required = {x["candidate_id"] for x in task["mandatory_evidence_exclusions"]}
+    eligible = {
+        ref for ref in refs if task["candidate_admission_status"][ref] == "adjudicated"
+    } - required
+    issues = _canonical_partition_issues(
+        result,
+        expected_aliases=expected,
+        eligible_aliases=eligible,
+        required_exclusion_aliases=required,
+        must_link_groups=task["mandatory_same_unit_groups"],
+    )
+    if audit and issues:
+        raise ValueError(f"Decision canonical partition invalid: {issues}")
+    if audit:
+        result = CanonicalAuditOutput(
+            **result.model_dump(),
+            quality_checks=out.checks,
+            findings=[],
+            draft_unit_reviews=[
+                CanonicalDraftUnitReview(
+                    draft_unit_id=u["draft_unit_id"],
+                    outcome=_draft_review_outcome(u, result.units),
+                    rationale="decision_audit",
+                )
+                for u in task["canonical_draft"]["units"]
+            ],
+        )
+        # A correction may merge/split/exclude units; the actual assignments are
+        # authoritative, not narrative draft review labels.
+        if validator:
+            validator(result)
+        session._write_json("silver/decision_assignments_final.json", values)
+    session._write_json(
+        f"silver/{stage_key}_decisions.json", result.model_dump(mode="json")
+    )
+    return result, audit_error if audit else ""
+
+
+def _draft_review_outcome(draft, final_units):
+    original = set(draft["candidate_ids"])
+    matches = [u for u in final_units if original.intersection(u.candidate_ids)]
+    if not matches:
+        return "excluded"
+    if len(matches) > 1:
+        return "split"
+    final = matches[0]
+    if set(final.candidate_ids) != original:
+        return "merged"
+    return "retained" if final.statement == draft["statement"] else "rewritten"
+
+
+def _assignment_partition(values, catalog):
+    from .file_agent_workflow import (
+        CanonicalizationAgentOutput,
+        CanonicalUnitProposal,
+        CanonicalExclusionProposal,
+    )
+
+    refs = tuple(catalog)
+
     def root(ref):
         trail = []
         while True:
@@ -512,42 +608,4 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
         CanonicalExclusionProposal(candidate_ids=[ref], reason="decision_exclusion")
         for ref in excluded
     ]
-    result = CanonicalizationAgentOutput(units=units, exclusions=exclusions)
-    # Required exclusions and must-link consistency are mechanical invariants.
-    expected = set(refs)
-    required = {x["candidate_id"] for x in task["mandatory_evidence_exclusions"]}
-    eligible = {
-        ref for ref in refs if task["candidate_admission_status"][ref] == "adjudicated"
-    } - required
-    issues = _canonical_partition_issues(
-        result,
-        expected_aliases=expected,
-        eligible_aliases=eligible,
-        required_exclusion_aliases=required,
-        must_link_groups=task["mandatory_same_unit_groups"],
-    )
-    if audit and issues:
-        raise ValueError(f"Decision canonical partition invalid: {issues}")
-    if audit:
-        result = CanonicalAuditOutput(
-            **result.model_dump(),
-            quality_checks=out.checks,
-            findings=[],
-            draft_unit_reviews=[
-                CanonicalDraftUnitReview(
-                    draft_unit_id=u["draft_unit_id"],
-                    outcome="retained" if out.approved else "rewritten",
-                    rationale="decision_audit",
-                )
-                for u in task["canonical_draft"]["units"]
-            ],
-        )
-        # A correction may merge/split/exclude units; the actual assignments are
-        # authoritative, not narrative draft review labels.
-        if validator:
-            validator(result)
-        session._write_json("silver/decision_assignments_final.json", values)
-    session._write_json(
-        f"silver/{stage_key}_decisions.json", result.model_dump(mode="json")
-    )
-    return result, ""
+    return CanonicalizationAgentOutput(units=units, exclusions=exclusions)

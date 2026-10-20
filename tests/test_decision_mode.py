@@ -347,3 +347,87 @@ def test_canonical_claim_sets_materialize_through_production_scoring(
             miner_id=c.miner_id, miner_candidates=[c], silver_record=final
         )
         assert score.coverage == 1
+
+
+def test_decision_cases_are_independent_single_candidate_consensus_records():
+    from validator.agent_v1.orchestrator import (
+        _decision_comparison_cases_from_graph,
+        MinerPaperSubmission,
+    )
+    from test_validator_agent_v1_file_workflow import _candidate
+
+    bronze = _candidate("bronze:C1", "bronze", None, "Finding.")
+    miner = _candidate("miner:uid_1:C1", "miner", "uid_1", "Related finding.")
+    cases = _decision_comparison_cases_from_graph(
+        paper_id="paper",
+        bronze_candidates=[bronze],
+        miner_submissions=[
+            MinerPaperSubmission(miner_id="uid_1", paper_id="paper", candidates=[miner])
+        ],
+        candidate_graph_edges=[],
+    )
+    assert len(cases) == 2 and all(len(c.candidate_ids) == 1 for c in cases)
+    assert {c.candidate_ids[0] for c in cases} == {
+        bronze.candidate_id,
+        miner.candidate_id,
+    }
+
+
+def test_canonical_audit_can_approve_specific_corrections(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from validator.agent_v1 import decision_workflow as w
+    from validator.agent_v1.file_agent_workflow import CanonicalQualityChecks
+
+    (tmp_path / "silver").mkdir()
+    (tmp_path / "silver/decision_assignments_draft.json").write_text(
+        json.dumps(
+            {
+                "c0": {"unit": "c0", "importance": "central"},
+                "c1": {"unit": "c1", "importance": "supporting"},
+            }
+        )
+    )
+    session = SimpleNamespace(root=tmp_path, _write_json=lambda *a: None)
+    task = {
+        "accepted_candidates": [
+            {"candidate_id": "c0", "statement": "Finding."},
+            {"candidate_id": "c1", "statement": "Restatement."},
+        ],
+        "mandatory_evidence_exclusions": [],
+        "mandatory_same_unit_groups": [],
+        "candidate_admission_status": {"c0": "adjudicated", "c1": "adjudicated"},
+        "canonical_draft": {
+            "units": [
+                {
+                    "draft_unit_id": "u0",
+                    "candidate_ids": ["c0"],
+                    "statement": "Finding.",
+                },
+                {
+                    "draft_unit_id": "u1",
+                    "candidate_ids": ["c1"],
+                    "statement": "Restatement.",
+                },
+            ]
+        },
+    }
+
+    def call(*a, **k):
+        out = k["output_model"].model_validate(
+            {
+                "approved": True,
+                "corrections": [
+                    {"candidate": "c1", "unit": "c0", "importance": "central"}
+                ],
+                "checks": {f: True for f in CanonicalQualityChecks.model_fields},
+            }
+        )
+        k["validator"](out)
+        return out
+
+    monkeypatch.setattr(w, "call", call)
+    result, _ = w.canonical_stage(
+        session, stage_key="canonicalization_audit", model="m", task=task
+    )
+    assert len(result.units) == 1
+    assert all(r.outcome == "merged" for r in result.draft_unit_reviews)

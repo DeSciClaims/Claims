@@ -9,8 +9,7 @@ DeepSeek through OpenRouter), not an OpenAI Decisions or Jev provider integratio
 Comparison returns relation/confidence classifications for retrieved pairs. Code
 constructs complete-link equivalence groups; unclassified pair chains do not grant
 bypass. Eligibility judges independently decide each candidate, so both members of
-a pair can qualify. Decision records include explicit accepted candidate IDs and
-per-candidate primary decisions. Historical selection records remain unchanged.
+a pair can qualify. Decision mode constructs one-candidate cases: both members of a formerly paired case can pass as separate decisions. Each consensus record retains the existing selected-candidate-or-neither semantics, plus per-candidate primary decisions. Historical selection records remain unchanged.
 
 One source-only reconstruction is generated lazily for a paper with disagreements.
 It contains no candidate claims or primary votes, is hashed and saved, and is reused
@@ -78,7 +77,5 @@ The deployed Hermes CanonicalUsage output count already includes reasoning; its 
 audits preserve the source of these totals. A small final JSON alone does not prove
 low model output or low provider billing.
 
-Before rollout, verify decision-record consumers (especially consensus task answer
-construction) support per-candidate accepted sets, including both-valid pairs. Replay
-has no consensus writes. Compare original source support, admissions, unit grouping,
+Decision cases are single-candidate records to preserve existing consensus answer construction. Verify materialization/preparation with these records before rollout. Replay has no consensus writes. Compare original source support, admissions, unit grouping,
 importance and scores before enabling decision mode outside isolated tests.
