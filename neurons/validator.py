@@ -7192,6 +7192,7 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_eligibility_sample_verbose_paper": os.getenv("CLAIMS_ELIGIBILITY_SAMPLE_VERBOSE_PAPER", "true").lower() in {"true", "1", "yes", "on"},
         "claims_decision_batch_size": int(os.getenv("CLAIMS_DECISION_BATCH_SIZE", "24")),
         "claims_decision_max_tokens": int(os.getenv("CLAIMS_DECISION_MAX_TOKENS", "4096")),
+        "claims_decision_blind_max_tokens": int(os.getenv("CLAIMS_DECISION_BLIND_MAX_TOKENS", "16384")),
         "claims_decision_reasoning_enabled": os.getenv("CLAIMS_DECISION_REASONING_ENABLED", "false").lower() in {"true", "1"},
         "claims_silver_equivalence_shared_coverage": bool(
             getattr(config, "claims_silver_equivalence_shared_coverage", True)

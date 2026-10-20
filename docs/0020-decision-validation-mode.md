@@ -34,6 +34,7 @@ Configuration:
 CLAIMS_ELIGIBILITY_OUTPUT_CONTRACT=decision
 CLAIMS_DECISION_BATCH_SIZE=24
 CLAIMS_DECISION_MAX_TOKENS=4096
+CLAIMS_DECISION_BLIND_MAX_TOKENS=16384
 CLAIMS_DECISION_REASONING_ENABLED=false
 CLAIMS_ELIGIBILITY_SAMPLE_VERBOSE_PAPER=true
 ```
@@ -100,3 +101,20 @@ this inconsistency without altering the provider counters. A separate source-onl
 reconstruction probe produced five findings with valid span IDs in 600 output
 tokens. It is excluded from the paired totals; the final decision arms had no
 primary disagreements. Unit tests exercise reconstruction reuse across disputes.
+
+## Full-batch reconstruction and checkpoint recovery
+
+Paper-level blind reconstruction has its own 16,384-token limit. Binary/relation
+packets retain the 4,096-token limit. A length-truncated reconstruction retries
+once with twice its configured allowance; no incomplete reconstruction is accepted
+or treated as evidence of ineligibility. Both attempts retain usage.
+
+The mainnet decision-only replay runner supports explicit `--resume`. It archives
+the prior paper workspace, restores its original usage journal exactly once, and
+reuses only successful responses whose exact request, stage and recorded provider
+ID match. Current schema and semantic validators run again. Reused calls produce
+checkpoint markers without new usage events; prior failed attempts remain counted.
+Requests interrupted without responses have unknown billing and are exposed in
+recovery metadata. This is recovery within one experiment, not a zero-token cache
+hit or reuse of historical compact judgments. Production does not install this
+benchmark-only recovery hook.

@@ -67,18 +67,8 @@ class DecisionRuntime:
         self.max_tokens, self.timeout = max_tokens, timeout
         self.reasoning_enabled, self.transport = reasoning_enabled, transport
 
-    def run(
-        self,
-        *,
-        stage: str,
-        task: dict,
-        output_model: type[BaseModel],
-        model: str,
-        policy: str,
-        validator=None,
-    ) -> BaseModel:
-        folder = self.root / "executions" / stage
-        folder.mkdir(parents=True, exist_ok=True)
+    def build_request(self, *, task, output_model, model, policy):
+        """Exact request identity, also used for auditable benchmark recovery."""
         schema = output_model.model_json_schema()
         request = {
             "model": model,
@@ -100,6 +90,23 @@ class DecisionRuntime:
         if "openrouter.ai" in self.api_base:
             request["reasoning"] = {"enabled": self.reasoning_enabled}
             request["provider"] = {"require_parameters": True}
+        return request
+
+    def run(
+        self,
+        *,
+        stage: str,
+        task: dict,
+        output_model: type[BaseModel],
+        model: str,
+        policy: str,
+        validator=None,
+    ) -> BaseModel:
+        folder = self.root / "executions" / stage
+        folder.mkdir(parents=True, exist_ok=True)
+        request = self.build_request(
+            task=task, output_model=output_model, model=model, policy=policy
+        )
         (folder / "request.json").write_text(json.dumps(request, indent=2))
         started = datetime.now(timezone.utc)
         clock = time.perf_counter()

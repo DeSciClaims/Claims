@@ -153,7 +153,7 @@ def audit_usage(events):
 def arm(item, args, mode):
     paper = item["paper_id"]
     folder = args.output_dir / paper / mode
-    folder.mkdir(parents=True)
+    folder.mkdir(parents=True, exist_ok=getattr(args, "resume", False))
     mainnet_inputs = getattr(args, "mainnet_inputs", False)
     if mainnet_inputs:
         from scripts.replay_mainnet_decision import frozen_inputs
@@ -181,6 +181,10 @@ def arm(item, args, mode):
         checkpoint_sink=lambda events: write(folder / "usage_events.json", events),
         checkpoint_every=1,
     )
+    if getattr(args, "resume", False):
+        from scripts.decision_replay_checkpoint import register
+
+        register(folder, collector)
     cfg = replace(
         FileAgentWorkflowConfig.from_env(),
         root=folder / "workspaces",

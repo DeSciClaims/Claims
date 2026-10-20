@@ -32,7 +32,7 @@ POLICY = (
 )
 
 
-def runtime(session):
+def runtime(session, *, max_tokens=None):
     c = session.config
     return DecisionRuntime(
         api_base=c.adjudication_api_base,
@@ -41,18 +41,28 @@ def runtime(session):
         usage_sink=session.usage_sink,
         paper_id=session.paper_id,
         workspace_id=session.workspace_id,
-        max_tokens=c.decision_max_tokens,
+        max_tokens=max_tokens or c.decision_max_tokens,
         timeout=c.adjudication_timeout_seconds,
         reasoning_enabled=c.decision_reasoning_enabled,
     )
 
 
-def call(session, *, stage, task, output_model, model, policy=POLICY, validator=None):
+def call(
+    session,
+    *,
+    stage,
+    task,
+    output_model,
+    model,
+    policy=POLICY,
+    validator=None,
+    max_tokens=None,
+):
     from .file_agent_workflow import _request_slot
 
     try:
         with _request_slot(session.request_gate):
-            output = runtime(session).run(
+            output = runtime(session, max_tokens=max_tokens).run(
                 stage=stage,
                 task=task,
                 output_model=output_model,
@@ -639,15 +649,24 @@ def run_blind_reconstruction(session, source):
     blind_policy += (
         "\nReturn compact findings with finding and span_ids, plus packet_limitations. "
     )
-    blind = call(
-        session,
-        stage="eligibility_adjudication_blind_reconstruction_paper",
-        task=blind_task,
-        output_model=CompactBlindOutput,
-        model=session.config.adjudication_tiebreak_model,
-        policy=blind_policy,
-        validator=lambda x: validate_blind(x, blind_task),
-    )
+    for attempt in range(2):
+        try:
+            blind = call(
+                session,
+                stage="eligibility_adjudication_blind_reconstruction_paper"
+                + ("_retry" if attempt else ""),
+                max_tokens=session.config.decision_blind_max_tokens
+                * (2 if attempt else 1),
+                task=blind_task,
+                output_model=CompactBlindOutput,
+                model=session.config.adjudication_tiebreak_model,
+                policy=blind_policy,
+                validator=lambda x: validate_blind(x, blind_task),
+            )
+            break
+        except ValueError as exc:
+            if attempt or "stopped with length" not in str(exc):
+                raise
     locked = blind.model_dump(mode="json")
     blind_hash = digest(locked)
     session._write_json(

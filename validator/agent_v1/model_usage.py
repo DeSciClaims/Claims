@@ -38,14 +38,18 @@ class ModelUsageCollector:
         if cost_kind not in {"actual", "estimated"} or cost_usd is None:
             cost_kind = "unavailable"
         row = {
-            "usage_event_id": str(event.get("usage_event_id") or f"usage_{uuid.uuid4().hex}"),
+            "usage_event_id": str(
+                event.get("usage_event_id") or f"usage_{uuid.uuid4().hex}"
+            ),
             "network": self.network,
             "run_id": self.run_id,
             "batch_id": self.batch_id,
             "paper_id": _optional_text(event.get("paper_id")),
             "uid": _optional_int(event.get("uid")),
             "stage_key": str(event.get("stage_key") or "unknown"),
-            "stage_label": str(event.get("stage_label") or event.get("stage_key") or "Unknown"),
+            "stage_label": str(
+                event.get("stage_label") or event.get("stage_key") or "Unknown"
+            ),
             "role": str(event.get("role") or "validator"),
             "operation_id": _optional_text(event.get("operation_id")),
             "pass_id": _optional_text(event.get("pass_id")),
@@ -62,13 +66,17 @@ class ModelUsageCollector:
             "total_tokens": _optional_int(usage.get("total_tokens")),
             "cost_usd": cost_usd,
             "cost_kind": cost_kind,
-            "usage_source": str(usage.get("source") or event.get("usage_source") or "unavailable"),
+            "usage_source": str(
+                usage.get("source") or event.get("usage_source") or "unavailable"
+            ),
             "status": str(event.get("status") or "success"),
             "error": _optional_text(event.get("error")),
             "started_at": _timestamp(event.get("started_at")),
             "ended_at": _timestamp(event.get("ended_at")),
             "duration_seconds": _optional_float(event.get("duration_seconds")),
-            "metadata": event.get("metadata") if isinstance(event.get("metadata"), dict) else {},
+            "metadata": event.get("metadata")
+            if isinstance(event.get("metadata"), dict)
+            else {},
         }
         if isinstance(usage.get("usage_audit"), dict):
             row["metadata"] = {**row["metadata"], "usage_audit": usage["usage_audit"]}
@@ -77,7 +85,8 @@ class ModelUsageCollector:
             self._events.append(row)
             if (
                 self._checkpoint_sink is not None
-                and len(self._events) - self._last_checkpoint_count >= self._checkpoint_every
+                and len(self._events) - self._last_checkpoint_count
+                >= self._checkpoint_every
             ):
                 self._last_checkpoint_count = len(self._events)
                 checkpoint_events = [dict(event) for event in self._events]
@@ -90,6 +99,19 @@ class ModelUsageCollector:
                     len(checkpoint_events),
                     exc,
                 )
+
+    def restore(self, events: list[dict[str, Any]]) -> None:
+        """Restore one saved journal before recording new calls, without rebilling it."""
+        ids = [event.get("usage_event_id") for event in events]
+        if any(not event_id for event_id in ids) or len(ids) != len(set(ids)):
+            raise ValueError("Restored usage must have distinct event IDs")
+        with self._lock:
+            if self._events:
+                raise ValueError("Restore requires an empty collector")
+            self._events = [dict(event) for event in events]
+            self._last_checkpoint_count = len(self._events)
+        if self._checkpoint_sink is not None:
+            self._checkpoint_sink(self.snapshot())
 
     def snapshot(self) -> list[dict[str, Any]]:
         with self._lock:

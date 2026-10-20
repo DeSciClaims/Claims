@@ -124,13 +124,18 @@ def main():
     p.add_argument("--env-file", type=Path)
     p.add_argument("--workers", type=int, choices=range(1, 5), default=3)
     p.add_argument("--validate-only", action="store_true")
+    p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Recover identical saved calls and retain their original usage",
+    )
     args = p.parse_args()
     args.manifest = args.manifest.resolve()
     args.output_dir = args.output_dir.resolve()
-    if args.output_dir.exists():
-        p.error("Use a new output directory")
+    if args.output_dir.exists() and not args.resume:
+        p.error("Use a new output directory or explicit --resume")
     items, checks = validate_batch(args.manifest)
-    args.output_dir.mkdir(parents=True)
+    args.output_dir.mkdir(parents=True, exist_ok=args.resume)
     write(args.output_dir / "input_validation.json", checks)
     plan = dict(
         items=items,
@@ -141,6 +146,21 @@ def main():
         manifest_sha256=hashlib.sha256(args.manifest.read_bytes()).hexdigest(),
         scope="Full assigned batch; fresh decision diagnostics/comparison/eligibility/canonicalization. Frozen extraction/reference. No compact rerun, verbose sample, backend or chain writes.",
     )
+    if args.resume:
+        previous = read(args.output_dir / "plan.json")
+        if (
+            previous["manifest_sha256"] != plan["manifest_sha256"]
+            or previous["mode"] != "decision"
+        ):
+            raise ValueError(
+                "Recovery requires the same frozen inputs and decision mode"
+            )
+        plan["recovery_history"] = previous.get("recovery_history", []) + [
+            dict(
+                commit=previous["commit"],
+                recovered_at=datetime.now(timezone.utc).isoformat(),
+            )
+        ]
     write(args.output_dir / "plan.json", plan)
     if args.validate_only:
         return 0
@@ -153,6 +173,10 @@ def main():
     os.environ["CLAIMS_ELIGIBILITY_SAMPLE_VERBOSE_PAPER"] = "false"
     disable_response_cache()
     args.mainnet_inputs = True
+    if args.resume:
+        from scripts.decision_replay_checkpoint import install
+
+        install()
     status = dict(
         status="running", started_at=datetime.now(timezone.utc).isoformat(), papers=[]
     )
@@ -163,11 +187,18 @@ def main():
         for c in checks
         if not c.get("replayable")
     ]
+    completed = set()
+    if args.resume:
+        for item in items:
+            path = args.output_dir / item["paper_id"] / "decision/report.json"
+            if path.exists() and read(path).get("status") == "complete":
+                completed.add(item["paper_id"])
+                status["papers"].append(dict(paper_id=item["paper_id"], **read(path)))
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
             executor.submit(arm, item, args, "decision"): item
             for item in items
-            if item["paper_id"] in replayable
+            if item["paper_id"] in replayable and item["paper_id"] not in completed
         }
         for future in as_completed(futures):
             try:

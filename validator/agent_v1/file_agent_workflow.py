@@ -291,6 +291,7 @@ class FileAgentWorkflowConfig:
     eligibility_sample_verbose_paper: bool = True
     decision_batch_size: int = 24
     decision_max_tokens: int = 4096
+    decision_blind_max_tokens: int = 16384
     decision_reasoning_enabled: bool = False
     adjudication_batch_size: int = 4
     adjudication_max_source_chars: int = 30000
@@ -433,6 +434,7 @@ class FileAgentWorkflowConfig:
             eligibility_output_contract=os.getenv("CLAIMS_ELIGIBILITY_OUTPUT_CONTRACT", "compact").strip().lower(),
             decision_batch_size=max(1, int(os.getenv("CLAIMS_DECISION_BATCH_SIZE", "24"))),
             decision_max_tokens=max(256, int(os.getenv("CLAIMS_DECISION_MAX_TOKENS", "4096"))),
+            decision_blind_max_tokens=max(256, int(os.getenv("CLAIMS_DECISION_BLIND_MAX_TOKENS", "16384"))),
             decision_reasoning_enabled=os.getenv("CLAIMS_DECISION_REASONING_ENABLED", "false").lower() in {"true", "1"},
             eligibility_sample_verbose_paper=os.getenv("CLAIMS_ELIGIBILITY_SAMPLE_VERBOSE_PAPER", "true").strip().lower() in {"true", "1", "yes", "on"},
             adjudication_batch_size=max(

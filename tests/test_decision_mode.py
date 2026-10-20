@@ -206,6 +206,7 @@ def test_one_blind_reconstruction_for_multiple_disputed_cases(monkeypatch, tmp_p
 
     def call(session, **kwargs):
         stages.append(kwargs["stage"])
+        assert kwargs["max_tokens"] == 16384
         assert "candidates" not in kwargs["task"]
         assert "claims_summary" not in kwargs["task"]["paper"]
         assert "abstract" not in kwargs["task"]["paper"]
@@ -220,6 +221,7 @@ def test_one_blind_reconstruction_for_multiple_disputed_cases(monkeypatch, tmp_p
             adjudication_negative_model="n",
             adjudication_positive_model="p",
             adjudication_tiebreak_model="t",
+            decision_blind_max_tokens=16384,
         ),
         eligibility_source_context_by_span_id={"s1": "Source text."},
         source_context_by_span_id={},
@@ -580,3 +582,31 @@ def test_comparison_preserves_scientific_definitions_and_blocks_equivalence_chai
     w.run_comparison(session)
     assert len(session.confirmed_equivalence_groups) == 1
     assert len(session.confirmed_equivalence_groups[0].member_candidate_ids) == 2
+
+
+def test_blind_reconstruction_retries_truncation_with_separate_budget(monkeypatch):
+    from types import SimpleNamespace
+    from validator.agent_v1 import decision_workflow as w
+    from validator.agent_v1.eligibility_compact import CompactBlindOutput
+
+    calls = []
+
+    def invoke(session, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise ValueError("Decision response stopped with length")
+        return CompactBlindOutput(findings=[{"finding": "Finding", "span_ids": ["s1"]}])
+
+    monkeypatch.setattr(w, "call", invoke)
+    session = SimpleNamespace(
+        config=SimpleNamespace(
+            decision_blind_max_tokens=16384, adjudication_tiebreak_model="m"
+        ),
+        paper_context={"paper_id": "p"},
+        _write_json=lambda *args: None,
+    )
+    result, _ = w.run_blind_reconstruction(session, {"s1": "Source"})
+    assert result["findings"]
+    assert [c["max_tokens"] for c in calls] == [16384, 32768]
+    assert calls[0]["task"] == calls[1]["task"]
+    assert calls[1]["stage"].endswith("_retry")

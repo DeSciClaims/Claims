@@ -100,3 +100,101 @@ def test_mainnet_replay_preserves_historical_source_collision_precedence(
     assert source == {"span": "original comparison text"}
     assert eligibility == {"span": "reference text"}
     assert paper["title"] == "Original context"
+
+
+def test_recovery_reuses_exact_successful_requests_without_dropping_or_duplicating_usage(
+    monkeypatch, tmp_path
+):
+    import json
+    from scripts import decision_replay_checkpoint as checkpoint
+    from validator.agent_v1.decision_runtime import (
+        DecisionRuntime,
+        BinaryDecision,
+        slots_model,
+    )
+    from validator.agent_v1.model_usage import ModelUsageCollector
+
+    monkeypatch.setattr(checkpoint, "_RESPONSES", {})
+    monkeypatch.setattr(checkpoint, "_INSTALLED", False)
+    original = DecisionRuntime.run
+    monkeypatch.setattr(DecisionRuntime, "run", original)
+    folder = tmp_path / "paper" / "decision"
+    folder.mkdir(parents=True)
+    collector = ModelUsageCollector(network="testnet", run_id="r", batch_id="p")
+    responses = iter(
+        [
+            {
+                "id": "failed",
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 20,
+                    "total_tokens": 30,
+                },
+                "choices": [{"finish_reason": "length", "message": {"content": "{"}}],
+            },
+            {
+                "id": "ok",
+                "usage": {
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                },
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {
+                            "content": '{"c0":{"eligible":true,"confidence":0.9}}'
+                        },
+                    }
+                ],
+            },
+        ]
+    )
+    rt = DecisionRuntime(
+        api_base="https://openrouter.ai/api/v1",
+        api_key_env="UNUSED",
+        root=folder / "workspaces" / "p",
+        usage_sink=collector.record,
+        transport=lambda request: next(responses),
+    )
+    kwargs = dict(
+        task={"source": "fixed"},
+        output_model=slots_model("CheckpointSlots", ["c0"], BinaryDecision),
+        model="m",
+        policy="policy",
+    )
+    import pytest
+
+    with pytest.raises(ValueError):
+        rt.run(stage="bad", **kwargs)
+    rt.run(stage="good", **kwargs)
+    (folder / "usage_events.json").write_text(json.dumps(collector.snapshot()))
+    restored = ModelUsageCollector(network="testnet", run_id="r", batch_id="p")
+    assert checkpoint.register(folder, restored) == 1
+    checkpoint.install()
+    rt.usage_sink = restored.record
+    rt.transport = lambda request: pytest.fail(
+        "Matching successful call must not be resent"
+    )
+    assert rt.run(stage="good", **kwargs).c0.eligible is True
+    events = restored.snapshot()
+    assert len(events) == 2
+    assert sum(e["completion_tokens"] for e in events) == 25
+    assert events[0]["status"] == "failed"
+    assert len({e["usage_event_id"] for e in events}) == 2
+    rt.transport = lambda request: {
+        "id": "new",
+        "usage": {"prompt_tokens": 11, "completion_tokens": 5, "total_tokens": 16},
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "message": {"content": '{"c0":{"eligible":false,"confidence":0.8}}'},
+            }
+        ],
+    }
+    assert (
+        rt.run(stage="good", **{**kwargs, "task": {"source": "changed"}}).c0.eligible
+        is False
+    )
+    assert len(restored.snapshot()) == 3
+    assert (folder / "workspaces/p/executions/good/checkpoint_reused.json").exists()
