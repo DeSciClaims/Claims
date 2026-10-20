@@ -79,3 +79,24 @@ low model output or low provider billing.
 
 Decision cases are single-candidate records to preserve existing consensus answer construction. Verify materialization/preparation with these records before rollout. Replay has no consensus writes. Compare original source support, admissions, unit grouping,
 importance and scores before enabling decision mode outside isolated tests.
+
+## Initial live results (2026-10-21)
+
+Three saved testnet papers (40 candidates, one/two/one miners) completed in both
+modes. Corrected decision arms recorded 6,067 output tokens versus 301,014 for
+fresh compact controls; total tokens were 440,539 versus 2,941,019. This comparison
+bundles bounded contracts, batching, agent-loop removal and reasoning settings.
+It is not an isolated schema-only effect or a full-size batch estimate.
+
+Scientific outcomes changed: 13 of 23 jointly adjudicated candidates changed
+admission, and the two-miner fixture reversed ranks. Keep compact as the default
+pending source-grounded review. The supplementary vault report is
+`Claims Team/Outputs/Decision mode versus compact validation 2026-10-21.md`.
+It includes stage totals, score differences, fixture hashes and exact replay pins.
+
+All 48 usage events reconcile to upstream output counters. Six compact DSPy
+responses report reasoning greater than completion upstream; the analyzer exposes
+this inconsistency without altering the provider counters. A separate source-only
+reconstruction probe produced five findings with valid span IDs in 600 output
+tokens. It is excluded from the paired totals; the final decision arms had no
+primary disagreements. Unit tests exercise reconstruction reuse across disputes.

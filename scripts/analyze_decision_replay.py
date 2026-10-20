@@ -68,6 +68,11 @@ def analyze(root):
                     "audited": len(raw),
                     "mismatches": sum(not r["output_matches_provider"] for r in raw),
                     "unverified": len(audits) - len(raw),
+                    "reasoning_exceeds_completion_events": sum(
+                        (e.get("reasoning_tokens") or 0)
+                        > (e.get("completion_tokens") or 0)
+                        for e in events
+                    ),
                     "successful_zero_or_missing_usage": sum(
                         e["status"] == "success"
                         and (
@@ -93,6 +98,12 @@ def analyze(root):
                 decisions[mode] = read(arm / "decisions.json")
                 scores[mode] = {s["miner_id"]: s for s in read(arm / "scores.json")}
                 row["arms"][mode]["silver_units"] = len(records[mode]["silver_units"])
+                row["arms"][mode]["technical_unresolved_cases"] = (
+                    records[mode]
+                    .get("metadata", {})
+                    .get("eligibility_selection_adjudication", {})
+                    .get("technical_unresolved_case_count", 0)
+                )
                 row["arms"][mode]["importance_counts"] = dict(
                     Counter(
                         u.get("importance", "supporting")
