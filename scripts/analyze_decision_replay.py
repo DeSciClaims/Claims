@@ -93,6 +93,12 @@ def analyze(root):
                 decisions[mode] = read(arm / "decisions.json")
                 scores[mode] = {s["miner_id"]: s for s in read(arm / "scores.json")}
                 row["arms"][mode]["silver_units"] = len(records[mode]["silver_units"])
+                row["arms"][mode]["importance_counts"] = dict(
+                    Counter(
+                        u.get("importance", "supporting")
+                        for u in records[mode]["silver_units"]
+                    )
+                )
                 row["arms"][mode]["equivalence_groups"] = len(
                     records[mode]
                     .get("metadata", {})
@@ -142,6 +148,12 @@ def analyze(root):
                         decision_coverage=b["coverage"],
                         compact_quality=a["quality"],
                         decision_quality=b["quality"],
+                        compact_diagnostic_quality=a.get("metadata", {}).get(
+                            "diagnostic_quality"
+                        ),
+                        decision_diagnostic_quality=b.get("metadata", {}).get(
+                            "diagnostic_quality"
+                        ),
                         compact_score=a["score"],
                         decision_score=b["score"],
                         score_delta=b["score"] - a["score"],
