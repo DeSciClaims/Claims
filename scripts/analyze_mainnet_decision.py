@@ -245,12 +245,31 @@ def analyze(inputs, replay, output):
             shared_fixed = aggregate(batch, fixed_scores, matched)
             observed_new = aggregate(batch, new_scores, set(complete))
             historical_full = {m["miner_id"]: m for m in batch["miners"]}
+            routine_papers = matched - {verbose}
+            routine_scores = {
+                label: aggregate(batch, records, routine_papers)
+                if routine_papers
+                else {}
+                for label, records in [
+                    ("historical", old_scores),
+                    ("decision", new_scores),
+                    ("historical_diagnostics", fixed_scores),
+                ]
+            }
             for mid in shared_old:
                 score_rows.append(
                     dict(
                         run_id=rid,
                         miner_id=mid,
                         matched_papers=len(matched),
+                        routine_matched_papers=len(routine_papers),
+                        **{
+                            f"routine_{label}_{metric}": results.get(mid, {}).get(
+                                metric
+                            )
+                            for label, results in routine_scores.items()
+                            for metric in ["score", "rank"]
+                        },
                         historical_observed_score=historical_full[mid]["batch_score"],
                         historical_observed_rank=historical_full[mid]["rank"],
                         decision_observed_score=observed_new[mid]["score"],
