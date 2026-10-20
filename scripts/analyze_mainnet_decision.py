@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import csv
+import hashlib
 from pathlib import Path
 from scripts.benchmark_equivalence_routing import read, write
 from scripts.compare_decision_mode import summarize, ranks, audit_usage
@@ -101,6 +102,15 @@ def analyze(inputs, replay, output):
         ids = [e["usage_event_id"] for e in events]
         if len(ids) != len(set(ids)) or len(ids) != backup["expected_event_count"]:
             raise ValueError("Historical journal incomplete or duplicated")
+        digest = hashlib.sha256()
+        for event_id in ids:
+            digest.update(str(event_id).encode("utf-8"))
+            digest.update(b"\n")
+        if digest.hexdigest() != backup["event_ids_sha256"]:
+            raise ValueError("Historical event journal checksum mismatch")
+        suite_path = new / "suite_status.json"
+        suite = read(suite_path) if suite_path.exists() else {}
+        paper_statuses = {p["paper_id"]: p for p in suite.get("papers", [])}
         before = routine(events)
         after = []
         complete = []
@@ -114,7 +124,11 @@ def analyze(inputs, replay, output):
         for item in read(old / "manifest.json"):
             pid = item["paper_id"]
             arm = new / pid / "decision"
-            report = read(arm / "report.json") if (arm / "report.json").exists() else {}
+            report = (
+                read(arm / "report.json")
+                if (arm / "report.json").exists()
+                else paper_statuses.get(pid, {})
+            )
             ev = (
                 read(arm / "usage_events.json")
                 if (arm / "usage_events.json").exists()
