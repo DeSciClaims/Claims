@@ -122,7 +122,7 @@ def main():
     p.add_argument("--manifest", type=Path, required=True)
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--env-file", type=Path)
-    p.add_argument("--workers", type=int, choices=range(1, 5), default=3)
+    p.add_argument("--workers", type=int, choices=range(1, 41), default=3)
     p.add_argument("--validate-only", action="store_true")
     p.add_argument(
         "--resume",

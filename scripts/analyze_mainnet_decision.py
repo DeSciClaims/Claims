@@ -41,6 +41,11 @@ def usage(events):
             for e in rows
         )
         values["cost_kinds"] = dict(Counter(e.get("cost_kind") for e in rows))
+        values["reasoning_reported_when_disabled_events"] = sum(
+            e.get("metadata", {}).get("reasoning_enabled") is False
+            and bool(e.get("reasoning_tokens"))
+            for e in rows
+        )
         values["cache_read_tokens"] = sum(e.get("cache_read_tokens") or 0 for e in rows)
         values["cache_read_counter_events"] = sum(
             e.get("cache_read_tokens") is not None for e in rows

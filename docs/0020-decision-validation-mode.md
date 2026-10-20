@@ -126,3 +126,9 @@ unsupported members; code never promotes an excluded anchor. Audit corrections
 that require repair remain provisional and receive another global source audit.
 At most three audit rounds are allowed, and final affirmative approval plus all
 mechanical and scientific checks is still required before scoring.
+
+The full-batch replay runner accepts up to 40 paper workers. When running multiple
+batches concurrently, divide that allowance across the processes rather than
+starting 40 workers in each. Concurrency and checkpoint recovery are recorded
+separately from output-token savings. Provider-reported reasoning counters are
+retained even when requests explicitly disable reasoning.
