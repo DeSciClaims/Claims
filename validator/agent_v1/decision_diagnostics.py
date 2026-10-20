@@ -34,7 +34,7 @@ class DiagnosticDecision(StrictDecision):
     issues: list[Issue]
 
 
-def run_decision_diagnostics(*, config, run_id, paper_id, submissions):
+def run_decision_diagnostics(*, config, run_id, paper_id, submissions, usage_sink=None):
     from .diagnostic_batch import (
         DiagnosticBatchExecution,
         DiagnosticSubmissionReport,
@@ -63,7 +63,16 @@ def run_decision_diagnostics(*, config, run_id, paper_id, submissions):
     session.paper_id = paper_id
     session.workspace_id = f"{run_id}:diagnostics"
     session.request_gate = None
-    session.usage_sink = events.append
+
+    def record(event):
+        events.append(event)
+        (root / "usage_events.json").write_text(
+            json.dumps(events, indent=2, default=str)
+        )
+        if usage_sink is not None:
+            usage_sink(event)
+
+    session.usage_sink = record
     session._record_manifest_stage = lambda stage: None
     reports = {}
     started = time.perf_counter()

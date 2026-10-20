@@ -45,7 +45,7 @@ def test_recovers_hermes_usage_from_session_store(tmp_path: Path) -> None:
     assert usage["prompt_tokens"] == 150
     assert usage["completion_tokens"] == 20
     assert usage["reasoning_tokens"] == 5
-    assert usage["total_tokens"] == 175
+    assert usage["total_tokens"] == 170
     assert usage["cost_usd"] == 0.0123
     assert usage["cost_kind"] == "estimated"
 

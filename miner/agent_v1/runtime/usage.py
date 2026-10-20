@@ -373,6 +373,7 @@ def usage_from_hermes_stdout(stdout: str, *, command_prefix: list[str] | None = 
 
 def usage_from_hermes_sessions_jsonl(jsonl: str) -> dict[str, Any]:
     usages: list[dict[str, Any]] = []
+    raw_counters: list[dict[str, Any]] = []
     for line in jsonl.splitlines():
         try:
             session = json.loads(line)
@@ -380,6 +381,9 @@ def usage_from_hermes_sessions_jsonl(jsonl: str) -> dict[str, Any]:
             continue
         if not isinstance(session, dict):
             continue
+        raw_counters.append({key: session.get(key) for key in (
+            "id", "input_tokens", "output_tokens", "reasoning_tokens", "cache_read_tokens",
+            "cache_write_tokens", "actual_cost_usd", "estimated_cost_usd")})
         input_tokens = _int_value(session, "input_tokens")
         cache_read_tokens = _int_value(session, "cache_read_tokens") or 0
         cache_write_tokens = _int_value(session, "cache_write_tokens") or 0
@@ -390,7 +394,7 @@ def usage_from_hermes_sessions_jsonl(jsonl: str) -> dict[str, Any]:
         reasoning_tokens = _int_value(session, "reasoning_tokens") or 0
         total_tokens = None
         if prompt_tokens is not None and output_tokens is not None:
-            total_tokens = prompt_tokens + output_tokens + reasoning_tokens
+            total_tokens = prompt_tokens + output_tokens
         actual_cost = _float_value(session, "actual_cost_usd")
         estimated_cost = _float_value(session, "estimated_cost_usd")
         cost = actual_cost if actual_cost is not None else estimated_cost
@@ -408,7 +412,7 @@ def usage_from_hermes_sessions_jsonl(jsonl: str) -> dict[str, Any]:
             }
         )
     merged = merge_usage(usages)
-    merged["usage_audit"] = {"kind": "hermes_session_counters", "records": usages,
+    merged["usage_audit"] = {"kind": "hermes_session_counters", "records": raw_counters,
                             "note": "Session totals; tool turns are included, not just final JSON."}
     return merged
 

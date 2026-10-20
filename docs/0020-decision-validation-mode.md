@@ -74,7 +74,7 @@ completion counts when inferring a missing total. The generic normalizer previou
 did so; this branch fixes that fallback. Provider totals already present are retained.
 DSPy nested Pydantic usage details are now recovered, and provider-reported cost is
 preferred to a separate LM-history estimate. Missing usage remains unknown, never zero.
-Hermes session counters include agent turns/tool calls; separate raw session counter
+The deployed Hermes CanonicalUsage output count already includes reasoning; its total is prompt plus output. Claims previously added reasoning a second time when reconstructing session totals; this branch also corrects that total-only error. Hermes session counters include agent turns/tool calls; separate raw session counter
 audits preserve the source of these totals. A small final JSON alone does not prove
 low model output or low provider billing.
 

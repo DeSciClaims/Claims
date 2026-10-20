@@ -524,7 +524,7 @@ def test_agent_cli_runtime_recovers_hermes_usage_from_session_store(monkeypatch,
 
     assert result.manifest["usage"]["cost_usd"] == 0.071
     assert result.manifest["usage"]["source"] == "hermes_sessions_export"
-    assert result.manifest["usage"]["total_tokens"] == 177
+    assert result.manifest["usage"]["total_tokens"] == 170
 
 
 def test_langchain_structured_response_payload_accepts_artifact_dict() -> None:
@@ -592,7 +592,7 @@ def test_agent_v1_parses_hermes_jsonl_usage() -> None:
 
     assert usage["prompt_tokens"] == 150
     assert usage["completion_tokens"] == 25
-    assert usage["total_tokens"] == 180
+    assert usage["total_tokens"] == 175
     assert usage["cost_usd"] == 0.123
     assert usage["cost_kind"] == "estimated"
     assert usage["cache_read_tokens"] == 40

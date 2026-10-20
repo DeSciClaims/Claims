@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
@@ -120,8 +121,20 @@ class DecisionRuntime:
                         "Content-Type": "application/json",
                     },
                 )
-                with urlopen(req, timeout=self.timeout) as handle:
-                    response = json.load(handle)
+                try:
+                    with urlopen(req, timeout=self.timeout) as handle:
+                        response = json.load(handle)
+                except HTTPError as exc:
+                    try:
+                        detail = json.loads(exc.read().decode()).get("error", {})
+                    except Exception:
+                        detail = {"code": exc.code}
+                    (folder / "provider_error.json").write_text(
+                        json.dumps(detail, indent=2)
+                    )
+                    raise RuntimeError(
+                        f"Provider HTTP {exc.code}: {detail.get('message', 'request rejected')}"
+                    ) from exc
             (folder / "provider_response.json").write_text(
                 json.dumps(response, indent=2)
             )

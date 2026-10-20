@@ -108,6 +108,13 @@ def audit_usage(events):
         if meta.get("provider_usage") is not None:
             records = [{"provider_usage": meta["provider_usage"]}]
         available = [r["provider_usage"] for r in records if r.get("provider_usage")]
+        raw_source = "provider_response"
+        if (
+            not available
+            and (meta.get("usage_audit") or {}).get("kind") == "hermes_session_counters"
+        ):
+            available = meta["usage_audit"]["records"]
+            raw_source = "hermes_session_counters"
         raw_output = sum(
             r.get("completion_tokens", r.get("output_tokens", 0)) or 0
             for r in available
@@ -121,6 +128,7 @@ def audit_usage(events):
                 "usage_event_id": e["usage_event_id"],
                 "stage": e["stage_key"],
                 "source": e.get("usage_source"),
+                "audit_counter_source": raw_source if available else None,
                 "provider_records": len(available),
                 "recorded_completion_tokens": e.get("completion_tokens"),
                 "provider_completion_tokens": raw_output if available else None,
@@ -180,11 +188,21 @@ def arm(item, args, mode):
         )
     result_report = {"status": "running", "mode": mode}
     try:
-        dc = replace(DiagnosticBatchConfig.from_env(), root=folder / "diagnostics")
-        execution = run_diagnostic_batch(
-            config=dc, run_id="paired", paper_id=paper, submissions=diagnostics
+        dc = replace(
+            DiagnosticBatchConfig.from_env(),
+            root=folder / "diagnostics",
+            model=cfg.comparison_model,
+            harness=cfg.harness,
+            provider=cfg.provider,
         )
-        for event in execution.usage_events:
+        execution = run_diagnostic_batch(
+            config=dc,
+            run_id="paired",
+            paper_id=paper,
+            submissions=diagnostics,
+            usage_sink=collector.record if mode == "decision" else None,
+        )
+        for event in execution.usage_events if mode != "decision" else []:
             collector.record(
                 {
                     **event,
