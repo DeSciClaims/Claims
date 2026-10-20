@@ -551,7 +551,8 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
         audit_task = {
             **task,
             "draft_assignments": values,
-            "instructions": "Inspect all assignments and evidence. Emit only changed assignments, not the full partition. "
+            "instructions": "Audit current_partition and draft_assignments as the CURRENT proposal; canonical_draft is historical context. "
+            "Inspect all assignments and evidence. Emit only changed assignments, not the full partition. "
             "approved means the FINAL partition after applying corrections is scientifically valid. "
             "It may be true with corrections. Return no corrections when the draft is already valid. "
             "checks means each scientific check was completed.",
