@@ -66,3 +66,37 @@ def test_usage_excludes_shared_diagnostic_references_but_keeps_real_missing_coun
     assert summary["completion_tokens"] == 5
     assert summary["total_tokens"] == 18
     assert summary["input_plus_output_tokens"] == 25
+
+
+def test_mainnet_replay_preserves_historical_source_collision_precedence(
+    monkeypatch, tmp_path
+):
+    import json
+    import scripts.replay_mainnet_decision as replay
+
+    monkeypatch.setattr(
+        replay,
+        "inputs",
+        lambda item, root: (
+            {},
+            {},
+            [],
+            [],
+            {"span": "reordered miner text"},
+            {"span": "reference text"},
+        ),
+    )
+    task = tmp_path / "historical/workspaces/p/executions/comparison/task.json"
+    task.parent.mkdir(parents=True)
+    task.write_text(
+        json.dumps(
+            {
+                "source_spans": {"span": "original comparison text"},
+                "paper": {"paper_id": "p", "title": "Original context"},
+            }
+        )
+    )
+    *_, source, eligibility, paper = replay.frozen_inputs({"paper_id": "p"}, tmp_path)
+    assert source == {"span": "original comparison text"}
+    assert eligibility == {"span": "reference text"}
+    assert paper["title"] == "Original context"

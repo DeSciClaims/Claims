@@ -156,16 +156,23 @@ def arm(item, args, mode):
     folder.mkdir(parents=True)
     mainnet_inputs = getattr(args, "mainnet_inputs", False)
     if mainnet_inputs:
-        from scripts.replay_mainnet_batch import inputs
+        from scripts.replay_mainnet_decision import frozen_inputs
 
-        bronze, source, miners, candidates, source_map, eligibility_source = inputs(
-            item, args.manifest.parent
-        )
+        (
+            bronze,
+            source,
+            miners,
+            candidates,
+            source_map,
+            eligibility_source,
+            paper_context,
+        ) = frozen_inputs(item, args.manifest.parent)
     else:
         bronze, source, miners, candidates, source_map = fixture_inputs(
             item, args.manifest.parent
         )
         eligibility_source = source_map
+        paper_context = source.get("paper") or bronze.get("paper") or {}
     os.environ["CLAIMS_ELIGIBILITY_OUTPUT_CONTRACT"] = mode
     collector = ModelUsageCollector(
         network="testnet",
@@ -263,7 +270,7 @@ def arm(item, args, mode):
             silver_record_id=f"{mode}_{paper}",
             adjudication_passes=[],
             equivalence_shared_coverage=True,
-            paper_context=source.get("paper") or bronze.get("paper") or {},
+            paper_context=paper_context,
             source_context_by_span_id=source_map,
             eligibility_source_context_by_span_id=eligibility_source,
             file_agent_workflow=workflow,

@@ -15,6 +15,29 @@ from scripts.compare_decision_mode import arm
 from scripts.replay_mainnet_batch import inputs
 
 
+def frozen_inputs(item, root):
+    """Use the original comparison packet to preserve duplicate-span precedence."""
+    bronze, source, miners, candidates, merged, eligibility = inputs(item, root)
+    task = read(
+        root
+        / "historical/workspaces"
+        / item["paper_id"]
+        / "executions/comparison/task.json"
+    )
+    historical_source = task["source_spans"]
+    if not isinstance(historical_source, dict):
+        raise ValueError("Expected the original source map")
+    return (
+        bronze,
+        source,
+        miners,
+        candidates,
+        historical_source,
+        eligibility,
+        task["paper"],
+    )
+
+
 def validate_batch(manifest):
     items = read(manifest)
     batch = read(manifest.parent / "historical/batch_score_result.json")
@@ -36,7 +59,7 @@ def validate_batch(manifest):
                 )
             )
             continue
-        bronze, source, miners, candidates, merged, eligibility = inputs(
+        bronze, source, miners, candidates, merged, eligibility, paper = frozen_inputs(
             item, manifest.parent
         )
         selected = project_agent_artifact(bronze, origin="bronze")
@@ -82,6 +105,7 @@ def validate_batch(manifest):
                 miners=len(miners),
                 historical_candidate_match=match,
                 replayable=True,
+                source_precedence="exact_historical_comparison_packet",
                 source_spans=len(merged),
                 eligibility_source_spans=len(eligibility),
                 unresolved_candidate_spans=sorted(
