@@ -500,7 +500,10 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
 
         class Audit(StrictDecision):
             approved: bool
-            corrections: list[Correction] = Field(max_length=len(refs))
+            corrections: list[Correction] = Field(
+                max_length=len(refs),
+                description="At most one correction per candidate; omit unchanged assignments.",
+            )
             checks: CanonicalQualityChecks
 
         proposed = None
@@ -509,7 +512,9 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
             nonlocal proposed
             targets = [c.candidate for c in out.corrections]
             if len(targets) != len(set(targets)):
-                raise ValueError("Duplicate correction slots")
+                raise ValueError(
+                    f"Duplicate correction slots: {sorted({r for r in targets if targets.count(r) > 1})}. Emit each candidate at most once."
+                )
             if not all(out.checks.model_dump().values()):
                 raise ValueError("Scientific audit checks incomplete")
             corrected = {
@@ -553,6 +558,7 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
             "draft_assignments": values,
             "instructions": "Audit current_partition and draft_assignments as the CURRENT proposal; canonical_draft is historical context. "
             "Inspect all assignments and evidence. Emit only changed assignments, not the full partition. "
+            "Each candidate may appear at most once in corrections. Omit unchanged assignments. "
             "approved means the FINAL partition after applying corrections is scientifically valid. "
             "It may be true with corrections. Return no corrections when the draft is already valid. "
             "checks means each scientific check was completed.",

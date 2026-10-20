@@ -145,6 +145,9 @@ def analyze(inputs, replay, output):
                 historical_complete=pid in batch["eligible_paper_ids"],
                 decision_status=report.get("status", "not_complete"),
                 miner_count=len(item["miner_ids"]),
+                failure_reason=report.get("traceback", "").splitlines()[-1]
+                if report.get("traceback")
+                else report.get("reason", ""),
             )
             if report.get("status") == "complete":
                 complete.append(pid)
@@ -176,6 +179,17 @@ def analyze(inputs, replay, output):
                     removed = retained(osr) - retained(sr)
                     row.update(
                         historical_units=len(osr["silver_units"]),
+                        historical_groups=len(
+                            osr.get("metadata", {})
+                            .get("comparison_equivalence_groups", {})
+                            .get("groups", [])
+                        ),
+                        historical_bypassed_candidates=osr.get("metadata", {})
+                        .get("comparison_equivalence_groups", {})
+                        .get("bypassed_candidate_count", 0),
+                        decision_bypassed_candidates=sr.get("metadata", {})
+                        .get("comparison_equivalence_groups", {})
+                        .get("bypassed_candidate_count", 0),
                         historical_contributors=len(retained(osr)),
                         retained_added=len(added),
                         retained_removed=len(removed),
