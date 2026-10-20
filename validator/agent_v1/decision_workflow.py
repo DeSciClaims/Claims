@@ -433,6 +433,46 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
         "A unit is a set of existing descriptions. Review every pending member's own evidence. "
         "All mandatory evidence exclusions and must-link groups apply. No prose output."
     )
+
+    def repair_anchors(current, repair_stage):
+        bad_refs = _dangling_assignment_refs(current)
+        if bad_refs:
+            schema = slots_model("CanonicalAnchorRepair", sorted(bad_refs), Assignment)
+            repair_error = "Assignments point to an excluded or unknown anchor."
+            for attempt in range(2):
+                try:
+                    repaired = call(
+                        session,
+                        stage=repair_stage
+                        + "_anchor_repair"
+                        + ("_retry" if attempt else ""),
+                        model=model,
+                        policy=instruction,
+                        task={
+                            **task,
+                            "draft_assignments": current,
+                            "repair_slots": sorted(bad_refs),
+                            "validation_error": repair_error,
+                            "instructions": "Resolve only these assignment slots using their own evidence. "
+                            "A selected anchor must remain retained. Keep mandatory exclusions. "
+                            "Do not automatically retain an excluded anchor; select another supported member, "
+                            "split the finding, or exclude an unsupported member as evidence requires.",
+                        },
+                        output_model=schema,
+                        validator=lambda output: _assignment_partition(
+                            {**current, **output.model_dump(mode="json")}, catalog
+                        ),
+                    )
+                    current.update(repaired.model_dump(mode="json"))
+                    break
+                except Exception as exc:
+                    repair_error = f"{type(exc).__name__}: {exc}"
+            else:
+                raise ValueError(
+                    f"Canonical anchor repair remains unresolved: {repair_error}"
+                )
+        return current
+
     if not audit:
         rows = [{"slot": ref} for ref in refs]
         values = classify_slots(
@@ -449,42 +489,7 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
             },
         )
         session._write_json("silver/decision_assignments_initial.json", values)
-        bad_refs = _dangling_assignment_refs(values)
-        if bad_refs:
-            schema = slots_model("CanonicalAnchorRepair", sorted(bad_refs), Assignment)
-            repair_error = "Assignments point to an excluded or unknown anchor."
-            for attempt in range(2):
-                try:
-                    repaired = call(
-                        session,
-                        stage=stage_key
-                        + "_anchor_repair"
-                        + ("_retry" if attempt else ""),
-                        model=model,
-                        policy=instruction,
-                        task={
-                            **task,
-                            "draft_assignments": values,
-                            "repair_slots": sorted(bad_refs),
-                            "validation_error": repair_error,
-                            "instructions": "Resolve only these assignment slots using their own evidence. "
-                            "A selected anchor must remain retained. Keep mandatory exclusions. "
-                            "Do not automatically retain an excluded anchor; select another supported member, "
-                            "split the finding, or exclude an unsupported member as evidence requires.",
-                        },
-                        output_model=schema,
-                        validator=lambda output: _assignment_partition(
-                            {**values, **output.model_dump(mode="json")}, catalog
-                        ),
-                    )
-                    values.update(repaired.model_dump(mode="json"))
-                    break
-                except Exception as exc:
-                    repair_error = f"{type(exc).__name__}: {exc}"
-            else:
-                raise ValueError(
-                    f"Canonical anchor repair remains unresolved: {repair_error}"
-                )
+        values = repair_anchors(values, stage_key)
         session._write_json("silver/decision_assignments_draft.json", values)
     else:
         draft_path = session.root / "silver/decision_assignments_draft.json"
@@ -498,11 +503,10 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
             corrections: list[Correction] = Field(max_length=len(refs))
             checks: CanonicalQualityChecks
 
+        proposed = None
+
         def validate_audit(out):
-            if not out.approved:
-                raise ValueError(
-                    "Auditor did not approve the final partition after corrections"
-                )
+            nonlocal proposed
             targets = [c.candidate for c in out.corrections]
             if len(targets) != len(set(targets)):
                 raise ValueError("Duplicate correction slots")
@@ -515,6 +519,11 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
                     for c in out.corrections
                 },
             }
+            if out.corrections:
+                proposed = corrected
+            dangling = _dangling_assignment_refs(corrected)
+            if dangling:
+                raise ValueError(f"Invalid anchor assignments: {sorted(dangling)}")
             proposal = _assignment_partition(corrected, catalog)
             issues = _canonical_partition_issues(
                 proposal,
@@ -532,9 +541,13 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
             )
             if issues:
                 raise ValueError(f"Invalid corrected partition: {issues}")
+            if not out.approved:
+                raise ValueError(
+                    "Auditor did not approve the final partition after corrections"
+                )
 
-        # Audit is global, but only changed assignments are returned. One repair
-        # request can address precise structural errors; never silently accept.
+        # Proposed corrections may need structural repair and confirmation.
+        # An unapproved proposal is never materialized as final Silver.
         audit_task = {
             **task,
             "draft_assignments": values,
@@ -544,11 +557,23 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
             "checks means each scientific check was completed.",
         }
         audit_error = ""
-        for attempt in range(2):
+        for attempt in range(3):
+            proposed = None
+            audit_task["draft_assignments"] = values
+            audit_task["current_partition"] = _assignment_partition(
+                values, catalog
+            ).model_dump(mode="json")
             try:
                 out = call(
                     session,
-                    stage=stage_key + ("_repair" if attempt else ""),
+                    stage=stage_key
+                    + (
+                        "_repair"
+                        if attempt == 1
+                        else f"_repair_{attempt}"
+                        if attempt
+                        else ""
+                    ),
                     model=model,
                     policy=instruction,
                     task={**audit_task, "validation_error": audit_error},
@@ -558,6 +583,14 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
                 break
             except Exception as exc:
                 audit_error = f"{type(exc).__name__}: {exc}"
+                if proposed is not None and attempt < 2:
+                    try:
+                        values = repair_anchors(
+                            proposed, stage_key + f"_proposal_{attempt}"
+                        )
+                        audit_error += "; Proposed corrections were applied provisionally. Audit the CURRENT partition and confirm or correct it."
+                    except Exception as repair_exc:
+                        audit_error += f"; Anchor repair failed: {repair_exc}"
         else:
             raise ValueError(f"Decision audit remains unresolved: {audit_error}")
         for correction in out.corrections:

@@ -118,3 +118,11 @@ Requests interrupted without responses have unknown billing and are exposed in
 recovery metadata. This is recovery within one experiment, not a zero-token cache
 hit or reuse of historical compact judgments. Production does not install this
 benchmark-only recovery hook.
+
+Full-size packets can select a representative that another packet excludes. Draft
+and audit proposals now request bounded repairs for those reference chains. The
+model must select a supported retained representative, split the unit, or exclude
+unsupported members; code never promotes an excluded anchor. Audit corrections
+that require repair remain provisional and receive another global source audit.
+At most three audit rounds are allowed, and final affirmative approval plus all
+mechanical and scientific checks is still required before scoring.

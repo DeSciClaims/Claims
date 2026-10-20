@@ -663,3 +663,118 @@ def test_canonical_draft_repairs_cross_packet_excluded_anchor_without_automatic_
         json.loads((tmp_path / "silver/decision_assignments_initial.json").read_text())
         == initial
     )
+
+
+def test_audit_repairs_invalid_proposal_then_requires_fresh_approval(
+    monkeypatch, tmp_path
+):
+    from types import SimpleNamespace
+    from validator.agent_v1 import decision_workflow as w
+    from validator.agent_v1.file_agent_workflow import CanonicalQualityChecks
+
+    values = {
+        "c0": {"unit": "exclude", "importance": "supporting"},
+        "c1": {"unit": "c1", "importance": "supporting"},
+    }
+
+    def write(name, value):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+
+    write("silver/decision_assignments_draft.json", values)
+    session = SimpleNamespace(root=tmp_path, _write_json=write)
+    task = dict(
+        accepted_candidates=[{"candidate_id": r, "statement": r} for r in values],
+        candidate_admission_status={
+            "c0": "pending_source_support_review",
+            "c1": "adjudicated",
+        },
+        mandatory_evidence_exclusions=[{"candidate_id": "c0"}],
+        mandatory_same_unit_groups=[],
+        canonical_draft={
+            "units": [
+                {
+                    "draft_unit_id": "u1",
+                    "statement": "c1",
+                    "candidate_ids": ["c1"],
+                    "importance": "supporting",
+                }
+            ]
+        },
+    )
+    calls = []
+    audits = []
+
+    def invoke(session, **kwargs):
+        calls.append(kwargs["stage"])
+        if "anchor_repair" in kwargs["stage"]:
+            result = kwargs["output_model"].model_validate(values)
+        else:
+            audits.append(kwargs)
+            result = kwargs["output_model"].model_validate(
+                dict(
+                    approved=True,
+                    corrections=[
+                        dict(candidate="c1", unit="c0", importance="supporting")
+                    ]
+                    if len(audits) == 1
+                    else [],
+                    checks={k: True for k in CanonicalQualityChecks.model_fields},
+                )
+            )
+        kwargs["validator"](result)
+        return result
+
+    monkeypatch.setattr(w, "call", invoke)
+    result, _ = w.canonical_stage(
+        session, stage_key="canonicalization_audit", model="m", task=task
+    )
+    assert len(audits) == 2 and len(calls) == 3
+    assert any("proposal_0_anchor_repair" in stage for stage in calls)
+    assert audits[1]["task"]["draft_assignments"] == values
+    assert result.units[0].candidate_ids == ["c1"]
+    assert result.exclusions[0].candidate_ids == ["c0"]
+
+
+def test_unapproved_audit_never_materializes_final_partition(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from validator.agent_v1 import decision_workflow as w
+    from validator.agent_v1.file_agent_workflow import CanonicalQualityChecks
+
+    draft = tmp_path / "silver/decision_assignments_draft.json"
+    draft.parent.mkdir()
+    draft.write_text(json.dumps({"c0": {"unit": "c0", "importance": "supporting"}}))
+    session = SimpleNamespace(
+        root=tmp_path,
+        _write_json=lambda *args: pytest.fail(
+            "Unapproved output must not be materialized"
+        ),
+    )
+    calls = []
+
+    def invoke(session, **kwargs):
+        calls.append(kwargs["stage"])
+        result = kwargs["output_model"].model_validate(
+            dict(
+                approved=False,
+                corrections=[],
+                checks={k: True for k in CanonicalQualityChecks.model_fields},
+            )
+        )
+        kwargs["validator"](result)
+        return result
+
+    monkeypatch.setattr(w, "call", invoke)
+    task = dict(
+        accepted_candidates=[{"candidate_id": "c0", "statement": "Finding"}],
+        candidate_admission_status={"c0": "adjudicated"},
+        mandatory_evidence_exclusions=[],
+        mandatory_same_unit_groups=[],
+        canonical_draft={"units": []},
+    )
+    with pytest.raises(ValueError, match="audit remains unresolved"):
+        w.canonical_stage(
+            session, stage_key="canonicalization_audit", model="m", task=task
+        )
+    assert len(calls) == 3
