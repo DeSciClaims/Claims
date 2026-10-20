@@ -547,7 +547,7 @@ class FileAgentWorkflowSession:
 
     @property
     def fallback_to_legacy(self) -> bool:
-        return self.config.fallback_to_legacy
+        return self.config.fallback_to_legacy and self.config.eligibility_output_contract != "decision"
 
     def run_eligibility_adjudication(
         self,

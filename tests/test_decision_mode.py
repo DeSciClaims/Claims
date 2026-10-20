@@ -207,6 +207,8 @@ def test_one_blind_reconstruction_for_multiple_disputed_cases(monkeypatch, tmp_p
     def call(session, **kwargs):
         stages.append(kwargs["stage"])
         assert "candidates" not in kwargs["task"]
+        assert "claims_summary" not in kwargs["task"]["paper"]
+        assert "abstract" not in kwargs["task"]["paper"]
         return CompactBlindOutput(
             findings=[{"finding": "Finding.", "span_ids": ["s1"]}]
         )
@@ -221,7 +223,11 @@ def test_one_blind_reconstruction_for_multiple_disputed_cases(monkeypatch, tmp_p
         ),
         eligibility_source_context_by_span_id={"s1": "Source text."},
         source_context_by_span_id={},
-        paper_context={"paper_id": "p"},
+        paper_context={
+            "paper_id": "p",
+            "claims_summary": ["Reference-generated finding."],
+            "abstract": "Generated synopsis.",
+        },
         _write_json=lambda *a: None,
     )
     out = w.run_eligibility(session, contexts)
@@ -431,3 +437,44 @@ def test_canonical_audit_can_approve_specific_corrections(monkeypatch, tmp_path)
     )
     assert len(result.units) == 1
     assert all(r.outcome == "merged" for r in result.draft_unit_reviews)
+
+
+def test_usage_audit_reconciles_provider_and_session_outputs():
+    from scripts.compare_decision_mode import audit_usage, ranks
+    from validator.agent_v1.model_usage import ModelUsageCollector
+    from miner.agent_v1.runtime.usage import usage_from_hermes_sessions_jsonl
+
+    collector = ModelUsageCollector(network="testnet", run_id="r", batch_id="b")
+    usage = usage_from_hermes_sessions_jsonl(
+        json.dumps(
+            {
+                "id": "session",
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "reasoning_tokens": 15,
+                "cache_read_tokens": 10,
+            }
+        )
+    )
+    collector.record({"stage_key": "silver_comparison", "usage": usage})
+    row = audit_usage(collector.snapshot())[0]
+    assert row["audit_counter_source"] == "hermes_session_counters"
+    assert row["output_matches_provider"] is True
+    assert row["provider_completion_tokens"] == 20
+    assert collector.snapshot()[0]["total_tokens"] == 130
+    assert ranks({"one": 0.8, "two": 0.8, "three": 0.5}) == {
+        "one": 1,
+        "two": 1,
+        "three": 3,
+    }
+
+
+def test_decision_mode_never_silently_uses_baseline_canonical_fallback(tmp_path):
+    from test_validator_agent_v1_file_workflow import _session
+
+    session = _session(tmp_path, [])
+    assert session.fallback_to_legacy is True
+    session.config = replace(
+        session.config, eligibility_output_contract="decision", fallback_to_legacy=True
+    )
+    assert session.fallback_to_legacy is False

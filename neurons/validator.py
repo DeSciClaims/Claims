@@ -2758,8 +2758,8 @@ class ClaimsValidator:
                     ),
                     "role": "validator_rigor",
                     "operation_id": event_operation_id,
-                    "harness": config.harness,
-                    "runtime": "diagnostic-file-paper",
+                    "harness": usage_event.get("harness") or config.harness,
+                    "runtime": usage_event.get("runtime") or "diagnostic-file-paper",
                     "provider": config.provider
                     or _provider_from_model_or_base(config.model, ""),
                     "model": config.model,
@@ -2770,6 +2770,7 @@ class ClaimsValidator:
                         usage_event.get("duration_seconds") or 0.0
                     ),
                     "metadata": {
+                        **(usage_event.get("metadata") or {}),
                         "workflow": "diagnostic_file_paper",
                         "repair": is_repair,
                         "submission_count": len(identity_by_ref),
@@ -7187,6 +7188,11 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_silver_max_eligible_claims_per_miner": int(
             getattr(config, "claims_silver_max_eligible_claims_per_miner", 10) or 0
         ),
+        "claims_eligibility_output_contract": os.getenv("CLAIMS_ELIGIBILITY_OUTPUT_CONTRACT", "compact").strip().lower(),
+        "claims_eligibility_sample_verbose_paper": os.getenv("CLAIMS_ELIGIBILITY_SAMPLE_VERBOSE_PAPER", "true").lower() in {"true", "1", "yes", "on"},
+        "claims_decision_batch_size": int(os.getenv("CLAIMS_DECISION_BATCH_SIZE", "24")),
+        "claims_decision_max_tokens": int(os.getenv("CLAIMS_DECISION_MAX_TOKENS", "4096")),
+        "claims_decision_reasoning_enabled": os.getenv("CLAIMS_DECISION_REASONING_ENABLED", "false").lower() in {"true", "1"},
         "claims_silver_equivalence_shared_coverage": bool(
             getattr(config, "claims_silver_equivalence_shared_coverage", True)
         ),

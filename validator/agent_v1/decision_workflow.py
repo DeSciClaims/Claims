@@ -50,15 +50,26 @@ def runtime(session):
 def call(session, *, stage, task, output_model, model, policy=POLICY, validator=None):
     from .file_agent_workflow import _request_slot
 
-    with _request_slot(session.request_gate):
-        output = runtime(session).run(
-            stage=stage,
-            task=task,
-            output_model=output_model,
-            model=model,
-            policy=policy,
-            validator=validator,
+    try:
+        with _request_slot(session.request_gate):
+            output = runtime(session).run(
+                stage=stage,
+                task=task,
+                output_model=output_model,
+                model=model,
+                policy=policy,
+                validator=validator,
+            )
+    except Exception as exc:
+        session._record_manifest_stage(
+            {
+                "stage_key": stage,
+                "status": "failed",
+                "harness": "decision",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
         )
+        raise
     session._record_manifest_stage(
         {"stage_key": stage, "status": "complete", "harness": "decision"}
     )
@@ -274,7 +285,11 @@ def run_eligibility(session, contexts):
         # The packet is source-owned and independent of disputed candidate selection.
         # It contains no candidate catalog, reference claims, or primary opinions.
         blind_task = {
-            "paper": session.paper_context,
+            "paper": {
+                k: v
+                for k, v in session.paper_context.items()
+                if k in {"paper_id", "title", "authors", "year", "venue", "doi"}
+            },
             "source_spans": source,
             "hard_gates": list(ELIGIBILITY_GATES),
         }
@@ -440,7 +455,7 @@ def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs
 
         class Audit(StrictDecision):
             approved: bool
-            corrections: list[Correction]
+            corrections: list[Correction] = Field(max_length=len(refs))
             checks: CanonicalQualityChecks
 
         def validate_audit(out):
