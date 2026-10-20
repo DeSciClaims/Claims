@@ -307,37 +307,7 @@ def run_eligibility(session, contexts):
     if disputed:
         # The packet is source-owned and independent of disputed candidate selection.
         # It contains no candidate catalog, reference claims, or primary opinions.
-        blind_task = {
-            "paper": {
-                k: v
-                for k, v in session.paper_context.items()
-                if k in {"paper_id", "title", "authors", "year", "venue", "doi"}
-            },
-            "source_spans": source,
-            "hard_gates": list(ELIGIBILITY_GATES),
-        }
-        blind_policy = (
-            Path(__file__).parent
-            / "skills"
-            / "claims-silver-eligibility-blind-reconstruction"
-            / "SKILL.md"
-        ).read_text()
-        blind_policy += "\nReturn compact findings with finding and span_ids, plus packet_limitations. "
-        blind = call(
-            session,
-            stage="eligibility_adjudication_blind_reconstruction_paper",
-            task=blind_task,
-            output_model=CompactBlindOutput,
-            model=session.config.adjudication_tiebreak_model,
-            policy=blind_policy,
-            validator=lambda x: validate_blind(x, blind_task),
-        )
-        locked = blind.model_dump(mode="json")
-        blind_hash = digest(locked)
-        session._write_json(
-            "eligibility_adjudication/blind_reconstruction.json",
-            {"sha256": blind_hash, "source_sha256": digest(source), "output": locked},
-        )
+        locked, blind_hash = run_blind_reconstruction(session, source)
         appellate = classify_slots(
             session,
             stage="eligibility_adjudication_tiebreak",
@@ -647,3 +617,41 @@ def _assignment_partition(values, catalog):
         for ref in excluded
     ]
     return CanonicalizationAgentOutput(units=units, exclusions=exclusions)
+
+
+def run_blind_reconstruction(session, source):
+    """Source-only production reconstruction; also callable by isolated probes."""
+    blind_task = {
+        "paper": {
+            k: v
+            for k, v in session.paper_context.items()
+            if k in {"paper_id", "title", "authors", "year", "venue", "doi"}
+        },
+        "source_spans": source,
+        "hard_gates": list(ELIGIBILITY_GATES),
+    }
+    blind_policy = (
+        Path(__file__).parent
+        / "skills"
+        / "claims-silver-eligibility-blind-reconstruction"
+        / "SKILL.md"
+    ).read_text()
+    blind_policy += (
+        "\nReturn compact findings with finding and span_ids, plus packet_limitations. "
+    )
+    blind = call(
+        session,
+        stage="eligibility_adjudication_blind_reconstruction_paper",
+        task=blind_task,
+        output_model=CompactBlindOutput,
+        model=session.config.adjudication_tiebreak_model,
+        policy=blind_policy,
+        validator=lambda x: validate_blind(x, blind_task),
+    )
+    locked = blind.model_dump(mode="json")
+    blind_hash = digest(locked)
+    session._write_json(
+        "eligibility_adjudication/blind_reconstruction.json",
+        {"sha256": blind_hash, "source_sha256": digest(source), "output": locked},
+    )
+    return locked, blind_hash
