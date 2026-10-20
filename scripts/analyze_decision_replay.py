@@ -93,6 +93,18 @@ def analyze(root):
                 decisions[mode] = read(arm / "decisions.json")
                 scores[mode] = {s["miner_id"]: s for s in read(arm / "scores.json")}
                 row["arms"][mode]["silver_units"] = len(records[mode]["silver_units"])
+                row["arms"][mode]["equivalence_groups"] = len(
+                    records[mode]
+                    .get("metadata", {})
+                    .get("comparison_equivalence_groups", {})
+                    .get("groups", [])
+                )
+                row["arms"][mode]["bypassed_candidates"] = (
+                    records[mode]
+                    .get("metadata", {})
+                    .get("comparison_equivalence_groups", {})
+                    .get("bypassed_candidate_count", 0)
+                )
                 row["arms"][mode]["retained_contributors"] = len(
                     retained(records[mode])
                 )

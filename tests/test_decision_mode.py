@@ -478,3 +478,105 @@ def test_decision_mode_never_silently_uses_baseline_canonical_fallback(tmp_path)
         session.config, eligibility_output_contract="decision", fallback_to_legacy=True
     )
     assert session.fallback_to_legacy is False
+
+
+def test_replay_analysis_tracks_rank_reversals_and_membership(tmp_path):
+    from scripts.analyze_decision_replay import analyze
+
+    def write(path, value):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+
+    write(tmp_path / "plan.json", {"items": [{"paper_id": "paper"}]})
+    for mode, scores in [
+        ("compact", {"a": 0.5, "b": 0.4}),
+        ("decision", {"a": 0.3, "b": 0.6}),
+    ]:
+        root = tmp_path / "paper" / mode
+        write(root / "report.json", {"status": "complete"})
+        write(
+            root / "usage_events.json",
+            [
+                {
+                    "usage_event_id": mode,
+                    "stage_key": "silver_comparison",
+                    "status": "success",
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "total_tokens": 15,
+                    "metadata": {},
+                }
+            ],
+        )
+        ids = ["C1"] if mode == "compact" else ["C1", "C2"]
+        write(
+            root / "silver_record.json",
+            {"silver_units": [{"equivalent_candidate_ids": ids}]},
+        )
+        write(
+            root / "decisions.json",
+            [
+                {
+                    "accepted_candidate_ids": ids,
+                    "candidate_findings": [
+                        {"candidate_ref": "C1"},
+                        {"candidate_ref": "C2"},
+                    ],
+                }
+            ],
+        )
+        rows = [
+            {"miner_id": m, "score": v, "coverage": v, "quality": 1}
+            for m, v in scores.items()
+        ]
+        write(root / "scores.json", rows)
+        write(root / "scores_fixed_diagnostic_quality.json", rows)
+    result = analyze(tmp_path)
+    row = result["papers"][0]["changes"]
+    assert row["retained_added"] == ["C2"]
+    assert row["eligibility_admissions_changed"] == ["C2"]
+    assert row["co_membership_pairs_added"] == 1
+    a = next(r for r in result["scores"] if r["miner_id"] == "a")
+    assert (a["compact_rank"], a["decision_rank"]) == (1, 2)
+    assert (tmp_path / "score_changes.csv").exists()
+
+
+def test_comparison_preserves_scientific_definitions_and_blocks_equivalence_chains(
+    monkeypatch, tmp_path
+):
+    from types import SimpleNamespace
+    from validator.agent_v1 import decision_workflow as w
+    from validator.agent_v1 import pairing
+    from test_validator_agent_v1_file_workflow import _session, _candidate
+
+    candidates = [
+        _candidate(
+            f"miner:uid_{i}:C1",
+            "miner",
+            f"uid_{i}",
+            f"Finding {i}",
+            source_span_ids=["S1"],
+        )
+        for i in range(3)
+    ]
+    session = _session(tmp_path, candidates)
+    session.config = replace(session.config, eligibility_output_contract="decision")
+    hits = [
+        SimpleNamespace(left=candidates[0], right=candidates[1]),
+        SimpleNamespace(left=candidates[1], right=candidates[2]),
+    ]
+    monkeypatch.setattr(pairing, "filter_candidate_pairs", lambda *a, **k: hits)
+
+    def classify(*a, **k):
+        assert "same scientific proposition" in k["policy"]
+        assert k["task"]["source_spans"]["S1"]
+        assert len(k["task"]["candidate_catalog"]) == 3
+        return {
+            row["slot"]: {"relation": "semantic_equivalent", "confidence": 0.9}
+            for row in k["rows"]
+        }
+
+    monkeypatch.setattr(w, "classify_slots", classify)
+    w.run_comparison(session)
+    assert len(session.confirmed_equivalence_groups) == 1
+    assert len(session.confirmed_equivalence_groups[0].member_candidate_ids) == 2

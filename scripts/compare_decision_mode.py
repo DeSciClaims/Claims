@@ -120,7 +120,11 @@ def audit_usage(events):
             for r in available
         )
         raw_reasoning = sum(
-            (r.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
+            r.get(
+                "reasoning_tokens",
+                (r.get("completion_tokens_details") or {}).get("reasoning_tokens"),
+            )
+            or 0
             for r in available
         )
         rows.append(

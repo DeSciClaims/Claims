@@ -142,8 +142,31 @@ def run_comparison(session):
         rows=rows,
         value_model=RelationDecision,
         model=session.config.comparison_model,
+        policy=(
+            Path(__file__).parent / "skills/claims-silver-comparator/SKILL.md"
+        ).read_text()
+        + "\nDECISION CONTRACT: classify only the supplied pairs, including miner-only pairs. "
+        "The scientific relation definitions and positive/negative calibration rules above remain binding. "
+        "A common entity or mechanism topic is not a contradiction or actionable overlap. "
+        "Contradiction requires incompatible assertions of the SAME proposition under compatible conditions. "
+        "Output only relation and confidence per supplied slot. Do not emit submission_reviews, "
+        "equivalence_groups, explanations, or files. Group construction belongs to code.",
         task={
             "paper": session.paper_context,
+            "candidate_catalog": [
+                {
+                    "candidate_ref": f"c{i}",
+                    "statement": c.statement,
+                    "qualifier": c.qualifier,
+                    "source_span_ids": c.source_span_ids,
+                }
+                for i, c in enumerate(candidates)
+            ],
+            "source_spans": {
+                sid: text
+                for sid, text in session.source_context_by_span_id.items()
+                if any(sid in c.source_span_ids for c in candidates)
+            },
             "classes": list(RelationType.__args__),
             "instructions": "Classify each pair. Strict equivalence requires the same finding, population, outcome, "
             "direction and material qualifications. Refinement and overlap are not equivalence.",
