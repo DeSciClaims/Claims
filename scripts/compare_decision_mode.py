@@ -154,9 +154,18 @@ def arm(item, args, mode):
     paper = item["paper_id"]
     folder = args.output_dir / paper / mode
     folder.mkdir(parents=True)
-    bronze, source, miners, candidates, source_map = fixture_inputs(
-        item, args.manifest.parent
-    )
+    mainnet_inputs = getattr(args, "mainnet_inputs", False)
+    if mainnet_inputs:
+        from scripts.replay_mainnet_batch import inputs
+
+        bronze, source, miners, candidates, source_map, eligibility_source = inputs(
+            item, args.manifest.parent
+        )
+    else:
+        bronze, source, miners, candidates, source_map = fixture_inputs(
+            item, args.manifest.parent
+        )
+        eligibility_source = source_map
     os.environ["CLAIMS_ELIGIBILITY_OUTPUT_CONTRACT"] = mode
     collector = ModelUsageCollector(
         network="testnet",
@@ -175,17 +184,28 @@ def arm(item, args, mode):
     )
     diagnostics = []
     artifact_paths = {}
+    miner_sources = {}
     for i, miner in enumerate(miners):
         path = folder / "inputs" / f"{miner.miner_id}.json"
         write(path, miner.artifact)
         artifact_paths[miner.miner_id] = path
         _, parsed, structural = run_structural_checks(path)
-        grounding = run_grounding_checks(parsed, source)
+        miner_source = (
+            read(
+                args.manifest.parent
+                / item["fixture_dir"]
+                / f"source_{miner.miner_id}.json"
+            )
+            if mainnet_inputs
+            else source
+        )
+        miner_sources[miner.miner_id] = miner_source
+        grounding = run_grounding_checks(parsed, miner_source)
         diagnostics.append(
             DiagnosticBatchSubmission(
                 submission_ref=f"S{i}",
                 artifact=miner.artifact,
-                source_payload=source,
+                source_payload=miner_source,
                 structural_findings=[x.model_dump(mode="json") for x in structural],
                 grounding_findings=[x.model_dump(mode="json") for x in grounding],
             )
@@ -224,8 +244,8 @@ def arm(item, args, mode):
         write(folder / "diagnostic_reports.json", execution.reports)
         findings = {}
         for i, miner in enumerate(miners):
-            source_path = folder / "inputs" / "source.json"
-            write(source_path, source)
+            source_path = folder / "inputs" / f"source_{miner.miner_id}.json"
+            write(source_path, miner_sources[miner.miner_id])
             runner = AgentV1ValidatorRunner(AgentV1ValidatorConfig.from_env())
             report = runner.run(
                 artifact_path=artifact_paths[miner.miner_id],
@@ -245,7 +265,7 @@ def arm(item, args, mode):
             equivalence_shared_coverage=True,
             paper_context=source.get("paper") or bronze.get("paper") or {},
             source_context_by_span_id=source_map,
-            eligibility_source_context_by_span_id=source_map,
+            eligibility_source_context_by_span_id=eligibility_source,
             file_agent_workflow=workflow,
             max_eligible_claims_per_miner=10,
             max_adjudication_cases=1000,
@@ -278,6 +298,29 @@ def arm(item, args, mode):
             folder / "scores_fixed_diagnostic_quality.json",
             [s.model_dump(mode="json") for s in controlled],
         )
+        if mainnet_inputs:
+            from validator.agent_v1.models import AgentV1ValidationFinding
+
+            historical = []
+            for submission in result.miner_submissions:
+                original = read(
+                    args.manifest.parent
+                    / item["fixture_dir"]
+                    / f"report_{submission.miner_id}.json"
+                )
+                historical.append(
+                    score_miner_against_silver(
+                        miner_id=submission.miner_id,
+                        miner_candidates=submission.candidates,
+                        silver_record=result.silver_record,
+                        normal_findings=[
+                            AgentV1ValidationFinding.model_validate(f)
+                            for f in original["findings"]
+                        ],
+                        equivalence_shared_coverage=True,
+                    ).model_dump(mode="json")
+                )
+            write(folder / "scores_historical_diagnostics.json", historical)
         result_report.update(
             status="complete",
             silver_units=len(result.silver_record.silver_units),
