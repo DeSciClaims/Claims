@@ -811,3 +811,94 @@ def test_openrouter_decision_without_pin_preserves_routing(tmp_path, monkeypatch
         task={}, output_model=BinaryDecision, model="m", policy="p"
     )
     assert request["provider"] == {"require_parameters": True}
+
+
+def test_429_backoff_retries_same_request_and_preserves_attempts(tmp_path, monkeypatch):
+    import io
+    from urllib.error import HTTPError
+    from validator.agent_v1 import decision_runtime as module
+
+    monkeypatch.setenv("CLAIMS_DECISION_429_RETRIES", "4")
+    monkeypatch.setenv("UNUSED", "test-key")
+    calls, delays = [], []
+    response = {
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "message": {"content": '{"eligible":true,"confidence":0.9}'},
+            }
+        ],
+        "usage": {"completion_tokens": 10},
+    }
+
+    class Handle:
+        def __enter__(self):
+            return io.StringIO(json.dumps(response))
+
+        def __exit__(self, *args):
+            pass
+
+    def send(req, **kwargs):
+        calls.append(req)
+        if len(calls) == 1:
+            raise HTTPError(
+                req.full_url,
+                429,
+                "limited",
+                {"Retry-After": "3"},
+                io.BytesIO(b'{"error":{"message":"limited"}}'),
+            )
+        return Handle()
+
+    monkeypatch.setattr(module, "urlopen", send)
+    monkeypatch.setattr(module.time, "sleep", delays.append)
+    runtime = DecisionRuntime(
+        api_base="https://openrouter.ai/api/v1", api_key_env="UNUSED", root=tmp_path
+    )
+    assert runtime.run(
+        stage="retry", task={}, output_model=BinaryDecision, model="m", policy="p"
+    ).eligible
+    assert delays == [3]
+    assert len(calls) == 2 and calls[0] is calls[1]
+    attempts = json.loads(
+        (tmp_path / "executions/retry/transport_attempts.json").read_text()
+    )
+    assert [a["status"] for a in attempts] == [429, "success"]
+
+
+def test_decision_global_limit_is_shared_and_released_on_error(tmp_path, monkeypatch):
+    import concurrent.futures, threading, time
+
+    monkeypatch.setenv("CLAIMS_DECISION_MAX_IN_FLIGHT", "2")
+    lock = threading.Lock()
+    active = peak = 0
+
+    def transport(request):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.01)
+        with lock:
+            active -= 1
+        raise ValueError("test failure")
+
+    def run(index):
+        runtime = DecisionRuntime(
+            api_base="https://example.test",
+            api_key_env="UNUSED",
+            root=tmp_path / str(index),
+            transport=transport,
+        )
+        with pytest.raises(ValueError):
+            runtime.run(
+                stage="limit",
+                task={},
+                output_model=BinaryDecision,
+                model="m",
+                policy="p",
+            )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(run, range(8)))
+    assert peak == 2

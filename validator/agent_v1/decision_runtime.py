@@ -5,6 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
+import threading
+from contextlib import nullcontext
+from email.utils import parsedate_to_datetime
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +19,33 @@ from urllib.error import HTTPError
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
 from miner.agent_v1.runtime.usage import _normalize_usage_dict, empty_usage
+
+
+_GATE_LOCK = threading.Lock()
+_GATES = {}
+
+
+def _decision_gate():
+    limit = int(os.getenv("CLAIMS_DECISION_MAX_IN_FLIGHT", "0"))
+    if limit <= 0:
+        return nullcontext()
+    with _GATE_LOCK:
+        return _GATES.setdefault(limit, threading.BoundedSemaphore(limit))
+
+
+def _retry_delay(headers, attempt):
+    value = headers.get("Retry-After") if headers else None
+    try:
+        delay = float(value)
+    except (ValueError, TypeError):
+        try:
+            delay = (
+                parsedate_to_datetime(value) - datetime.now(timezone.utc)
+            ).total_seconds()
+        except (ValueError, TypeError, AttributeError):
+            delay = 5 * (2**attempt) + random.uniform(0, 1)
+    # Do not retry earlier than a provider's long Retry-After requirement.
+    return max(0, delay)
 
 
 class StrictDecision(BaseModel):
@@ -103,7 +134,12 @@ class DecisionRuntime:
                 )
         return request
 
-    def run(
+    def run(self, **kwargs):
+        # One process-wide decision budget includes diagnostics and Silver calls.
+        with _decision_gate():
+            return self._run(**kwargs)
+
+    def _run(
         self,
         *,
         stage: str,
@@ -139,20 +175,46 @@ class DecisionRuntime:
                         "Content-Type": "application/json",
                     },
                 )
-                try:
-                    with urlopen(req, timeout=self.timeout) as handle:
-                        response = json.load(handle)
-                except HTTPError as exc:
+                attempts = []
+                retries = max(
+                    0, min(4, int(os.getenv("CLAIMS_DECISION_429_RETRIES", "0")))
+                )
+                for attempt in range(retries + 1):
                     try:
-                        detail = json.loads(exc.read().decode()).get("error", {})
-                    except Exception:
-                        detail = {"code": exc.code}
-                    (folder / "provider_error.json").write_text(
-                        json.dumps(detail, indent=2)
-                    )
-                    raise RuntimeError(
-                        f"Provider HTTP {exc.code}: {detail.get('message', 'request rejected')}"
-                    ) from exc
+                        with urlopen(req, timeout=self.timeout) as handle:
+                            response = json.load(handle)
+                        attempts.append({"attempt": attempt + 1, "status": "success"})
+                        (folder / "transport_attempts.json").write_text(
+                            json.dumps(attempts, indent=2)
+                        )
+                        break
+                    except HTTPError as exc:
+                        try:
+                            detail = json.loads(exc.read().decode()).get("error", {})
+                        except Exception:
+                            detail = {"code": exc.code}
+                        delay = _retry_delay(exc.headers, attempt)
+                        retry = exc.code == 429 and attempt < retries and delay <= 60
+                        attempts.append(
+                            {
+                                "attempt": attempt + 1,
+                                "status": exc.code,
+                                "error": detail,
+                                "retry_delay_seconds": delay if retry else None,
+                            }
+                        )
+                        (folder / "transport_attempts.json").write_text(
+                            json.dumps(attempts, indent=2)
+                        )
+                        (folder / "provider_error.json").write_text(
+                            json.dumps(detail, indent=2)
+                        )
+                        if retry:
+                            time.sleep(delay)
+                            continue
+                        raise RuntimeError(
+                            f"Provider HTTP {exc.code}: {detail.get('message', 'request rejected')}"
+                        ) from exc
             (folder / "provider_response.json").write_text(
                 json.dumps(response, indent=2)
             )

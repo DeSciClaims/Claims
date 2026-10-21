@@ -178,6 +178,17 @@ def make_validator(args, task, historical, order):
         "CLAIMS_DECISION_MAX_TOKENS": "32768",
         "CLAIMS_DECISION_BLIND_MAX_TOKENS": "32768",
     }
+    if args.low_concurrency:
+        overrides.update(
+            {
+                "CLAIMS_DIAGNOSTIC_MAX_WORKERS": "4",
+                "CLAIMS_SILVER_PAPER_MAX_WORKERS": "4",
+                "CLAIMS_SILVER_ADJUDICATION_MAX_WORKERS": "4",
+                "CLAIMS_SILVER_ADJUDICATION_MAX_IN_FLIGHT": "8",
+                "CLAIMS_DECISION_MAX_IN_FLIGHT": "8",
+                "CLAIMS_DECISION_429_RETRIES": "4",
+            }
+        )
     os.environ.update(overrides)
     disable_response_cache()
     task_path = args.output_dir / "task.json"
@@ -304,6 +315,8 @@ def main():
         default="",
         help="Pin decision requests to an OpenRouter endpoint; disables provider fallbacks",
     )
+    p.add_argument("--low-concurrency", action="store_true")
+    p.add_argument("--paper-limit", type=int, choices=[5, 50], default=50)
     p.add_argument("--preflight-only", action="store_true")
     p.add_argument("--probe-only", action="store_true")
     args = p.parse_args()
@@ -315,6 +328,16 @@ def main():
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
     items, checks, historical, order, task, responses = saved_batch(args.manifest)
+    if args.paper_limit < len(items):
+        items = items[: args.paper_limit]
+        selected = {i["paper_id"] for i in items}
+        task = replace(
+            task, papers=tuple(p for p in task.papers if p.paper_id in selected)
+        )
+        for response in responses:
+            response.articles = [
+                a for a in response.articles if a["paper_id"] in selected
+            ]
     write(args.output_dir / "input_validation.json", checks)
     v, collector, settings = make_validator(args, task, historical, order)
     write(
@@ -381,7 +404,7 @@ def main():
         outcome = v._active_silver_batch_outcome
         status.update(
             status="complete"
-            if outcome.get("scored_paper_count") == 50
+            if outcome.get("scored_paper_count") == len(items)
             else "completed_with_failures",
             outcome=outcome,
         )
