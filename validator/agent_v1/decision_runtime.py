@@ -66,6 +66,13 @@ class DecisionRuntime:
         )
         self.max_tokens, self.timeout = max_tokens, timeout
         self.reasoning_enabled, self.transport = reasoning_enabled, transport
+        self.provider_only = [
+            value.strip()
+            for value in os.getenv(
+                "CLAIMS_DECISION_OPENROUTER_PROVIDER_ONLY", ""
+            ).split(",")
+            if value.strip()
+        ]
 
     def build_request(self, *, task, output_model, model, policy):
         """Exact request identity, also used for auditable benchmark recovery."""
@@ -90,6 +97,10 @@ class DecisionRuntime:
         if "openrouter.ai" in self.api_base:
             request["reasoning"] = {"enabled": self.reasoning_enabled}
             request["provider"] = {"require_parameters": True}
+            if self.provider_only:
+                request["provider"].update(
+                    only=self.provider_only, allow_fallbacks=False
+                )
         return request
 
     def run(

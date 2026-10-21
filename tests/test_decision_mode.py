@@ -778,3 +778,36 @@ def test_unapproved_audit_never_materializes_final_partition(monkeypatch, tmp_pa
             session, stage_key="canonicalization_audit", model="m", task=task
         )
     assert len(calls) == 3
+
+
+def test_openrouter_decision_provider_pin_disables_fallbacks(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAIMS_DECISION_OPENROUTER_PROVIDER_ONLY", " parasail/fp8 ")
+    runtime = DecisionRuntime(
+        api_base="https://openrouter.ai/api/v1",
+        api_key_env="UNUSED",
+        root=tmp_path,
+        reasoning_enabled=False,
+    )
+    request = runtime.build_request(
+        task={},
+        output_model=slots_model("Pinned", ["c0"], BinaryDecision),
+        model="m",
+        policy="p",
+    )
+    assert request["provider"] == {
+        "require_parameters": True,
+        "only": ["parasail/fp8"],
+        "allow_fallbacks": False,
+    }
+    assert request["reasoning"] == {"enabled": False}
+
+
+def test_openrouter_decision_without_pin_preserves_routing(tmp_path, monkeypatch):
+    monkeypatch.delenv("CLAIMS_DECISION_OPENROUTER_PROVIDER_ONLY", raising=False)
+    runtime = DecisionRuntime(
+        api_base="https://openrouter.ai/api/v1", api_key_env="UNUSED", root=tmp_path
+    )
+    request = runtime.build_request(
+        task={}, output_model=BinaryDecision, model="m", policy="p"
+    )
+    assert request["provider"] == {"require_parameters": True}

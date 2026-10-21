@@ -172,7 +172,8 @@ def make_validator(args, task, historical, order):
         "CLAIMS_DIAGNOSTIC_FILE_WORKSPACE_ROOT": str(args.output_dir / "diagnostics"),
         "CLAIMS_REFERENCE_MINER_COMMAND": "",
         "CLAIMS_ELIGIBILITY_OUTPUT_CONTRACT": "decision",
-        "CLAIMS_DECISION_REASONING_ENABLED": "true",
+        "CLAIMS_DECISION_REASONING_ENABLED": str(args.reasoning_enabled).lower(),
+        "CLAIMS_DECISION_OPENROUTER_PROVIDER_ONLY": args.decision_provider,
         "CLAIMS_DECISION_BATCH_SIZE": "24",
         "CLAIMS_DECISION_MAX_TOKENS": "32768",
         "CLAIMS_DECISION_BLIND_MAX_TOKENS": "32768",
@@ -202,6 +203,10 @@ def make_validator(args, task, historical, order):
         sys.argv = saved_argv
     v.bt_logging = logging.getLogger("saved-validator-replay")
     v.backend_client = None
+    # Read-only identity for audit metadata; no wallet keys or chain client.
+    v.wallet = SimpleNamespace(
+        hotkey=SimpleNamespace(ss58_address="saved-replay-audit-only")
+    )
     v.target_neurons = [
         SimpleNamespace(
             uid=int(mid.removeprefix("uid_")), hotkey="", coldkey="", axon_info=None
@@ -244,7 +249,8 @@ def make_validator(args, task, historical, order):
         and wf.request_gate is not None
     )
     assert (
-        wf.config.decision_reasoning_enabled and wf.config.decision_max_tokens == 32768
+        wf.config.decision_reasoning_enabled == args.reasoning_enabled
+        and wf.config.decision_max_tokens == 32768
     )
     return (
         v,
@@ -290,6 +296,14 @@ def main():
     p.add_argument("--production-env", type=Path, required=True)
     p.add_argument("--env-file", type=Path)
     p.add_argument("--output-dir", type=Path, required=True)
+    p.add_argument(
+        "--reasoning-enabled", action=argparse.BooleanOptionalAction, default=True
+    )
+    p.add_argument(
+        "--decision-provider",
+        default="",
+        help="Pin decision requests to an OpenRouter endpoint; disables provider fallbacks",
+    )
     p.add_argument("--preflight-only", action="store_true")
     p.add_argument("--probe-only", action="store_true")
     args = p.parse_args()
