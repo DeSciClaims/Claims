@@ -397,6 +397,19 @@ def run_eligibility(session, contexts):
 
 
 def canonical_stage(session, *, stage_key, model, task, validator=None, **kwargs):
+    import os
+
+    if os.getenv("CLAIMS_DECISION_CANONICAL_GROUPED", "false").lower() == "true":
+        from .decision_canonical_grouped import canonical_stage as grouped_stage
+
+        return grouped_stage(
+            session,
+            stage_key=stage_key,
+            model=model,
+            task=task,
+            validator=validator,
+            **kwargs,
+        )
     from .file_agent_workflow import (
         CanonicalizationAgentOutput,
         CanonicalAuditOutput,
