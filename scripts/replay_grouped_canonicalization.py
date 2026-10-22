@@ -21,11 +21,14 @@ def main():
     p.add_argument("--source", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--env-file", type=Path, required=True)
+    p.add_argument(
+        "--reasoning-enabled", action=argparse.BooleanOptionalAction, default=False
+    )
     a = p.parse_args()
     a.output.mkdir(parents=True, exist_ok=False)
     load_dotenv(a.env_file, override=True)
     os.environ.update(
-        CLAIMS_DECISION_REASONING_ENABLED="false",
+        CLAIMS_DECISION_REASONING_ENABLED=str(a.reasoning_enabled).lower(),
         CLAIMS_DECISION_OPENROUTER_PROVIDER_ONLY="parasail/fp8",
         CLAIMS_DECISION_MAX_IN_FLIGHT="8",
         CLAIMS_DECISION_429_RETRIES="4",
