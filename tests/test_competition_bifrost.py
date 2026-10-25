@@ -1,3 +1,4 @@
+import base64
 import json
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
@@ -65,3 +66,27 @@ def test_bifrost_fails_closed_on_missing_usage():
 def test_management_url_cannot_be_plain_http_to_remote_host():
     with pytest.raises(ValueError):
         BifrostClient(management_url="http://192.0.2.10:8080")
+
+
+def test_oss_management_uses_basic_auth_while_worker_key_remains_separate():
+    requests = []
+
+    def open_request(request, timeout):
+        requests.append(request)
+        return Response({"virtual_key": {"id": "key-oss", "value": "sk-bf-paper"}})
+
+    client = BifrostClient(
+        management_url="http://127.0.0.1:8080",
+        admin_username="claims-admin", admin_password="private-password",
+    )
+    with patch("competition.bifrost.urllib.request.urlopen", side_effect=open_request):
+        key = client.create_paper_key(
+            round_id="week1", paper_id="paper1", hotkey="miner",
+            allowed_models=("openrouter/qwen/qwen3-32b",),
+            token_limit=100, dollar_limit=0.25,
+            expires_at=datetime.now(UTC) + timedelta(minutes=30),
+        )
+    auth = requests[0].get_header("Authorization")
+    assert auth == "Basic " + base64.b64encode(b"claims-admin:private-password").decode()
+    assert key.value == "sk-bf-paper"
+    assert "private-password" not in json.dumps(json.loads(requests[0].data))

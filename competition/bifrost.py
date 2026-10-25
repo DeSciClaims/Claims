@@ -6,6 +6,7 @@ key and the inference /v1 URL, never this client or its management credential.
 
 from __future__ import annotations
 
+import base64
 import json
 import urllib.error
 import urllib.parse
@@ -28,11 +29,18 @@ class PaperKey:
 
 
 class BifrostClient:
-    def __init__(self, *, management_url: str, admin_bearer: str | None = None) -> None:
+    def __init__(
+        self, *, management_url: str, admin_bearer: str | None = None,
+        admin_username: str | None = None, admin_password: str | None = None,
+    ) -> None:
         if not management_url.startswith(("http://127.0.0.1:", "http://localhost:", "https://")):
             raise ValueError("Bifrost management URL must be loopback or HTTPS")
+        if bool(admin_username) != bool(admin_password) or (admin_bearer and admin_username):
+            raise ValueError("use either admin bearer or complete basic credentials")
         self.management_url = management_url.rstrip("/")
         self.admin_bearer = admin_bearer
+        self.admin_username = admin_username
+        self.admin_password = admin_password
 
     def _request(
         self, method: str, path: str, *, payload: dict[str, Any] | None = None,
@@ -43,6 +51,11 @@ class BifrostClient:
             headers["x-bf-vk"] = virtual_key
         elif self.admin_bearer:
             headers["Authorization"] = "Bearer " + self.admin_bearer
+        elif self.admin_username and self.admin_password:
+            encoded = base64.b64encode(
+                f"{self.admin_username}:{self.admin_password}".encode()
+            ).decode("ascii")
+            headers["Authorization"] = "Basic " + encoded
         request = urllib.request.Request(
             self.management_url + path,
             data=None if payload is None else json.dumps(payload, separators=(",", ":")).encode(),
