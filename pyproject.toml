@@ -43,4 +43,4 @@ select = ["F821"]
 "validator/judge_v1/config.py" = ["F821"]
 
 [tool.setuptools.packages.find]
-include = ["miner*", "validator*", "neurons*"]
+include = ["miner*", "validator*", "neurons*", "competition*"]
