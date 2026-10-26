@@ -239,9 +239,13 @@ transferred baseline package receipt whose bytes match the public hash.
 records worker results, and freezes independent per-paper adjudications and
 pair scores. `ReplayRuntimeBackend` combines only those local writes with
 read-only Bronze and PDF inputs, so existing worker and scorer components can
-be reused. The replay process, later-stage advancement, Gold integration, and
-publication of its own signed vector still need orchestration and testing;
-the current components alone are not an independent validation.
+be reused. `create_replay_worker_coordinator` connects the existing paper
+worker to this private ledger; `advance_ready_stage` can select and enqueue
+later stages from its own pair scores. The mocked worker test covers one
+paper through execution and scoring, and a restart test covers screen-to-final
+advancement. A running replay service, incumbent failure rerun, Gold and code
+checks, and its own signed vector still need implementation; the current
+components alone are not an independent validation.
 Pilot judge providers are set with CLAIMS_JUDGE_J1_A_PROVIDER,
 CLAIMS_JUDGE_J1_B_PROVIDER, CLAIMS_JUDGE_J2_A_PROVIDER,
 CLAIMS_JUDGE_J2_B_PROVIDER, and CLAIMS_JUDGE_TIEBREAK_PROVIDER. Round setup

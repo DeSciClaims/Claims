@@ -56,6 +56,11 @@ class ReplayStore:
                   result_json TEXT, log_object_key TEXT,
                   UNIQUE(round_id,stage,paper_id,hotkey)
                 );
+                CREATE TABLE IF NOT EXISTS replay_stages (
+                  round_id TEXT NOT NULL, ordinal INTEGER NOT NULL,
+                  stage TEXT NOT NULL, receipt_json TEXT NOT NULL,
+                  PRIMARY KEY(round_id,stage), UNIQUE(round_id,ordinal)
+                );
                 CREATE TABLE IF NOT EXISTS replay_paper_evaluations (
                   round_id TEXT NOT NULL, stage TEXT NOT NULL, paper_id TEXT NOT NULL,
                   input_sha256 TEXT NOT NULL, result_json TEXT NOT NULL,
@@ -128,6 +133,18 @@ class ReplayStore:
                     or json.loads(existing["sample_json"]) != sample
                     or json.loads(existing["stage_json"]) != stage):
                     raise ValueError("replay store is already bound to different inputs")
+                # Databases created before the multi-stage ledger already have
+                # their initial jobs and scores. Preserve them while seeding
+                # the new stage receipt on the first restart.
+                stages = conn.execute(
+                    "SELECT COUNT(*) AS n FROM replay_stages WHERE round_id=?",
+                    (plan.round_id,),
+                ).fetchone()["n"]
+                if stages == 0:
+                    conn.execute(
+                        "INSERT INTO replay_stages VALUES (?,?,?,?)",
+                        (plan.round_id, 0, plan.stage, _json(stage)),
+                    )
                 return
             conn.execute(
                 "INSERT INTO replay_round VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -136,6 +153,10 @@ class ReplayStore:
                  snapshot["baseline_package_sha256"],
                  snapshot["reference_package_sha256"],
                  _json(snapshot["uploads"]), _json(sample), _json(stage)),
+            )
+            conn.execute(
+                "INSERT INTO replay_stages VALUES (?,?,?,?)",
+                (plan.round_id, 0, plan.stage, _json(stage)),
             )
             conn.executemany(
                 """INSERT INTO replay_jobs
@@ -171,7 +192,93 @@ class ReplayStore:
         return json.loads(self._round(round_id)["sample_json"])
 
     def list_stages(self, round_id: str) -> list[dict[str, Any]]:
-        return [json.loads(self._round(round_id)["stage_json"])]
+        self._round(round_id)
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT receipt_json FROM replay_stages WHERE round_id=? ORDER BY ordinal",
+                (round_id,),
+            ).fetchall()
+        return [json.loads(row["receipt_json"]) for row in rows]
+
+    def start_stage(
+        self, round_id: str, stage: str, entries: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Freeze the next replay stage after its own prior pair grid is complete."""
+        ledger = self.list_stages(round_id)
+        if not ledger:
+            raise ValueError("replay has no initial stage")
+        existing = next((row for row in ledger if row["stage"] == stage), None)
+        if existing is not None:
+            if existing["entries"] != entries:
+                raise ValueError("replay stage was already frozen differently")
+            return existing
+        prior = ledger[-1]
+        if ((prior["stage"], stage) not in {("prescreen", "screen"), ("screen", "final")}
+            or stage not in {row["stage"] for row in self.list_sample(round_id)}):
+            raise ValueError("replay stage is not next in the released sample")
+        previous = prior["entries"]
+        baseline = [row for row in previous if row["role"] in {"reference", "incumbent"}]
+        if (len(baseline) != 1 or not entries or entries[0]["hotkey"] != baseline[0]["hotkey"]
+            or entries[0]["package_sha256"] != baseline[0]["package_sha256"]
+            or entries[0]["role"] != baseline[0]["role"]
+            or len({row["hotkey"] for row in entries}) != len(entries)
+            or any(not any(row["hotkey"] == old["hotkey"]
+                           and row["package_sha256"] == old["package_sha256"]
+                           and row["team_id"] == old["team_id"]
+                           and row["role"] == old["role"] for old in previous)
+                   for row in entries)):
+            raise ValueError("replay advancement changed frozen entrants")
+        expected = (sum(row["stage"] == prior["stage"] for row in self.list_sample(round_id))
+                    * (len(previous) - 1))
+        receipt = {"stage": stage, "entries": entries}
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            latest = conn.execute(
+                "SELECT stage FROM replay_stages WHERE round_id=? ORDER BY ordinal DESC LIMIT 1",
+                (round_id,),
+            ).fetchone()
+            if latest is None or latest["stage"] != prior["stage"]:
+                raise ValueError("replay stage changed during advancement")
+            scored = conn.execute(
+                "SELECT COUNT(*) AS n FROM replay_pairs WHERE round_id=? AND stage=?",
+                (round_id, prior["stage"]),
+            ).fetchone()["n"]
+            if scored != expected:
+                raise ValueError("replay prior stage has an incomplete pair grid")
+            conn.execute(
+                "INSERT INTO replay_stages VALUES (?,?,?,?)",
+                (round_id, len(ledger), stage, _json(receipt)),
+            )
+        return receipt
+
+    def enqueue_jobs(self, round_id: str, jobs: list[dict[str, Any]]) -> dict[str, Any]:
+        ledger = self.list_stages(round_id)
+        stage = ledger[-1]
+        expected = build_jobs(
+            round_id=round_id, selected=stage["entries"],
+            sample=self.list_sample(round_id), stage=stage["stage"],
+            configuration_sha256=self.get_round(round_id)["configuration_sha256"],
+        )
+        if jobs != expected:
+            raise ValueError("replay jobs differ from frozen current stage")
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            for job in jobs:
+                existing = conn.execute(
+                    "SELECT * FROM replay_jobs WHERE job_id=?", (job["job_id"],),
+                ).fetchone()
+                if existing is not None:
+                    if any(existing[key] != value for key, value in job.items()):
+                        raise ValueError("replay job identity changed")
+                    continue
+                conn.execute(
+                    """INSERT INTO replay_jobs
+                    (job_id,round_id,stage,paper_id,hotkey,package_sha256,configuration_sha256)
+                    VALUES (?,?,?,?,?,?,?)""",
+                    (job["job_id"], round_id, job["stage"], job["paper_id"],
+                     job["hotkey"], job["package_sha256"], job["configuration_sha256"]),
+                )
+        return {"round_id": round_id, "stage": stage["stage"], "job_count": len(jobs)}
 
     def _job(self, row: sqlite3.Row) -> dict[str, Any]:
         result = dict(row)
@@ -193,7 +300,7 @@ class ReplayStore:
     ) -> dict[str, Any] | None:
         if not worker_id or type(lease_seconds) is not int or not 1 <= lease_seconds <= 7200:
             raise ValueError("replay worker lease is invalid")
-        stage = self.list_stages(round_id)[0]
+        stage = self.list_stages(round_id)[-1]
         baseline = [row["hotkey"] for row in stage["entries"]
                     if row["role"] in {"reference", "incumbent"}]
         if len(baseline) != 1:
@@ -205,8 +312,8 @@ class ReplayStore:
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             rows = conn.execute(
-                "SELECT * FROM replay_jobs WHERE round_id=? ORDER BY paper_id,hotkey",
-                (round_id,),
+                "SELECT * FROM replay_jobs WHERE round_id=? AND stage=? ORDER BY paper_id,hotkey",
+                (round_id, stage["stage"]),
             ).fetchall()
             jobs = [self._job(row) for row in rows]
             by_paper = {(row["paper_id"], row["hotkey"]): row for row in jobs}
@@ -309,6 +416,24 @@ class ReplayStore:
     def record_pair_score(self, round_id: str, stage: str, pair: dict[str, Any]) -> dict[str, Any]:
         paper_id, hotkey = pair["paper_id"], pair["challenger_hotkey"]
         self._round(round_id)
+        receipt = next((row for row in self.list_stages(round_id)
+                        if row["stage"] == stage), None)
+        if receipt is None or not any(
+            row["stage"] == stage and row["paper_id"] == paper_id
+            for row in self.list_sample(round_id)
+        ):
+            raise ValueError("replay pair is outside the frozen stage")
+        entrants = {row["hotkey"]: row for row in receipt["entries"]}
+        challenger = entrants.get(hotkey)
+        baseline = entrants.get(pair.get("baseline_hotkey"))
+        if (challenger is None or challenger["role"] != "challenger"
+            or baseline is None or baseline["role"] not in {"reference", "incumbent"}):
+            raise ValueError("replay pair differs from frozen entrants")
+        bound = {
+            **pair, "stage": stage,
+            "challenger_package_sha256": challenger["package_sha256"],
+            "baseline_package_sha256": baseline["package_sha256"],
+        }
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
@@ -319,11 +444,11 @@ class ReplayStore:
             if row is None:
                 conn.execute(
                     "INSERT INTO replay_pairs VALUES (?,?,?,?,?)",
-                    (round_id, stage, paper_id, hotkey, _json(pair)),
+                    (round_id, stage, paper_id, hotkey, _json(bound)),
                 )
-            elif json.loads(row["pair_json"]) != pair:
+            elif json.loads(row["pair_json"]) != bound:
                 raise ValueError("replay pair score was already frozen differently")
-        return pair
+        return bound
 
     def list_stage_pairs(self, round_id: str, stage: str) -> list[dict[str, Any]]:
         self._round(round_id)

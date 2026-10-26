@@ -1,5 +1,6 @@
 """A second validator's job and score receipts stay outside the primary backend."""
 
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from dataclasses import replace
 from types import SimpleNamespace
@@ -151,3 +152,18 @@ def test_replay_store_rejects_changed_job_grid(tmp_path):
     store = ReplayStore(tmp_path / "replay.sqlite")
     with pytest.raises(ValueError, match="job grid differs"):
         store.initialize(snapshot, replace(plan, jobs=plan.jobs[:-1]))
+
+
+def test_replay_store_seeds_stage_receipt_for_existing_database(tmp_path):
+    snapshot, plan = _inputs()
+    path = tmp_path / "replay.sqlite"
+    store = ReplayStore(path)
+    store.initialize(snapshot, plan)
+    with sqlite3.connect(path) as conn:
+        conn.execute("DELETE FROM replay_stages")
+    restarted = ReplayStore(path)
+    restarted.initialize(snapshot, plan)
+    assert restarted.list_stages("round-1") == [{
+        "stage": "week_one", "entries": list(plan.entries),
+    }]
+    assert len(restarted.list_paper_jobs("round-1", "week_one", "paper-1")) == 2
