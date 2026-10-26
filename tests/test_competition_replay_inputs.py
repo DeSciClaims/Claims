@@ -11,7 +11,7 @@ from competition.drand import VerifiedBeacon
 from competition.replay_inputs import (
     CompetitionReplayInputs, validate_replay_snapshot, verify_replay_sample,
 )
-from competition.sample_release import PaperRecord, sample_receipt
+from competition.sample_release import PaperRecord, frozen_pool_hash, sample_receipt
 
 
 def _snapshot():
@@ -53,6 +53,38 @@ def test_replay_client_uses_get_only_and_validates_frozen_inputs():
     assert client.snapshot("week-1")["uploads"][0]["package_object_key"] == "sealed/miner-1"
     assert requests[0][0].full_url.endswith("/replay/rounds/week-1/snapshot")
     assert requests[0][1] == 30
+
+
+def test_replay_client_checks_entire_released_pool_hash():
+    papers = [PaperRecord("paper-1", "a" * 64), PaperRecord("paper-2", "b" * 64)]
+    digest = frozen_pool_hash(papers)
+    body = {
+        "round_id": "week-1", "reference_release_id": "reference-v1",
+        "paper_pool_sha256": digest,
+        "papers": [{"paper_id": row.paper_id, "source_sha256": row.source_sha256}
+                   for row in papers],
+    }
+    requests = []
+
+    def respond(request, *, timeout):
+        requests.append(request.full_url)
+        assert request.get_method() == "GET" and timeout == 30
+        return io.BytesIO(json.dumps(body).encode())
+
+    client = CompetitionReplayInputs(
+        "https://backend.example", "replay-only", open_request=respond,
+    )
+    assert client.paper_pool(
+        "week-1", reference_release_id="reference-v1", expected_sha256=digest,
+    ) == papers
+    assert requests == [
+        "https://backend.example/internal/competition/replay/rounds/week-1/paper-pool",
+    ]
+    body["papers"][0]["source_sha256"] = "c" * 64
+    with pytest.raises(ValueError, match="frozen hash"):
+        client.paper_pool(
+            "week-1", reference_release_id="reference-v1", expected_sha256=digest,
+        )
 
 
 def test_replay_snapshot_rejects_changed_rule_and_missing_package():

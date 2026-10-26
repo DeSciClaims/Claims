@@ -181,6 +181,28 @@ class CompetitionReplayInputs:
         path = "/internal/competition/replay/rounds/" + urllib.parse.quote(round_id, safe="")
         return validate_replay_snapshot(self._get(path + "/snapshot"), round_id)
 
+    def paper_pool(
+        self, round_id: str, *, reference_release_id: str,
+        expected_sha256: str,
+    ) -> list[PaperRecord]:
+        """Read the whole released draw pool and verify its frozen digest."""
+        path = "/internal/competition/replay/rounds/" + urllib.parse.quote(round_id, safe="")
+        body = self._get(path + "/paper-pool")
+        rows = body.get("papers")
+        if (body.get("round_id") != round_id
+            or body.get("reference_release_id") != reference_release_id
+            or body.get("paper_pool_sha256") != expected_sha256
+            or not isinstance(rows, list)
+            or any(not isinstance(row, dict)
+                   or not isinstance(row.get("paper_id"), str)
+                   or not isinstance(row.get("source_sha256"), str)
+                   for row in rows)):
+            raise ValueError("replay paper pool differs from frozen round")
+        papers = [PaperRecord(row["paper_id"], row["source_sha256"]) for row in rows]
+        if frozen_pool_hash(papers) != expected_sha256:
+            raise ValueError("replay paper pool differs from frozen hash")
+        return papers
+
     def bronze(self, round_id: str, stage: str, paper_id: str) -> dict[str, Any]:
         path = ("/internal/competition/replay/rounds/"
                 + urllib.parse.quote(round_id, safe="") + "/bronze/"
