@@ -128,3 +128,30 @@ def test_replay_factory_uses_read_only_token_and_separate_log_bucket(monkeypatch
     assert seen["buckets"] == ("sealed-packages", "replay-logs")
     assert seen["bootstrap"][1]["hotkey_public_key"]("miner-hotkey") == b"miner-hotkey"
     assert seen["bootstrap"][1]["store"] == "local-store"
+
+
+def test_replay_controller_runs_final_audit_once_after_local_grid(monkeypatch):
+    private = {"input_sha256": "a" * 64, "result_private": {"round_id": "week-1"}}
+    state = {"frozen": None, "calls": 0}
+    backend = SimpleNamespace(
+        snapshot={"round_id": "week-1", "network": "testnet"},
+        get_final_audit=lambda _: state["frozen"],
+    )
+    monkeypatch.setattr(replay_pilot_factory, "tick_replay", lambda *_, **__: {
+        "status": "ready_for_independent_final_review", "stage": "final",
+    })
+
+    def audit(*_, **__):
+        state["calls"] += 1
+        state["frozen"] = private
+        return private
+
+    monkeypatch.setattr(replay_pilot_factory, "audit_replay_final", audit)
+    controller = replay_pilot_factory.ReplayController(
+        backend=backend, paper_inputs=SimpleNamespace(bronze_for_paper=lambda *_: {}),
+        evaluation=SimpleNamespace(evaluate_for_stage=lambda _: None),
+        reference_upload={}, packages=SimpleNamespace(), code_policy={"frozen": True},
+    )
+    assert controller.run_once()["status"] == "final_audit_complete"
+    assert controller.run_once()["status"] == "final_audit_complete"
+    assert state["calls"] == 1

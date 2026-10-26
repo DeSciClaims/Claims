@@ -17,17 +17,20 @@ from .bifrost import BifrostClient
 from .chain_archive import BittensorArchive
 from .controller_inputs import build_provisional_evaluation_policy
 from .hippius import HippiusPrivateStorage, hippius_s3_client
+from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
 from .pdf_fetch import TrustedPdfFetcher
 from .pilot_worker_factory import _csv, _required
 from .provisional_judges import require_provisional_provider_pins
 from .replay_controller import tick_replay
+from .replay_final_audit import audit_replay_final
 from .replay_inputs import CompetitionReplayInputs
 from .replay_runtime import (
     ReplayRuntimeBackend, create_replay_worker_coordinator,
     initialize_replay_runtime,
 )
 from .replay_store import ReplayStore
+from .publication import canonical_sha256
 from .ssh_worker import RestrictedSshWorkerTransport
 from .targon_vms import DisposableVmExecution, TargonVmLifecycle
 from .worker_service import CompetitionWorkerCoordinator
@@ -96,20 +99,37 @@ class ReplayController:
     paper_inputs: CompetitionPaperInputs
     evaluation: Any
     reference_upload: dict[str, Any]
+    packages: CompetitionPackageResolver
+    code_policy: dict[str, Any] | None
 
     def run_once(self) -> dict[str, Any]:
-        return tick_replay(
-            self.backend.snapshot["round_id"], backend=self.backend,
+        round_id = self.backend.snapshot["round_id"]
+        result = tick_replay(
+            round_id, backend=self.backend,
             bronze_for_paper=self.paper_inputs.bronze_for_paper,
             evaluate_for_stage=self.evaluation.evaluate_for_stage,
             reference_for_round=lambda _: self.reference_upload,
         )
+        if result["status"] != "ready_for_independent_final_review":
+            return result
+        if self.code_policy is None:
+            if self.backend.snapshot["network"] == "mainnet":
+                raise ValueError("mainnet replay has no frozen code audit policy")
+            return result
+        frozen = self.backend.get_final_audit(round_id)
+        if frozen is None:
+            frozen = audit_replay_final(
+                round_id, backend=self.backend, fetch_package=self.packages,
+                code_policy=self.code_policy,
+            )
+        return {"status": "final_audit_complete", "stage": result["stage"],
+                "audit_sha256": canonical_sha256(frozen)}
 
 
 def create_replay_controller(
     round_id: str, backend_url: str, db_path: Path,
 ) -> ReplayController:
-    backend, _, baseline, reference = _bootstrap(round_id, backend_url, db_path)
+    backend, storage, baseline, reference = _bootstrap(round_id, backend_url, db_path)
     configuration = backend.snapshot["rules_public"]["configuration"]
     require_provisional_provider_pins(configuration)
     papers = CompetitionPaperInputs(
@@ -131,7 +151,12 @@ def create_replay_controller(
     if (evaluation.configuration_sha256 != backend.snapshot["configuration_sha256"]
         or evaluation.configuration != configuration):
         raise ValueError("replay judge runtime differs from frozen rules")
-    return ReplayController(backend, papers, evaluation, reference or baseline)
+    policy = backend.snapshot["rules_public"].get("policy", {}).get("code_audit")
+    if policy is not None and not isinstance(policy, dict):
+        raise ValueError("replay code audit policy is malformed")
+    packages = CompetitionPackageResolver(backend, storage, baseline, reference)
+    return ReplayController(backend, papers, evaluation, reference or baseline,
+                            packages, policy)
 
 
 def create_replay_worker(

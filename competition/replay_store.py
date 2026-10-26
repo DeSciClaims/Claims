@@ -76,6 +76,10 @@ class ReplayStore:
                   challenger_hotkey TEXT NOT NULL, pair_json TEXT NOT NULL,
                   PRIMARY KEY(round_id,stage,paper_id,challenger_hotkey)
                 );
+                CREATE TABLE IF NOT EXISTS replay_final_audit (
+                  round_id TEXT PRIMARY KEY, input_sha256 TEXT NOT NULL,
+                  result_json TEXT NOT NULL
+                );
             """)
 
     @contextmanager
@@ -537,3 +541,38 @@ class ReplayStore:
                 ORDER BY paper_id,challenger_hotkey""", (round_id, stage),
             ).fetchall()
         return [json.loads(row["pair_json"]) for row in rows]
+
+    def get_final_audit(self, round_id: str) -> dict[str, Any] | None:
+        self._round(round_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT input_sha256,result_json FROM replay_final_audit WHERE round_id=?",
+                (round_id,),
+            ).fetchone()
+        return ({"input_sha256": row["input_sha256"],
+                 "result_private": json.loads(row["result_json"])} if row else None)
+
+    def freeze_final_audit(
+        self, round_id: str, *, input_sha256: str,
+        result_private: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._round(round_id)
+        if (not isinstance(input_sha256, str) or len(input_sha256) != 64
+            or not isinstance(result_private, dict)
+            or result_private.get("round_id") != round_id):
+            raise ValueError("replay final audit receipt is malformed")
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT input_sha256,result_json FROM replay_final_audit WHERE round_id=?",
+                (round_id,),
+            ).fetchone()
+            if row is None:
+                conn.execute(
+                    "INSERT INTO replay_final_audit VALUES (?,?,?)",
+                    (round_id, input_sha256, _json(result_private)),
+                )
+            elif (row["input_sha256"] != input_sha256
+                  or json.loads(row["result_json"]) != result_private):
+                raise ValueError("replay final audit was already frozen differently")
+        return {"input_sha256": input_sha256, "result_private": result_private}

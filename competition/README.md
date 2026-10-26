@@ -266,8 +266,13 @@ Hippius, Bifrost, Targon, worker SSH, PDF allowlist, and provisional judge
 settings used by the corresponding pilot factories. Set
 `CLAIMS_HIPPIUS_REPLAY_LOG_BUCKET` to a separate bucket: replay job IDs can
 match primary job IDs, so their private logs must not share an object keyspace.
-This process stops at `ready_for_independent_final_review`; it does not yet
-publish a second vector.
+After the local final score grid is complete, the controller applies the
+frozen automatic code thresholds, output-copy check, and denied-egress audit
+to its own job and Silver receipts and freezes a private final audit. A
+testnet round without a code policy stops at
+`ready_for_independent_final_review`; a round with one reports
+`final_audit_complete`. Gold review and a second signed vector remain to be
+built.
 Pilot judge providers are set with CLAIMS_JUDGE_J1_A_PROVIDER,
 CLAIMS_JUDGE_J1_B_PROVIDER, CLAIMS_JUDGE_J2_A_PROVIDER,
 CLAIMS_JUDGE_J2_B_PROVIDER, and CLAIMS_JUDGE_TIEBREAK_PROVIDER. Round setup
