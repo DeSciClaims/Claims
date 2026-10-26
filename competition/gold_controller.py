@@ -6,7 +6,6 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
-from .drand import VerifiedBeacon
 from .pair_evaluator import WeeklyPaperEvaluation
 
 from .gold import GoldCase, GoldResult, GoldVote, VoteDecision, decide_gold_case, draw_gold_cases, gold_result
@@ -31,13 +30,6 @@ class ContestedClaim:
     case: GoldCase
     case_public: Mapping[str, Any]
     answer_private: Mapping[str, Any]
-
-
-@dataclass(frozen=True)
-class ClosedGoldReview:
-    results: Mapping[str, GoldResult]
-    check_case_ids: tuple[str, ...]
-    beacon: VerifiedBeacon
 
 
 def contested_claims_for_paper(
@@ -157,19 +149,20 @@ def frozen_gold_candidates(round_id: str, *, backend: GoldBackend) -> list[Conte
 
 def prepare_frozen_gold_review(
     round_id: str, *, backend: GoldBackend,
-    voters: list[dict[str, str]], escalation_limit: int = 1700,
+    voters: list[dict[str, str]], limit: int = 300, escalation_limit: int = 1700,
 ) -> dict[str, Any]:
     return prepare_gold_review(
         round_id, backend=backend, candidates=frozen_gold_candidates(round_id, backend=backend),
-        voters=voters, escalation_limit=escalation_limit,
+        voters=voters, limit=limit, escalation_limit=escalation_limit,
     )
 
 
 def prepare_gold_review(
     round_id: str, *, backend: GoldBackend, candidates: list[ContestedClaim],
-    voters: list[dict[str, str]], escalation_limit: int = 1700,
+    voters: list[dict[str, str]], limit: int = 300,
+    escalation_limit: int | None = None,
 ) -> dict[str, Any]:
-    """Freeze voted cases; the check draw happens after voting closes."""
+    """Seal a random Gold check and a separately capped escalation stream."""
     round_record = backend.get_round(round_id)
     if round_record["status"] not in {"final", "gold"}:
         raise ValueError("final evaluation has not reached Gold review")
@@ -179,11 +172,19 @@ def prepare_gold_review(
     if len({candidate.case.case_id for candidate in candidates}) != len(candidates):
         raise ValueError("contested Gold case IDs must be distinct")
     by_id = {candidate.case.case_id: candidate for candidate in candidates}
-    escalation_seed = hashlib.sha256(b"claims-escalation-draw-v1\0" + seed).digest()
-    selected = draw_gold_cases(
-        [candidate.case for candidate in candidates], seed=escalation_seed,
-        limit=escalation_limit,
-    )
+    gold_seed = hashlib.sha256(b"claims-gold-draw-v1\0" + seed).digest()
+    check = draw_gold_cases([candidate.case for candidate in candidates], seed=gold_seed, limit=limit)
+    if escalation_limit is None:
+        escalation = ()
+    else:
+        escalation_seed = hashlib.sha256(b"claims-escalation-draw-v1\0" + seed).digest()
+        escalation = draw_gold_cases(
+            [candidate.case for candidate in candidates], seed=escalation_seed,
+            limit=escalation_limit,
+        )
+    check_ids = {case.case_id for case in check}
+    escalation_ids = {case.case_id for case in escalation}
+    selected = [by_id[case_id].case for case_id in sorted(check_ids | escalation_ids)]
     backend.freeze_gold_voters(round_id, voters)
     receipt = backend.create_gold_cases(round_id, [{
         "case_id": case.case_id, "paper_id": case.paper_id,
@@ -193,11 +194,14 @@ def prepare_gold_review(
         "case_public": dict(by_id[case.case_id].case_public),
         "answer_private": {
             **dict(by_id[case.case_id].answer_private),
-            "review_purposes": ["escalation"],
+            "review_purposes": [purpose for purpose, included in (
+                ("check", case.case_id in check_ids),
+                ("escalation", case.case_id in escalation_ids),
+            ) if included],
         },
     } for case in selected])
     return {"round_id": round_id, "case_count": len(selected),
-            "check_count": 0, "escalation_count": len(selected),
+            "check_count": len(check), "escalation_count": len(escalation),
             "receipt": receipt}
 
 
@@ -234,23 +238,11 @@ def closed_gold_decisions(
 
 
 def tally_closed_gold_review(
-    round_id: str, *, backend: GoldBackend, beacon: VerifiedBeacon,
-    gold_close_timestamp: int, limit: int = 300,
-) -> ClosedGoldReview:
-    """Draw the check from closed votes with the first post-close beacon."""
-    if (gold_close_timestamp < 1 or beacon.scheduled_at <= gold_close_timestamp
-        or beacon.round < 1 or len(beacon.seed) != 32
-        or hashlib.sha256(bytes.fromhex(beacon.signature_hex)).digest() != beacon.seed):
-        raise ValueError("Gold check requires a verified beacon after vote close")
+    round_id: str, *, backend: GoldBackend,
+) -> dict[str, GoldResult]:
+    """Tally only after closing intake; group the veto by challenger."""
     decisions = closed_gold_decisions(round_id, backend=backend)
     cases = backend.list_gold_cases(round_id, include_answers=True)
-    check_seed = hashlib.sha256(b"claims-gold-postvote-v1\0" + beacon.seed).digest()
-    check = draw_gold_cases([
-        GoldCase(row["case_id"], row["paper_id"], row["challenger_hotkey"],
-                 row["incumbent_hotkey"], frozenset(row["excluded_team_ids"]))
-        for row in cases
-    ], seed=check_seed, limit=limit)
-    check_ids = {case.case_id for case in check}
     final = next((row for row in backend.list_stages(round_id)
                   if row["stage"] in {"final", "week_one"}), None)
     if final is None:
@@ -259,11 +251,9 @@ def tally_closed_gold_review(
         entry["hotkey"]: [] for entry in final["entries"] if entry["role"] == "challenger"
     }
     for row in cases:
-        if row["case_id"] in check_ids:
+        purposes = row["answer_private"].get("review_purposes", ["check"])
+        if "check" in purposes:
             if row["challenger_hotkey"] not in decisions_by_challenger:
                 raise ValueError("Gold check case is outside frozen finalists")
             decisions_by_challenger[row["challenger_hotkey"]].append(decisions[row["case_id"]])
-    return ClosedGoldReview(
-        {hotkey: gold_result(rows) for hotkey, rows in decisions_by_challenger.items()},
-        tuple(sorted(check_ids)), beacon,
-    )
+    return {hotkey: gold_result(decisions) for hotkey, decisions in decisions_by_challenger.items()}

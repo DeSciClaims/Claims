@@ -35,13 +35,12 @@ the Claims holdout; the older direct-choice benchmark shows weak rejection
 recall. The API key belongs only to the trusted controller.
 
 The final paper scorer freezes candidate review cases for primary judge splits
-with pairwise credit effects. Gold preparation draws a capped escalation set
-from those receipts. After voting closes, the first verified drand beacon after
-Thursday 12:00 UTC draws up to 300 check cases from that voted set. The signed
-result includes its beacon proof and exact check IDs; the backend verifies the
-draw before publication. Decided escalation votes rescore affected final pairs;
-the check cases alone supply the crown veto. Hidden known-answer cases still
-need to be mixed into review, and the live end-to-end run remains.
+with pairwise credit effects. Gold preparation independently draws a check
+sample and a capped escalation set from those private receipts. After voting
+closes, the final selector recomputes affected pair scores from frozen Silver
+data and decided escalation votes; the signed publication carries these final
+pair rows for the public pair endpoint. The Gold check alone supplies the
+crown veto. The live end-to-end run remains.
 
 ## Weight heartbeat
 

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Mapping, Protocol
 
-from .drand import BlockClock, fetch_verified_beacon
+from .drand import BlockClock
 from .final_controller import select_ready_final
 from .gold_controller import prepare_frozen_gold_review, tally_closed_gold_review
 from .intake_lock import ArchiveReader, CompetitionBackend
@@ -169,12 +169,7 @@ def tick_round(
     if status == "gold_closed":
         if now < publish_at:
             return {"status": "waiting_for_publication", "publish_at": publish_at.isoformat()}
-        beacon = fetch_verified_beacon(block_timestamp=int(gold_close.timestamp()))
-        closed = tally_closed_gold_review(
-            round_id, backend=backend, beacon=beacon,
-            gold_close_timestamp=int(gold_close.timestamp()),
-        )
-        gold = closed.results
+        gold = tally_closed_gold_review(round_id, backend=backend)
         audit = inputs.final_audit(round_id)
         selection = select_ready_final(
             round_id, backend=backend,
@@ -188,14 +183,6 @@ def tick_round(
             qualified_by_hotkey=audit.qualified_by_hotkey,
             production_team_id=audit.production_team_id,
             gold_by_hotkey=gold,
-            gold_check={
-                "drand_round": beacon.round, "drand_seed": beacon.seed.hex(),
-                "drand_chain_hash": beacon.chain_hash,
-                "drand_public_key": beacon.public_key,
-                "drand_signature": beacon.signature_hex,
-                "drand_scheduled_at": beacon.scheduled_at,
-                "case_ids": list(closed.check_case_ids),
-            },
         )
         return {"status": "published", "bundle_sha256": receipt["bundle_sha256"]}
     if status == "published":
