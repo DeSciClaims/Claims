@@ -39,21 +39,27 @@ class Backend:
         ]
 
     def worker_inference_cost_summary(self, round_id):
-        return {"round_id": round_id, "scope": "completed_worker_inference",
-                "by_stage": [{"stage": "final", "job_count": 6, "usd": "1.20000000"}],
-                "total_jobs": 6, "total_usd": "1.20000000"}
+        return {"round_id": round_id, "scope": "reported_worker_attempt_inference",
+                "by_stage": [{"stage": "final", "job_count": 6,
+                              "reported_attempt_count": 6,
+                              "unreported_attempt_count": 0, "usd": "1.20000000"}],
+                "total_jobs": 6, "total_reported_attempts": 6,
+                "total_unreported_attempts": 0, "total_usd": "1.20000000"}
 
     def worker_cost_ledger(self, round_id):
         return {"round_id": round_id,
                 "scope": "completed_worker_jobs_and_frozen_paper_evaluations",
                 "measured": {"worker_inference_usd": "1.20000000", "job_count": 6,
+                             "reported_attempt_count": 6,
+                             "unreported_attempt_count": 0,
                              "judge_inference_usd": "0.05000000", "judge_call_count": 2},
-                "estimated": {"worker_vm_usd": "0.06000000", "job_count": 6,
-                              "missing_job_count": 0, "judge_inference_usd": "0.00000000",
+                "estimated": {"worker_vm_usd": "0.06000000", "attempt_count": 6,
+                              "missing_attempt_count": 0,
+                              "judge_inference_usd": "0.00000000",
                               "judge_call_count": 0},
                 "judge_usage": {"frozen_paper_count": 2, "missing_paper_count": 0,
                                 "unpriced_call_count": 0},
-                "unreported_categories": ["decision_api", "storage", "failed_worker_attempts",
+                "unreported_categories": ["decision_api", "storage", "expired_worker_attempts",
                                           "failed_judge_attempts", "gold_tiebreak_judging"],
                 "completeness": "partial"}
 
