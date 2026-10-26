@@ -57,3 +57,22 @@ def test_handoff_cli_uses_separate_factory_entrypoint(monkeypatch, capsys):
         "--factory-module", module.__name__, "--once",
     ]) == 0
     assert '"status": "activated"' in capsys.readouterr().out
+
+
+def test_production_cli_keeps_private_extraction_out_of_journal(monkeypatch, capsys):
+    module = ModuleType("competition.fake_production_factory")
+    module.create_production_worker = lambda backend, **kwargs: SimpleNamespace(
+        run_once=lambda: {"status": "completed", "artifact": {
+            "private_claim": "do not log this"}},
+    )
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setenv("CLAIMS_COMPETITION_CONTROLLER_TOKEN", "private-token")
+    assert competition_service.main([
+        "--role", "production", "--network", "testnet",
+        "--backend-url", "https://backend.example",
+        "--factory-module", module.__name__,
+        "--worker-id", "production-worker", "--once",
+    ]) == 0
+    output = capsys.readouterr()
+    assert '"job_status": "completed"' in output.out
+    assert "do not log this" not in output.out + output.err

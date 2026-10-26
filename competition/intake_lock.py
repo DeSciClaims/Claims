@@ -70,6 +70,42 @@ class CompetitionBackend:
             raise ValueError("unknown competition network")
         return self._request("GET", "/internal/competition/rounds/published?network=" + network)
 
+    def enqueue_production_job(self, job: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/internal/competition/production/jobs", job)
+
+    def pending_production_papers(
+        self, *, network: str, receipt_sha256: str,
+        created_after: str, limit: int,
+    ) -> list[dict[str, Any]]:
+        query = urllib.parse.urlencode({
+            "network": network, "receipt_sha256": receipt_sha256,
+            "created_after": created_after, "limit": limit,
+        })
+        return self._request(
+            "GET", "/internal/competition/production/papers/pending?" + query,
+        )
+
+    def claim_production_job(
+        self, *, network: str, receipt_sha256: str, worker_id: str,
+        lease_seconds: int,
+    ) -> dict[str, Any] | None:
+        return self._request("POST", "/internal/competition/production/jobs/claim", {
+            "network": network, "receipt_sha256": receipt_sha256,
+            "worker_id": worker_id, "lease_seconds": lease_seconds,
+        })
+
+    def complete_production_job(
+        self, job_id: str, *, worker_id: str, lease_token: str,
+        result: dict[str, Any], log_object_key: str,
+    ) -> dict[str, bool]:
+        return self._request(
+            "POST", "/internal/competition/production/jobs/"
+            + urllib.parse.quote(job_id, safe="") + "/complete", {
+                "worker_id": worker_id, "lease_token": lease_token,
+                "result": result, "log_object_key": log_object_key,
+            },
+        )
+
     def create_round(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/internal/competition/rounds", payload)
 

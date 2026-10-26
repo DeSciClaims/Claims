@@ -107,7 +107,8 @@ class Results:
         self.receipt = job_id, kwargs
 
 
-def _run(*, over=False, artifact=None, lease=None, active=None, execution=None):
+def _run(*, over=False, artifact=None, lease=None, active=None, execution=None,
+         is_current_release=None):
     active = active or _active()
     lease = lease or _lease(active)
     keys = Keys(over)
@@ -115,11 +116,12 @@ def _run(*, over=False, artifact=None, lease=None, active=None, execution=None):
     results = Results(keys)
     runner = execution or Execution(artifact)
     result = run_production_paper(
-        active, lease, network="testnet",
+        active, lease, network="testnet", worker_id="production-worker-1",
         fetch_pdf=lambda url, digest: PDF,
         keys=keys, execution=runner, logs=logs, results=results,
         inference_base_url="https://inference.example/v1",
         allowed_models=("example/model",), token_limit=1000, dollar_limit=1.0,
+        is_current_release=is_current_release,
     )
     return result, keys, logs, results, runner
 
@@ -167,3 +169,9 @@ def test_production_transport_fault_revokes_key_and_records_fault():
     assert result["status"] == "infrastructure_fault"
     assert result["artifact"] is None
     assert "private transport detail" not in str(receipts.receipt)
+
+
+def test_production_discards_result_when_handoff_changes_during_execution():
+    checks = iter((True, False))
+    with pytest.raises(ValueError, match="release changed"):
+        _run(is_current_release=lambda: next(checks))

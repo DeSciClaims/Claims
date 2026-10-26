@@ -23,18 +23,19 @@ from .worker_controller import DisposableExecution, ExecutionOutput, InferenceKe
 
 class ProductionResults(Protocol):
     def complete_production_job(
-        self, job_id: str, *, lease_token: str, result: dict[str, Any],
+        self, job_id: str, *, worker_id: str, lease_token: str, result: dict[str, Any],
         log_object_key: str,
     ) -> Any: ...
 
 
 def run_production_paper(
     active: ActiveProductionPackage, lease: Mapping[str, Any], *,
-    network: str, fetch_pdf: Callable[[str, str], bytes],
+    network: str, worker_id: str, fetch_pdf: Callable[[str, str], bytes],
     keys: InferenceKeys, execution: DisposableExecution,
     logs: PrivateLogs, results: ProductionResults,
     inference_base_url: str, allowed_models: tuple[str, ...],
     token_limit: int, dollar_limit: float,
+    is_current_release: Callable[[], bool] | None = None,
     max_inference_output_tokens: int = 8192,
     key_lifetime_seconds: int = 3600,
     max_output_bytes: int = 10_000_000,
@@ -45,7 +46,7 @@ def run_production_paper(
     credentials. Only the scoped paper key and verified input bundle reach the
     guest. A failed durable completion leaves the lease to expire for retry.
     """
-    if network not in {"testnet", "mainnet"}:
+    if network not in {"testnet", "mainnet"} or not worker_id:
         raise ValueError("production network is invalid")
     job_id = lease.get("job_id")
     paper_id = lease.get("paper_id")
@@ -84,6 +85,8 @@ def run_production_paper(
     pdf = fetch_pdf(source_url, pdf_sha256)
     if hashlib.sha256(pdf).hexdigest() != pdf_sha256:
         raise ValueError("production PDF differs from its pinned source hash")
+    if is_current_release is not None and not is_current_release():
+        raise ValueError("production release changed before paper execution")
     key = keys.create_paper_key(
         round_id=active.round_id, paper_id=paper_id, hotkey=active.hotkey,
         allowed_models=contract["allowed_models"], token_limit=token_limit,
@@ -106,6 +109,8 @@ def run_production_paper(
         usage = keys.check_budget(key)
     finally:
         keys.revoke(key)
+    if is_current_release is not None and not is_current_release():
+        raise ValueError("production release changed during paper execution")
     if (isinstance(usage.tokens, bool) or usage.tokens < 0
         or not math.isfinite(usage.dollar_cost_usd) or usage.dollar_cost_usd < 0
         or isinstance(output.denied_egress_packets, bool)
@@ -125,7 +130,7 @@ def run_production_paper(
     if status not in {"completed", "build_failed", "package_failed", "invalid_output",
                       "timeout", "cap_exceeded", "infrastructure_fault", "security_violation"}:
         raise ValueError("production worker returned an unknown status")
-    detail = output.detail
+    detail = output.detail.replace(key.value, "[REDACTED_PAPER_KEY]")
     artifact = output.artifact if status == "completed" else None
     if status == "completed":
         try:
@@ -155,6 +160,7 @@ def run_production_paper(
         "package_sha256": active.package_sha256,
         "paper_id": paper_id, "source_sha256": pdf_sha256,
         "prompt_and_completion_tokens": usage.tokens,
+        "token_limit": token_limit,
         "inference_cost_usd": usage.dollar_cost_usd,
         "denied_egress_packets": output.denied_egress_packets,
         "vm_elapsed_seconds": output.vm_elapsed_seconds,
@@ -162,7 +168,7 @@ def run_production_paper(
         "detail": detail,
     }
     results.complete_production_job(
-        job_id, lease_token=lease_token, result=result,
+        job_id, worker_id=worker_id, lease_token=lease_token, result=result,
         log_object_key=log_key,
     )
     return result

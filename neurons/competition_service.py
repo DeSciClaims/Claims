@@ -27,7 +27,7 @@ def _factory(module_name: str) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--role", choices=("controller", "worker", "handoff"), required=True)
+    parser.add_argument("--role", choices=("controller", "worker", "handoff", "production"), required=True)
     parser.add_argument("--network", choices=("mainnet", "testnet"), required=True)
     parser.add_argument("--backend-url", required=True)
     parser.add_argument("--factory-module", required=True)
@@ -37,10 +37,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not 1 <= args.poll_seconds <= 600:
         parser.error("--poll-seconds must be between 1 and 600")
-    if args.role == "worker" and not args.worker_id:
-        parser.error("worker mode needs --worker-id")
-    if args.role != "worker" and args.worker_id:
-        parser.error("only worker mode accepts a worker ID")
+    if args.role in {"worker", "production"} and not args.worker_id:
+        parser.error("worker and production modes need --worker-id")
+    if args.role not in {"worker", "production"} and args.worker_id:
+        parser.error("only worker and production modes accept a worker ID")
     token = os.environ.get("CLAIMS_COMPETITION_CONTROLLER_TOKEN", "")
     if not token:
         parser.error("CLAIMS_COMPETITION_CONTROLLER_TOKEN is required")
@@ -49,11 +49,15 @@ def main(argv: list[str] | None = None) -> int:
         factory = _factory(args.factory_module)
         callback_name = {"controller": "create_controller_inputs",
                          "worker": "create_worker_coordinator",
-                         "handoff": "create_handoff_service"}[args.role]
+                         "handoff": "create_handoff_service",
+                         "production": "create_production_worker"}[args.role]
         callback = getattr(factory, callback_name)
         if not callable(callback):
             raise ValueError("trusted adapter factory has no callable entrypoint")
         handoff = callback(backend, args.backend_url, args.network) if args.role == "handoff" else None
+        production = callback(
+            backend, network=args.network, worker_id=args.worker_id,
+        ) if args.role == "production" else None
     except (ImportError, AttributeError, ValueError) as exc:
         print(json.dumps({"status": "startup_error", "error_type": type(exc).__name__}),
               file=sys.stderr, flush=True)
@@ -70,8 +74,13 @@ def main(argv: list[str] | None = None) -> int:
                     backend=backend, network=args.network,
                     coordinator_for_round=lambda row: callback(row, backend, args.worker_id),
                 )
-            else:
+            elif args.role == "handoff":
                 results = handoff.run_once()
+            else:
+                production_result = production.run_once()
+                results = ([{"status": "job_processed",
+                             "job_status": production_result["status"]}]
+                           if production_result is not None else [])
             for result in results:
                 print(json.dumps(result, sort_keys=True), flush=True)
             failed = any(row["status"] == "error" for row in results)
@@ -85,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.once:
             return 1 if failed else 0
         try:
-            time.sleep(1 if args.role == "worker" and any(
+            time.sleep(1 if args.role in {"worker", "production"} and any(
                 row["status"] == "job_processed" for row in results
             ) else args.poll_seconds)
         except KeyboardInterrupt:

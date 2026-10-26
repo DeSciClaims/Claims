@@ -81,8 +81,12 @@ returns the release to a trusted production runner without executing it. It can 
 and rollbacks atomically. `run_production_paper` checks a leased PDF and the
 active release, gives only a paper-scoped key to the disposable VM, revokes it,
 checks the structured output, and records private logs and usage. It performs
-no Bronze comparison or competition scoring. A durable production lease and
-result store, service wiring, and health checks remain to be built.
+no Bronze comparison or competition scoring. The backend code now includes a
+durable production lease and result store; a separate worker polls those jobs.
+The worker polls approved papers after a configured start timestamp and
+enqueues them for the active release. Queued work can switch to a new release
+after handoff. Product materialization, exhausted-job recovery, and health
+checks remain to be built and rehearsed.
 Before advancing a staged screen or opening Gold, the controller counts
 incumbent package failures on papers without a global infrastructure fault.
 The final selector repeats the check. A strict rate above 20% starts a durable
