@@ -114,6 +114,14 @@ allowlisted model-backed panels with one common tiebreak through the existing
 Silver judge factory. Select and cost the concrete models, then pin a deploy
 artifact before a paid round.
 
+`planned_production_handoff` verifies the signed Thursday result, the frozen
+finalist package hash and the following Monday 09:00 UTC gate. The trusted
+`FilesystemProductionReleaseStore` can atomically store the sealed package and
+switch a private `active.json` pointer; it records the previous release and
+can restore it after a breach without replaying the breached result. The
+production service still needs a reader that notices the pointer, starts the
+selected package in its isolated runtime, and reports health before launch.
+
 The final paper scorer freezes contested claim cases, including primary judge
 splits with pairwise credit effects. The backend commits to a private Gold
 check seed when the round is created, before any package is evaluated. Gold

@@ -1,0 +1,255 @@
+"""Verify the Thursday result before scheduling the next Monday package."""
+
+from __future__ import annotations
+
+import re
+import fcntl
+import hashlib
+import json
+import os
+import stat
+import tempfile
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any, Callable, Mapping
+
+from .publication import FROZEN_FIELDS
+from .weight_heartbeat import verify_weekly_receipt
+
+
+@dataclass(frozen=True)
+class ProductionHandoffPlan:
+    round_id: str
+    receipt_sha256: str
+    hotkey: str
+    package_sha256: str
+    activate_at: datetime
+
+
+class FilesystemProductionReleaseStore:
+    """Atomically record a verified package and active receipt on trusted disk.
+
+    The production service reads ``active.json`` to load the package; this
+    class stores bytes and the pointer but does not execute miner code.
+    """
+
+    def __init__(self, root: Path) -> None:
+        self.root = Path(root)
+        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        info = self.root.stat()
+        if (self.root.is_symlink() or not stat.S_ISDIR(info.st_mode)
+            or info.st_uid != os.getuid() or info.st_mode & 0o077):
+            raise ValueError("production release root must be a private owned directory")
+
+    def _write_atomic(self, path: Path, content: bytes) -> None:
+        with tempfile.NamedTemporaryFile(dir=self.root, prefix=".release-", delete=False) as temporary:
+            temporary_path = Path(temporary.name)
+            try:
+                os.fchmod(temporary.fileno(), 0o600)
+                temporary.write(content)
+                temporary.flush()
+                os.fsync(temporary.fileno())
+                os.replace(temporary_path, path)
+                directory = os.open(self.root, os.O_RDONLY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+            finally:
+                temporary_path.unlink(missing_ok=True)
+
+    def _verified_package(self, digest: Any) -> Path:
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("stored production package hash is invalid")
+        path = self.root / f"{digest}.zip"
+        if (path.is_symlink() or not path.is_file()
+            or hashlib.sha256(path.read_bytes()).hexdigest() != digest):
+            raise ValueError("stored production package is missing or corrupt")
+        return path
+
+    def activate(
+        self, plan: ProductionHandoffPlan, package: bytes, *, now: datetime,
+    ) -> dict[str, Any]:
+        if now.tzinfo is None or now.astimezone(UTC) < plan.activate_at:
+            raise ValueError("production activation is before the verified Monday gate")
+        if (hashlib.sha256(package).hexdigest() != plan.package_sha256
+            or not re.fullmatch(r"[0-9a-f]{64}", plan.receipt_sha256)
+            or not re.fullmatch(r"[0-9a-f]{64}", plan.package_sha256)):
+            raise ValueError("production package or receipt differs from verified handoff")
+        lock_path = self.root / ".activation.lock"
+        if lock_path.is_symlink():
+            raise ValueError("production activation lock cannot be a symlink")
+        with lock_path.open("a+b") as lock:
+            os.fchmod(lock.fileno(), 0o600)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            active_path = self.root / "active.json"
+            if active_path.is_symlink():
+                raise ValueError("production active pointer cannot be a symlink")
+            current = json.loads(active_path.read_text()) if active_path.exists() else None
+            if current is not None:
+                self._verified_package(current["package_sha256"])
+                if current["receipt_sha256"] == plan.receipt_sha256:
+                    if current["package_sha256"] != plan.package_sha256:
+                        raise ValueError("active receipt has a different package")
+                    return current
+                current_time = datetime.fromisoformat(
+                    current.get("latest_activation_at", current["activate_at"]),
+                )
+                if current_time >= plan.activate_at:
+                    raise ValueError("production handoff is older than the active release")
+            package_path = self.root / f"{plan.package_sha256}.zip"
+            if package_path.exists():
+                self._verified_package(plan.package_sha256)
+            else:
+                self._write_atomic(package_path, package)
+            activation = {
+                "round_id": plan.round_id,
+                "receipt_sha256": plan.receipt_sha256,
+                "hotkey": plan.hotkey,
+                "package_sha256": plan.package_sha256,
+                "activate_at": plan.activate_at.isoformat(),
+                "latest_activation_at": plan.activate_at.isoformat(),
+                "previous": current,
+            }
+            self._write_atomic(active_path, json.dumps(
+                activation, sort_keys=True, separators=(",", ":"),
+            ).encode())
+            return activation
+
+    def rollback(
+        self, *, expected_receipt_sha256: str, reason: str, now: datetime,
+    ) -> dict[str, Any]:
+        """Restore the previous sealed package after a verified production breach."""
+        if (not re.fullmatch(r"[0-9a-f]{64}", expected_receipt_sha256)
+            or not reason.strip() or len(reason) > 500
+            or now.tzinfo is None):
+            raise ValueError("rollback needs current receipt, reason and timezone-aware clock")
+        lock_path = self.root / ".activation.lock"
+        if lock_path.is_symlink():
+            raise ValueError("production activation lock cannot be a symlink")
+        with lock_path.open("a+b") as lock:
+            os.fchmod(lock.fileno(), 0o600)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            active_path = self.root / "active.json"
+            if active_path.is_symlink() or not active_path.exists():
+                raise ValueError("production active pointer is missing or unsafe")
+            current = json.loads(active_path.read_text())
+            if current.get("rolled_back_from") == expected_receipt_sha256:
+                return current
+            if current.get("receipt_sha256") != expected_receipt_sha256:
+                raise ValueError("rollback target is not the current production receipt")
+            previous = current.get("previous")
+            if not isinstance(previous, dict):
+                raise ValueError("production has no previous release to restore")
+            self._verified_package(previous.get("package_sha256"))
+            restored = {
+                **previous,
+                "latest_activation_at": current.get("latest_activation_at", current["activate_at"]),
+                "rolled_back_from": expected_receipt_sha256,
+                "rollback_at": now.astimezone(UTC).isoformat(),
+                "rollback_reason": reason.strip(),
+            }
+            self._write_atomic(active_path, json.dumps(
+                restored, sort_keys=True, separators=(",", ":"),
+            ).encode())
+            return restored
+
+
+def activate_verified_handoff(
+    *, receipt: Mapping[str, Any], round_record: Mapping[str, Any],
+    final_stage: Mapping[str, Any], expected_signer_hotkey: str,
+    network: str, now: datetime,
+    fetch_package: Callable[[ProductionHandoffPlan], bytes],
+    releases: FilesystemProductionReleaseStore,
+) -> dict[str, Any] | None:
+    """Fetch exactly the selected sealed package, then move the local pointer."""
+    plan = planned_production_handoff(
+        receipt=receipt, round_record=round_record, final_stage=final_stage,
+        expected_signer_hotkey=expected_signer_hotkey, network=network, now=now,
+    )
+    if plan is None:
+        return None
+    return releases.activate(plan, fetch_package(plan), now=now)
+
+
+def planned_production_handoff(
+    *, receipt: Mapping[str, Any], round_record: Mapping[str, Any],
+    final_stage: Mapping[str, Any], expected_signer_hotkey: str,
+    network: str, now: datetime,
+) -> ProductionHandoffPlan | None:
+    """Return the exact winning package once its activation gate is due.
+
+    Continuing the incumbent and a week-one no-crown result need no package
+    change. The caller may stage the returned sealed package in trusted
+    production infrastructure, using the receipt digest as an idempotency key.
+    """
+    if now.tzinfo is None:
+        raise ValueError("handoff clock must have a timezone")
+    bundle = verify_weekly_receipt(
+        receipt, expected_signer_hotkey=expected_signer_hotkey, network=network,
+    )
+    if (round_record.get("status") != "published"
+        or any(round_record.get(field) != bundle.get(field) for field in FROZEN_FIELDS)):
+        raise ValueError("handoff round differs from signed publication")
+    deadline = datetime.fromisoformat(str(round_record["deadline_at"]))
+    if deadline.tzinfo is None:
+        raise ValueError("handoff deadline must have a timezone")
+    deadline = deadline.astimezone(UTC)
+    if (deadline.weekday(), deadline.hour, deadline.minute, deadline.second) != (0, 12, 0, 0):
+        raise ValueError("handoff round has no Monday 12:00 UTC deadline")
+    activate_at = deadline + timedelta(days=7, hours=-3)
+    if now.astimezone(UTC) < activate_at:
+        return None
+    results = bundle["results"]
+    decision = results.get("decision")
+    if decision in {"incumbent_continues", "no_crown"}:
+        expected_hotkey = round_record.get("incumbent_hotkey") if decision == "incumbent_continues" else None
+        if (decision == "incumbent_continues" and not expected_hotkey
+            or results.get("production_hotkey") != expected_hotkey):
+            raise ValueError("no-change decision names another production hotkey")
+        return None
+    if decision not in {"new_crown", "incumbent_version_swap"}:
+        raise ValueError("handoff decision is unknown")
+    hotkey = results.get("production_hotkey")
+    if not isinstance(hotkey, str) or not hotkey:
+        raise ValueError("signed winner has no production hotkey")
+    if decision == "new_crown" and results.get("winner_hotkey") != hotkey:
+        raise ValueError("new crown differs from signed winner hotkey")
+    roles = bundle["weights"]["roles"]
+    paid = [row for row in roles if row["role"].removesuffix("_burned") == "production"]
+    if len(paid) != 1 or paid[0]["hotkey"] != hotkey:
+        raise ValueError("handoff winner differs from signed production role")
+    stage = "week_one" if round_record.get("incumbent_hotkey") is None else "final"
+    if final_stage.get("stage") != stage:
+        raise ValueError("handoff stage differs from frozen final stage")
+    entries = [row for row in final_stage.get("entries", [])
+               if row.get("hotkey") == hotkey and row.get("role") == "challenger"]
+    if len(entries) != 1:
+        raise ValueError("handoff winner has no unique frozen finalist package")
+    baseline = [row for row in final_stage["entries"]
+                if row.get("role") in {"incumbent", "reference"}]
+    if (len(baseline) != 1 or baseline[0].get("package_sha256") != bundle["baseline_package_sha256"]
+        or (stage == "final" and baseline[0].get("hotkey") != round_record["incumbent_hotkey"])):
+        raise ValueError("handoff baseline differs from signed round")
+    same_team = entries[0].get("team_id") == baseline[0].get("team_id")
+    if not entries[0].get("team_id") or not baseline[0].get("team_id") or same_team != (decision == "incumbent_version_swap"):
+        raise ValueError("handoff decision differs from frozen team relationship")
+    package_sha256 = entries[0].get("package_sha256")
+    if not isinstance(package_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", package_sha256):
+        raise ValueError("handoff finalist package hash is invalid")
+    pair_grid = results.get("final_pair_scores")
+    if not isinstance(pair_grid, list) or any(not isinstance(row, dict) for row in pair_grid):
+        raise ValueError("handoff final paper grid is malformed")
+    rows = [row for row in pair_grid
+            if row.get("challenger_hotkey") == hotkey]
+    if (not rows or any(row.get("round_id") != bundle["round_id"]
+                        or row.get("stage") != stage
+                        or row.get("challenger_package_sha256") != package_sha256
+                        or row.get("configuration_sha256") != bundle["configuration_sha256"]
+                        for row in rows)):
+        raise ValueError("handoff package differs from signed final paper grid")
+    return ProductionHandoffPlan(
+        round_id=bundle["round_id"], receipt_sha256=receipt["bundle_sha256"],
+        hotkey=hotkey, package_sha256=package_sha256, activate_at=activate_at,
+    )
