@@ -111,8 +111,10 @@ def test_replay_client_checks_qualification_source_rounds_against_deadline():
         "hotkeys": [{
             "hotkey": "miner-1", "qualified_round_count": 2, "qualified": True,
             "qualifying_rounds": [
-                {"round_id": "vote-1", "issued_at": "2026-10-24T12:00:00+00:00"},
-                {"round_id": "vote-2", "issued_at": "2026-10-25T12:00:00+00:00"},
+                {"round_id": "vote-1", "issued_at": "2026-10-24T12:00:00+00:00",
+                 "correct_count": 3, "total_count": 4},
+                {"round_id": "vote-2", "issued_at": "2026-10-25T12:00:00+00:00",
+                 "correct_count": 4, "total_count": 5},
             ],
         }],
     }
@@ -139,6 +141,12 @@ def test_replay_client_checks_qualification_source_rounds_against_deadline():
             "week-1", hotkeys=["miner-1"], deadline_at="2026-10-30T12:00:00+00:00",
         )
     body["hotkeys"][0]["qualifying_rounds"][1]["issued_at"] = "2026-10-25T12:00:00+00:00"
+    body["hotkeys"][0]["qualifying_rounds"][1]["correct_count"] = 3
+    with pytest.raises(ValueError, match="source round is malformed"):
+        client.qualification_evidence(
+            "week-1", hotkeys=["miner-1"], deadline_at="2026-10-30T12:00:00+00:00",
+        )
+    body["hotkeys"][0]["qualifying_rounds"][1]["correct_count"] = 4
     body["hotkeys"][0]["qualified"] = False
     with pytest.raises(ValueError, match="verdict differs"):
         client.qualification_evidence(

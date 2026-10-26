@@ -276,9 +276,15 @@ class CompetitionReplayInputs:
             rounds = set()
             for source in row["qualifying_rounds"]:
                 if (not isinstance(source, dict)
-                    or set(source) != {"round_id", "issued_at"}
+                    or set(source) != {"round_id", "issued_at",
+                                       "correct_count", "total_count"}
                     or not isinstance(source["round_id"], str)
-                    or not source["round_id"] or source["round_id"] in rounds):
+                    or not source["round_id"] or source["round_id"] in rounds
+                    or type(source["correct_count"]) is not int
+                    or type(source["total_count"]) is not int
+                    or source["total_count"] <= 0
+                    or not 0 <= source["correct_count"] <= source["total_count"]
+                    or 4 * source["correct_count"] < 3 * source["total_count"]):
                     raise ValueError("replay qualifying source round is malformed")
                 rounds.add(source["round_id"])
                 try:

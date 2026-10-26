@@ -275,7 +275,8 @@ it does not sign or submit weights.
 The read-only `/qualification?hotkey=...` route returns the qualifying
 consensus round IDs and issue times for up to eight payout hotkeys. The replay
 client checks distinct rounds, the two-round threshold, and the frozen
-seven-day deadline window before using the verdicts.
+seven-day deadline window, plus at least 75% known-answer accuracy in each
+source round, before using the verdicts.
 `python -m neurons.competition_replay_service --role controller --round-id ID
 --backend-url URL --db-path PATH` runs the replay scoring step repeatedly;
 `--role worker --worker-id ID` runs one local paper job per poll. `--once`
