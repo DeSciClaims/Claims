@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from .publication import FROZEN_FIELDS
+from .publication import FROZEN_FIELDS, canonical_sha256
 from .weight_heartbeat import verify_weekly_receipt
 
 
@@ -192,10 +192,22 @@ def planned_production_handoff(
     if (round_record.get("status") != "published"
         or any(round_record.get(field) != bundle.get(field) for field in FROZEN_FIELDS)):
         raise ValueError("handoff round differs from signed publication")
-    deadline = datetime.fromisoformat(str(round_record["deadline_at"]))
-    if deadline.tzinfo is None:
+    rules = round_record.get("rules_public")
+    if (not isinstance(rules, dict)
+        or canonical_sha256(rules) != bundle["rules_sha256"]
+        or rules.get("round_id") != bundle["round_id"]
+        or rules.get("network") != bundle["network"]):
+        raise ValueError("handoff rules differ from signed publication")
+    try:
+        deadline = datetime.fromisoformat(str(rules["deadline_at"]))
+        stored_deadline = datetime.fromisoformat(str(round_record["deadline_at"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("handoff deadline is malformed") from exc
+    if deadline.tzinfo is None or stored_deadline.tzinfo is None:
         raise ValueError("handoff deadline must have a timezone")
     deadline = deadline.astimezone(UTC)
+    if deadline != stored_deadline.astimezone(UTC):
+        raise ValueError("handoff deadline differs from signed rules")
     if (deadline.weekday(), deadline.hour, deadline.minute, deadline.second) != (0, 12, 0, 0):
         raise ValueError("handoff round has no Monday 12:00 UTC deadline")
     activate_at = deadline + timedelta(days=7, hours=-3)

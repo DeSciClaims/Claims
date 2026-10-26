@@ -9,6 +9,8 @@ from typing import Any, Callable, Mapping
 from .handoff_controller import activate_published_round
 from .production_handoff import FilesystemProductionReleaseStore
 from .production_reader import ProductionReleaseReader
+from .publication import canonical_sha256
+from .weight_heartbeat import verify_weekly_receipt
 
 
 @dataclass
@@ -22,6 +24,7 @@ class ProductionHandoffService:
     publication_for_round: Callable[[str], Mapping[str, Any]]
     reference_upload_for_round: Callable[[str], Mapping[str, Any] | None]
     _handled_without_change: set[str] = field(default_factory=set, repr=False)
+    _verified_gates: dict[str, tuple[str, datetime]] = field(default_factory=dict, repr=False)
 
     def run_once(self, *, now: datetime | None = None) -> list[dict[str, Any]]:
         """Process due published rounds oldest first; stop on a failed handoff."""
@@ -40,14 +43,41 @@ class ProductionHandoffService:
                 or not row["round_id"] or row["round_id"] in seen):
                 raise ValueError("published round list has invalid identity")
             seen.add(row["round_id"])
-            deadline = datetime.fromisoformat(str(row.get("deadline_at")))
-            if deadline.tzinfo is None:
+            rules = row.get("rules_public")
+            if not isinstance(rules, dict) or rules.get("round_id") != row["round_id"]:
+                raise ValueError("published round has no frozen rules")
+            rules_sha256 = canonical_sha256(rules)
+            if rules_sha256 != row.get("rules_sha256"):
+                raise ValueError("published round rules hash differs")
+            cached = self._verified_gates.get(row["round_id"])
+            if cached is None:
+                bundle = verify_weekly_receipt(
+                    self.publication_for_round(row["round_id"]),
+                    expected_signer_hotkey=self.expected_signer_hotkey,
+                    network=self.network,
+                )
+                if (bundle["round_id"] != row["round_id"]
+                    or bundle["rules_sha256"] != rules_sha256):
+                    raise ValueError("published round differs from signed rules")
+            elif cached[0] != rules_sha256:
+                raise ValueError("published round changed after handoff verification")
+            try:
+                deadline = datetime.fromisoformat(str(row.get("deadline_at")))
+                rule_deadline = datetime.fromisoformat(str(rules.get("deadline_at")))
+            except ValueError as exc:
+                raise ValueError("published round deadline is malformed") from exc
+            if deadline.tzinfo is None or rule_deadline.tzinfo is None:
                 raise ValueError("published round has no aware deadline")
             utc_deadline = deadline.astimezone(UTC)
+            if utc_deadline != rule_deadline.astimezone(UTC):
+                raise ValueError("published round deadline differs from signed rules")
             if (utc_deadline.weekday(), utc_deadline.hour, utc_deadline.minute,
                 utc_deadline.second) != (0, 12, 0, 0):
                 raise ValueError("published round has no Monday noon deadline")
             gate = utc_deadline + timedelta(days=7, hours=-3)
+            if cached is not None and cached[1] != gate:
+                raise ValueError("published round gate changed after verification")
+            self._verified_gates[row["round_id"]] = (rules_sha256, gate)
             due.append((gate, row["round_id"]))
         due.sort()
         active = self.reader.read_active()

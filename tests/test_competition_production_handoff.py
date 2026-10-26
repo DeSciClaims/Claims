@@ -9,7 +9,7 @@ from competition.production_handoff import (
     FilesystemProductionReleaseStore, activate_verified_handoff, planned_production_handoff,
 )
 from competition.handoff_controller import activate_published_round
-from competition.publication import publication_bundle, sign_publication
+from competition.publication import canonical_sha256, publication_bundle, sign_publication
 
 
 PACKAGE = b"sealed-production-package"
@@ -29,6 +29,10 @@ def _fixture(decision="new_crown"):
         "baseline_package_sha256": "3" * 64,
         "reference_package_sha256": "4" * 64,
     }
+    rules = {"round_id": "week2", "network": "testnet",
+             "deadline_at": round_record["deadline_at"]}
+    round_record["rules_public"] = rules
+    round_record["rules_sha256"] = canonical_sha256(rules)
     stage = {"stage": "final", "entries": [
         {"hotkey": "winner", "role": "challenger", "team_id": "new-team",
          "package_sha256": PACKAGE_SHA},
@@ -92,6 +96,14 @@ def test_rejects_package_or_frozen_round_change():
     round_record["configuration_sha256"] = "6" * 64
     with pytest.raises(ValueError, match="signed publication"):
         _plan(signer, round_record, stage, receipt, now)
+
+
+def test_handoff_gate_cannot_move_after_rules_are_signed():
+    signer, round_record, stage, receipt = _fixture()
+    round_record["deadline_at"] = "2026-11-02T12:00:00+00:00"
+    with pytest.raises(ValueError, match="signed rules"):
+        _plan(signer, round_record, stage, receipt,
+              datetime(2026, 11, 2, 9, tzinfo=UTC))
 
 
 def test_verified_handoff_writes_atomic_pointer_and_rejects_stale_replay(tmp_path):
