@@ -135,6 +135,16 @@ class CompetitionBackend:
         })
         return self._request("GET", "/internal/competition/production/health?" + query)
 
+    def retry_terminal_production_job(
+        self, *, job_id: str, receipt_sha256: str, reason: str,
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST", "/internal/competition/production/jobs/"
+            + urllib.parse.quote(job_id, safe="") + "/retry", {
+                "receipt_sha256": receipt_sha256, "reason": reason,
+            },
+        )
+
     def create_round(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/internal/competition/rounds", payload)
 
