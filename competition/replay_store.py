@@ -13,13 +13,14 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 from .failure_policy import incumbent_failure_summary
 from .jobs import build_jobs
 from .publication import canonical_sha256
 from .reference_rerun import reference_rerun_plan
 from .replay_plan import ReplayInitialPlan
+from .replay_publication import verify_replay_publication
 
 
 def _json(value: Any) -> str:
@@ -85,6 +86,10 @@ class ReplayStore:
                 CREATE TABLE IF NOT EXISTS replay_final_audit (
                   round_id TEXT PRIMARY KEY, input_sha256 TEXT NOT NULL,
                   result_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS replay_publication (
+                  round_id TEXT PRIMARY KEY, bundle_sha256 TEXT NOT NULL,
+                  receipt_json TEXT NOT NULL
                 );
             """)
 
@@ -584,3 +589,40 @@ class ReplayStore:
                   or json.loads(row["result_json"]) != result_private):
                 raise ValueError("replay final audit was already frozen differently")
         return {"input_sha256": input_sha256, "result_private": result_private}
+
+    def get_replay_publication(self, round_id: str) -> dict[str, Any] | None:
+        self._round(round_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT receipt_json FROM replay_publication WHERE round_id=?",
+                (round_id,),
+            ).fetchone()
+        return json.loads(row["receipt_json"]) if row else None
+
+    def freeze_replay_publication(
+        self, round_id: str, receipt: dict[str, Any], *,
+        expected_signer_hotkey: str,
+        verify_signature: Callable[[str, bytes, bytes], bool],
+    ) -> dict[str, Any]:
+        """Persist one signed local vector without a primary-backend write."""
+        self._round(round_id)
+        bundle = verify_replay_publication(
+            receipt, verify_signature=verify_signature,
+        )
+        if (bundle.get("round_id") != round_id
+            or receipt["signer_hotkey"] != expected_signer_hotkey):
+            raise ValueError("replay publication receipt is malformed")
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            existing = conn.execute(
+                "SELECT receipt_json FROM replay_publication WHERE round_id=?",
+                (round_id,),
+            ).fetchone()
+            if existing is None:
+                conn.execute(
+                    "INSERT INTO replay_publication VALUES (?,?,?)",
+                    (round_id, receipt["bundle_sha256"], _json(receipt)),
+                )
+            elif json.loads(existing["receipt_json"]) != receipt:
+                raise ValueError("replay publication was already frozen differently")
+        return receipt

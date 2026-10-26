@@ -6,11 +6,13 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
+from bittensor_wallet import Keypair
 
 from competition.jobs import build_jobs
 from competition.paper_score_controller import score_ready_paper
 from competition.publication import canonical_sha256
 from competition.replay_plan import ReplayInitialPlan
+from competition.replay_publication import sign_replay_publication
 from competition.replay_store import ReplayStore
 from competition.sample_release import PaperRecord, frozen_pool_hash
 
@@ -94,6 +96,44 @@ def _evaluation(**kwargs):
         ),
         judge_usage_events=(),
     )
+
+
+def test_replay_signed_publication_is_immutable_across_restart(tmp_path):
+    snapshot, plan = _inputs()
+    path = tmp_path / "replay.sqlite"
+    store = ReplayStore(path)
+    store.initialize(snapshot, plan)
+    bundle = {"round_id": "round-1", "schema_version": "claims_competition_independent_replay_v1",
+              "weights": {"vector": [{"uid": 1, "weight": 1.0}]}}
+    signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
+    verify = lambda hotkey, message, signature: Keypair(
+        ss58_address=hotkey,
+    ).verify(message, signature)
+    receipt = sign_replay_publication(bundle, signer)
+    with pytest.raises(ValueError, match="malformed"):
+        store.freeze_replay_publication(
+            "round-1", receipt, expected_signer_hotkey="another-validator",
+            verify_signature=verify,
+        )
+    assert store.freeze_replay_publication(
+        "round-1", receipt, expected_signer_hotkey=signer.ss58_address,
+        verify_signature=verify,
+    ) == receipt
+    restarted = ReplayStore(path)
+    restarted.initialize(snapshot, plan)
+    assert restarted.get_replay_publication("round-1") == receipt
+    assert restarted.freeze_replay_publication(
+        "round-1", receipt, expected_signer_hotkey=signer.ss58_address,
+        verify_signature=verify,
+    ) == receipt
+    changed = sign_replay_publication(
+        {**bundle, "weights": {"vector": [{"uid": 2, "weight": 1.0}]}}, signer,
+    )
+    with pytest.raises(ValueError, match="already frozen differently"):
+        restarted.freeze_replay_publication(
+            "round-1", changed, expected_signer_hotkey=signer.ss58_address,
+            verify_signature=verify,
+        )
 
 
 def test_replay_store_leases_baseline_first_and_freezes_scores_across_restart(tmp_path):

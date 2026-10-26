@@ -277,6 +277,11 @@ consensus round IDs and issue times for up to eight payout hotkeys. The replay
 client checks distinct rounds, the two-round threshold, and the frozen
 seven-day deadline window, plus at least 75% known-answer accuracy in each
 source round, before using the verdicts.
+`replay_publication_bundle` binds the local sample, pair grid, final audit,
+explicit Gold policy/evidence, qualification evidence, and resulting vector.
+`sign_replay_publication` signs its canonical hash, and `ReplayStore` accepts
+only one valid receipt from the configured second-validator hotkey. Public
+delivery and an automatic signing step still need the Gold policy.
 `python -m neurons.competition_replay_service --role controller --round-id ID
 --backend-url URL --db-path PATH` runs the replay scoring step repeatedly;
 `--role worker --worker-id ID` runs one local paper job per poll. `--once`
