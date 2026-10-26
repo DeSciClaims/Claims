@@ -137,6 +137,30 @@ class CompetitionBackend:
                 + "/stages/" + stage + "/pairs")
         return self._request("POST", path, payload)
 
+    def freeze_gold_voters(self, round_id: str, voters: list[dict[str, str]]) -> dict[str, Any]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/voters"
+        return self._request("POST", path, {"voters": voters})
+
+    def create_gold_cases(self, round_id: str, cases: list[dict[str, Any]]) -> dict[str, Any]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/cases"
+        return self._request("POST", path, {"cases": cases})
+
+    def list_gold_cases(self, round_id: str) -> list[dict[str, Any]]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/cases"
+        return self._request("GET", path)
+
+    def list_gold_voters(self, round_id: str) -> list[dict[str, Any]]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/voters"
+        return self._request("GET", path)
+
+    def list_gold_votes(self, round_id: str) -> list[dict[str, Any]]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/votes"
+        return self._request("GET", path)
+
+    def close_gold_voting(self, round_id: str) -> dict[str, Any]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/close"
+        return self._request("POST", path)
+
     def claim_job(self, round_id: str, *, worker_id: str, lease_seconds: int) -> dict[str, Any] | None:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/jobs/claim"
         return self._request("POST", path, {
