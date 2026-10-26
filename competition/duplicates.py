@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from email.parser import Parser
 from typing import Any, Callable, Mapping
 
+from .commitments import ArchiveSnapshot
+
 
 @dataclass(frozen=True)
 class DuplicateSelection:
@@ -24,6 +26,29 @@ class DuplicateSelection:
     excluded_hotkeys: tuple[str, ...]
     groups: tuple[tuple[str, ...], ...]
     evidence: tuple[tuple[str, str, str], ...]
+
+
+def qualified_entries(
+    snapshot: ArchiveSnapshot, uploads: list[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Join verified deadline selections to their signed declared-team manifest."""
+    by_receipt = {
+        (str(item["hotkey"]), str(item["package_sha256"]), str(item["salt_hex"])): item
+        for item in uploads
+    }
+    selected: list[dict[str, Any]] = []
+    for item in snapshot.selected:
+        if not item["qualified"]:
+            continue
+        key = (item["hotkey"], item["package_sha256"], item["salt_hex"])
+        upload = by_receipt.get(key)
+        if upload is None:
+            raise ValueError("locked package has no sealed upload receipt")
+        team_id = str(upload["manifest"].get("team_id") or "")
+        if team_id != upload.get("team_id") or not team_id:
+            raise ValueError("declared team differs from sealed upload receipt")
+        selected.append({**item, "team_id": team_id})
+    return selected
 
 
 def _without_docstrings(tree: ast.AST) -> ast.AST:

@@ -4,7 +4,8 @@ import zipfile
 
 import pytest
 
-from competition.duplicates import python_source_fingerprint, select_distinct_submissions
+from competition.commitments import ArchiveSnapshot
+from competition.duplicates import python_source_fingerprint, qualified_entries, select_distinct_submissions
 
 
 def _wheel(source: str, prompt: str | None = None) -> bytes:
@@ -67,3 +68,12 @@ def test_source_fingerprint_creates_a_link_without_identical_wheel_hash():
     assert ("a", "b", "source_fingerprint") in result.evidence
     with pytest.raises(ValueError, match="sealed receipt"):
         select_distinct_submissions(entries, seed=b"s" * 32, package_for_submission=lambda item: b"forged")
+
+
+def test_team_comes_from_verified_sealed_manifest():
+    selected = {"hotkey": "a", "package_sha256": "1" * 64, "salt_hex": "f" * 64, "qualified": True}
+    snapshot = ArchiveSnapshot(100, "0x" + "b" * 64, (selected,))
+    upload = {**selected, "team_id": "my-team", "manifest": {"team_id": "my-team"}}
+    assert qualified_entries(snapshot, [upload]) == [{**selected, "team_id": "my-team"}]
+    with pytest.raises(ValueError, match="declared team"):
+        qualified_entries(snapshot, [{**upload, "team_id": "another-team"}])
