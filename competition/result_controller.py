@@ -23,6 +23,7 @@ def publish_selected_round(
     uid_by_hotkey: Mapping[str, int], qualified_by_hotkey: Mapping[str, bool],
     production_team_id: str | None,
     gold_by_hotkey: Mapping[str, GoldResult],
+    gold_check: Mapping[str, Any] | None = None,
     burn_uid: int = 0,
 ) -> dict[str, Any]:
     """Sign results and 70/20/10 shares; backend checks frozen inputs and grid."""
@@ -52,6 +53,8 @@ def publish_selected_round(
         raise ValueError("closed Gold results must cover every finalist")
     if round_record["status"] == "gold_closed" and not selection.final_pair_rows:
         raise ValueError("closed Gold publication needs post-escalation final pairs")
+    if round_record["status"] == "gold_closed" and not gold_check:
+        raise ValueError("closed Gold publication needs the committed check proof")
     if round_record["status"] == "final" and gold_by_hotkey:
         raise ValueError("unclosed Gold results cannot be published")
     production = None
@@ -82,6 +85,7 @@ def publish_selected_round(
         "winner_gain": selection.winner_gain,
         "finalists": [asdict(row) for row in selection.verdicts],
         "gold": {hotkey: asdict(result) for hotkey, result in sorted(gold_by_hotkey.items())},
+        "gold_check": dict(gold_check) if gold_check else None,
         "final_pair_scores": list(selection.final_pair_rows),
     }
     weights = {

@@ -34,13 +34,15 @@ the route for a paid round until its confidence buckets have been measured on
 the Claims holdout; the older direct-choice benchmark shows weak rejection
 recall. The API key belongs only to the trusted controller.
 
-The final paper scorer freezes candidate review cases for primary judge splits
-with pairwise credit effects. Gold preparation independently draws a check
-sample and a capped escalation set from those private receipts. After voting
-closes, the final selector recomputes affected pair scores from frozen Silver
-data and decided escalation votes; the signed publication carries these final
-pair rows for the public pair endpoint. The Gold check alone supplies the
-crown veto. The live end-to-end run remains.
+The final paper scorer freezes contested claim cases, including primary judge
+splits with pairwise credit effects. The backend commits to a private Gold
+check seed when the round is created, before any package is evaluated. Gold
+preparation independently draws the check from contested claims and caps the
+split-case escalation pool using the public sample seed. After voting closes,
+the signed result reveals the Gold seed and candidate IDs; the backend verifies
+the draw against frozen paper receipts. Decided escalation votes rescore final
+pairs, while check cases alone supply the crown veto. Hidden known-answer
+cases and live end-to-end execution remain.
 
 ## Weight heartbeat
 

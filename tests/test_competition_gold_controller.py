@@ -1,3 +1,5 @@
+import hashlib
+
 from competition.gold import GoldCase
 from types import SimpleNamespace
 
@@ -9,7 +11,11 @@ from competition.gold_controller import (
 
 class Backend:
     def __init__(self):
-        self.round = {"status": "final", "drand_seed": "ab" * 32}
+        seed = b"c" * 32
+        commitment = hashlib.sha256(b"claims-gold-check-commit-v1\0week2\0" + seed).hexdigest()
+        self.round = {"status": "final", "drand_seed": "ab" * 32,
+                      "gold_check_seed_private": seed.hex(),
+                      "gold_check_commitment": commitment}
         self.cases = []
         self.voters = []
         self.votes = []
@@ -48,7 +54,7 @@ def test_gold_controller_draws_then_tallies_only_closed_outside_team_votes():
     candidates = [ContestedClaim(
         GoldCase(f"case-{index}", f"paper-{index}", "challenger", "incumbent",
                  frozenset({"challenge-team", "incumbent-team"})),
-        {"question": f"Case {index}"}, {"tiebreak": "challenger"},
+        {"question": f"Case {index}"}, {"tiebreak": "challenger", "primary_split": True},
     ) for index in range(65)]
     voters = [{"voter_hotkey": f"voter-{index}", "team_id": f"other-{index}"}
               for index in range(12)]
@@ -130,14 +136,15 @@ def test_gold_candidates_only_include_split_cases_with_pairwise_credit_effect():
         pair_rows=({"challenger_hotkey": "challenger", "baseline_hotkey": "incumbent"},),
     )
     cases = contested_claims_for_paper("round-1", evaluation, entries)
-    assert len(cases) == 1
+    assert len(cases) == 2
     assert cases[0].case.excluded_team_ids == {"team-c", "team-i"}
     assert cases[0].case_public["statement"] == "exclusive"
     assert cases[0].answer_private["tiebreak"] == "challenger"
+    assert {case.answer_private["primary_split"] for case in cases} == {True, False}
     assert cases == contested_claims_for_paper("round-1", evaluation, entries)
     reference_entries = [{**entry, "role": "reference"} if entry["hotkey"] == "incumbent" else entry
                          for entry in entries]
-    assert len(contested_claims_for_paper("round-1", evaluation, reference_entries)) == 1
+    assert len(contested_claims_for_paper("round-1", evaluation, reference_entries)) == 2
 
 
 def test_gold_candidates_replay_from_frozen_final_receipts():
@@ -167,7 +174,7 @@ def test_check_draw_and_escalation_draw_have_separate_purposes():
     candidates = [ContestedClaim(
         GoldCase(f"case-{index}", f"paper-{index}", "challenger", "incumbent",
                  frozenset({"team-c", "team-i"})),
-        {"question": f"Case {index}"}, {"tiebreak": "incumbent"},
+        {"question": f"Case {index}"}, {"tiebreak": "incumbent", "primary_split": True},
     ) for index in range(30)]
     voters = [{"voter_hotkey": f"voter-{index}", "team_id": f"other-{index}"}
               for index in range(12)]
@@ -187,6 +194,26 @@ def test_check_draw_and_escalation_draw_have_separate_purposes():
     backend.round["status"] = "gold_closed"
     assert len(closed_gold_decisions("week2", backend=backend)) == result["case_count"]
     assert tally_closed_gold_review("week2", backend=backend)["challenger"].sampled_cases == 5
+
+
+def test_gold_check_covers_contested_non_split_cases_but_escalation_does_not():
+    backend = Backend()
+    candidates = [ContestedClaim(
+        GoldCase(f"case-{index}", f"paper-{index}", "challenger", "incumbent",
+                 frozenset({"team-c", "team-i"})),
+        {"question": f"Case {index}"},
+        {"tiebreak": "challenger", "primary_split": index < 5},
+    ) for index in range(10)]
+    result = prepare_gold_review(
+        "week2", backend=backend, candidates=candidates, voters=[],
+        limit=10, escalation_limit=5,
+    )
+    assert result["check_count"] == 10
+    assert result["escalation_count"] == 5
+    for row in backend.cases:
+        purposes = row["answer_private"]["review_purposes"]
+        assert "check" in purposes
+        assert ("escalation" in purposes) is (int(row["case_id"].split("-")[-1]) < 5)
 
 
 def test_zero_contested_cases_close_as_nonbinding_gold():

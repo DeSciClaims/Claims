@@ -13,7 +13,9 @@ from typing import Any, Callable, Mapping, Protocol
 
 from .drand import BlockClock
 from .final_controller import select_ready_final
-from .gold_controller import prepare_frozen_gold_review, tally_closed_gold_review
+from .gold_controller import (
+    frozen_gold_candidates, prepare_frozen_gold_review, tally_closed_gold_review,
+)
 from .intake_lock import ArchiveReader, CompetitionBackend
 from .paper_score_controller import score_ready_paper
 from .result_controller import publish_selected_round
@@ -170,6 +172,11 @@ def tick_round(
         if now < publish_at:
             return {"status": "waiting_for_publication", "publish_at": publish_at.isoformat()}
         gold = tally_closed_gold_review(round_id, backend=backend)
+        candidates = frozen_gold_candidates(round_id, backend=backend)
+        check_ids = sorted(
+            row["case_id"] for row in backend.list_gold_cases(round_id, include_answers=True)
+            if "check" in row["answer_private"].get("review_purposes", [])
+        )
         audit = inputs.final_audit(round_id)
         selection = select_ready_final(
             round_id, backend=backend,
@@ -183,6 +190,12 @@ def tick_round(
             qualified_by_hotkey=audit.qualified_by_hotkey,
             production_team_id=audit.production_team_id,
             gold_by_hotkey=gold,
+            gold_check={
+                "seed": round_record["gold_check_seed_private"],
+                "commitment": round_record["gold_check_commitment"],
+                "candidate_ids": sorted(candidate.case.case_id for candidate in candidates),
+                "case_ids": check_ids,
+            },
         )
         return {"status": "published", "bundle_sha256": receipt["bundle_sha256"]}
     if status == "published":

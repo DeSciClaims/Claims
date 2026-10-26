@@ -25,7 +25,7 @@ class GoldBackend(Protocol):
 
 @dataclass(frozen=True)
 class ContestedClaim:
-    """A frozen primary-judge split, prepared by the final evaluator."""
+    """A frozen claim with asymmetric pairwise credit in the final."""
 
     case: GoldCase
     case_public: Mapping[str, Any]
@@ -36,7 +36,7 @@ def contested_claims_for_paper(
     round_id: str, evaluation: WeeklyPaperEvaluation,
     entries: list[dict[str, str]],
 ) -> list[ContestedClaim]:
-    """Build review cases for judge splits that change pairwise Silver credit.
+    """Build review cases for accepted units that change pairwise Silver credit.
 
     The result is made from the frozen paper evaluation, without another judge
     call. A claim covered by both packages has no pairwise ownership dispute.
@@ -51,13 +51,11 @@ def contested_claims_for_paper(
     pipeline = evaluation.pipeline
     paper_id = pipeline.paper_id
     splits = {
-        row.case_id: row for row in pipeline.adjudication_consensus
+        row.case_id for row in pipeline.adjudication_consensus
         if len(row.votes) >= 2
         and row.votes[0].disposition != row.votes[1].disposition
     }
     diff_by_id = {row.case_id: row for row in pipeline.diff_cases}
-    if not splits:
-        return []
     candidates = {
         candidate.candidate_id: candidate
         for submission in pipeline.miner_submissions
@@ -83,7 +81,7 @@ def contested_claims_for_paper(
                 continue
             tiebreak = "challenger" if challenger_hotkey in covered_by else "incumbent"
             relevant_cases = []
-            for case_id in sorted(set(unit.adjudication_case_ids) & splits.keys()):
+            for case_id in sorted(set(unit.adjudication_case_ids)):
                 diff = diff_by_id.get(case_id)
                 if diff is None:
                     raise ValueError("split Silver unit has no diff case")
@@ -108,7 +106,8 @@ def contested_claims_for_paper(
                      "challenger_hotkey": challenger_hotkey,
                      "incumbent_hotkey": incumbent["hotkey"]},
                     {"tiebreak": tiebreak, "adjudication_case_id": adjudication_case_id,
-                     "silver_unit_id": unit.silver_unit_id},
+                     "silver_unit_id": unit.silver_unit_id,
+                     "primary_split": adjudication_case_id in splits},
                 ))
     return claims
 
@@ -172,14 +171,21 @@ def prepare_gold_review(
     if len({candidate.case.case_id for candidate in candidates}) != len(candidates):
         raise ValueError("contested Gold case IDs must be distinct")
     by_id = {candidate.case.case_id: candidate for candidate in candidates}
-    gold_seed = hashlib.sha256(b"claims-gold-draw-v1\0" + seed).digest()
+    check_seed = bytes.fromhex(round_record["gold_check_seed_private"])
+    commitment = hashlib.sha256(
+        b"claims-gold-check-commit-v1\0" + round_id.encode() + b"\0" + check_seed,
+    ).hexdigest()
+    if len(check_seed) != 32 or commitment != round_record["gold_check_commitment"]:
+        raise ValueError("round has no valid precommitted Gold check seed")
+    gold_seed = hashlib.sha256(b"claims-gold-draw-v1\0" + check_seed).digest()
     check = draw_gold_cases([candidate.case for candidate in candidates], seed=gold_seed, limit=limit)
     if escalation_limit is None:
         escalation = ()
     else:
         escalation_seed = hashlib.sha256(b"claims-escalation-draw-v1\0" + seed).digest()
         escalation = draw_gold_cases(
-            [candidate.case for candidate in candidates], seed=escalation_seed,
+            [candidate.case for candidate in candidates
+             if candidate.answer_private.get("primary_split") is True], seed=escalation_seed,
             limit=escalation_limit,
         )
     check_ids = {case.case_id for case in check}

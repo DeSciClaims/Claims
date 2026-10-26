@@ -11,7 +11,8 @@ DEADLINE = datetime(2026, 10, 26, 12, tzinfo=UTC)
 
 def _round(status):
     return {"status": status, "deadline_at": DEADLINE.isoformat(),
-            "reveal_block": 700}
+            "reveal_block": 700, "gold_check_seed_private": "c" * 64,
+            "gold_check_commitment": "d" * 64}
 
 
 def test_tick_respects_deadline_and_reveal_block(monkeypatch):
@@ -116,6 +117,10 @@ def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
             self.record = _round("gold_closed")
             return {"status": "gold_closed"}
 
+        def list_gold_cases(self, _, *, include_answers=False):
+            assert include_answers
+            return [{"case_id": "case-1", "answer_private": {"review_purposes": ["check"]}}]
+
     class Inputs:
         signer = object()
         operator_hotkey = "operator"
@@ -135,6 +140,8 @@ def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
     calls = []
     monkeypatch.setattr("competition.weekly_automation.tally_closed_gold_review",
                         lambda *_, **__: calls.append("tally") or {"challenger": object()})
+    monkeypatch.setattr("competition.weekly_automation.frozen_gold_candidates",
+                        lambda *_, **__: [SimpleNamespace(case=SimpleNamespace(case_id="case-1"))])
     monkeypatch.setattr("competition.weekly_automation.select_ready_final",
                         lambda *_, **__: calls.append("select") or object())
     monkeypatch.setattr("competition.weekly_automation.publish_selected_round",
