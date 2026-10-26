@@ -1,12 +1,17 @@
 """Frozen independent-replay reads reject changed rules and package links."""
 
 import io
+import hashlib
 import json
 
 import pytest
 
 from competition.publication import canonical_sha256
-from competition.replay_inputs import CompetitionReplayInputs, validate_replay_snapshot
+from competition.drand import VerifiedBeacon
+from competition.replay_inputs import (
+    CompetitionReplayInputs, validate_replay_snapshot, verify_replay_sample,
+)
+from competition.sample_release import PaperRecord, sample_receipt
 
 
 def _snapshot():
@@ -17,6 +22,8 @@ def _snapshot():
         "rules_public": rules, "rules_sha256": canonical_sha256(rules),
         "configuration_sha256": canonical_sha256(rules["configuration"]),
         "paper_pool_sha256": "a" * 64,
+        "duplicate_review_links": [],
+        "duplicate_review_sha256": canonical_sha256([]),
         "sample": [{"stage": "week_one", "paper_id": "paper-1",
                     "source_sha256": "b" * 64}],
         "stages": [{"stage": "week_one", "entries": [
@@ -58,6 +65,10 @@ def test_replay_snapshot_rejects_changed_rule_and_missing_package():
     with pytest.raises(ValueError, match="lacks a selected sealed package"):
         validate_replay_snapshot(snapshot, "week-1")
     snapshot = _snapshot()
+    snapshot["duplicate_review_links"].append({"left": "a", "right": "b", "reason": "copy"})
+    with pytest.raises(ValueError, match="frozen round rules"):
+        validate_replay_snapshot(snapshot, "week-1")
+    snapshot = _snapshot()
     snapshot["sample"].append(dict(snapshot["sample"][0]))
     with pytest.raises(ValueError, match="repeats a paper"):
         validate_replay_snapshot(snapshot, "week-1")
@@ -70,3 +81,27 @@ def test_replay_snapshot_rejects_changed_rule_and_missing_package():
 def test_replay_client_rejects_unprotected_backend_url():
     with pytest.raises(ValueError, match="private HTTPS"):
         CompetitionReplayInputs("http://backend.example", "replay-only")
+
+
+def test_replay_sample_accepts_backend_stage_order_and_rejects_changed_position():
+    signature = b"x" * 96
+    beacon = VerifiedBeacon(
+        42, hashlib.sha256(signature).digest(), signature.hex(),
+        "a" * 64, "b" * 96, 123456,
+    )
+    pool = [PaperRecord(f"paper-{index}", format(index + 1, "064x"))
+            for index in range(3)]
+    draw = sample_receipt(
+        papers=pool, beacon=beacon, prescreen_count=1,
+        screen_count=1, final_count=1,
+    )
+    snapshot = {
+        "deadline_block": 100, "reveal_block": 700,
+        **{key: value for key, value in draw.items() if key != "papers"},
+        "sample": sorted(draw["papers"], key=lambda row: (row["stage"], row["position"])),
+        "stages": [],
+    }
+    verify_replay_sample(snapshot, paper_pool=pool, verified_beacon=beacon)
+    snapshot["sample"][0]["position"] += 1
+    with pytest.raises(ValueError, match="independently redrawn"):
+        verify_replay_sample(snapshot, paper_pool=pool, verified_beacon=beacon)

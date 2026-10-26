@@ -14,7 +14,9 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .drand import VerifiedBeacon
 from .publication import canonical_sha256
+from .sample_release import PaperRecord, frozen_pool_hash, sample_receipt
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -30,7 +32,10 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
         or not isinstance(snapshot["rules_public"].get("configuration"), dict)
         or canonical_sha256(snapshot["rules_public"]["configuration"])
             != snapshot.get("configuration_sha256")
-        or not _SHA256.fullmatch(str(snapshot.get("paper_pool_sha256", "")))):
+        or not _SHA256.fullmatch(str(snapshot.get("paper_pool_sha256", "")))
+        or not isinstance(snapshot.get("duplicate_review_links"), list)
+        or canonical_sha256(snapshot["duplicate_review_links"])
+            != snapshot.get("duplicate_review_sha256")):
         raise ValueError("replay snapshot differs from frozen round rules")
     sample = snapshot.get("sample")
     stages = snapshot.get("stages")
@@ -82,6 +87,60 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
                 and packages[(entry["hotkey"], entry["package_sha256"])]["status"] == "duplicate"):
                 raise ValueError("replay stage includes an excluded duplicate")
     return snapshot
+
+
+def verify_replay_sample(
+    snapshot: dict[str, Any], *, paper_pool: list[PaperRecord],
+    verified_beacon: VerifiedBeacon,
+) -> None:
+    """Redraw the sample from the public frozen pool and a separately verified beacon."""
+    if (frozen_pool_hash(paper_pool) != snapshot.get("paper_pool_sha256")
+        or type(snapshot.get("deadline_block")) is not int
+        or type(snapshot.get("reveal_block")) is not int
+        or snapshot["reveal_block"] < snapshot["deadline_block"] + 600):
+        raise ValueError("replay paper pool or reveal block differs from frozen round")
+    fields = {
+        "drand_round": verified_beacon.round,
+        "drand_seed": verified_beacon.seed.hex(),
+        "drand_chain_hash": verified_beacon.chain_hash,
+        "drand_public_key": verified_beacon.public_key,
+        "drand_signature": verified_beacon.signature_hex,
+        "drand_scheduled_at": verified_beacon.scheduled_at,
+    }
+    if any(snapshot.get(key) != value for key, value in fields.items()):
+        raise ValueError("replay beacon differs from verified post-deadline beacon")
+    sample = snapshot["sample"]
+    counts = {stage: sum(row["stage"] == stage for row in sample)
+              for stage in ("prescreen", "screen", "final", "week_one")}
+    if counts["week_one"] and (counts["prescreen"] or counts["screen"] or counts["final"]):
+        raise ValueError("replay mixes week-one and staged papers")
+    expected = sample_receipt(
+        papers=paper_pool, beacon=verified_beacon,
+        prescreen_count=counts["prescreen"], screen_count=counts["screen"],
+        final_count=counts["week_one"] or counts["final"],
+        week_one=bool(counts["week_one"]),
+    )["papers"]
+    fields_by_paper = ("stage", "paper_id", "position", "judge_id", "source_sha256")
+    actual = [{key: row.get(key) for key in fields_by_paper}
+              for row in sample if row["stage"] != "rerun"]
+    stage_order = {"prescreen": 0, "screen": 1, "final": 2, "week_one": 3}
+    if (any(type(row["position"]) is not int or row["position"] < 0 for row in actual)
+        or sorted(actual, key=lambda row: (stage_order[row["stage"]], row["position"]))
+            != expected):
+        raise ValueError("replay sample differs from independently redrawn papers")
+    rerun = [row for row in sample if row["stage"] == "rerun"]
+    if rerun:
+        receipts = [row for row in snapshot["stages"] if row.get("stage") == "rerun"]
+        if len(receipts) != 1 or receipts[0].get("source_stage") not in counts:
+            raise ValueError("replay rerun has no frozen source stage")
+        originals = {row["paper_id"]: row for row in expected
+                     if row["stage"] == receipts[0]["source_stage"]}
+        if (len(rerun) != len(originals)
+            or any(row["paper_id"] not in originals
+                   or any(row.get(key) != originals[row["paper_id"]][key]
+                          for key in ("position", "judge_id", "source_sha256"))
+                   for row in rerun)):
+            raise ValueError("replay rerun papers differ from frozen source stage")
 
 
 @dataclass(frozen=True)

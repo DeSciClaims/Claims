@@ -230,9 +230,14 @@ including duplicate exclusions, with commitment metadata and sealed object
 keys, but no private Gold seed or answers. The replay principal cannot call
 primary-round mutation routes and needs separate read-only Hippius access to
 fetch package and PDF bytes. `CompetitionReplayInputs` validates the public
-rules hash and challenger package links before use. Independent execution,
-adjudication, and signed vector publication still need their own runner and
-store; reading this snapshot alone is not an independent validation.
+rules and reviewed-link hashes. `build_replay_initial_plan` checks the
+archive-node commitment for each qualified package, redraws the sample from a
+separately verified drand beacon and frozen public paper pool, reproduces the
+duplicate lottery, and derives the first-stage job grid. It needs a separately
+transferred baseline package receipt whose bytes match the public hash.
+Independent execution, adjudication, advancement, and signed vector publication
+still need their own runner and store; the input plan alone is not an
+independent validation.
 Pilot judge providers are set with CLAIMS_JUDGE_J1_A_PROVIDER,
 CLAIMS_JUDGE_J1_B_PROVIDER, CLAIMS_JUDGE_J2_A_PROVIDER,
 CLAIMS_JUDGE_J2_B_PROVIDER, and CLAIMS_JUDGE_TIEBREAK_PROVIDER. Round setup
