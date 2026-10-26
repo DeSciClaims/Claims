@@ -2,7 +2,7 @@ from competition.gold import GoldCase
 from types import SimpleNamespace
 
 from competition.gold_controller import (
-    ContestedClaim, contested_claims_for_paper, frozen_gold_candidates,
+    ContestedClaim, closed_gold_decisions, contested_claims_for_paper, frozen_gold_candidates,
     prepare_gold_review, tally_closed_gold_review,
 )
 
@@ -150,3 +150,29 @@ def test_gold_candidates_replay_from_frozen_final_receipts():
     assert len(cases) == 1
     assert cases[0].case.case_id == "case-1"
     assert cases[0].answer_private == {"tiebreak": "challenger"}
+
+
+def test_check_draw_and_escalation_draw_have_separate_purposes():
+    backend = Backend()
+    candidates = [ContestedClaim(
+        GoldCase(f"case-{index}", f"paper-{index}", "challenger", "incumbent",
+                 frozenset({"team-c", "team-i"})),
+        {"question": f"Case {index}"}, {"tiebreak": "incumbent"},
+    ) for index in range(30)]
+    voters = [{"voter_hotkey": f"voter-{index}", "team_id": f"other-{index}"}
+              for index in range(12)]
+    result = prepare_gold_review(
+        "week2", backend=backend, candidates=candidates, voters=voters,
+        limit=5, escalation_limit=10,
+    )
+    assert result["check_count"] == 5
+    assert result["escalation_count"] == 10
+    assert 10 <= result["case_count"] <= 15
+    assert sum("check" in row["case_public"]["review_purposes"] for row in backend.cases) == 5
+    assert sum("escalation" in row["case_public"]["review_purposes"] for row in backend.cases) == 10
+    for case in backend.cases:
+        backend.votes.extend({"case_id": case["case_id"], "voter_hotkey": f"voter-{index}",
+                              "choice": "incumbent"} for index in range(12))
+    backend.round["status"] = "gold_closed"
+    assert len(closed_gold_decisions("week2", backend=backend)) == result["case_count"]
+    assert tally_closed_gold_review("week2", backend=backend)["challenger"].sampled_cases == 5

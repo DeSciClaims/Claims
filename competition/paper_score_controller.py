@@ -137,6 +137,14 @@ def score_ready_paper(
                                            for row in evaluation.pipeline.adjudication_consensus],
                 "gold_candidates": gold_candidates,
             }
+            if stage == "final":
+                silver["miner_submissions"] = [{
+                    "miner_id": submission.miner_id,
+                    "candidates": [candidate.model_dump(mode="json")
+                                   for candidate in submission.candidates],
+                    "normal_findings": [finding.model_dump(mode="json")
+                                        for finding in submission.normal_findings],
+                } for submission in evaluation.pipeline.miner_submissions]
         if (len(pairs) != len(challengers)
             or {row["challenger_hotkey"] for row in pairs} != {row["hotkey"] for row in challengers}
             or any(row["paper_id"] != paper_id

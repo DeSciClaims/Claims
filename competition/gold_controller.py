@@ -8,7 +8,7 @@ from typing import Any, Mapping, Protocol
 
 from .pair_evaluator import WeeklyPaperEvaluation
 
-from .gold import GoldCase, GoldResult, GoldVote, decide_gold_case, draw_gold_cases, gold_result
+from .gold import GoldCase, GoldResult, GoldVote, VoteDecision, decide_gold_case, draw_gold_cases, gold_result
 
 
 class GoldBackend(Protocol):
@@ -147,19 +147,20 @@ def frozen_gold_candidates(round_id: str, *, backend: GoldBackend) -> list[Conte
 
 def prepare_frozen_gold_review(
     round_id: str, *, backend: GoldBackend,
-    voters: list[dict[str, str]], limit: int = 300,
+    voters: list[dict[str, str]], limit: int = 300, escalation_limit: int = 1700,
 ) -> dict[str, Any]:
     return prepare_gold_review(
         round_id, backend=backend, candidates=frozen_gold_candidates(round_id, backend=backend),
-        voters=voters, limit=limit,
+        voters=voters, limit=limit, escalation_limit=escalation_limit,
     )
 
 
 def prepare_gold_review(
     round_id: str, *, backend: GoldBackend, candidates: list[ContestedClaim],
     voters: list[dict[str, str]], limit: int = 300,
+    escalation_limit: int | None = None,
 ) -> dict[str, Any]:
-    """Use the released drand seed and seal at most 300 contested claims."""
+    """Seal a random Gold check and a separately capped escalation stream."""
     round_record = backend.get_round(round_id)
     if round_record["status"] not in {"final", "gold"}:
         raise ValueError("final evaluation has not reached Gold review")
@@ -170,25 +171,44 @@ def prepare_gold_review(
         raise ValueError("contested Gold case IDs must be distinct")
     by_id = {candidate.case.case_id: candidate for candidate in candidates}
     gold_seed = hashlib.sha256(b"claims-gold-draw-v1\0" + seed).digest()
-    selected = draw_gold_cases([candidate.case for candidate in candidates], seed=gold_seed, limit=limit)
-    if not selected:
+    check = draw_gold_cases([candidate.case for candidate in candidates], seed=gold_seed, limit=limit)
+    if not check:
         raise ValueError("Gold review needs at least one contested claim")
+    if escalation_limit is None:
+        escalation = ()
+    else:
+        escalation_seed = hashlib.sha256(b"claims-escalation-draw-v1\0" + seed).digest()
+        escalation = draw_gold_cases(
+            [candidate.case for candidate in candidates], seed=escalation_seed,
+            limit=escalation_limit,
+        )
+    check_ids = {case.case_id for case in check}
+    escalation_ids = {case.case_id for case in escalation}
+    selected = [by_id[case_id].case for case_id in sorted(check_ids | escalation_ids)]
     backend.freeze_gold_voters(round_id, voters)
     receipt = backend.create_gold_cases(round_id, [{
         "case_id": case.case_id, "paper_id": case.paper_id,
         "challenger_hotkey": case.challenger_hotkey,
         "incumbent_hotkey": case.incumbent_hotkey,
         "excluded_team_ids": sorted(case.excluded_team_ids),
-        "case_public": dict(by_id[case.case_id].case_public),
+        "case_public": {
+            **dict(by_id[case.case_id].case_public),
+            "review_purposes": [purpose for purpose, included in (
+                ("check", case.case_id in check_ids),
+                ("escalation", case.case_id in escalation_ids),
+            ) if included],
+        },
         "answer_private": dict(by_id[case.case_id].answer_private),
     } for case in selected])
-    return {"round_id": round_id, "case_count": len(selected), "receipt": receipt}
+    return {"round_id": round_id, "case_count": len(selected),
+            "check_count": len(check), "escalation_count": len(escalation),
+            "receipt": receipt}
 
 
-def tally_closed_gold_review(
+def closed_gold_decisions(
     round_id: str, *, backend: GoldBackend,
-) -> dict[str, GoldResult]:
-    """Tally only after closing intake; group the veto by challenger."""
+) -> dict[str, VoteDecision]:
+    """Return the qualified decision for each sealed case after vote closure."""
     if backend.get_round(round_id)["status"] != "gold_closed":
         raise ValueError("Gold voting must be closed before tally")
     cases = backend.list_gold_cases(round_id)
@@ -205,13 +225,29 @@ def tally_closed_gold_review(
         if row["case_id"] not in cases_by_id:
             raise ValueError("Gold vote belongs to another case")
         votes_by_case[row["case_id"]].append(GoldVote(row["voter_hotkey"], row["choice"]))
-    decisions_by_challenger: dict[str, list] = {}
+    decisions = {}
     for row in cases:
         case = GoldCase(
             row["case_id"], row["paper_id"], row["challenger_hotkey"],
             row["incumbent_hotkey"], frozenset(row["excluded_team_ids"]),
         )
-        decision = decide_gold_case(case, votes_by_case[case.case_id],
-                                    qualified_team_by_hotkey=team_by_hotkey)
-        decisions_by_challenger.setdefault(case.challenger_hotkey, []).append(decision)
+        decisions[case.case_id] = decide_gold_case(
+            case, votes_by_case[case.case_id], qualified_team_by_hotkey=team_by_hotkey,
+        )
+    return decisions
+
+
+def tally_closed_gold_review(
+    round_id: str, *, backend: GoldBackend,
+) -> dict[str, GoldResult]:
+    """Tally only after closing intake; group the veto by challenger."""
+    decisions = closed_gold_decisions(round_id, backend=backend)
+    cases = backend.list_gold_cases(round_id)
+    decisions_by_challenger: dict[str, list[VoteDecision]] = {}
+    for row in cases:
+        purposes = row["case_public"].get("review_purposes", ["check"])
+        if "check" in purposes:
+            decisions_by_challenger.setdefault(row["challenger_hotkey"], []).append(
+                decisions[row["case_id"]]
+            )
     return {hotkey: gold_result(decisions) for hotkey, decisions in decisions_by_challenger.items()}
