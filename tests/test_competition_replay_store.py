@@ -167,3 +167,18 @@ def test_replay_store_seeds_stage_receipt_for_existing_database(tmp_path):
         "stage": "week_one", "entries": list(plan.entries),
     }]
     assert len(restarted.list_paper_jobs("round-1", "week_one", "paper-1")) == 2
+
+
+def test_replay_store_accepts_primary_status_progress_without_changing_locked_upload(tmp_path):
+    snapshot, plan = _inputs()
+    path = tmp_path / "replay.sqlite"
+    store = ReplayStore(path)
+    store.initialize(snapshot, plan)
+    later = {**snapshot, "uploads": [{**snapshot["uploads"][0], "status": "finished"}]}
+    restarted = ReplayStore(path)
+    restarted.initialize(later, plan)
+    assert restarted.list_submissions("round-1")[0]["status"] == "accepted"
+    assert len(restarted.list_paper_jobs("round-1", "week_one", "paper-1")) == 2
+    fresh = ReplayStore(tmp_path / "late-replay.sqlite")
+    fresh.initialize(later, plan)
+    assert fresh.list_submissions("round-1")[0]["status"] == "accepted"

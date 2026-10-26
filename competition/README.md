@@ -238,6 +238,9 @@ duplicate lottery, and derives the first-stage job grid. It needs a separately
 transferred baseline package receipt whose bytes match the public hash.
 `initialize_replay_runtime` combines these reads with the independent archive
 and beacon check, then writes the verified plan into the local replay store.
+The store treats the primary runner's later `evaluating` or `finished` status
+as the original accepted upload, so a second validator can restart or begin
+after primary execution without changing its locked package identities.
 `ReplayStore` persists that grid, leases baseline jobs before challengers,
 records worker results, and freezes independent per-paper adjudications and
 pair scores. `ReplayRuntimeBackend` combines only those local writes with

@@ -26,6 +26,12 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
+def _locked_uploads(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Discard only the primary runner's mutable post-selection status."""
+    return [{**row, "status": "accepted" if row["status"] in {"evaluating", "finished"}
+             else row["status"]} for row in rows]
+
+
 class ReplayStore:
     """Durable first-stage worker leases and immutable per-paper score receipts."""
 
@@ -102,8 +108,9 @@ class ReplayStore:
         entries = list(plan.entries)
         baseline = [row for row in entries if row.get("role") in {"reference", "incumbent"}]
         challengers = [row for row in entries if row.get("role") == "challenger"]
+        frozen_uploads = _locked_uploads(snapshot["uploads"])
         uploads = {(row["hotkey"], row["package_sha256"]): row
-                   for row in snapshot["uploads"]}
+                   for row in frozen_uploads}
         if (len(baseline) != 1 or not challengers
             or baseline[0]["package_sha256"] != snapshot["baseline_package_sha256"]
             or {row["hotkey"] for row in challengers} != set(plan.selected_hotkeys)
@@ -120,10 +127,11 @@ class ReplayStore:
             key: snapshot[key] for key in (
                 "round_id", "network", "rules_sha256", "configuration_sha256",
                 "paper_pool_sha256", "drand_seed", "archive_block_hash",
-                "duplicate_review_sha256", "uploads", "incumbent_hotkey",
+                "duplicate_review_sha256", "incumbent_hotkey",
                 "baseline_package_sha256", "reference_package_sha256",
             )
         }
+        inputs["uploads"] = frozen_uploads
         inputs["sample"] = [row for row in snapshot["sample"] if row["stage"] != "rerun"]
         digest = canonical_sha256(inputs)
         sample = inputs["sample"]
@@ -159,7 +167,7 @@ class ReplayStore:
                  snapshot["network"], snapshot.get("incumbent_hotkey"),
                  snapshot["baseline_package_sha256"],
                  snapshot["reference_package_sha256"],
-                 _json(snapshot["uploads"]), _json(sample), _json(stage)),
+                 _json(frozen_uploads), _json(sample), _json(stage)),
             )
             conn.execute(
                 "INSERT INTO replay_stages VALUES (?,?,?,?)",
