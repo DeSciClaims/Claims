@@ -13,6 +13,14 @@ verdicts, and starts the first stage. It is safe to retry after a crash between
 those writes. Both steps require the same frozen package bytes and any reviewed
 duplicate-link evidence.
 
+`weekly_automation.tick_round` is the trusted timer entrypoint. Each call
+reads the durable round state and performs one transition: deadline lock,
+D+600 release, first-stage start, ready-paper scoring and advancement, Gold
+opening or closing, or signed Thursday publication. A process scheduler must
+call it repeatedly and provide archive, paper-pool, Bronze, judge, audit, and
+signer adapters. It reports `missed_gold_window` if final scores arrive after
+Thursday 12:00 UTC; it will not publish a crown without the Gold vote.
+
 ## Early-stage Decision API pilot
 
 The Zils checkpoint named in the reward proposal is unavailable. The
@@ -32,7 +40,7 @@ sample and a capped escalation set from those private receipts. After voting
 closes, the final selector recomputes affected pair scores from frozen Silver
 data and decided escalation votes; the signed publication carries these final
 pair rows for the public pair endpoint. The Gold check alone supplies the
-crown veto. The automatic review schedule and live end-to-end run remain.
+crown veto. The live end-to-end run remains.
 
 ## Weight heartbeat
 
