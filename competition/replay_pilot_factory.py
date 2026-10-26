@@ -26,7 +26,9 @@ from .replay_controller import tick_replay
 from .replay_final_audit import audit_replay_final
 from .replay_gold_review import prepare_replay_gold_review, replay_known_answer_challenges
 from .replay_gold_client import ReplayGoldClient
+from .replay_finalizer import finalize_replay
 from .replay_inputs import CompetitionReplayInputs
+from .replay_publication_client import ReplayPublicationClient
 from .replay_runtime import (
     ReplayRuntimeBackend, create_replay_worker_coordinator,
     initialize_replay_runtime,
@@ -105,6 +107,14 @@ class ReplayController:
     code_policy: dict[str, Any] | None
     certified_gold_source: Callable[[str], list[dict[str, Any]]] | None = None
     gold_client_factory: Callable[[], ReplayGoldClient] | None = None
+    finalizer: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
+
+    def _complete_gold(self, round_id: str, stage: str,
+                       tally: dict[str, Any]) -> dict[str, Any]:
+        if self.finalizer is not None:
+            return self.finalizer(round_id, tally)
+        return {"status": "gold_tally_complete", "stage": stage,
+                "evidence_sha256": tally["evidence_sha256"]}
 
     def run_once(self) -> dict[str, Any]:
         round_id = self.backend.snapshot["round_id"]
@@ -149,8 +159,7 @@ class ReplayController:
         if prior_tally is not None:
             if prior_tally.get("review_sha256") != review_sha256:
                 raise ValueError("replay Gold tally differs from frozen local review")
-            return {"status": "gold_tally_complete", "stage": result["stage"],
-                    "evidence_sha256": prior_tally["evidence_sha256"]}
+            return self._complete_gold(round_id, result["stage"], prior_tally)
         voters = self.backend.inputs.gold_voters(round_id)
         if not voters:
             return {"status": "waiting_for_gold_voters", "stage": result["stage"]}
@@ -162,8 +171,7 @@ class ReplayController:
             return {"status": "gold_voting_open", "stage": result["stage"],
                     "closes_at": opening["closes_at"]}
         tally = self.backend.freeze_gold_tally(round_id, closed["tally"])
-        return {"status": "gold_tally_complete", "stage": result["stage"],
-                "evidence_sha256": tally["evidence_sha256"]}
+        return self._complete_gold(round_id, result["stage"], tally)
 
 
 def _gold_client(backend_url: str) -> ReplayGoldClient:
@@ -179,6 +187,28 @@ def _gold_client(backend_url: str) -> ReplayGoldClient:
         raise ValueError("replay wallet differs from configured publisher hotkey")
     return ReplayGoldClient(
         backend_url, _required("CLAIMS_COMPETITION_REPLAY_TOKEN"), signer,
+    )
+
+
+def _finish_replay(
+    round_id: str, tally: dict[str, Any], *,
+    backend: ReplayRuntimeBackend, backend_url: str,
+) -> dict[str, Any]:
+    import bittensor as bt
+    from bittensor_wallet import Keypair
+
+    signer = _gold_client(backend_url).signer
+    return finalize_replay(
+        round_id, backend=backend, tally=tally, signer=signer,
+        publication_client=ReplayPublicationClient(
+            backend_url, _required("CLAIMS_COMPETITION_REPLAY_PUBLISHER_HOTKEY"),
+        ),
+        subtensor=bt.Subtensor(network=_required("CLAIMS_ARCHIVE_SUBTENSOR_NETWORK")),
+        netuid=int(_required("CLAIMS_COMPETITION_NETUID")),
+        owner_hotkey=_required("CLAIMS_COMPETITION_OWNER_HOTKEY"),
+        operator_hotkey=_required("CLAIMS_COMPETITION_OPERATOR_HOTKEY"),
+        verify_signature=lambda hotkey, message, signature:
+            bool(Keypair(ss58_address=hotkey).verify(message, signature)),
     )
 
 
@@ -213,7 +243,10 @@ def create_replay_controller(
     packages = CompetitionPackageResolver(backend, storage, baseline, reference)
     return ReplayController(backend, papers, evaluation, reference or baseline,
                             packages, policy, backend.inputs.certified_gold_challenges,
-                            lambda: _gold_client(backend_url))
+                            lambda: _gold_client(backend_url),
+                            lambda rid, tally: _finish_replay(
+                                rid, tally, backend=backend, backend_url=backend_url,
+                            ))
 
 
 def create_replay_worker(

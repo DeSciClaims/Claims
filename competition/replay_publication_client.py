@@ -34,6 +34,22 @@ class ReplayPublicationClient:
             ))):
             raise ValueError("replay publication needs an HTTPS backend URL and signer")
 
+    def primary_published(self, round_id: str) -> bool:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", round_id):
+            raise ValueError("replay publication round ID is invalid")
+        url = (self.base_url.rstrip("/") + "/public/competition/rounds/"
+               + urllib.parse.quote(round_id, safe="") + "/results")
+        try:
+            with self.open_request(urllib.request.Request(url), timeout=30):
+                pass
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return False
+            raise RuntimeError("primary competition result is unavailable") from exc
+        except (urllib.error.URLError, OSError) as exc:
+            raise RuntimeError("primary competition result is unavailable") from exc
+        return True
+
     def publish(
         self, round_id: str, receipt: dict[str, Any], *,
         verify_signature: Callable[[str, bytes, bytes], bool] = _verify_hotkey_signature,

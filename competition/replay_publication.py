@@ -20,6 +20,7 @@ def replay_publication_bundle(
     round_id: str, *, backend: Any, selection: FinalSelection,
     weight_plan: WeightPlan, gold_policy_id: str,
     gold_evidence_sha256: str, qualification_evidence_sha256: str,
+    allow_gold_adjustments: bool = False,
 ) -> dict[str, Any]:
     """Bind independent scores and audited inputs to an explicit Gold policy.
 
@@ -34,7 +35,14 @@ def replay_publication_bundle(
         raise ValueError("replay publication lacks Gold or qualification evidence")
     stage = effective_final_stage(backend.list_stages(round_id))
     local_pairs = backend.list_stage_pairs(round_id, stage)
-    if not local_pairs or tuple(local_pairs) != selection.final_pair_rows:
+    adjusted_pairs = selection.final_pair_rows
+    if (not local_pairs or len(local_pairs) != len(adjusted_pairs)
+        or (not allow_gold_adjustments and tuple(local_pairs) != adjusted_pairs)
+        or any({key: value for key, value in raw.items()
+                if key not in {"challenger_score", "baseline_score"}}
+               != {key: value for key, value in adjusted.items()
+                   if key not in {"challenger_score", "baseline_score"}}
+               for raw, adjusted in zip(local_pairs, adjusted_pairs, strict=True))):
         raise ValueError("replay publication differs from local final score grid")
     audit = backend.get_final_audit(round_id)
     if (not isinstance(audit, dict)
@@ -65,6 +73,7 @@ def replay_publication_bundle(
         "local_stage": stage,
         "local_sample_sha256": canonical_sha256(backend.list_sample(round_id)),
         "local_pairs_sha256": canonical_sha256(local_pairs),
+        "gold_adjusted_pairs_sha256": canonical_sha256(adjusted_pairs),
         "local_final_audit_input_sha256": audit["input_sha256"],
         "local_final_audit_sha256": canonical_sha256(audit["result_private"]),
         "gold_policy_id": gold_policy_id,

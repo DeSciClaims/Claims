@@ -8,13 +8,16 @@ from typing import Any, Mapping
 from .failure_policy import ReferenceFallbackRequired, incumbent_failure_summary
 from .final_selection import FinalSelection, Finalist, select_final_production
 from .final_stage import effective_final_stage
-from .gold import GoldResult
+from .gold import GoldResult, VoteDecision
+from .gold_override import rescore_final_paper_from_escalations
 from .policy import PaperPairScore
 
 
 def select_replay_final(
     round_id: str, *, backend: Any,
     gold_by_hotkey: Mapping[str, GoldResult],
+    gold_review: Mapping[str, Any] | None = None,
+    case_decisions: Mapping[str, VoteDecision] | None = None,
 ) -> FinalSelection:
     """Apply the normal crown rules to local pairs and a supplied Gold outcome.
 
@@ -80,6 +83,48 @@ def select_replay_final(
         grid[key] = pair
     if set(grid) != expected:
         raise ValueError("replay final pair grid is incomplete")
+    if gold_review is not None:
+        cases = gold_review.get("cases")
+        if (gold_review.get("round_id") != round_id
+            or gold_review.get("stage") != stage
+            or not isinstance(cases, list)
+            or case_decisions is None
+            or {case.get("case_id") for case in cases} != set(case_decisions)):
+            raise ValueError("replay final Gold review or decisions are incomplete")
+        escalations = [case for case in cases
+                       if "escalation" in case.get("review_purposes", [])]
+        by_paper: dict[str, list[dict[str, Any]]] = {}
+        for case in escalations:
+            if (case.get("paper_id") not in papers
+                or case.get("challenger_hotkey") not in finalist_hotkeys):
+                raise ValueError("replay Gold escalation is outside local final")
+            by_paper.setdefault(case["paper_id"], []).append({
+                **case,
+                "answer_private": {
+                    **case["answer_private"],
+                    "review_purposes": case["review_purposes"],
+                },
+            })
+        for paper_id, paper_cases in by_paper.items():
+            receipt = backend.get_paper_evaluation(round_id, stage, paper_id)
+            if not isinstance(receipt, dict) or not isinstance(receipt.get("result_private"), dict):
+                raise ValueError("escalated replay paper has no frozen evaluation")
+            frozen = receipt["result_private"]
+            for original in frozen["pairs"]:
+                key = paper_id, original["challenger_hotkey"]
+                stored = grid.get(key)
+                if (stored is None or original["baseline_hotkey"] != stored["baseline_hotkey"]
+                    or original["challenger_score"] != stored["challenger_score"]
+                    or original["baseline_score"] != stored["baseline_score"]):
+                    raise ValueError("provisional replay pair differs from frozen evaluation")
+            for adjusted in rescore_final_paper_from_escalations(
+                frozen, sealed_cases=paper_cases, decisions=case_decisions,
+            ):
+                key = paper_id, adjusted["challenger_hotkey"]
+                grid[key] = {
+                    **grid[key], "challenger_score": adjusted["challenger_score"],
+                    "baseline_score": adjusted["baseline_score"],
+                }
     faults = {paper_id: any(grid[(paper_id, hotkey)]["infrastructure_fault"]
                             for hotkey in finalist_hotkeys) for paper_id in papers}
     if baseline["role"] == "incumbent":
