@@ -48,7 +48,10 @@ def _challenge():
     return ContestedClaim(
         GoldCase("challenge-1", "paper-1", "challenger", "reference",
                  frozenset({"challenger-team", "reference-team"})),
-        {"statement": "Hidden answer"},
+        {"question": "Does this match the evidence?", "statement": "Hidden answer",
+         "source_quotes": ["Evidence"], "source_span_ids": ["span-1"],
+         "claim_side": "challenger", "challenger_hotkey": "challenger",
+         "incumbent_hotkey": "reference"},
         {"kind": "known_answer", "correct_choice": "challenger",
          "source_challenge_id": "certified-1", "certificate_sha256": "c" * 64},
     )

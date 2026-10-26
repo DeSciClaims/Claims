@@ -61,11 +61,21 @@ def prepare_replay_gold_review(
         raise ValueError("replay Gold source case IDs collide")
     final_entries = backend.list_stages(round_id)[-1]["entries"]
     finalists = {row["hotkey"] for row in final_entries if row["role"] == "challenger"}
-    if not finalists or any(row.case.challenger_hotkey not in finalists for row in candidates):
+    baselines = {row["hotkey"] for row in final_entries
+                 if row["role"] in {"incumbent", "reference"}}
+    if (not finalists or len(baselines) != 1
+        or any(row.case.challenger_hotkey not in finalists
+               or row.case.incumbent_hotkey not in baselines for row in candidates)):
         raise ValueError("replay Gold cases differ from local finalists")
     for row in known:
         answer = row.answer_private
         if (row.case.challenger_hotkey not in finalists
+            or row.case.incumbent_hotkey not in baselines
+            or not row.case.excluded_team_ids
+            or set(row.case_public) != {
+                "question", "statement", "source_quotes", "source_span_ids",
+                "claim_side", "challenger_hotkey", "incumbent_hotkey",
+            }
             or answer.get("kind") != "known_answer"
             or answer.get("correct_choice") not in {"challenger", "incumbent"}
             or not answer.get("source_challenge_id")
