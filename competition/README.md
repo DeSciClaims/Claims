@@ -76,8 +76,8 @@ infrastructure fault. A second failure is terminal; scoring drops the affected
 paper for every package. A stale worker cannot complete it, and each attempt
 has a distinct private log object.
 `ProductionReleaseReader` opens the active release pointer and package through
-private owned file descriptors, verifies the package hash, and returns bytes
-to a trusted production runner without executing them. It can read handoffs
+private owned file descriptors, verifies the package and manifest hashes, and
+returns the release to a trusted production runner without executing it. It can read handoffs
 and rollbacks atomically; the production runner and health checks remain to be
 wired.
 Before advancing a staged screen or opening Gold, the controller counts
@@ -241,8 +241,8 @@ switch a private `active.json` pointer; it records the previous release and
 can restore it after a breach without replaying the breached result. The
 trusted `activate_published_round` coordinator resolves the unique winning
 sealed upload through the existing backend and Hippius adapters. The
-production service still needs a reader that notices the pointer, starts the
-selected package in its isolated runtime, and reports health before launch.
+production service still needs a runner that starts the selected package in
+its isolated runtime, records each paper's extraction, and reports health before launch.
 
 The final paper scorer freezes contested claim cases, including primary judge
 splits with pairwise credit effects. The backend commits to a private Gold

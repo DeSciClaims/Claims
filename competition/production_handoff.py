@@ -70,6 +70,7 @@ class FilesystemProductionReleaseStore:
 
     def activate(
         self, plan: ProductionHandoffPlan, package: bytes, *, now: datetime,
+        manifest: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         if now.tzinfo is None or now.astimezone(UTC) < plan.activate_at:
             raise ValueError("production activation is before the verified Monday gate")
@@ -77,6 +78,21 @@ class FilesystemProductionReleaseStore:
             or not re.fullmatch(r"[0-9a-f]{64}", plan.receipt_sha256)
             or not re.fullmatch(r"[0-9a-f]{64}", plan.package_sha256)):
             raise ValueError("production package or receipt differs from verified handoff")
+        if manifest is not None:
+            if not isinstance(manifest, dict):
+                raise ValueError("production manifest must be a JSON object")
+            try:
+                manifest_bytes = json.dumps(
+                    manifest, sort_keys=True, separators=(",", ":"),
+                    ensure_ascii=False, allow_nan=False,
+                ).encode()
+            except (TypeError, ValueError) as exc:
+                raise ValueError("production manifest is not canonical JSON") from exc
+            if len(manifest_bytes) > 12_000:
+                raise ValueError("production manifest exceeds the release limit")
+            manifest_sha256 = canonical_sha256(manifest)
+        else:
+            manifest_sha256 = None
         lock_path = self.root / ".activation.lock"
         if lock_path.is_symlink():
             raise ValueError("production activation lock cannot be a symlink")
@@ -90,7 +106,8 @@ class FilesystemProductionReleaseStore:
             if current is not None:
                 self._verified_package(current["package_sha256"])
                 if current["receipt_sha256"] == plan.receipt_sha256:
-                    if current["package_sha256"] != plan.package_sha256:
+                    if (current["package_sha256"] != plan.package_sha256
+                        or current.get("manifest_sha256") != manifest_sha256):
                         raise ValueError("active receipt has a different package")
                     return current
                 current_time = datetime.fromisoformat(
@@ -108,9 +125,12 @@ class FilesystemProductionReleaseStore:
                 "receipt_sha256": plan.receipt_sha256,
                 "hotkey": plan.hotkey,
                 "package_sha256": plan.package_sha256,
+                "manifest": manifest,
+                "manifest_sha256": manifest_sha256,
                 "activate_at": plan.activate_at.isoformat(),
                 "latest_activation_at": plan.activate_at.isoformat(),
-                "previous": current,
+                "previous": ({key: value for key, value in current.items()
+                             if key != "previous"} if current is not None else None),
             }
             self._write_atomic(active_path, json.dumps(
                 activation, sort_keys=True, separators=(",", ":"),

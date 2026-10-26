@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any, Callable, Mapping, Protocol
 
 from .production_handoff import (
-    FilesystemProductionReleaseStore, ProductionHandoffPlan, activate_verified_handoff,
+    FilesystemProductionReleaseStore, ProductionHandoffPlan, planned_production_handoff,
 )
 from .final_stage import effective_final_stage
 
@@ -57,7 +57,14 @@ def activate_published_round(
         raise ValueError("handoff round has no final frozen stage")
     receipt = publication_for_round(round_id)
 
-    def fetch_package(plan: ProductionHandoffPlan) -> bytes:
+    plan = planned_production_handoff(
+        receipt=receipt, round_record=round_record, final_stage=final,
+        expected_signer_hotkey=expected_signer_hotkey, network=network, now=now,
+    )
+    if plan is None:
+        return None
+
+    def selected_upload(plan: ProductionHandoffPlan) -> Mapping[str, Any]:
         if (receipt.get("bundle", {}).get("results", {}).get("decision")
             in {"reference_fallback", "no_crown"}
             and reference_upload is not None
@@ -65,17 +72,20 @@ def activate_published_round(
             and plan.package_sha256 == round_record.get("reference_package_sha256")):
             if reference_upload.get("package_sha256") != plan.package_sha256:
                 raise ValueError("handoff reference upload differs from frozen round")
-            return sealed_packages.package_for_submission(reference_upload)
+            return reference_upload
         uploads = [row for row in backend.list_submissions(round_id)
                    if row.get("hotkey") == plan.hotkey
                    and row.get("package_sha256") == plan.package_sha256
                    and row.get("status") in {"accepted", "evaluating", "finished"}]
         if len(uploads) != 1:
             raise ValueError("handoff winner has no unique sealed upload")
-        return sealed_packages.package_for_submission(uploads[0])
+        return uploads[0]
 
-    return activate_verified_handoff(
-        receipt=receipt, round_record=round_record, final_stage=final,
-        expected_signer_hotkey=expected_signer_hotkey, network=network, now=now,
-        fetch_package=fetch_package, releases=releases,
+    upload = selected_upload(plan)
+    manifest = upload.get("manifest")
+    if not isinstance(manifest, dict):
+        raise ValueError("handoff selected upload has no manifest")
+    return releases.activate(
+        plan, sealed_packages.package_for_submission(upload), now=now,
+        manifest=manifest,
     )

@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from .publication import canonical_sha256
+
 
 @dataclass(frozen=True)
 class ActiveProductionPackage:
@@ -22,6 +24,7 @@ class ActiveProductionPackage:
     latest_activation_at: datetime
     rolled_back_from: str | None
     package: bytes
+    manifest: dict | None = None
 
 
 class ProductionReleaseReader:
@@ -82,6 +85,8 @@ class ProductionReleaseReader:
                     active.get("latest_activation_at", active["activate_at"]),
                 )
                 rolled_back_from = active.get("rolled_back_from")
+                manifest = active.get("manifest")
+                manifest_sha256 = active.get("manifest_sha256")
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError("production active pointer is malformed") from exc
             if (not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
@@ -91,7 +96,12 @@ class ProductionReleaseReader:
                 or activate_at.tzinfo is None or latest_activation_at.tzinfo is None
                 or latest_activation_at < activate_at
                 or (rolled_back_from is not None and (not isinstance(rolled_back_from, str)
-                    or not re.fullmatch(r"[0-9a-f]{64}", rolled_back_from)))):
+                    or not re.fullmatch(r"[0-9a-f]{64}", rolled_back_from)))
+                or (manifest is None) != (manifest_sha256 is None)
+                or (manifest is not None and (
+                    not isinstance(manifest, dict)
+                    or not isinstance(manifest_sha256, str)
+                    or canonical_sha256(manifest) != manifest_sha256))):
                 raise ValueError("production active pointer identity is invalid")
             package = self._read_private_file(
                 root_fd, f"{digest}.zip", self.max_package_bytes,
@@ -101,6 +111,7 @@ class ProductionReleaseReader:
             return ActiveProductionPackage(
                 round_id, receipt, hotkey, digest, activate_at,
                 latest_activation_at, rolled_back_from, package,
+                manifest,
             )
         finally:
             os.close(root_fd)

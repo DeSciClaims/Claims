@@ -14,6 +14,8 @@ from competition.publication import canonical_sha256, publication_bundle, sign_p
 
 PACKAGE = b"sealed-production-package"
 PACKAGE_SHA = hashlib.sha256(PACKAGE).hexdigest()
+MANIFEST = {"schema_version": "claims_competition_manifest_v1",
+            "entrypoint": "claims_sample_miner.cli:main", "models": ["example/model"]}
 
 
 def _fixture(decision="new_crown"):
@@ -130,7 +132,8 @@ def test_verified_handoff_writes_atomic_pointer_and_rejects_stale_replay(tmp_pat
                     activate_at=first_plan.activate_at + timedelta(days=7))
     later = now + timedelta(days=7)
     second_active = store.activate(newer, PACKAGE, now=later)
-    assert second_active["previous"] == active
+    assert second_active["previous"] == {key: value for key, value in active.items()
+                                         if key != "previous"}
     with pytest.raises(ValueError, match="older"):
         store.activate(first_plan, PACKAGE, now=later)
     restored = store.rollback(
@@ -172,7 +175,8 @@ def test_handoff_controller_resolves_only_winning_sealed_upload(tmp_path):
             return [
                 {"hotkey": "runner", "package_sha256": "b" * 64, "status": "accepted"},
                 {"hotkey": "winner", "package_sha256": PACKAGE_SHA,
-                 "status": "accepted", "package_object_key": "sealed/winner.zip"},
+                 "status": "accepted", "package_object_key": "sealed/winner.zip",
+                 "manifest": MANIFEST},
             ]
 
     class Storage:
@@ -197,6 +201,7 @@ def test_handoff_controller_resolves_only_winning_sealed_upload(tmp_path):
         "week2", **kwargs, now=datetime(2026, 11, 2, 9, 0, tzinfo=UTC),
     )
     assert active["package_sha256"] == PACKAGE_SHA
+    assert active["manifest"] == MANIFEST
     assert storage.seen == "sealed/winner.zip"
 
 
@@ -259,7 +264,7 @@ def test_failed_incumbent_hands_production_to_unpaid_reference(tmp_path):
         expected_signer_hotkey=signer.ss58_address, network="testnet",
         now=datetime(2026, 11, 2, 9, tzinfo=UTC),
         reference_upload={"hotkey": "team-reference", "package_sha256": reference_hash,
-                          "package_object_key": "sealed/reference.zip"},
+                          "package_object_key": "sealed/reference.zip", "manifest": MANIFEST},
     )
     assert active["hotkey"] == "team-reference"
     assert active["package_sha256"] == reference_hash
@@ -320,6 +325,7 @@ def test_week_one_no_crown_activates_reference_package(tmp_path):
         sealed_packages=Storage(),
         releases=FilesystemProductionReleaseStore(tmp_path / "production"),
         expected_signer_hotkey=signer.ss58_address, network="testnet", now=now,
-        reference_upload={"hotkey": "reference", "package_sha256": reference_hash},
+        reference_upload={"hotkey": "reference", "package_sha256": reference_hash,
+                          "manifest": MANIFEST},
     )
     assert active["hotkey"] == "reference"
