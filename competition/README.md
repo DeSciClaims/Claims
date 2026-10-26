@@ -130,8 +130,16 @@ upstream OpenRouter key. The embedding provider remains shared across J1/J2;
 different providers by judge would need a separate scoring-path change.
 `build_weekly_judges` assembles two explicit
 allowlisted model-backed panels with one common tiebreak through the existing
-Silver judge factory. Select and cost the concrete models, then pin a deploy
-artifact before a paid round.
+Silver judge factory. `provisional_judges.py` defines the pilot selection:
+J1 = Qwen3 32B + gpt-oss-120b; J2 = DeepSeek V3.2 + Llama 4 Maverick;
+shared tiebreak = Qwen3 235B A22B Instruct 2507. All use the OpenRouter
+chat-completions endpoint, temperature 1, and 8192 maximum output tokens.
+`build_provisional_judges()` is opt-in; it reads the controller's
+`OPENROUTER_API_KEY` but never puts it in the frozen configuration. Measure
+quality, cost, provider behavior, and context truncation before a paid round.
+OpenRouter may route one model ID to multiple providers, so model-ID hashing
+alone does not freeze the actual serving endpoint. Pin a tested provider and
+deploy artifact before intake.
 
 For each paper key, the controller reads Bifrost's final token and dollar
 usage before revoking it. The private completed-job receipt includes
