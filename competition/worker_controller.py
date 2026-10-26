@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Protocol
 
 from .bifrost import PaperKey
+from .worker_contract import build_worker_contract
 from miner.agent_v1.artifact_models import Artifact
 from miner.agent_v1.artifact_validator import validate_agent_artifact
 
@@ -103,6 +104,7 @@ def run_claimed_job(
     allowed_models: tuple[str, ...], published_token_ceiling: int,
     dollar_limit: float, key_lifetime_seconds: int = 2400,
     max_output_bytes: int = 10_000_000,
+    max_inference_output_tokens: int = 8192,
 ) -> dict[str, Any]:
     """Verify inputs, execute once, account for tokens, revoke, then persist.
 
@@ -130,19 +132,25 @@ def run_claimed_job(
     pdf = fetch_pdf(job)
     if hashlib.sha256(pdf).hexdigest() != expected_pdf_sha256:
         raise ValueError("paper PDF differs from released sample hash")
+    contract = build_worker_contract(
+        job, allowed_models=allowed_models,
+        max_output_tokens=max_inference_output_tokens,
+    )
     token_limit, cap_source = paper_token_cap(
         job, backend=backend, published_ceiling=published_token_ceiling,
     )
     key = keys.create_paper_key(
         round_id=job["round_id"], paper_id=job["paper_id"], hotkey=job["hotkey"],
-        allowed_models=allowed_models, token_limit=token_limit,
+        allowed_models=contract["allowed_models"], token_limit=token_limit,
         dollar_limit=dollar_limit,
         expires_at=datetime.now(UTC) + timedelta(seconds=key_lifetime_seconds),
     )
     try:
         try:
             output = execution.run(
-                job=job, package=package, pdf=pdf,
+                job={**job, "worker_contract": contract,
+                     "expected_pdf_sha256": expected_pdf_sha256},
+                package=package, pdf=pdf,
                 inference_base_url=inference_base_url, paper_key=key.value,
             )
         except Exception as exc:
@@ -197,6 +205,7 @@ def run_claimed_job(
 
 class PaperSources(Protocol):
     def pdf_source_for_paper(self, stage: str, paper_id: str) -> tuple[str, str]: ...
+    def paper_metadata_for_paper(self, stage: str, paper_id: str) -> dict[str, Any]: ...
 
 
 class PdfFetcher(Protocol):
@@ -207,10 +216,11 @@ def run_next_claimed_job(
     round_id: str, *, backend: JobBackend, worker_id: str,
     network: str, paper_sources: PaperSources, pdf_fetcher: PdfFetcher,
     fetch_package: Callable[[dict[str, Any]], bytes],
+    manifest_for_job: Callable[[dict[str, Any]], dict[str, Any]],
     keys: InferenceKeys, execution: DisposableExecution, logs: PrivateLogs,
     inference_base_url: str, allowed_models: tuple[str, ...],
     published_token_ceiling: int, dollar_limit: float,
-    lease_seconds: int = 3600,
+    lease_seconds: int = 3600, max_inference_output_tokens: int = 8192,
 ) -> dict[str, Any] | None:
     """Lease one job and stage only its frozen PDF bytes on the worker."""
     job = backend.claim_job(round_id, worker_id=worker_id, lease_seconds=lease_seconds)
@@ -221,8 +231,15 @@ def run_next_claimed_job(
     source_url, source_sha256 = paper_sources.pdf_source_for_paper(
         str(job["stage"]), str(job["paper_id"]),
     )
+    enriched_job = {
+        **job,
+        "manifest": manifest_for_job(job),
+        "paper": paper_sources.paper_metadata_for_paper(
+            str(job["stage"]), str(job["paper_id"]),
+        ),
+    }
     return run_claimed_job(
-        job, backend=backend, worker_id=worker_id, network=network,
+        enriched_job, backend=backend, worker_id=worker_id, network=network,
         fetch_package=fetch_package,
         fetch_pdf=lambda _: pdf_fetcher.fetch(source_url, source_sha256),
         expected_pdf_sha256=source_sha256,
@@ -231,4 +248,5 @@ def run_next_claimed_job(
         allowed_models=allowed_models,
         published_token_ceiling=published_token_ceiling,
         dollar_limit=dollar_limit,
+        max_inference_output_tokens=max_inference_output_tokens,
     )

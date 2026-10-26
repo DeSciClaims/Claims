@@ -7,8 +7,10 @@ from competition.package_inputs import CompetitionPackageResolver
 
 def test_package_resolver_binds_baseline_and_accepted_challenger():
     baseline = {"hotkey": "reference", "package_sha256": "a" * 64,
+                "manifest": {"entrypoint": "baseline.cli:main"},
                 "package_object_key": "sealed/baseline", "package_size_bytes": 8}
     challenger = {"hotkey": "challenger", "package_sha256": "b" * 64,
+                  "manifest": {"entrypoint": "challenger.cli:main"},
                   "package_object_key": "sealed/challenger", "package_size_bytes": 10,
                   "status": "accepted"}
 
@@ -29,6 +31,9 @@ def test_package_resolver_binds_baseline_and_accepted_challenger():
     resolver = CompetitionPackageResolver(Backend(), storage, baseline)
     assert resolver({"round_id": "week-1", "stage": "week_one", **baseline}) == b"sealed/baseline"
     assert resolver({"round_id": "week-1", "stage": "week_one", **challenger}) == b"sealed/challenger"
+    assert resolver.manifest_for_job({"round_id": "week-1", "stage": "week_one", **challenger}) == {
+        "entrypoint": "challenger.cli:main",
+    }
 
 
 def test_package_resolver_rejects_a_changed_stage_or_ambiguous_receipt():

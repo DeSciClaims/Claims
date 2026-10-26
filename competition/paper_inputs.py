@@ -76,6 +76,12 @@ class CompetitionPaperInputs:
     def bronze_for_paper(self, stage: str, paper_id: str) -> dict[str, Any]:
         return copy.deepcopy(self._source(stage, paper_id)["artifact"])
 
+    def paper_metadata_for_paper(self, stage: str, paper_id: str) -> dict[str, Any]:
+        paper = self.bronze_for_paper(stage, paper_id).get("paper")
+        if not isinstance(paper, dict) or paper.get("paper_id") != paper_id:
+            raise ValueError("pinned Bronze artifact has no matching paper metadata")
+        return copy.deepcopy(paper)
+
     def pdf_source_for_paper(self, stage: str, paper_id: str) -> tuple[str, str]:
         record = self._source(stage, paper_id)
         return record["source_url"], record["source_sha256"]

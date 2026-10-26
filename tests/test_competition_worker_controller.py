@@ -41,6 +41,7 @@ class Keys:
     def create_paper_key(self, **kwargs):
         self.created = True
         assert kwargs["token_limit"] == self.expected_cap
+        assert kwargs["allowed_models"] == ("example/model",)
         return PaperKey("key-1", "sk-bf-short-lived", datetime.now(UTC) + timedelta(minutes=10), self.expected_cap)
 
     def check_budget(self, key):
@@ -55,6 +56,8 @@ class Keys:
 class Executor:
     def run(self, **kwargs):
         assert kwargs["paper_key"] == "sk-bf-short-lived"
+        assert kwargs["job"]["worker_contract"]["request"]["pdf_path"] == "paper.pdf"
+        assert kwargs["job"]["worker_contract"]["entrypoint"] == "claims_sample_miner.cli:main"
         return ExecutionOutput("completed", artifact(), b"installed\nran sk-bf-short-lived\n")
 
 
@@ -103,6 +106,13 @@ def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False):
         "job_id": "a" * 64, "round_id": "week2", "hotkey": signer.ss58_address,
         "package_sha256": hashlib.sha256(package).hexdigest(),
         "stage": "week_one", "paper_id": "paper-1", "lease_token": "lease-token",
+        "paper": {"paper_id": "paper-1", "title": "Paper"},
+        "manifest": {
+            "schema_version": "claims_competition_manifest_v1", "language": "python",
+            "package_format": "wheel", "source_included": True,
+            "license_production_use": True, "entrypoint": "claims_sample_miner.cli:main",
+            "models": ["example/model"],
+        },
     }
     keys, logs, backend = Keys(over, expected_cap=525 if challenger else 1000), Logs(), Backend(job, challenger=challenger)
     result = run_claimed_job(
@@ -191,6 +201,10 @@ def test_claimed_job_uses_locked_pdf_source_before_worker_execution():
             assert (stage, paper_id) == ("week_one", "paper-1")
             return "s3://claims-papers/locked.pdf", hashlib.sha256(pdf).hexdigest()
 
+        def paper_metadata_for_paper(self, stage, paper_id):
+            assert (stage, paper_id) == ("week_one", "paper-1")
+            return {"paper_id": paper_id, "title": "Paper"}
+
     class PdfFetcher:
         def fetch(self, url, digest):
             assert url == "s3://claims-papers/locked.pdf"
@@ -201,7 +215,14 @@ def test_claimed_job_uses_locked_pdf_source_before_worker_execution():
     result = run_next_claimed_job(
         "week2", backend=backend, worker_id="worker-1", network="testnet",
         paper_sources=PaperSources(), pdf_fetcher=PdfFetcher(),
-        fetch_package=lambda _: package, keys=Keys(), execution=Executor(),
+        fetch_package=lambda _: package,
+        manifest_for_job=lambda _: {
+            "schema_version": "claims_competition_manifest_v1", "language": "python",
+            "package_format": "wheel", "source_included": True,
+            "license_production_use": True, "entrypoint": "claims_sample_miner.cli:main",
+            "models": ["example/model"],
+        },
+        keys=Keys(), execution=Executor(),
         logs=Logs(), inference_base_url="http://gateway.internal:8080/v1",
         allowed_models=("example/model",), published_token_ceiling=1000,
         dollar_limit=1.0,

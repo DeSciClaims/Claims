@@ -44,6 +44,7 @@ def test_trusted_paper_inputs_bind_pool_sample_bronze_and_context():
     artifact = adapter.bronze_for_paper("final", "paper-1")
     artifact["paper"]["paper_id"] = "mutated"
     assert adapter.bronze_for_paper("final", "paper-1")["paper"]["paper_id"] == "paper-1"
+    assert adapter.paper_metadata_for_paper("final", "paper-1") == {"paper_id": "paper-1"}
     assert adapter.source_context_for_paper("paper-1") == {"span-1": "Evidence"}
     assert adapter.pdf_source_for_paper("final", "paper-1") == (
         "https://example.invalid/paper.pdf", PDF_SHA,

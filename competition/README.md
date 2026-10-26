@@ -22,6 +22,16 @@ through an allowlisted HTTPS host or a private Hippius S3 client, bounds its
 size, checks its SHA-256, and gives only the bytes to the disposable worker.
 `run_next_claimed_job` joins these inputs to the existing per-paper Bifrost
 key, execution, log, and completion lifecycle.
+It now reads the selected upload's manifest and the pinned Bronze paper
+metadata before making a worker contract. The Bifrost paper key is restricted
+to the models declared by that manifest, after checking the frozen whitelist.
+`build_worker_bundle` produces deterministic `input.json`, `request.json`,
+one package and one PDF. The guest verifies all hashes before it installs the
+package; `worker_guest` then invokes `run_one_paper` and writes a result and
+full install/execution log. The transport must mount the input directory
+read-only, provide a pinned offline wheelhouse, and run the guest harness as an
+unprivileged user. The scoped token is transferred separately and never enters
+the durable bundle.
 `TargonVmLifecycle` follows Targon's documented register/deploy/state/delete
 API. It creates a separate VM for a job, enforces an hourly price ceiling,
 and deletes a failed provision. `DisposableVmExecution` also deletes the VM

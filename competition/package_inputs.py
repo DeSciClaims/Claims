@@ -22,7 +22,7 @@ class CompetitionPackageResolver:
     storage: SealedStorage
     baseline_upload: Mapping[str, Any]
 
-    def __call__(self, job: Mapping[str, Any]) -> bytes:
+    def _upload_for_job(self, job: Mapping[str, Any]) -> Mapping[str, Any]:
         round_id = str(job["round_id"])
         stage = str(job["stage"])
         hotkey = str(job["hotkey"])
@@ -57,6 +57,16 @@ class CompetitionPackageResolver:
             upload = uploads[0]
         else:
             raise ValueError("job has an unknown stage role")
+        return upload
+
+    def manifest_for_job(self, job: Mapping[str, Any]) -> dict[str, Any]:
+        manifest = self._upload_for_job(job).get("manifest")
+        if not isinstance(manifest, dict):
+            raise ValueError("selected package has no valid manifest")
+        return dict(manifest)
+
+    def __call__(self, job: Mapping[str, Any]) -> bytes:
+        upload = self._upload_for_job(job)
         package = self.storage.package_for_submission(upload)
         if not isinstance(package, bytes):
             raise ValueError("sealed package read did not return bytes")
