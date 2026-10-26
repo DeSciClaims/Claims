@@ -16,6 +16,7 @@ from validator.agent_v1.orchestrator import (
     run_paper_silver_pipeline,
 )
 from validator.agent_v1.silver_scoring import score_miner_against_silver
+from competition.scoring import score_pairwise_paper
 
 
 def candidate(mid, cid="c"):
@@ -118,6 +119,33 @@ def test_production_group_priority_weights_and_fixed_diagnostic_penalty():
         equivalence_shared_coverage=True,
     )
     assert independent.coverage == 0.7
+
+
+def test_pairwise_credit_divisor_ignores_third_miner_in_same_group():
+    r = record()
+    r.metadata["comparison_equivalence_groups"]["groups"][0]["member_candidate_ids"].append("miner:D:c")
+    r.silver_units[0].equivalent_candidate_ids.append("miner:D:c")
+    r.silver_units[0].metadata["candidate_provenance"].append({
+        "candidate_id": "miner:D:c", "origin": "miner", "miner_id": "D",
+    })
+    all_miners = score_miner_against_silver(
+        miner_id="A", miner_candidates=[candidate("A"), candidate("A", "other")], silver_record=r,
+    )
+    paired = score_miner_against_silver(
+        miner_id="A", miner_candidates=[candidate("A"), candidate("A", "other")], silver_record=r,
+        credit_miners={"A", "B"},
+    )
+    assert all_miners.metadata["equivalence_unit_credits"][0]["divisor"] == 3
+    assert paired.metadata["equivalence_unit_credits"][0]["divisor"] == 2
+    assert paired.coverage > all_miners.coverage
+    result = score_pairwise_paper(
+        challenger_id="A", incumbent_id="B", silver_record=r,
+        challenger_candidates=[candidate("A"), candidate("A", "other")],
+        incumbent_candidates=[candidate("B")],
+    )
+    assert result.challenger.coverage == paired.coverage
+    assert result.pair.challenger_score == result.challenger.score
+    assert result.pair.incumbent_score == result.incumbent.score
 
 
 def test_legacy_record_without_groups_retains_ordinary_scoring_when_enabled():

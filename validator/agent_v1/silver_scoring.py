@@ -21,7 +21,10 @@ def score_miner_against_silver(
     silver_record: SilverRecord,
     normal_findings: list[AgentV1ValidationFinding] | None = None,
     equivalence_shared_coverage: bool = True,
+    credit_miners: set[str] | None = None,
 ) -> SilverScoreBreakdown:
+    if credit_miners is not None and miner_id not in credit_miners:
+        raise ValueError("scored miner must belong to pairwise credit context")
     normal_findings = normal_findings or []
     miner_candidate_ids = {candidate.candidate_id for candidate in miner_candidates}
     findings: list[AgentV1ValidationFinding] = []
@@ -77,7 +80,7 @@ def score_miner_against_silver(
     credit_details = []
     scored_unit_by_id = {u.silver_unit_id: u for u in scored_units}
     if equivalence_shared_coverage:
-        for detail in equivalence_credit_audit(silver_record):
+        for detail in equivalence_credit_audit(silver_record, credit_miners=credit_miners):
             uid = detail["silver_unit_id"]
             if uid not in covered:
                 continue

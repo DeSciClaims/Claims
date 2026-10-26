@@ -48,7 +48,9 @@ def unit_credit(
     }
 
 
-def equivalence_credit_audit(record: SilverRecord) -> list[dict]:
+def equivalence_credit_audit(
+    record: SilverRecord, *, credit_miners: set[str] | None = None,
+) -> list[dict]:
     """Require canonical provenance before discounting approved group members.
 
     Older records with no groups retain ordinary coverage. Malformed or missing
@@ -104,7 +106,7 @@ def equivalence_credit_audit(record: SilverRecord) -> list[dict]:
                 and mid
                 and cid.startswith(f"miner:{mid}:")
             ):
-                owner[cid] = mid
+                owner[cid] = mid if credit_miners is None or mid in credit_miners else None
             else:
                 raise ValueError("Invalid canonical candidate ownership")
         if retained != owner.keys():
