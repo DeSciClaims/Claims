@@ -243,7 +243,9 @@ be reused. `create_replay_worker_coordinator` connects the existing paper
 worker to this private ledger; `advance_ready_stage` can select and enqueue
 later stages from its own pair scores. The mocked worker test covers one
 paper through execution and scoring, and a restart test covers screen-to-final
-advancement. A running replay service, incumbent failure rerun, Gold and code
+advancement. `tick_replay` is a restartable controller step that scores ready
+local papers, advances the stage, and stops at a complete final score grid.
+A running replay service, incumbent failure rerun, Gold and code
 checks, and its own signed vector still need implementation; the current
 components alone are not an independent validation.
 Pilot judge providers are set with CLAIMS_JUDGE_J1_A_PROVIDER,

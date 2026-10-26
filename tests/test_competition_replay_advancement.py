@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from competition.jobs import build_jobs
 from competition.paper_score_controller import score_ready_paper
 from competition.publication import canonical_sha256
+from competition.replay_controller import tick_replay
 from competition.replay_plan import ReplayInitialPlan
 from competition.replay_store import ReplayStore
 from competition.stage_controller import advance_ready_stage
@@ -97,3 +98,33 @@ def test_replay_advances_from_own_screen_scores_and_enqueues_final(tmp_path):
     final = restarted.claim_job("round-2", worker_id="replay", lease_seconds=60)
     assert final["stage"] == "final" and final["hotkey"] == "incumbent"
     assert advance_ready_stage("round-2", backend=restarted)["status"] == "final_running"
+
+
+def test_replay_tick_scores_completed_papers_and_waits_for_independent_final_review(tmp_path):
+    snapshot, plan = _screen_inputs()
+    path = tmp_path / "replay.sqlite"
+    store = ReplayStore(path)
+    store.initialize(snapshot, plan)
+    inputs = {
+        "backend": store,
+        "bronze_for_paper": lambda stage, paper_id: {
+            "paper": {"paper_id": paper_id},
+        },
+        "evaluate_for_stage": lambda stage: _evaluation,
+    }
+    waiting = tick_replay("round-2", **inputs)
+    assert waiting["status"] == "waiting_for_scores" and waiting["scored"] == 0
+    for _ in plan.jobs:
+        job = store.claim_job("round-2", worker_id="replay", lease_seconds=60)
+        store.complete_job(
+            job["job_id"], worker_id="replay", lease_token=job["lease_token"],
+            result={"status": "completed", "artifact": {"paper": {"paper_id": "screen-paper"}},
+                    "inference_cost_usd": 0.1, "prompt_and_completion_tokens": 100},
+            log_object_key="logs/replay",
+        )
+    inputs["backend"] = ReplayStore(path)
+    result = tick_replay("round-2", **inputs)
+    assert result["status"] == "started" and result["stage"] == "final"
+    assert result["scored_papers_this_tick"] == 1
+    final = tick_replay("round-2", **inputs)
+    assert final["status"] == "waiting_for_scores" and final["expected"] == 3
