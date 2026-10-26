@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping, Protocol
 
+from .gold_controller import contested_claims_for_paper
 from .pair_evaluator import WeeklyPaperEvaluation
 from .publication import canonical_sha256
 
@@ -116,11 +117,25 @@ def score_ready_paper(
             )
             pairs = list(evaluation.pair_rows)
             scores_by_hotkey = {row.miner_id: row.score for row in evaluation.pipeline.scores}
+            gold_candidates = []
+            if stage == "final" and baseline[0]["role"] == "incumbent":
+                gold_candidates = [{
+                    "case": {
+                        "case_id": claim.case.case_id,
+                        "paper_id": claim.case.paper_id,
+                        "challenger_hotkey": claim.case.challenger_hotkey,
+                        "incumbent_hotkey": claim.case.incumbent_hotkey,
+                        "excluded_team_ids": sorted(claim.case.excluded_team_ids),
+                    },
+                    "case_public": dict(claim.case_public),
+                    "answer_private": dict(claim.answer_private),
+                } for claim in contested_claims_for_paper(round_id, evaluation, entries)]
             silver = {
                 "silver_record": evaluation.pipeline.silver_record.model_dump(mode="json"),
                 "diff_cases": [row.model_dump(mode="json") for row in evaluation.pipeline.diff_cases],
                 "adjudication_consensus": [row.model_dump(mode="json")
                                            for row in evaluation.pipeline.adjudication_consensus],
+                "gold_candidates": gold_candidates,
             }
         if (len(pairs) != len(challengers)
             or {row["challenger_hotkey"] for row in pairs} != {row["hotkey"] for row in challengers}

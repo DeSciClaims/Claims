@@ -1,5 +1,10 @@
 from competition.gold import GoldCase
-from competition.gold_controller import ContestedClaim, prepare_gold_review, tally_closed_gold_review
+from types import SimpleNamespace
+
+from competition.gold_controller import (
+    ContestedClaim, contested_claims_for_paper, frozen_gold_candidates,
+    prepare_gold_review, tally_closed_gold_review,
+)
 
 
 class Backend:
@@ -63,3 +68,85 @@ def test_gold_controller_draws_then_tallies_only_closed_outside_team_votes():
     assert result.decided_contested_claims == 60
     assert result.incumbent_supported == 60
     assert result.refusal is True
+
+
+def test_gold_candidates_only_include_split_cases_with_pairwise_credit_effect():
+    entries = [
+        {"hotkey": "incumbent", "team_id": "team-i", "role": "incumbent"},
+        {"hotkey": "challenger", "team_id": "team-c", "role": "challenger"},
+        {"hotkey": "other", "team_id": "team-o", "role": "challenger"},
+    ]
+    def candidate(candidate_id, owner):
+        return SimpleNamespace(candidate_id=candidate_id, miner_id=owner)
+
+    def unit(unit_id, candidate_ids, case_id):
+        return SimpleNamespace(
+            silver_unit_id=unit_id, required_for_completeness=True,
+            scoring_mode="required", equivalent_candidate_ids=candidate_ids,
+            adjudication_case_ids=[case_id], statement=unit_id,
+            source_quotes=["The source states a result."], source_span_ids=["span-1"],
+        )
+
+    def consensus(case_id, *dispositions):
+        return SimpleNamespace(
+            case_id=case_id,
+            votes=[SimpleNamespace(disposition=value) for value in dispositions],
+        )
+
+    pipeline = SimpleNamespace(
+        paper_id="paper-1",
+        miner_submissions=[
+            SimpleNamespace(candidates=[candidate("i", "incumbent")]),
+            SimpleNamespace(candidates=[candidate("c", "challenger")]),
+            SimpleNamespace(candidates=[candidate("o", "other")]),
+        ],
+        adjudication_consensus=[
+            consensus("split-c", "miner_error", "reference_error"),
+            consensus("split-shared", "miner_error", "reference_error"),
+            consensus("agreed", "reference_error", "reference_error"),
+            consensus("split-o", "miner_error", "reference_error"),
+        ],
+        diff_cases=[SimpleNamespace(case_id=case_id, miner_id=owner, question="Which claim is supported?")
+                    for case_id, owner in (("split-c", "challenger"),
+                                           ("split-shared", "challenger"),
+                                           ("agreed", "challenger"),
+                                           ("split-o", "other"))],
+        silver_record=SimpleNamespace(silver_units=[
+            unit("exclusive", ["c"], "split-c"),
+            unit("shared", ["c", "i"], "split-shared"),
+            unit("not-split", ["c"], "agreed"),
+            unit("other-only", ["o"], "split-o"),
+        ]),
+    )
+    evaluation = SimpleNamespace(
+        pipeline=pipeline,
+        pair_rows=({"challenger_hotkey": "challenger", "baseline_hotkey": "incumbent"},),
+    )
+    cases = contested_claims_for_paper("round-1", evaluation, entries)
+    assert len(cases) == 1
+    assert cases[0].case.excluded_team_ids == {"team-c", "team-i"}
+    assert cases[0].case_public["statement"] == "exclusive"
+    assert cases[0].answer_private["tiebreak"] == "challenger"
+    assert cases == contested_claims_for_paper("round-1", evaluation, entries)
+
+
+def test_gold_candidates_replay_from_frozen_final_receipts():
+    class FrozenBackend:
+        def list_sample(self, _):
+            return [{"stage": "screen", "paper_id": "unused"},
+                    {"stage": "final", "paper_id": "paper-1"}]
+
+        def get_paper_evaluation(self, _, stage, paper_id):
+            assert stage == "final" and paper_id == "paper-1"
+            return {"result_private": {"silver": {"gold_candidates": [{
+                "case": {"case_id": "case-1", "paper_id": "paper-1",
+                         "challenger_hotkey": "challenger", "incumbent_hotkey": "incumbent",
+                         "excluded_team_ids": ["team-c", "team-i"]},
+                "case_public": {"question": "Which claim is supported?"},
+                "answer_private": {"tiebreak": "challenger"},
+            }]}}}
+
+    cases = frozen_gold_candidates("round-1", backend=FrozenBackend())
+    assert len(cases) == 1
+    assert cases[0].case.case_id == "case-1"
+    assert cases[0].answer_private == {"tiebreak": "challenger"}
