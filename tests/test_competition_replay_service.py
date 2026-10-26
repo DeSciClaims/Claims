@@ -8,6 +8,7 @@ import pytest
 
 from competition import replay_pilot_factory
 from competition.replay_pilot_factory import _private_receipts
+from competition.replay_round_registry import ReplayRoundRegistry
 from neurons import competition_replay_service
 
 
@@ -58,6 +59,67 @@ def test_replay_service_redacts_errors(monkeypatch, capsys, tmp_path):
     assert json.loads(capsys.readouterr().err) == {
         "round_id": "week-1", "role": "controller", "status": "error",
         "error_type": "RuntimeError",
+    }
+
+
+def test_replay_registry_discovers_new_rounds_and_rejects_changed_receipts(tmp_path):
+    rounds = tmp_path / "rounds"
+    dbs = tmp_path / "dbs"
+    rounds.mkdir(mode=0o700)
+    dbs.mkdir(mode=0o700)
+    first = rounds / "week-1.json"
+    first.write_text('{"round_id":"week-1"}')
+    first.chmod(0o600)
+    calls = []
+
+    def controller(round_id, backend_url, db_path):
+        calls.append((round_id, backend_url, db_path))
+        return SimpleNamespace(run_once=lambda: {"status": "waiting_for_scores",
+                                                 "secret": "never-print"})
+
+    registry = ReplayRoundRegistry(
+        factory=SimpleNamespace(create_replay_controller=controller),
+        role="controller", backend_url="https://backend.example",
+        rounds_dir=rounds, db_dir=dbs,
+    )
+    assert registry.run_once() == [{
+        "round_id": "week-1", "role": "controller", "status": "waiting_for_scores",
+    }]
+    second = rounds / "week-2.json"
+    second.write_text('{"round_id":"week-2"}')
+    second.chmod(0o600)
+    assert [row["round_id"] for row in registry.run_once()] == ["week-1", "week-2"]
+    assert calls == [
+        ("week-1", "https://backend.example", dbs / "week-1.sqlite"),
+        ("week-2", "https://backend.example", dbs / "week-2.sqlite"),
+    ]
+    first.write_text('{"round_id":"week-1","changed":true}')
+    rows = registry.run_once()
+    assert rows[0] == {"round_id": "week-1", "role": "controller",
+                       "status": "error", "error_type": "ValueError"}
+    assert rows[1]["status"] == "waiting_for_scores"
+
+
+def test_replay_service_auto_rounds_uses_private_receipts(monkeypatch, capsys, tmp_path):
+    rounds = tmp_path / "rounds"
+    dbs = tmp_path / "dbs"
+    rounds.mkdir(mode=0o700)
+    dbs.mkdir(mode=0o700)
+    path = rounds / "week-1.json"
+    path.write_text('{"round_id":"week-1"}')
+    path.chmod(0o600)
+    monkeypatch.setenv("CLAIMS_COMPETITION_REPLAY_ROUNDS_DIR", str(rounds))
+    monkeypatch.setattr(competition_replay_service, "_factory", lambda _: SimpleNamespace(
+        create_replay_controller=lambda *_: SimpleNamespace(run_once=lambda: {
+            "status": "waiting_for_scores", "secret": "never-print",
+        }),
+    ))
+    assert competition_replay_service.main([
+        "--role", "controller", "--auto-rounds", "--db-dir", str(dbs),
+        "--backend-url", "https://backend.example", "--once",
+    ]) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "round_id": "week-1", "role": "controller", "status": "waiting_for_scores",
     }
 
 

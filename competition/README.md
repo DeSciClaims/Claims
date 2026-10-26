@@ -298,6 +298,10 @@ Hippius, Bifrost, Targon, worker SSH, PDF allowlist, and provisional judge
 settings used by the corresponding pilot factories. Set
 `CLAIMS_HIPPIUS_REPLAY_LOG_BUCKET` to a separate bucket: replay job IDs can
 match primary job IDs, so their private logs must not share an object keyspace.
+With `--auto-rounds --db-dir PATH`, the same service discovers private
+`<round_id>.json` receipts as they arrive and keeps one local SQLite ledger per
+round. A changed receipt is rejected; a fault in one round does not stop the
+others.
 After the local final score grid is complete, the controller applies the
 frozen automatic code thresholds, output-copy check, and denied-egress audit
 to its own job and Silver receipts and freezes a private final audit. A
