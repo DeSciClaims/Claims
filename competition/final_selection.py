@@ -37,6 +37,7 @@ class FinalSelection:
     decision: str
     winner_gain: float
     verdicts: tuple[FinalistVerdict, ...]
+    final_pair_rows: tuple[dict, ...] = ()
 
 
 def _difference_se(left: PairedResult, right: PairedResult) -> float:

@@ -50,6 +50,8 @@ def publish_selected_round(
     ) for row in selection.verdicts]
     if set(gold_by_hotkey) != finalist_hotkeys and round_record["status"] == "gold_closed":
         raise ValueError("closed Gold results must cover every finalist")
+    if round_record["status"] == "gold_closed" and not selection.final_pair_rows:
+        raise ValueError("closed Gold publication needs post-escalation final pairs")
     if round_record["status"] == "final" and gold_by_hotkey:
         raise ValueError("unclosed Gold results cannot be published")
     production = None
@@ -80,6 +82,7 @@ def publish_selected_round(
         "winner_gain": selection.winner_gain,
         "finalists": [asdict(row) for row in selection.verdicts],
         "gold": {hotkey: asdict(result) for hotkey, result in sorted(gold_by_hotkey.items())},
+        "final_pair_scores": list(selection.final_pair_rows),
     }
     weights = {
         "vector": [{"uid": uid, "weight": weight} for uid, weight in plan.weights_by_uid.items()],

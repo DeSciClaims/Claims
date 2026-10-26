@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Mapping, Protocol
 
 from .final_selection import FinalSelection, Finalist, select_final_production
 from .gold import GoldResult
+from .gold_controller import closed_gold_decisions
+from .gold_override import rescore_final_paper_from_escalations
 from .policy import PaperPairScore
 
 
@@ -15,6 +18,10 @@ class FinalBackend(Protocol):
     def list_sample(self, round_id: str) -> list[dict[str, Any]]: ...
     def list_stage_pairs(self, round_id: str, stage: str) -> list[dict[str, Any]]: ...
     def list_submissions(self, round_id: str) -> list[dict[str, Any]]: ...
+    def list_gold_cases(self, round_id: str, *, include_answers: bool = False) -> list[dict[str, Any]]: ...
+    def list_gold_voters(self, round_id: str) -> list[dict[str, Any]]: ...
+    def list_gold_votes(self, round_id: str) -> list[dict[str, Any]]: ...
+    def get_paper_evaluation(self, round_id: str, stage: str, paper_id: str) -> dict[str, Any] | None: ...
 
 
 def select_ready_final(
@@ -61,6 +68,33 @@ def select_ready_final(
         grid[key] = row
     if set(grid) != expected:
         raise ValueError("final pair grid is incomplete")
+    if round_record["status"] == "gold_closed" and stage == "final":
+        cases = backend.list_gold_cases(round_id, include_answers=True)
+        escalation_cases = [case for case in cases
+                            if "escalation" in case["case_public"].get("review_purposes", [])]
+        if escalation_cases:
+            decisions = closed_gold_decisions(round_id, backend=backend)
+            by_paper: dict[str, list[dict[str, Any]]] = {}
+            for case in cases:
+                by_paper.setdefault(case["paper_id"], []).append(case)
+            for paper_id in {case["paper_id"] for case in escalation_cases}:
+                receipt = backend.get_paper_evaluation(round_id, "final", paper_id)
+                if receipt is None:
+                    raise ValueError("escalated final paper has no frozen evaluation")
+                frozen_result = receipt["result_private"]
+                for original in frozen_result["pairs"]:
+                    key = (paper_id, original["challenger_hotkey"])
+                    stored = grid.get(key)
+                    if (stored is None or original["baseline_hotkey"] != stored["baseline_hotkey"]
+                        or original["challenger_score"] != stored["challenger_score"]
+                        or original["baseline_score"] != stored["baseline_score"]):
+                        raise ValueError("provisional final pair differs from frozen evaluation")
+                for adjusted in rescore_final_paper_from_escalations(
+                    frozen_result, sealed_cases=by_paper[paper_id], decisions=decisions,
+                ):
+                    key = (paper_id, adjusted["challenger_hotkey"])
+                    grid[key] = {**grid[key], "challenger_score": adjusted["challenger_score"],
+                                 "baseline_score": adjusted["baseline_score"]}
     faults = {paper_id: any(grid[(paper_id, row["hotkey"])]["infrastructure_fault"]
                             for row in challengers) for paper_id in paper_ids}
     committed = {row["hotkey"]: row["commit_block"] for row in backend.list_submissions(round_id)
@@ -79,7 +113,8 @@ def select_ready_final(
             code_passed_by_hotkey[hotkey], copy_by_hotkey[hotkey],
             gold_by_hotkey[hotkey].refusal if hotkey in gold_by_hotkey else False,
         ))
-    return select_final_production(
+    selection = select_final_production(
         finalists, incumbent_hotkey=round_record["incumbent_hotkey"],
         incumbent_team_id=baseline[0]["team_id"] if stage == "final" else None,
     )
+    return replace(selection, final_pair_rows=tuple(grid[key] for key in sorted(grid)))

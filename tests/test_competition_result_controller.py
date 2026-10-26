@@ -41,7 +41,11 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
     selection = FinalSelection("winner", "new_crown", 0.04, (
         FinalistVerdict("winner", "new-team", 0.04, 0.005, 500, True, "cleared"),
         FinalistVerdict("runner", "runner-team", 0.02, 0.005, 500, True, "cleared"),
-    ))
+    ), final_pair_rows=tuple({
+        "stage": "final", "paper_id": "paper-1", "challenger_hotkey": hotkey,
+        "baseline_hotkey": "incumbent", "challenger_score": score,
+        "baseline_score": 0.5, "infrastructure_fault": False,
+    } for hotkey, score in (("winner", 0.54), ("runner", 0.52))))
     receipt = publish_selected_round(
         "week2", backend=backend, signer=signer, selection=selection,
         operator_hotkey="operator", uid_by_hotkey={
@@ -60,6 +64,7 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
     )
     bundle = receipt["bundle"]
     assert bundle["results"]["gold"]["winner"]["refusal"] is False
+    assert len(bundle["results"]["final_pair_scores"]) == 2
     assert {row["uid"]: row["weight"] for row in bundle["weights"]["vector"]} == {
         0: 0.01, 1: 0.07, 2: 0.02, 9: 0.90,
     }

@@ -36,6 +36,9 @@ class Backend:
     def list_submissions(self, _round_id):
         return [{"hotkey": "challenger", "status": "accepted", "commit_block": 120}]
 
+    def list_gold_cases(self, _round_id, *, include_answers=False):
+        return []
+
 
 def test_final_controller_requires_complete_grid_and_all_verdicts():
     backend = Backend()
@@ -55,9 +58,51 @@ def test_closed_gold_veto_blocks_otherwise_clear_crown():
               "copy_by_hotkey": {"challenger": False}}
     selected = select_ready_final("week2", backend=backend, gold_by_hotkey={}, **checks)
     assert selected.production_hotkey == "challenger"
+    assert len(selected.final_pair_rows) == 5
     backend.status = "gold_closed"
     veto = GoldResult(60, 60, 45, 0.75, True)
     refused = select_ready_final("week2", backend=backend,
                                  gold_by_hotkey={"challenger": veto}, **checks)
     assert refused.production_hotkey == "incumbent"
     assert refused.verdicts[0].reason == "gold_refused"
+
+
+def test_closed_escalation_scores_feed_crown_selection(monkeypatch):
+    backend = Backend()
+    backend.status = "gold_closed"
+    case = {
+        "round_id": "week2", "case_id": "gold-1", "paper_id": "paper-0",
+        "challenger_hotkey": "challenger", "incumbent_hotkey": "incumbent",
+        "excluded_team_ids": ["incumbent-team", "other-team"],
+        "case_public": {"review_purposes": ["escalation"]},
+        "answer_private": {"silver_unit_id": "unit-1", "tiebreak": "challenger"},
+    }
+    backend.list_gold_cases = lambda _round_id, **_: [case]
+    backend.list_gold_voters = lambda _round_id: [
+        {"voter_hotkey": f"voter-{index}", "team_id": f"outside-{index}"}
+        for index in range(12)
+    ]
+    backend.list_gold_votes = lambda _round_id: [
+        {"case_id": "gold-1", "voter_hotkey": f"voter-{index}", "choice": "incumbent"}
+        for index in range(12)
+    ]
+    backend.get_paper_evaluation = lambda _round_id, _stage, _paper_id: {
+        "result_private": {"pairs": [{
+            "paper_id": "paper-0", "challenger_hotkey": "challenger",
+            "baseline_hotkey": "incumbent", "challenger_score": 0.55,
+            "baseline_score": 0.50, "infrastructure_fault": False,
+        }]},
+    }
+    def adjusted(_result, *, sealed_cases, decisions):
+        assert sealed_cases == [case] and decisions["gold-1"].choice == "incumbent"
+        return [{**backend.get_paper_evaluation("week2", "final", "paper-0")["result_private"]["pairs"][0],
+                 "challenger_score": 0.0}]
+    monkeypatch.setattr("competition.final_controller.rescore_final_paper_from_escalations", adjusted)
+    selected = select_ready_final(
+        "week2", backend=backend, code_passed_by_hotkey={"challenger": True},
+        copy_by_hotkey={"challenger": False},
+        gold_by_hotkey={"challenger": GoldResult(0, 0, 0, None, False)},
+    )
+    assert selected.production_hotkey == "incumbent"
+    assert selected.verdicts[0].mean_gain < 0
+    assert selected.final_pair_rows[0]["challenger_score"] == 0.0

@@ -18,10 +18,13 @@ the route for a paid round until its confidence buckets have been measured on
 the Claims holdout; the older direct-choice benchmark shows weak rejection
 recall. The API key belongs only to the trusted controller.
 
-The final paper scorer now freezes candidate Gold review cases for primary
-judge splits with pairwise credit effects. Gold preparation can replay these
-private receipts without another stochastic judge run. Applying decided votes
-to final scores remains to be implemented.
+The final paper scorer freezes candidate review cases for primary judge splits
+with pairwise credit effects. Gold preparation independently draws a check
+sample and a capped escalation set from those private receipts. After voting
+closes, the final selector recomputes affected pair scores from frozen Silver
+data and decided escalation votes; the signed publication carries these final
+pair rows for the public pair endpoint. The Gold check alone supplies the
+crown veto. The automatic review schedule and live end-to-end run remain.
 
 ## Weight heartbeat
 
