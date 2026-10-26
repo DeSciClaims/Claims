@@ -7,7 +7,9 @@ from bittensor_wallet import Keypair
 from competition.commitments import manifest_id
 from competition.drand import DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY, VerifiedBeacon
 from competition.policy import commitment_hash
-from competition.round_controller import lock_ready_round, reveal_ready_sample
+from competition.round_controller import (
+    lock_ready_round, reveal_ready_sample, reveal_selected_sample, start_revealed_round,
+)
 from competition.sample_release import PaperRecord
 
 
@@ -107,3 +109,137 @@ def test_incomplete_qualification_aborts_before_archive_reads():
             "week1", backend=Backend(), archive=object(), netuid=111,
             package_for_upload=lambda item: b"bytes",
         )
+
+
+def test_revealed_round_duplicate_draw_resumes_after_partial_write(monkeypatch):
+    package = b"same-package"
+    digest = hashlib.sha256(package).hexdigest()
+    submissions = [{
+        "hotkey": hotkey, "team_id": team, "package_sha256": digest,
+        "status": "accepted", "qualified": True, "commit_block": 50,
+        "duplicate_of_hotkey": None, "duplicate_reason": None,
+        "duplicate_evidence": {},
+    } for hotkey, team in (("miner-a", "team-a"), ("miner-b", "team-b"))]
+
+    class Backend:
+        def __init__(self):
+            self.submissions = submissions
+            self.stages = []
+            self.calls = 0
+
+        def get_round(self, _round_id):
+            return {"status": "revealed", "drand_seed": "a" * 64,
+                    "incumbent_hotkey": None, "baseline_package_sha256": "b" * 64}
+
+        def list_stages(self, _round_id):
+            return self.stages
+
+        def list_submissions(self, _round_id):
+            return self.submissions
+
+        def list_sample(self, _round_id):
+            return [{"stage": "week_one"}]
+
+        def mark_duplicates(self, _round_id, verdicts):
+            self.calls += 1
+            for verdict in verdicts:
+                row = next(row for row in self.submissions if row["hotkey"] == verdict["hotkey"])
+                row.update(status="duplicate", duplicate_of_hotkey=verdict["duplicate_of_hotkey"],
+                           duplicate_reason=verdict["reason"], duplicate_evidence=verdict["evidence"])
+
+    backend = Backend()
+    baseline = {"hotkey": "reference", "team_id": "claims", "package_sha256": "b" * 64}
+
+    def start(_round_id, *, backend, challengers, baseline):
+        assert len(challengers) == 1
+        backend.stages.append({"stage": "week_one"})
+        return {"status": "started", "stage": "week_one"}
+
+    monkeypatch.setattr("competition.round_controller.start_initial_stage", start)
+    assert start_revealed_round(
+        "week1", backend=backend, baseline=baseline,
+        package_for_submission=lambda _: package,
+    )["status"] == "started"
+    assert backend.calls == 1
+    assert start_revealed_round(
+        "week1", backend=backend, baseline=baseline,
+        package_for_submission=lambda _: package,
+    )["status"] == "already_started"
+
+    backend.stages.clear()  # crash after duplicate write and before stage receipt
+    assert start_revealed_round(
+        "week1", backend=backend, baseline=baseline,
+        package_for_submission=lambda _: package,
+    )["status"] == "started"
+    assert backend.calls == 1
+
+
+def test_revealed_round_rejects_changed_duplicate_receipt(monkeypatch):
+    package = b"same-package"
+    digest = hashlib.sha256(package).hexdigest()
+
+    class Backend:
+        def get_round(self, _round_id):
+            return {"status": "revealed", "drand_seed": "a" * 64,
+                    "incumbent_hotkey": None, "baseline_package_sha256": "b" * 64}
+
+        def list_stages(self, _round_id):
+            return []
+
+        def list_submissions(self, _round_id):
+            return [{"hotkey": "miner-a", "team_id": "team-a", "package_sha256": digest,
+                     "status": "duplicate", "qualified": True, "commit_block": 50,
+                     "duplicate_of_hotkey": "wrong", "duplicate_reason": "wrong",
+                     "duplicate_evidence": {}},
+                    {"hotkey": "miner-b", "team_id": "team-b", "package_sha256": digest,
+                     "status": "accepted", "qualified": True, "commit_block": 50}]
+
+        def list_sample(self, _round_id):
+            return [{"stage": "week_one"}]
+
+    with pytest.raises(ValueError, match="stored duplicate verdict"):
+        start_revealed_round(
+            "week1", backend=Backend(),
+            baseline={"hotkey": "reference", "team_id": "claims", "package_sha256": "b" * 64},
+            package_for_submission=lambda _: package,
+        )
+
+
+def test_sample_release_uses_seeded_distinct_entrant_count(monkeypatch):
+    signature = b"a" * 96
+    beacon = VerifiedBeacon(
+        123, hashlib.sha256(signature).digest(), signature.hex(),
+        DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY, 1_800_000_030,
+    )
+    monkeypatch.setattr("competition.round_controller.beacon_for_round", lambda record, *, chain: beacon)
+    packages = {f"miner-{index}": f"package-{index}".encode() for index in range(4)}
+    packages["miner-1"] = packages["miner-0"]  # one duplicate leaves three distinct entrants
+
+    class Backend:
+        def get_round(self, _round_id):
+            return {"status": "locked", "incumbent_hotkey": "incumbent",
+                    "baseline_package_sha256": "b" * 64}
+
+        def list_submissions(self, _round_id):
+            return [{"hotkey": hotkey, "team_id": hotkey,
+                     "package_sha256": hashlib.sha256(package).hexdigest(),
+                     "qualified": True, "status": "accepted"}
+                    for hotkey, package in packages.items()]
+
+        def reveal_sample(self, _round_id, receipt):
+            self.receipt = receipt
+            return {"status": "revealed"}
+
+    backend = Backend()
+    papers = [PaperRecord(f"paper-{index}", hashlib.sha256(str(index).encode()).hexdigest())
+              for index in range(500)]
+    result = reveal_selected_sample(
+        "week2", backend=backend, chain=object(), papers=papers,
+        baseline={"hotkey": "incumbent", "team_id": "incumbent-team",
+                  "package_sha256": "b" * 64},
+        package_for_submission=lambda row: packages[row["hotkey"]],
+        final_count=500,
+    )
+    assert result["selected_count"] == 3
+    assert result["stages"] == ["final"]
+    assert {row["stage"] for row in backend.receipt["papers"]} == {"final"}
