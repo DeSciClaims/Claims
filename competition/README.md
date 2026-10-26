@@ -5,6 +5,24 @@ They lock submissions, release the sample, run and score paper jobs, tally Gold,
 and sign the weekly publication. See the Team vault engineering plan for the
 round schedule and repository ownership.
 
+## Early-stage Decision API pilot
+
+The Zils checkpoint named in the reward proposal is unavailable. The
+`OpenAIDecisionsRouter` is a temporary trusted-controller adapter for the
+pre-screen and screen. It submits only single-candidate cases with source
+context to OpenAI Decisions (`gpt-6-luna`); pairs, missing source context, and
+choices below the frozen stage threshold go to the two full judges. The router
+is never passed to the final or week-one evaluator. Freeze the provider,
+model, prompt hash, and thresholds in the weekly configuration. Do not enable
+the route for a paid round until its confidence buckets have been measured on
+the Claims holdout; the older direct-choice benchmark shows weak rejection
+recall. The API key belongs only to the trusted controller.
+
+The final paper scorer now freezes candidate Gold review cases for primary
+judge splits with pairwise credit effects. Gold preparation can replay these
+private receipts without another stochastic judge run. Applying decided votes
+to final scores remains to be implemented.
+
 ## Weight heartbeat
 
 After publication, a dedicated validator-wallet process reads the newest

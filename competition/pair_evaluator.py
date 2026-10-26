@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
+from validator.agent_v1.adjudication_models import AdjudicationConsensus, AdjudicationContextBundle
 from validator.agent_v1.adjudication_runner import AdjudicationPass
 from validator.agent_v1.orchestrator import (
     MinerArtifactSubmission,
@@ -29,6 +30,7 @@ def evaluate_weekly_paper(
     tiebreak_pass: AdjudicationPass | None = None,
     judge_id: str = "J1", stage: str = "final",
     source_context_by_span_id: dict[str, str] | None = None,
+    decision_router: Callable[[AdjudicationContextBundle], AdjudicationConsensus | None] | None = None,
 ) -> WeeklyPaperEvaluation:
     """Produce a common Silver record and pair-specific scores for one PDF.
 
@@ -38,7 +40,9 @@ def evaluate_weekly_paper(
     """
     if stage not in {"prescreen", "screen", "final", "week_one"}:
         raise ValueError("unknown competition stage")
-    if judge_id not in {"J1", "J2"} or len(adjudication_passes) != 2:
+    if (judge_id not in {"J1", "J2", "routing"} or len(adjudication_passes) != 2
+        or (judge_id == "routing" and (stage not in {"prescreen", "screen"} or decision_router is None))
+        or (stage in {"final", "week_one"} and decision_router is not None)):
         raise ValueError("two frozen judges and a J1/J2 assignment are required")
     if (not baseline_hotkey or not challenger_hotkeys
         or baseline_hotkey in challenger_hotkeys
@@ -58,6 +62,7 @@ def evaluate_weekly_paper(
         silver_record_id=silver_record_id, adjudication_passes=passes,
         tiebreak_pass=tiebreak_pass,
         source_context_by_span_id=source_context_by_span_id,
+        decision_router=decision_router,
     )
     candidates = {row.miner_id: row.candidates for row in pipeline.miner_submissions}
     findings = {row.miner_id: row.normal_findings for row in pipeline.miner_submissions}

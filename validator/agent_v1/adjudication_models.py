@@ -16,7 +16,7 @@ AdjudicationDisposition = Literal[
     "both_invalid",
     "insufficient_information",
 ]
-AdjudicationRoute = Literal["direct", "tiebreak", "manual_review", "miner_consensus", "unresolved"]
+AdjudicationRoute = Literal["direct", "tiebreak", "manual_review", "miner_consensus", "decision_model", "unresolved"]
 
 
 class AdjudicationContextBundle(BaseModel):
