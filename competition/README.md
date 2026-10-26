@@ -32,7 +32,10 @@ is never passed to the final or week-one evaluator. Freeze the provider,
 model, prompt hash, and thresholds in the weekly configuration. Do not enable
 the route for a paid round until its confidence buckets have been measured on
 the Claims holdout; the older direct-choice benchmark shows weak rejection
-recall. The API key belongs only to the trusted controller.
+recall. `FrozenEvaluationPolicy` checks the local configuration hash and
+published routing fields before constructing stage evaluators, then keeps
+Decisions out of the final and week-one stages. The API key belongs only to
+the trusted controller.
 
 The final paper scorer freezes contested claim cases, including primary judge
 splits with pairwise credit effects. The backend commits to a private Gold
