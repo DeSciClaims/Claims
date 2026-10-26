@@ -11,7 +11,8 @@ import hashlib
 import json
 import subprocess
 from dataclasses import dataclass
-from typing import Any, Callable
+from datetime import datetime
+from typing import Any, Callable, Mapping, Protocol
 
 
 DEFAULT_CHAIN_HASH = "8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce"
@@ -26,6 +27,12 @@ class VerifiedBeacon:
     chain_hash: str
     public_key: str
     scheduled_at: int
+
+
+class BlockClock(Protocol):
+    def get_current_block(self) -> int: ...
+
+    def get_timestamp(self, block: int) -> datetime: ...
 
 
 def first_round_after(timestamp: int, *, genesis_time: int, period_seconds: int) -> int:
@@ -83,3 +90,20 @@ def fetch_verified_beacon(
         target_round, seed, signature_hex, chain_hash, public_key,
         genesis + (target_round - 1) * period,
     )
+
+
+def beacon_for_round(
+    round_record: Mapping[str, Any], *, chain: BlockClock,
+    fetch: Callable[..., VerifiedBeacon] = fetch_verified_beacon,
+) -> VerifiedBeacon:
+    """Wait until D+600 exists, then use that block's chain timestamp."""
+    deadline = int(round_record["deadline_block"])
+    reveal = int(round_record["reveal_block"])
+    if reveal < deadline + 600:
+        raise ValueError("round reveal block must be at least D+600")
+    if chain.get_current_block() < reveal:
+        raise RuntimeError("post-deadline reveal block is not available yet")
+    timestamp = chain.get_timestamp(reveal)
+    if timestamp.tzinfo is None:
+        raise ValueError("chain block timestamp must include a timezone")
+    return fetch(block_timestamp=int(timestamp.timestamp()))

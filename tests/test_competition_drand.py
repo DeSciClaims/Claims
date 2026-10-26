@@ -1,8 +1,9 @@
 import hashlib
+from datetime import UTC, datetime
 
 import pytest
 
-from competition.drand import DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY, fetch_verified_beacon, first_round_after
+from competition.drand import DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY, beacon_for_round, fetch_verified_beacon, first_round_after
 
 
 def test_first_beacon_is_strictly_after_chain_block_time():
@@ -35,3 +36,25 @@ def test_drand_cli_beacon_is_pinned_and_hash_checked():
 
     with pytest.raises(RuntimeError, match="identity"):
         fetch_verified_beacon(block_timestamp=130, run_cli=wrong_identity)
+
+
+def test_round_waits_for_d_plus_600_block_timestamp():
+    class Chain:
+        height = 699
+
+        def get_current_block(self):
+            return self.height
+
+        def get_timestamp(self, block):
+            assert block == 700
+            return datetime.fromtimestamp(160, tz=UTC)
+
+    chain = Chain()
+    with pytest.raises(RuntimeError, match="not available"):
+        beacon_for_round({"deadline_block": 100, "reveal_block": 700}, chain=chain)
+    chain.height = 700
+    result = beacon_for_round(
+        {"deadline_block": 100, "reveal_block": 700}, chain=chain,
+        fetch=lambda *, block_timestamp: block_timestamp,
+    )
+    assert result == 160
