@@ -249,6 +249,8 @@ replay client verifies every vote signature, case, team, and exclusion before
 returning the closed record. It can independently tally the primary check
 cases, including a zero-case finalist. Applying those votes to an
 independently generated Silver case set remains a separate policy step.
+`align_closed_gold_prompts` measures exact one-to-one prompt overlap and
+leaves changed or ambiguous cases unmatched; it does not transfer decisions.
 `ReplayStore` persists that grid, leases baseline jobs before challengers,
 records worker results, and freezes independent per-paper adjudications and
 pair scores. `ReplayRuntimeBackend` combines only those local writes with
@@ -264,6 +266,9 @@ score grid. Rerun Bronze reads use the original stage even when the primary
 validator did not rerun it. Gold integration and its own signed vector still
 need implementation; the current
 components alone are not an independent validation.
+`select_replay_final` can apply the usual crown rules to the local complete
+pair grid and frozen local audit once a complete, policy-approved Gold outcome
+for the local finalists is supplied. It does not infer one from primary votes.
 `python -m neurons.competition_replay_service --role controller --round-id ID
 --backend-url URL --db-path PATH` runs the replay scoring step repeatedly;
 `--role worker --worker-id ID` runs one local paper job per poll. `--once`
