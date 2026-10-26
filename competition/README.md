@@ -114,6 +114,18 @@ contains `round_id`, the full public `configuration`, its SHA-256, and sealed
 credentials. The factory checks its configuration hash against the backend
 before it creates privileged adapters. Fresh Targon VMs still need an
 authenticated SSH host-key source for this factory to execute a job.
+`pilot_controller_factory` is the matching trusted controller adapter module.
+It reconstructs the provisional Decisions and J1/J2 runtime from the round
+file, checks its hash, and binds the archive node, validator signer, paper
+pool, and sealed packages. It loads `<round_id>.voters.json` only when Gold
+opens and `<round_id>.audit.json` only before publication. The voter file
+names qualified hotkeys and team IDs; the audit file binds each finalist
+hotkey and package SHA-256 to explicit `build`, `hardcoded_output`,
+`evaluation_context`, `cap_evasion`, and `fragmentation` pass/fail checks.
+Absent or mismatched files stop the transition. The controller checks voter
+qualification against backend consensus records and payout UIDs against the
+current metagraph. Producing the audit receipts automatically and checking
+live archive and signer compatibility remain integration work.
 For the final stage, it now recomputes each finalist's output-copy verdict
 from the frozen private Silver receipt and paired score grid. The 85% accepted
 unit overlap and two-standard-error gain rule is applied against the baseline,
