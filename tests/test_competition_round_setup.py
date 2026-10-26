@@ -24,7 +24,13 @@ def _draft():
             "manifest": {"entrypoint": "miner:main", "team_id": "claims"},
         },
         "configuration": {"pilot": True},
-        "policy_public": {"min_final_papers": 500},
+        "policy_public": {
+            "min_final_papers": 500,
+            "duplicate_dispute_window": {
+                "opens_at": "2026-11-10T09:00:00+00:00",
+                "closes_at": "2026-11-10T15:00:00+00:00",
+            },
+        },
     }
 
 
@@ -66,6 +72,25 @@ def test_prepare_round_rejects_invalid_calendar_before_writing(tmp_path):
     with pytest.raises(ValueError, match="after the intake lock"):
         prepare_round(draft, backend=object(), directory=tmp_path)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_prepare_round_freezes_review_only_dispute_window(tmp_path):
+    draft = _draft()
+
+    class Backend:
+        def create_round(self, payload):
+            return payload
+
+    prepare_round(draft, backend=Backend(), directory=tmp_path)
+    rules = json.loads((tmp_path / "week1.rules.json").read_text())
+    assert rules["policy"]["duplicate_dispute_window"] == draft["policy_public"]["duplicate_dispute_window"]
+    draft["policy_public"]["duplicate_dispute_window"]["opens_at"] = "2026-11-09T10:00:00+00:00"
+    with pytest.raises(ValueError, match="must follow the deadline"):
+        prepare_round(draft, backend=Backend(), directory=tmp_path)
+    draft = _draft()
+    del draft["policy_public"]["duplicate_dispute_window"]
+    with pytest.raises(ValueError, match="window is required"):
+        prepare_round(draft, backend=Backend(), directory=tmp_path)
 
 
 def test_pilot_setup_checks_real_judges_and_sealed_baseline_before_intake(

@@ -161,6 +161,23 @@ class CompetitionBackend:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/submissions"
         return self._request("GET", path)
 
+    def list_duplicate_disputes(self, round_id: str) -> list[dict[str, Any]]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/duplicate-disputes"
+        return self._request("GET", path)
+
+    def private_duplicate_disputes(self, round_id: str) -> list[dict[str, Any]]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/duplicate-disputes/private"
+        return self._request("GET", path)
+
+    def review_duplicate_dispute(
+        self, round_id: str, *, hotkey: str, status: str, public_explanation: str,
+    ) -> dict[str, Any]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/duplicate-disputes/review"
+        return self._request("POST", path, {
+            "hotkey": hotkey, "status": status,
+            "public_explanation": public_explanation,
+        })
+
     def worker_inference_cost_summary(self, round_id: str) -> dict[str, Any]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/costs"
         return self._request("GET", path)

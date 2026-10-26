@@ -18,6 +18,7 @@ class PublicationBackend(Protocol):
     def get_round(self, round_id: str) -> dict[str, Any]: ...
     def list_stages(self, round_id: str) -> list[dict[str, Any]]: ...
     def list_sample(self, round_id: str) -> list[dict[str, Any]]: ...
+    def list_duplicate_disputes(self, round_id: str) -> list[dict[str, Any]]: ...
     def worker_inference_cost_summary(self, round_id: str) -> dict[str, Any]: ...
     def worker_cost_ledger(self, round_id: str) -> dict[str, Any]: ...
     def publish_round(self, round_id: str, signed_receipt: dict[str, Any]) -> dict[str, Any]: ...
@@ -120,8 +121,15 @@ def publish_selected_round(
         sample=backend.list_sample(round_id), pair_rows=list(selection.final_pair_rows),
         stage=stages[-1]["stage"], finalist_hotkeys=finalist_hotkeys,
     )
+    duplicate_disputes = backend.list_duplicate_disputes(round_id)
+    if any(row["status"] == "pending" for row in duplicate_disputes):
+        raise ValueError("duplicate dispute is unresolved")
+    dispute_summary = [{key: row[key] for key in (
+        "hotkey", "team_id", "package_sha256", "status", "public_explanation",
+    )} for row in duplicate_disputes]
     results = {
         "decision": selection.decision,
+        "duplicate_disputes": dispute_summary,
         "production_hotkey": selection.production_hotkey,
         "fallback_reference_hotkey": baseline[0]["hotkey"]
         if selection.decision == "reference_fallback" else None,

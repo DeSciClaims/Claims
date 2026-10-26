@@ -84,6 +84,21 @@ team must use a separate qualified hotkey because stage jobs are keyed by hotkey
 freezes its private link list and publishes the hash with the sample. A restarted controller
 checks both before starting a stage. Links cannot be supplied in the
 pre-deadline round draft.
+The round's public policy must freeze `duplicate_dispute_window.opens_at` and
+`closes_at` as timezone-aware ISO timestamps after the submission deadline.
+During that window a hotkey-signed miner can appeal one duplicate exclusion per
+team through `claims-miner-uploads`. The backend stores the private reason and
+an immutable `pending`, `upheld`, or `overturned` review. An overturned appeal
+corrects the public record only; the stage entrants and scores remain frozen.
+All appeals must be resolved before the signed final result, which includes
+their public summary. The backend checks the summary against its appeal ledger.
+Reviewers use the controller-authenticated `GET
+/internal/competition/rounds/{round_id}/duplicate-disputes/private` to read
+the private reason, then `POST
+/internal/competition/rounds/{round_id}/duplicate-disputes/review` with
+`{"hotkey":"...","status":"overturned","public_explanation":"..."}`
+(`upheld` is the other status).
+The explanation is public; it must not quote private code.
 The week-one reference launch releases exactly 320 papers; later staged finals
 require at least 500. For later weeks the controller computes the final count
 from the frozen weekly dollar budget and the number of distinct challengers

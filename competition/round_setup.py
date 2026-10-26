@@ -106,6 +106,22 @@ def prepare_round(
         raise ValueError("reviewed duplicate links are malformed")
     if links:
         raise ValueError("duplicate links must be reviewed after the intake lock")
+    public_policy = draft.get("policy_public", {})
+    if not isinstance(public_policy, dict):
+        raise ValueError("public weekly policy is malformed")
+    dispute_window = public_policy.get("duplicate_dispute_window")
+    if dispute_window is None:
+        raise ValueError("public duplicate dispute window is required")
+    try:
+        opened = datetime.fromisoformat(dispute_window["opens_at"])
+        closed = datetime.fromisoformat(dispute_window["closes_at"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("duplicate dispute window is malformed") from exc
+    if (not isinstance(dispute_window, dict)
+        or set(dispute_window) != {"opens_at", "closes_at"}
+        or opened.tzinfo is None or closed.tzinfo is None
+        or opened <= deadline or opened >= closed):
+        raise ValueError("duplicate dispute window must follow the deadline")
     config_hash = canonical_sha256(configuration)
     rules = {
         "schema_version": RULES_SCHEMA,
@@ -119,7 +135,7 @@ def prepare_round(
         "incumbent_hotkey": incumbent,
         "baseline_package_sha256": baseline["package_sha256"],
         "reference_package_sha256": reference_hash,
-        "policy": draft.get("policy_public", {}),
+        "policy": public_policy,
     }
     rules_hash = canonical_sha256(rules)
     private = {
