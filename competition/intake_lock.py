@@ -106,6 +106,26 @@ class CompetitionBackend:
             },
         )
 
+    def completed_production_jobs(
+        self, *, network: str, after_job_id: str = "", limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        if network not in {"mainnet", "testnet"}:
+            raise ValueError("unknown competition network")
+        query = urllib.parse.urlencode({
+            "network": network, "after_job_id": after_job_id, "limit": limit,
+        })
+        return self._request(
+            "GET", "/internal/competition/production/jobs/completed?" + query,
+        )
+
+    def production_health(self, *, network: str, receipt_sha256: str) -> dict[str, Any]:
+        if network not in {"mainnet", "testnet"}:
+            raise ValueError("unknown competition network")
+        query = urllib.parse.urlencode({
+            "network": network, "receipt_sha256": receipt_sha256,
+        })
+        return self._request("GET", "/internal/competition/production/health?" + query)
+
     def create_round(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/internal/competition/rounds", payload)
 
