@@ -79,6 +79,10 @@ class CompetitionBackend:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/sample"
         return self._request("GET", path)
 
+    def mark_duplicates(self, round_id: str, verdicts: list[dict[str, Any]]) -> dict[str, Any]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/duplicates"
+        return self._request("POST", path, {"verdicts": verdicts})
+
     def enqueue_jobs(self, round_id: str, jobs: list[dict[str, Any]]) -> dict[str, Any]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/jobs"
         return self._request("POST", path, {"jobs": jobs})

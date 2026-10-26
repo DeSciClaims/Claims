@@ -28,6 +28,43 @@ class DuplicateSelection:
     evidence: tuple[tuple[str, str, str], ...]
 
 
+def duplicate_verdicts(
+    selection: DuplicateSelection, *, seed: bytes,
+    incumbent_hotkey: str | None = None,
+) -> list[dict[str, Any]]:
+    """Convert the deterministic draw into immutable, public backend receipts."""
+    if len(seed) < 16:
+        raise ValueError("duplicate draw seed is missing")
+    selected = set(selection.selected_hotkeys)
+    excluded = set(selection.excluded_hotkeys)
+    groups = [set(group) for group in selection.groups]
+    if (selected & excluded or set().union(*groups) != selected | excluded
+        or sum(len(group) for group in groups) != len(selected | excluded)):
+        raise ValueError("duplicate selection does not partition entries")
+    verdicts: list[dict[str, Any]] = []
+    for group in selection.groups:
+        winners = sorted(set(group) & selected)
+        if len(winners) > 1:
+            raise ValueError("duplicate group has multiple selected entries")
+        representative = winners[0] if winners else incumbent_hotkey
+        if not representative and set(group) & excluded:
+            raise ValueError("incumbent-copy group has no incumbent hotkey")
+        links = [{"left": left, "right": right, "reason": reason}
+                 for left, right, reason in selection.evidence
+                 if left in group and right in group]
+        for hotkey in sorted(set(group) & excluded):
+            verdicts.append({
+                "hotkey": hotkey, "duplicate_of_hotkey": representative,
+                "reason": "linked_group_draw" if winners else "incumbent_copy",
+                "evidence": {
+                    "group_hotkeys": list(group), "links": links,
+                    "draw_seed_sha256": hashlib.sha256(seed).hexdigest(),
+                    "selected_hotkey": winners[0] if winners else None,
+                },
+            })
+    return verdicts
+
+
 def qualified_entries(
     snapshot: ArchiveSnapshot, uploads: list[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:

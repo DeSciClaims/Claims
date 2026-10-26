@@ -5,7 +5,12 @@ import zipfile
 import pytest
 
 from competition.commitments import ArchiveSnapshot
-from competition.duplicates import python_source_fingerprint, qualified_entries, select_distinct_submissions
+from competition.duplicates import (
+    duplicate_verdicts,
+    python_source_fingerprint,
+    qualified_entries,
+    select_distinct_submissions,
+)
 
 
 def _wheel(source: str, prompt: str | None = None) -> bytes:
@@ -77,3 +82,21 @@ def test_team_comes_from_verified_sealed_manifest():
     assert qualified_entries(snapshot, [upload]) == [{**selected, "team_id": "my-team"}]
     with pytest.raises(ValueError, match="declared team"):
         qualified_entries(snapshot, [{**upload, "team_id": "another-team"}])
+
+
+def test_duplicate_selection_produces_public_exclusion_receipts():
+    entries = [_entry("a", "team-a", "1"), _entry("b", "team-b", "1")]
+    seed = b"s" * 32
+    selection = select_distinct_submissions(entries, seed=seed)
+    verdicts = duplicate_verdicts(selection, seed=seed)
+    assert len(verdicts) == 1
+    assert verdicts[0]["duplicate_of_hotkey"] == selection.selected_hotkeys[0]
+    assert verdicts[0]["reason"] == "linked_group_draw"
+    assert verdicts[0]["evidence"]["links"][0]["reason"] == "package_sha256"
+    incumbent_copy = select_distinct_submissions(
+        [_entry("copy", "other-team", "1")], seed=seed,
+        incumbent=_entry("incumbent", "incumbent-team", "1"),
+    )
+    receipts = duplicate_verdicts(incumbent_copy, seed=seed, incumbent_hotkey="incumbent")
+    assert receipts[0]["duplicate_of_hotkey"] == "incumbent"
+    assert receipts[0]["reason"] == "incumbent_copy"
