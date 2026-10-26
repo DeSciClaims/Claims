@@ -76,6 +76,10 @@ class CompetitionBackend:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/costs"
         return self._request("GET", path)
 
+    def worker_cost_ledger(self, round_id: str) -> dict[str, Any]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/cost-ledger"
+        return self._request("GET", path)
+
     def qualification_snapshot(self, round_id: str, hotkeys: list[str]) -> dict[str, Any]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/qualification"
         return self._request("POST", path, {"hotkeys": hotkeys})

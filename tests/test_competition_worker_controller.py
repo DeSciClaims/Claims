@@ -144,6 +144,19 @@ def test_worker_controller_revokes_key_before_private_log_and_completion():
     assert backend.receipt[1]["result"]["artifact"]["paper"]["paper_id"] == "paper-1"
 
 
+def test_worker_controller_persists_trusted_vm_estimate():
+    class TimedExecutor(Executor):
+        def run(self, **kwargs):
+            result = super().run(**kwargs)
+            return ExecutionOutput(result.status, result.artifact, result.log_bytes,
+                                   vm_elapsed_seconds=36, vm_cost_estimate_usd=0.01)
+
+    result, _, _, backend, _ = run(execution=TimedExecutor())
+    assert result["vm_elapsed_seconds"] == 36
+    assert result["vm_cost_estimate_usd"] == 0.01
+    assert backend.receipt[1]["result"]["vm_cost_estimate_usd"] == 0.01
+
+
 def test_retry_writes_a_distinct_log_object():
     _, _, first_logs, _, _ = run(attempt=1)
     _, _, second_logs, _, _ = run(attempt=2)

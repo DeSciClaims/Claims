@@ -100,12 +100,16 @@ def test_execution_always_disposes_vm(fail):
                 raise RuntimeError("guest failed")
             return ExecutionOutput("completed", {}, b"log")
 
-    executor = DisposableVmExecution(Lifecycle(), Transport())
+    times = iter((0.0, 36.0))
+    executor = DisposableVmExecution(Lifecycle(), Transport(), clock=lambda: next(times))
     arguments = dict(job={"job_id": JOB_ID}, package=b"pkg", pdf=b"pdf",
                      inference_base_url="https://gateway.example/v1", paper_key="scoped")
     if fail:
         with pytest.raises(RuntimeError, match="guest failed"):
             executor.run(**arguments)
     else:
-        assert executor.run(**arguments).status == "completed"
+        output = executor.run(**arguments)
+        assert output.status == "completed"
+        assert output.vm_elapsed_seconds == 36.0
+        assert output.vm_cost_estimate_usd == 0.01
     assert events == [("create", JOB_ID), ("run", UID), ("delete", UID)]

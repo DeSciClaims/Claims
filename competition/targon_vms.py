@@ -15,7 +15,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Protocol
 
 from .worker_controller import ExecutionOutput
@@ -42,19 +42,24 @@ class DisposableVmExecution:
 
     lifecycle: TargonVmLifecycle
     transport: WorkerTransport
+    clock: Callable[[], float] = field(default=time.monotonic, repr=False)
 
     def run(
         self, *, job: dict[str, Any], package: bytes, pdf: bytes,
         inference_base_url: str, paper_key: str,
     ) -> ExecutionOutput:
+        started = self.clock()
         vm = self.lifecycle.create(str(job["job_id"]))
         try:
-            return self.transport.run(
+            output = self.transport.run(
                 vm, job=job, package=package, pdf=pdf,
                 inference_base_url=inference_base_url, paper_key=paper_key,
             )
         finally:
             self.lifecycle.delete(vm.uid)
+        elapsed = max(0.0, self.clock() - started)
+        return replace(output, vm_elapsed_seconds=elapsed,
+                       vm_cost_estimate_usd=vm.hourly_cost_usd * elapsed / 3600)
 
 
 class TargonVmLifecycle:

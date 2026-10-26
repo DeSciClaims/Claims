@@ -23,6 +23,8 @@ class ExecutionOutput:
     log_bytes: bytes
     detail: str = ""
     denied_egress_packets: int = 0
+    vm_elapsed_seconds: float | None = None
+    vm_cost_estimate_usd: float | None = None
 
 
 class InferenceKeys(Protocol):
@@ -171,6 +173,12 @@ def run_claimed_job(
         or output.denied_egress_packets < 0
         or (output.status == "security_violation") != bool(output.denied_egress_packets)):
         raise ValueError("worker returned an invalid denied-egress counter")
+    vm_fields = (output.vm_elapsed_seconds, output.vm_cost_estimate_usd)
+    if any(value is not None for value in vm_fields) and (
+        any(value is None or isinstance(value, bool) or not isinstance(value, (int, float))
+            or not math.isfinite(value) or value < 0 for value in vm_fields)
+    ):
+        raise ValueError("worker returned invalid VM cost estimate")
     status = ("security_violation" if output.denied_egress_packets
               else "cap_exceeded" if usage.over_cap else output.status)
     if status not in {"completed", "build_failed", "package_failed", "invalid_output",
@@ -205,6 +213,8 @@ def run_claimed_job(
         "artifact": output.artifact if status == "completed" else None,
         "prompt_and_completion_tokens": usage.tokens,
         "inference_cost_usd": usage.dollar_cost_usd,
+        "vm_elapsed_seconds": output.vm_elapsed_seconds,
+        "vm_cost_estimate_usd": output.vm_cost_estimate_usd,
         "denied_egress_packets": output.denied_egress_packets,
         "token_limit": token_limit,
         "cap_source": cap_source,

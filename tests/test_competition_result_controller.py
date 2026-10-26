@@ -43,6 +43,14 @@ class Backend:
                 "by_stage": [{"stage": "final", "job_count": 6, "usd": "1.20000000"}],
                 "total_jobs": 6, "total_usd": "1.20000000"}
 
+    def worker_cost_ledger(self, round_id):
+        return {"round_id": round_id, "scope": "completed_worker_jobs",
+                "measured": {"worker_inference_usd": "1.20000000", "job_count": 6},
+                "estimated": {"worker_vm_usd": "0.06000000", "job_count": 6,
+                              "missing_job_count": 0},
+                "unreported_categories": ["judge_inference", "decision_api", "storage",
+                                          "failed_worker_attempts"], "completeness": "partial"}
+
     def publish_round(self, round_id, receipt):
         self.published = (round_id, receipt)
         return {"status": "published"}
@@ -100,6 +108,7 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
     assert len(bundle["results"]["final_pair_scores"]) == 4
     assert bundle["results"]["judge_diagnostics"]["winner"]["J1"]["paper_count"] == 1
     assert bundle["results"]["worker_inference_cost"]["total_usd"] == "1.20000000"
+    assert bundle["results"]["cost_ledger"]["estimated"]["worker_vm_usd"] == "0.06000000"
     assert bundle["results"]["copy_audit"]["winner"]["jaccard"] == 0.4
     assert bundle["results"]["worker_security_audit"]["winner"]["passed"] is True
     assert bundle["results"]["code_audit"]["failed_checks"] == {"winner": 0, "runner": 0}
