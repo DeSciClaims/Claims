@@ -7,11 +7,19 @@ adapter. Factories reconstruct credentials and frozen inputs outside miner VMs.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any, Callable, Mapping
 
 from .weekly_automation import tick_round
 from .worker_service import CompetitionWorkerCoordinator
+
+
+def _safe_status(result: Mapping[str, Any]) -> str:
+    status = result.get("status")
+    if not isinstance(status, str) or not re.fullmatch(r"[a-z_]{1,80}", status):
+        raise ValueError("competition step returned an invalid status")
+    return status
 
 
 def _pending(backend: Any, network: str) -> list[Mapping[str, Any]]:
@@ -49,7 +57,7 @@ def run_controller_cycle(
                 or inputs.paper_inputs.backend is not backend):
                 raise ValueError("controller factory differs from frozen round")
             result = tick_round(round_id, backend=backend, inputs=inputs, now=clock)
-            results.append({"round_id": round_id, **result})
+            results.append({"round_id": round_id, "status": _safe_status(result)})
         except Exception as exc:
             # Exception text can include provider responses or private data.
             results.append({"round_id": round_id, "status": "error",
@@ -75,7 +83,7 @@ def run_worker_cycle(
             result = coordinator.run_once()
             results.append({"round_id": round_id, "status": "idle"} if result is None
                            else {"round_id": round_id, "status": "job_processed",
-                                 "worker_status": result["status"]})
+                                 "worker_status": _safe_status(result)})
         except Exception as exc:
             results.append({"round_id": round_id, "status": "error",
                             "error_type": type(exc).__name__})

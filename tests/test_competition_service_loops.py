@@ -30,7 +30,7 @@ def test_controller_cycle_resumes_all_rounds_after_one_fault(monkeypatch):
         seen.append(round_id)
         if round_id == "old":
             raise RuntimeError("private provider response")
-        return {"status": "waiting_for_final_scores"}
+        return {"status": "waiting_for_final_scores", "gold_check_seed_private": "secret"}
 
     monkeypatch.setattr("competition.service_loops.tick_round", tick)
     result = run_controller_cycle(
@@ -43,6 +43,7 @@ def test_controller_cycle_resumes_all_rounds_after_one_fault(monkeypatch):
         {"round_id": "new", "status": "waiting_for_final_scores"},
     ]
     assert "private provider response" not in str(result)
+    assert "secret" not in str(result)
 
 
 def test_worker_cycle_only_claims_active_matching_rounds():
