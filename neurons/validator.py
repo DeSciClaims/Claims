@@ -1002,6 +1002,13 @@ class ClaimsValidator:
             help="Score miners and write audits without submitting weights.",
         )
         parser.add_argument(
+            "--claims.external-competition-weights",
+            dest="claims_external_competition_weights",
+            action="store_true",
+            default=_env_flag("CLAIMS_EXTERNAL_COMPETITION_WEIGHTS"),
+            help="Leave weight submission to the signed weekly competition heartbeat process.",
+        )
+        parser.add_argument(
             "--claims.payout-mode",
             dest="claims_payout_mode",
             choices=("winner-takes-most", "proportional", "bucket"),
@@ -1210,6 +1217,7 @@ class ClaimsValidator:
         config.claims_timeout = parsed_args.claims_timeout
         config.claims_max_steps = parsed_args.claims_max_steps
         config.claims_audit_only = parsed_args.claims_audit_only
+        config.claims_external_competition_weights = parsed_args.claims_external_competition_weights
         config.claims_payout_mode = parsed_args.claims_payout_mode
         config.claims_miner_burn_fraction = parsed_args.claims_miner_burn_fraction
         if not math.isfinite(config.claims_miner_burn_fraction) or not 0.0 <= config.claims_miner_burn_fraction < 1.0:
@@ -1893,7 +1901,7 @@ class ClaimsValidator:
                 self._record_timing_stage(scoring_timer)
                 self._record_miner_selection_evaluations(task=task, scores=scores)
                 weight_timer = _timing_start("weights", "Weight update")
-                weight_event = self._set_weights(scores)
+                weight_event = self._apply_payout_weights(scores)
                 self._active_weight_event = dict(weight_event)
                 self._record_timing_stage(weight_timer)
                 weight_persist_timer = _timing_start("weight_event_persist", "Persist weight event")
@@ -5788,6 +5796,13 @@ class ClaimsValidator:
             "model_contexts": _model_contexts_from_response_payload(payload),
         }
 
+    def _apply_payout_weights(self, scores: dict[int, float]) -> dict[str, Any]:
+        if getattr(self.config, "claims_external_competition_weights", False):
+            self.bt_logging.info("Weekly competition heartbeat manages validator weights.")
+            return {"status": "external_competition_weights", "weights": [],
+                    "calculated": False, "submitted": False}
+        return self._set_weights(scores)
+
     def _set_weights(self, scores: dict[int, float]) -> dict[str, Any]:
         if not scores:
             return self._set_weights_from_existing("no_scores")
@@ -7118,6 +7133,9 @@ def _run_config_snapshot(config: Any) -> dict[str, Any]:
         "claims_run_heartbeat_interval": float(getattr(config, "claims_run_heartbeat_interval", 60.0) or 0.0),
         "claims_max_steps": int(getattr(config, "claims_max_steps", 0) or 0),
         "claims_audit_only": bool(getattr(config, "claims_audit_only", False)),
+        "claims_external_competition_weights": bool(
+            getattr(config, "claims_external_competition_weights", False)
+        ),
         "claims_payout_mode": str(getattr(config, "claims_payout_mode", "winner-takes-most") or "winner-takes-most"),
         "claims_miner_burn_fraction": float(getattr(config, "claims_miner_burn_fraction", 0.0)),
         "claims_operator_share": float(getattr(config, "claims_operator_share", 0.0)),

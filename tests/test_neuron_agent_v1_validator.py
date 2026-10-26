@@ -1588,6 +1588,18 @@ def test_audit_only_calculates_winner_takes_most_weights_without_submitting() ->
     ]
 
 
+def test_external_competition_weight_mode_never_submits_consensus_batch_weights() -> None:
+    validator = ClaimsValidator.__new__(ClaimsValidator)
+    validator.config = SimpleNamespace(claims_external_competition_weights=True)
+    validator.bt_logging = _logger()
+    validator._set_weights = lambda _scores: pytest.fail("consensus batch must not set weights")
+
+    assert validator._apply_payout_weights({9: 0.8}) == {
+        "status": "external_competition_weights", "weights": [],
+        "calculated": False, "submitted": False,
+    }
+
+
 def _owner_burn_metagraph_info(
     *, miner_coldkey: str = "miner_coldkey", registered_owner_coldkey: str = "owner_coldkey"
 ) -> SimpleNamespace:
