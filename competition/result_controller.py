@@ -7,6 +7,7 @@ from typing import Any, Mapping, Protocol
 
 from .final_selection import FinalSelection
 from .gold import GoldResult
+from .judge_diagnostics import final_judge_diagnostics
 from .publication import publication_bundle, sign_publication
 from .weights import Payee, weekly_weight_plan
 
@@ -14,6 +15,7 @@ from .weights import Payee, weekly_weight_plan
 class PublicationBackend(Protocol):
     def get_round(self, round_id: str) -> dict[str, Any]: ...
     def list_stages(self, round_id: str) -> list[dict[str, Any]]: ...
+    def list_sample(self, round_id: str) -> list[dict[str, Any]]: ...
     def publish_round(self, round_id: str, signed_receipt: dict[str, Any]) -> dict[str, Any]: ...
 
 
@@ -79,6 +81,10 @@ def publish_selected_round(
         finalists=finalists, uid_by_hotkey=uid_by_hotkey,
         burn_uid=burn_uid, winner_gain=selection.winner_gain,
     )
+    judge_diagnostics = final_judge_diagnostics(
+        sample=backend.list_sample(round_id), pair_rows=list(selection.final_pair_rows),
+        stage=stages[-1]["stage"], finalist_hotkeys=finalist_hotkeys,
+    )
     results = {
         "decision": selection.decision,
         "production_hotkey": selection.production_hotkey,
@@ -89,6 +95,7 @@ def publish_selected_round(
         "gold_check": dict(gold_check) if gold_check else None,
         "known_answer_audit": dict(known_answer_audit) if known_answer_audit else None,
         "final_pair_scores": list(selection.final_pair_rows),
+        "judge_diagnostics": judge_diagnostics,
     }
     weights = {
         "vector": [{"uid": uid, "weight": weight} for uid, weight in plan.weights_by_uid.items()],

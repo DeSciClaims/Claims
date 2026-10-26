@@ -30,6 +30,12 @@ class Backend:
             {"hotkey": "runner", "role": "challenger", "team_id": "runner-team"},
         ]}]
 
+    def list_sample(self, _round_id):
+        return [
+            {"stage": "final", "paper_id": "paper-1", "judge_id": "J1"},
+            {"stage": "final", "paper_id": "paper-2", "judge_id": "J2"},
+        ]
+
     def publish_round(self, round_id, receipt):
         self.published = (round_id, receipt)
         return {"status": "published"}
@@ -42,10 +48,12 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
         FinalistVerdict("winner", "new-team", 0.04, 0.005, 500, True, "cleared"),
         FinalistVerdict("runner", "runner-team", 0.02, 0.005, 500, True, "cleared"),
     ), final_pair_rows=tuple({
-        "stage": "final", "paper_id": "paper-1", "challenger_hotkey": hotkey,
+        "stage": "final", "paper_id": paper_id, "judge_id": judge_id,
+        "challenger_hotkey": hotkey,
         "baseline_hotkey": "incumbent", "challenger_score": score,
         "baseline_score": 0.5, "infrastructure_fault": False,
-    } for hotkey, score in (("winner", 0.54), ("runner", 0.52))))
+    } for paper_id, judge_id in (("paper-1", "J1"), ("paper-2", "J2"))
+      for hotkey, score in (("winner", 0.54), ("runner", 0.52))))
     receipt = publish_selected_round(
         "week2", backend=backend, signer=signer, selection=selection,
         operator_hotkey="operator", uid_by_hotkey={
@@ -66,7 +74,8 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
     bundle = receipt["bundle"]
     assert bundle["results"]["gold"]["winner"]["refusal"] is False
     assert bundle["results"]["gold_check"]["seed"] == "c" * 64
-    assert len(bundle["results"]["final_pair_scores"]) == 2
+    assert len(bundle["results"]["final_pair_scores"]) == 4
+    assert bundle["results"]["judge_diagnostics"]["winner"]["J1"]["paper_count"] == 1
     assert {row["uid"]: row["weight"] for row in bundle["weights"]["vector"]} == {
         0: 0.01, 1: 0.07, 2: 0.02, 9: 0.90,
     }
