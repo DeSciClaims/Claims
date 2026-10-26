@@ -103,3 +103,56 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
     assert {row["uid"]: row["weight"] for row in bundle["weights"]["vector"]} == {
         0: 0.01, 1: 0.07, 2: 0.02, 9: 0.90,
     }
+
+
+def test_signed_reference_fallback_burns_all_miner_shares():
+    class ReferenceBackend(Backend):
+        def list_stages(self, _round_id):
+            return [
+                {"stage": "final", "entries": []},
+                {"stage": "rerun", "source_stage": "final", "entries": [
+                    {"hotkey": "reference", "role": "reference", "team_id": "claims",
+                     "package_sha256": "2" * 64},
+                    {"hotkey": "near", "role": "challenger", "team_id": "other-team"},
+                ]},
+            ]
+
+        def list_sample(self, _round_id):
+            return [
+                {"stage": "rerun", "paper_id": "paper-1", "judge_id": "J1"},
+                {"stage": "rerun", "paper_id": "paper-2", "judge_id": "J2"},
+            ]
+
+    backend = ReferenceBackend()
+    signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
+    selection = FinalSelection(
+        None, "reference_fallback", 0.0,
+        (FinalistVerdict("near", "other-team", 0.02, 0.05, 2, False,
+                         "below_crown_bar"),),
+        final_pair_rows=tuple({
+            "stage": "rerun", "paper_id": paper_id, "judge_id": judge_id,
+            "challenger_hotkey": "near", "baseline_hotkey": "reference",
+            "baseline_package_sha256": "2" * 64,
+            "challenger_score": 0.52, "baseline_score": 0.5,
+            "infrastructure_fault": False,
+        } for paper_id, judge_id in (("paper-1", "J1"), ("paper-2", "J2"))),
+    )
+    receipt = publish_selected_round(
+        "week2", backend=backend, signer=signer, selection=selection,
+        operator_hotkey="operator", uid_by_hotkey={"operator": 9, "near": 1},
+        qualified_by_hotkey={"near": True}, production_team_id="old-team",
+        gold_by_hotkey={"near": GoldResult(60, 60, 10, 1 / 6, False)},
+        copy_audit={"near": {"is_copy": False}},
+        worker_security_audit={
+            "reference": {"passed": True}, "near": {"passed": True},
+        },
+        gold_check={"seed": "c" * 64, "candidate_ids": [], "case_ids": []},
+    )
+    bundle = receipt["bundle"]
+    assert backend.published == ("week2", receipt)
+    assert bundle["results"]["decision"] == "reference_fallback"
+    assert bundle["results"]["fallback_reference_hotkey"] == "reference"
+    assert bundle["results"]["production_hotkey"] is None
+    assert bundle["weights"]["vector"] == [
+        {"uid": 0, "weight": 0.1}, {"uid": 9, "weight": 0.9},
+    ]

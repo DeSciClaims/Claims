@@ -44,3 +44,16 @@ def test_no_crown_does_not_pay_far_or_copy_finalists():
             operator_hotkey="operator", production=king, finalists=[],
             uid_by_hotkey={"operator": 9, "king": 0},
         )
+
+
+def test_reference_fallback_without_winner_burns_all_miner_shares():
+    plan = weekly_weight_plan(
+        operator_hotkey="operator", production=None,
+        finalists=[Payee("near", "other-team", True, gain=0.02)],
+        uid_by_hotkey={"operator": 9, "near": 1}, winner_gain=0.0,
+    )
+    assert plan.weights_by_uid == {0: 0.1, 9: 0.9}
+    assert plan.burned_fraction == pytest.approx(0.1)
+    assert [role for _, role, _ in plan.roles] == [
+        "operator", "production_burned", "runner_up_1_burned", "runner_up_2_burned",
+    ]

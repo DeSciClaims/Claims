@@ -68,9 +68,10 @@ def weekly_weight_plan(
     eligible = sorted(
         (
             item for item in finalists
-            if item.qualified and item.code_passed and not item.copy
+            if production is not None
+            and item.qualified and item.code_passed and not item.copy
             and item.gain >= winner_gain - 0.05
-            and (production is None or item.team_id != production.team_id)
+            and item.team_id != production.team_id
         ),
         key=lambda item: (-item.gain, item.hotkey),
     )
