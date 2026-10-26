@@ -34,7 +34,10 @@ class CompetitionBackend:
         self.base_url = base_url.rstrip("/")
         self.controller_token = controller_token
 
-    def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+    def _request(
+        self, method: str, path: str, payload: dict[str, Any] | None = None,
+        *, not_found_none: bool = False,
+    ) -> Any:
         request = urllib.request.Request(
             self.base_url + path,
             data=None if payload is None else json.dumps(payload, separators=(",", ":")).encode(),
@@ -48,6 +51,8 @@ class CompetitionBackend:
             with urllib.request.urlopen(request, timeout=30) as response:
                 return json.load(response)
         except urllib.error.HTTPError as exc:
+            if exc.code == 404 and not_found_none:
+                return None
             raise RuntimeError(f"competition backend returned HTTP {exc.code}") from exc
         except (urllib.error.URLError, OSError, TimeoutError) as exc:
             raise RuntimeError("competition backend is unavailable") from exc
@@ -169,6 +174,29 @@ class CompetitionBackend:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/jobs/claim"
         return self._request("POST", path, {
             "worker_id": worker_id, "lease_seconds": lease_seconds,
+        })
+
+    def list_paper_jobs(self, round_id: str, stage: str, paper_id: str) -> list[dict[str, Any]]:
+        path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/stages/" + urllib.parse.quote(stage, safe="")
+                + "/papers/" + urllib.parse.quote(paper_id, safe="") + "/jobs")
+        return self._request("GET", path)
+
+    def get_paper_evaluation(self, round_id: str, stage: str, paper_id: str) -> dict[str, Any] | None:
+        path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/stages/" + urllib.parse.quote(stage, safe="")
+                + "/papers/" + urllib.parse.quote(paper_id, safe="") + "/evaluation")
+        return self._request("GET", path, not_found_none=True)
+
+    def freeze_paper_evaluation(
+        self, round_id: str, stage: str, paper_id: str,
+        *, input_sha256: str, result_private: dict[str, Any],
+    ) -> dict[str, Any]:
+        path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/stages/" + urllib.parse.quote(stage, safe="")
+                + "/papers/" + urllib.parse.quote(paper_id, safe="") + "/evaluation")
+        return self._request("POST", path, {
+            "input_sha256": input_sha256, "result_private": result_private,
         })
 
     def complete_job(
