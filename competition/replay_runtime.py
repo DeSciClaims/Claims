@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
+from .drand import VerifiedBeacon, beacon_for_round, fetch_verified_beacon
 from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
 from .pilot_worker_factory import FrozenWorkerRules
 from .publication import canonical_sha256
 from .replay_inputs import CompetitionReplayInputs, validate_replay_snapshot
+from .replay_plan import build_replay_initial_plan
 from .replay_store import ReplayStore
 from .sample_release import PaperRecord, frozen_pool_hash
 from .worker_service import CompetitionWorkerCoordinator
@@ -73,6 +75,31 @@ class ReplayRuntimeBackend:
             or not result["source_url"]):
             raise ValueError("replay Bronze source differs from frozen paper")
         return result
+
+
+def initialize_replay_runtime(
+    round_id: str, *, store: ReplayStore, inputs: CompetitionReplayInputs,
+    archive: Any, netuid: int, storage: Any,
+    baseline_upload: Mapping[str, Any],
+    hotkey_public_key: Callable[[str], bytes],
+    fetch_beacon: Callable[..., VerifiedBeacon] = fetch_verified_beacon,
+) -> ReplayRuntimeBackend:
+    """Independently verify the full pool, beacon and packages before local work."""
+    snapshot = inputs.snapshot(round_id)
+    pool = inputs.paper_pool(
+        round_id, reference_release_id=snapshot["reference_release_id"],
+        expected_sha256=snapshot["paper_pool_sha256"],
+    )
+    beacon = beacon_for_round(snapshot, chain=archive, fetch=fetch_beacon)
+    plan = build_replay_initial_plan(
+        snapshot, archive=archive, netuid=netuid, paper_pool=pool,
+        verified_beacon=beacon,
+        package_for_upload=storage.package_for_submission,
+        hotkey_public_key=hotkey_public_key,
+        baseline_upload=baseline_upload,
+    )
+    store.initialize(snapshot, plan)
+    return ReplayRuntimeBackend(store, inputs, snapshot, tuple(pool))
 
 
 def create_replay_worker_coordinator(

@@ -2,15 +2,20 @@
 
 import io
 import json
+from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
 from competition.paper_inputs import CompetitionPaperInputs
 from competition.replay_inputs import CompetitionReplayInputs
-from competition.replay_runtime import ReplayRuntimeBackend
+from competition.replay_runtime import ReplayRuntimeBackend, initialize_replay_runtime
 from competition.replay_store import ReplayStore
 from competition.sample_release import PaperRecord
 from test_competition_replay_store import _inputs
+from test_competition_replay_plan import (
+    Archive, BASELINE, BEACON, PAPER_POOL, PUBLIC_KEY, _package, _snapshot,
+)
 
 
 def test_replay_runtime_uses_local_jobs_and_read_only_bronze(tmp_path):
@@ -100,3 +105,46 @@ def test_local_reference_rerun_reads_original_stage_bronze():
     assert requests == [
         "https://backend.example/internal/competition/replay/rounds/round-1/bronze/screen/paper-1",
     ]
+
+
+def test_replay_bootstrap_verifies_inputs_before_writing_local_jobs(tmp_path):
+    snapshot = _snapshot()
+    snapshot["reference_release_id"] = "release-1"
+    snapshot["reference_package_sha256"] = snapshot["baseline_package_sha256"]
+
+    class Inputs:
+        def snapshot(self, round_id):
+            assert round_id == "week-1"
+            return snapshot
+
+        def paper_pool(self, round_id, *, reference_release_id, expected_sha256):
+            assert (round_id, reference_release_id, expected_sha256) == (
+                "week-1", "release-1", snapshot["paper_pool_sha256"],
+            )
+            return PAPER_POOL
+
+    class ClockArchive(Archive):
+        def get_current_block(self):
+            return 700
+
+        def get_timestamp(self, block):
+            assert block == 700
+            return datetime(2026, 10, 30, tzinfo=UTC)
+
+    store = ReplayStore(tmp_path / "replay.sqlite")
+    args = {
+        "store": store, "inputs": Inputs(), "archive": ClockArchive(),
+        "netuid": 111,
+        "storage": SimpleNamespace(package_for_submission=_package),
+        "baseline_upload": {
+            "hotkey": "reference", "team_id": "claims-reference",
+            "package_sha256": snapshot["baseline_package_sha256"],
+            "package_size_bytes": len(BASELINE),
+        },
+        "hotkey_public_key": lambda _: PUBLIC_KEY,
+        "fetch_beacon": lambda **_: BEACON,
+    }
+    backend = initialize_replay_runtime("week-1", **args)
+    assert backend.list_stages("week-1")[0]["stage"] == "week_one"
+    assert len(backend.list_paper_jobs("week-1", "week_one", "paper-1")) == 3
+    assert initialize_replay_runtime("week-1", **args).store is store

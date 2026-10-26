@@ -236,6 +236,8 @@ archive-node commitment for each qualified package, redraws the sample from a
 separately verified drand beacon and hash-checked full paper pool, reproduces the
 duplicate lottery, and derives the first-stage job grid. It needs a separately
 transferred baseline package receipt whose bytes match the public hash.
+`initialize_replay_runtime` combines these reads with the independent archive
+and beacon check, then writes the verified plan into the local replay store.
 `ReplayStore` persists that grid, leases baseline jobs before challengers,
 records worker results, and freezes independent per-paper adjudications and
 pair scores. `ReplayRuntimeBackend` combines only those local writes with
