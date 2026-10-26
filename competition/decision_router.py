@@ -83,6 +83,8 @@ class OpenAIDecisionsRouter:
         if not isinstance(answers, list) or len(answers) != 1:
             raise ValueError("Decisions response has no unique answer")
         answer = answers[0]
+        if answer.get("type") == "refusal" and answer.get("name") == "supported_candidate":
+            return None
         if answer.get("type") != "choice" or answer.get("name") != "supported_candidate":
             raise ValueError("Decisions response has an unexpected answer type")
         choice = answer.get("choice")

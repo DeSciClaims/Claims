@@ -73,6 +73,18 @@ def test_decision_router_rejects_malformed_probabilities():
         router(_context())
 
 
+def test_decision_router_sends_refusals_to_full_judges():
+    class Response:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"answers": [{"type": "refusal", "name": "supported_candidate"}]}
+
+    router = OpenAIDecisionsRouter("secret", 0.8, http_post=lambda *_, **__: Response())
+    assert router(_context()) is None
+
+
 def test_early_stage_routes_singleton_without_invoking_judges():
     def artifact(claims):
         return {"paper": {"paper_id": "paper-1"}, "logic": {"claims": claims}}
