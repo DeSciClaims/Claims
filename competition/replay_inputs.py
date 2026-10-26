@@ -14,6 +14,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import asdict
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
 from .drand import VerifiedBeacon
@@ -232,6 +233,66 @@ class CompetitionReplayInputs:
         if frozen_pool_hash(papers) != expected_sha256:
             raise ValueError("replay paper pool differs from frozen hash")
         return papers
+
+    def qualification_evidence(
+        self, round_id: str, *, hotkeys: list[str], deadline_at: str,
+    ) -> dict[str, Any]:
+        """Check source-round evidence against the frozen seven-day cutoff."""
+        if (not 1 <= len(hotkeys) <= 8 or len(set(hotkeys)) != len(hotkeys)
+            or any(not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", hotkey)
+                   for hotkey in hotkeys)):
+            raise ValueError("replay qualification needs distinct payout hotkeys")
+        try:
+            cutoff = datetime.fromisoformat(deadline_at)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("replay qualification has no frozen deadline") from exc
+        if cutoff.tzinfo is None:
+            raise ValueError("replay qualification has no frozen deadline")
+        cutoff = cutoff.astimezone(UTC)
+        start = cutoff - timedelta(days=7)
+        path = "/internal/competition/replay/rounds/" + urllib.parse.quote(round_id, safe="")
+        query = urllib.parse.urlencode([("hotkey", hotkey) for hotkey in hotkeys])
+        body = self._get(path + "/qualification?" + query)
+        rows = body.get("hotkeys")
+        if (body.get("round_id") != round_id or not isinstance(rows, list)
+            or len(rows) != len(hotkeys)
+            or {row.get("hotkey") for row in rows if isinstance(row, dict)} != set(hotkeys)):
+            raise ValueError("replay qualification evidence is incomplete")
+        try:
+            issued_start = datetime.fromisoformat(body["window_start"])
+            issued_cutoff = datetime.fromisoformat(body["cutoff"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("replay qualification window is malformed") from exc
+        if (issued_start.tzinfo is None or issued_cutoff.tzinfo is None
+            or issued_start.astimezone(UTC) != start
+            or issued_cutoff.astimezone(UTC) != cutoff):
+            raise ValueError("replay qualification differs from frozen deadline")
+        for row in rows:
+            if (not isinstance(row, dict)
+                or set(row) != {"hotkey", "qualified_round_count", "qualified",
+                                    "qualifying_rounds"}
+                or not isinstance(row["qualifying_rounds"], list)):
+                raise ValueError("replay qualification row is malformed")
+            rounds = set()
+            for source in row["qualifying_rounds"]:
+                if (not isinstance(source, dict)
+                    or set(source) != {"round_id", "issued_at"}
+                    or not isinstance(source["round_id"], str)
+                    or not source["round_id"] or source["round_id"] in rounds):
+                    raise ValueError("replay qualifying source round is malformed")
+                rounds.add(source["round_id"])
+                try:
+                    issued = datetime.fromisoformat(source["issued_at"])
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("replay qualifying source time is malformed") from exc
+                if issued.tzinfo is None or not start <= issued.astimezone(UTC) < cutoff:
+                    raise ValueError("replay qualifying source is outside the frozen window")
+            if (type(row["qualified_round_count"]) is not int
+                or row["qualified_round_count"] != len(rounds)
+                or type(row["qualified"]) is not bool
+                or row["qualified"] != (len(rounds) >= 2)):
+                raise ValueError("replay qualification verdict differs from source rounds")
+        return body
 
     def closed_gold_review(
         self, round_id: str, *,

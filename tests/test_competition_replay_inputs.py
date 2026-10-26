@@ -104,6 +104,48 @@ def test_replay_client_checks_entire_released_pool_hash():
         )
 
 
+def test_replay_client_checks_qualification_source_rounds_against_deadline():
+    body = {
+        "round_id": "week-1", "window_start": "2026-10-23T12:00:00+00:00",
+        "cutoff": "2026-10-30T12:00:00+00:00",
+        "hotkeys": [{
+            "hotkey": "miner-1", "qualified_round_count": 2, "qualified": True,
+            "qualifying_rounds": [
+                {"round_id": "vote-1", "issued_at": "2026-10-24T12:00:00+00:00"},
+                {"round_id": "vote-2", "issued_at": "2026-10-25T12:00:00+00:00"},
+            ],
+        }],
+    }
+    requests = []
+
+    def respond(request, *, timeout):
+        requests.append(request.full_url)
+        assert timeout == 30 and request.get_method() == "GET"
+        return io.BytesIO(json.dumps(body).encode())
+
+    client = CompetitionReplayInputs(
+        "https://backend.example", "replay-only", open_request=respond,
+    )
+    assert client.qualification_evidence(
+        "week-1", hotkeys=["miner-1"], deadline_at="2026-10-30T12:00:00+00:00",
+    ) == body
+    assert requests == [
+        "https://backend.example/internal/competition/replay/rounds/"
+        "week-1/qualification?hotkey=miner-1",
+    ]
+    body["hotkeys"][0]["qualifying_rounds"][1]["issued_at"] = "2026-10-30T12:00:00+00:00"
+    with pytest.raises(ValueError, match="outside the frozen window"):
+        client.qualification_evidence(
+            "week-1", hotkeys=["miner-1"], deadline_at="2026-10-30T12:00:00+00:00",
+        )
+    body["hotkeys"][0]["qualifying_rounds"][1]["issued_at"] = "2026-10-25T12:00:00+00:00"
+    body["hotkeys"][0]["qualified"] = False
+    with pytest.raises(ValueError, match="verdict differs"):
+        client.qualification_evidence(
+            "week-1", hotkeys=["miner-1"], deadline_at="2026-10-30T12:00:00+00:00",
+        )
+
+
 def test_replay_client_verifies_closed_gold_votes_and_exclusions():
     message = _gold_vote_message("week-1", "case-1", "voter-1", "challenger")
     body = {
