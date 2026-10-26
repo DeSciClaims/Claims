@@ -76,8 +76,11 @@ def reveal_selected_sample(
     round_record = backend.get_round(round_id)
     if round_record["status"] != "locked":
         raise ValueError("round must be locked before sample release")
-    if final_count < 500:
-        raise ValueError("final sample must contain at least 500 papers")
+    week_one = round_record["incumbent_hotkey"] is None
+    if week_one and final_count != 320:
+        raise ValueError("week-one launch sample must contain 320 papers")
+    if not week_one and final_count < 500:
+        raise ValueError("staged final sample must contain at least 500 papers")
     if baseline["package_sha256"] != round_record["baseline_package_sha256"]:
         raise ValueError("baseline differs from frozen round")
     if round_record["incumbent_hotkey"] is not None and baseline["hotkey"] != round_record["incumbent_hotkey"]:

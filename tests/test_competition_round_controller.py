@@ -243,3 +243,40 @@ def test_sample_release_uses_seeded_distinct_entrant_count(monkeypatch):
     assert result["selected_count"] == 3
     assert result["stages"] == ["final"]
     assert {row["stage"] for row in backend.receipt["papers"]} == {"final"}
+
+
+def test_week_one_release_uses_proposal_320_paper_launch_sample(monkeypatch):
+    signature = b"a" * 96
+    beacon = VerifiedBeacon(
+        123, hashlib.sha256(signature).digest(), signature.hex(),
+        DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY, 1_800_000_030,
+    )
+    monkeypatch.setattr("competition.round_controller.beacon_for_round", lambda *_, **__: beacon)
+    package = b"candidate package"
+
+    class Backend:
+        def get_round(self, _):
+            return {"status": "locked", "incumbent_hotkey": None,
+                    "baseline_package_sha256": "b" * 64}
+
+        def list_submissions(self, _):
+            return [{"hotkey": "miner-1", "team_id": "team-1",
+                     "package_sha256": hashlib.sha256(package).hexdigest(),
+                     "qualified": True, "status": "accepted"}]
+
+        def reveal_sample(self, _, receipt):
+            self.receipt = receipt
+            return {"status": "revealed"}
+
+    backend = Backend()
+    papers = [PaperRecord(f"paper-{index}", hashlib.sha256(str(index).encode()).hexdigest())
+              for index in range(320)]
+    kwargs = {"backend": backend, "chain": object(), "papers": papers,
+              "baseline": {"hotkey": "reference", "team_id": "claims",
+                           "package_sha256": "b" * 64},
+              "package_for_submission": lambda _: package}
+    result = reveal_selected_sample("week1", final_count=320, **kwargs)
+    assert result["stages"] == ["week_one"]
+    assert len(backend.receipt["papers"]) == 320
+    with pytest.raises(ValueError, match="320"):
+        reveal_selected_sample("week1", final_count=319, **kwargs)

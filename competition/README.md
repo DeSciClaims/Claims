@@ -19,6 +19,8 @@ that draw, checks any previously stored duplicate verdicts, writes missing
 verdicts, and starts the first stage. It is safe to retry after a crash between
 those writes. Both steps require the same frozen package bytes and any reviewed
 duplicate-link evidence.
+The week-one reference launch releases exactly 320 papers; later staged finals
+require at least 500.
 
 `weekly_automation.tick_round` is the trusted timer entrypoint. Each call
 reads the durable round state and performs one transition: deadline lock,
