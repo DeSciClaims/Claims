@@ -186,3 +186,15 @@ def test_check_draw_and_escalation_draw_have_separate_purposes():
     backend.round["status"] = "gold_closed"
     assert len(closed_gold_decisions("week2", backend=backend)) == result["case_count"]
     assert tally_closed_gold_review("week2", backend=backend)["challenger"].sampled_cases == 5
+
+
+def test_zero_contested_cases_close_as_nonbinding_gold():
+    backend = Backend()
+    prepared = prepare_gold_review(
+        "week2", backend=backend, candidates=[], voters=[], escalation_limit=1700,
+    )
+    assert prepared["check_count"] == prepared["escalation_count"] == 0
+    backend.round["status"] = "gold_closed"
+    result = tally_closed_gold_review("week2", backend=backend)
+    assert set(result) == {"challenger", "no-check"}
+    assert all(not item.refusal and item.decided_contested_claims == 0 for item in result.values())

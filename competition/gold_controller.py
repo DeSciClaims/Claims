@@ -174,8 +174,6 @@ def prepare_gold_review(
     by_id = {candidate.case.case_id: candidate for candidate in candidates}
     gold_seed = hashlib.sha256(b"claims-gold-draw-v1\0" + seed).digest()
     check = draw_gold_cases([candidate.case for candidate in candidates], seed=gold_seed, limit=limit)
-    if not check:
-        raise ValueError("Gold review needs at least one contested claim")
     if escalation_limit is None:
         escalation = ()
     else:
