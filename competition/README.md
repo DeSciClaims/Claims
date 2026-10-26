@@ -150,6 +150,13 @@ chat-completions endpoint, temperature 1, and 8192 maximum output tokens.
 `OPENROUTER_API_KEY` but never puts it in the frozen configuration. Measure
 quality, cost, provider behavior, and context truncation before a paid round.
 The factory accepts a trusted usage sink for recording judge model calls.
+`build_provisional_evaluation_policy()` binds those judges, the selected
+Bronze source provider, the weekly dollar budget, and the worker model/token/
+lease limits into one configuration hash. `CompetitionControllerInputs` checks
+that hash against the backend round before every source, package, judge, or
+audit read. `CompetitionWorkerCoordinator` uses the same frozen worker policy
+when it leases and runs a paper through the disposable VM adapter. The
+remaining voter and code-audit providers must be supplied by trusted services.
 OpenRouter may route one model ID to multiple providers, so model-ID hashing
 alone does not freeze the actual serving endpoint. Pin a tested provider and
 deploy artifact before intake.

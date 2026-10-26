@@ -39,7 +39,8 @@ class HippiusPrivateStorage:
 
     def put(self, key: str, content: bytes) -> None:
         if (not re.fullmatch(r"logs/(mainnet|testnet)/[A-Za-z0-9_-]{1,120}/"
-                             r"[A-Za-z0-9]{20,80}/[0-9a-f]{64}/[0-9a-f]{64}\.txt", key)
+                             r"[A-Za-z0-9]{20,80}/[0-9a-f]{64}/"
+                             r"[0-9a-f]{64}-attempt-[12]\.txt", key)
             or not isinstance(content, bytes) or len(content) > self.max_log_bytes):
             raise ValueError("private worker log path or size is invalid")
         self.s3_client.put_object(

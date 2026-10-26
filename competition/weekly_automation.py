@@ -2,7 +2,8 @@
 
 An external timer calls ``tick_round`` repeatedly. All durable transitions
 live in the backend, so a controller restart rereads the round and resumes.
-Miner code and inference credentials never enter this process's callbacks.
+Miner code executes only in disposable workers. The trusted judge adapter
+holds its own inference credential outside miner execution.
 """
 
 from __future__ import annotations
