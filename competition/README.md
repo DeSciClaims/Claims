@@ -168,21 +168,30 @@ names qualified hotkeys and team IDs. Run
 after the final job grid completes. It writes a private
 `<round_id>.audit-evidence.json` containing sealed source fingerprints, build
 outcomes, gateway usage, denied egress, and claim-count/repeated-output
-statistics. Review the sealed source and this evidence, then provide a private
+statistics. Mainnet rules must publish `policy.code_audit` with
+`min_completed_papers`, `max_repeated_output_fraction`,
+`max_cap_trip_fraction`, and `max_claim_count_ratio`. When the final grid is
+ready, the trusted controller writes the evidence and `<round_id>.audit.json`
+automatically; the CLI can also prepare the same receipt. It checks embedded sample IDs and PDF
+hashes, evaluation-context literals, denied egress and cap trips, repeated
+output sets, and claim-count ratio. The controller recomputes the verdicts
+from the sealed evidence and frozen thresholds. Calibrate the thresholds on
+week −1 perturbation and baseline runs before a paid round.
+For a testnet round without automatic thresholds, review the sealed source and this evidence, then provide a private
 review JSON with `round_id`, `evidence_sha256`, `reviewer`, and one package row
 per finalist: `hotkey`, `package_sha256`, and Boolean `checks` for
 `hardcoded_output`, `evaluation_context`, `cap_evasion`, and `fragmentation`.
 Run the same command with `--review-file PATH` to write `<round_id>.audit.json`.
 The `build` result is derived from trusted jobs and cannot be overridden.
 The controller recomputes the evidence and rejects a stale or altered review;
-absent or mismatched files stop the transition. These source-behavior checks
-still need reviewer judgment until calibrated automatic detectors are added.
+absent or mismatched files stop the transition. Mainnet cannot use this manual
+receipt path.
 The signed weekly result publishes the evidence SHA-256 and each finalist's
 number of failed checks, while package bytes and detailed findings stay private.
 The controller checks voter
 qualification against backend consensus records and payout UIDs against the
-current metagraph. Automating reviewer judgments and checking live archive
-and signer compatibility remain integration work.
+current metagraph. Calibrating thresholds and checking live archive and signer
+compatibility remain integration work.
 The competition_round_setup CLI opens intake from an operator draft. It
 reconstructs the provisional judge runtime, verifies sealed baseline and
 fallback package bytes through Hippius, checks the Friday 12:00 UTC / D+600
@@ -209,8 +218,8 @@ from the frozen private Silver receipt and paired score grid. The 85% accepted
 unit overlap and two-standard-error gain rule is applied against the baseline,
 and the evidence is included in the signed public result. The final code-audit
 evidence collector now binds review to measured worker and sealed package
-receipts; automatic detection of hard-coded outputs, context gaming, cap
-evasion and fragmentation still needs calibration.
+receipts; the automatic thresholds for hard-coded outputs, context gaming, cap
+evasion and fragmentation still need week −1 calibration.
 The disposable worker firewall also counts denied packets for the miner UID.
 The trusted SSH transport checks the reviewed two-rule policy before and after
 each run, records blocked attempts even when the guest exits unsuccessfully,

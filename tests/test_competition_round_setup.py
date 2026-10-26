@@ -112,6 +112,25 @@ def test_prepare_round_freezes_review_only_dispute_window(tmp_path):
         prepare_round(draft, backend=Backend(), directory=tmp_path)
 
 
+def test_mainnet_round_requires_published_automatic_audit_thresholds(tmp_path):
+    draft = _draft()
+    draft["network"] = "mainnet"
+    with pytest.raises(ValueError, match="automatic code audit"):
+        prepare_round(draft, backend=object(), directory=tmp_path)
+    draft["policy_public"]["code_audit"] = {
+        "min_completed_papers": 200, "max_repeated_output_fraction": 0.2,
+        "max_cap_trip_fraction": 0.01, "max_claim_count_ratio": 4.0,
+    }
+
+    class Backend:
+        def create_round(self, payload):
+            return payload
+
+    prepare_round(draft, backend=Backend(), directory=tmp_path)
+    rules = json.loads((tmp_path / "week1.rules.json").read_text())
+    assert rules["policy"]["code_audit"] == draft["policy_public"]["code_audit"]
+
+
 def test_pilot_setup_checks_real_judges_and_sealed_baseline_before_intake(
     tmp_path, monkeypatch,
 ):

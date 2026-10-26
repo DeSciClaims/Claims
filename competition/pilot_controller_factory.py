@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .chain_archive import BittensorArchive
-from .code_audit import collect_final_code_evidence, verify_code_audit_receipt
+from .code_audit import automatic_code_audit, collect_final_code_evidence, verify_code_audit_receipt
 from .controller_inputs import CompetitionControllerInputs, build_provisional_evaluation_policy
 from .duplicate_candidate_setup import load_candidate_report
 from .duplicate_review import verify_duplicate_review
@@ -23,6 +23,7 @@ from .paper_inputs import CompetitionPaperInputs
 from .pilot_worker_factory import FrozenWorkerRules, _required, _round_file
 from .provisional_judges import require_provisional_provider_pins
 from .publication import canonical_sha256
+from .round_setup import _canonical_bytes, _write_once
 from .weekly_automation import FinalAudit
 
 
@@ -100,11 +101,21 @@ def _final_audit(
     baselines = [row for row in entries if row["role"] in {"incumbent", "reference"}]
     if not finalists or len(baselines) != 1:
         raise ValueError("final code audit has no frozen entrants")
-    record = _late_receipt(round_id, "audit")
     evidence = collect_final_code_evidence(
         round_id, backend=backend, fetch_package=fetch_package,
     )
-    code_passed = verify_code_audit_receipt(record, evidence)
+    round_record = backend.get_round(round_id)
+    policy = (round_record.get("rules_public") or {}).get("policy", {}).get("code_audit")
+    if round_record.get("network") == "mainnet" and policy is None:
+        raise ValueError("mainnet code audit has no frozen automatic thresholds")
+    if policy is not None:
+        directory = Path(_required("CLAIMS_COMPETITION_ROUNDS_DIR"))
+        _write_once(directory / f"{round_id}.audit-evidence.json",
+                    _canonical_bytes(evidence), 0o600)
+        _write_once(directory / f"{round_id}.audit.json",
+                    _canonical_bytes(automatic_code_audit(evidence, policy)), 0o600)
+    record = _late_receipt(round_id, "audit")
+    code_passed = verify_code_audit_receipt(record, evidence, policy=policy)
     if set(code_passed) != set(finalists):
         raise ValueError("final code audit omits a finalist")
     payout_hotkeys = sorted(set(finalists) | {baselines[0]["hotkey"]})

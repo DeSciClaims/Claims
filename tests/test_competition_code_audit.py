@@ -6,7 +6,8 @@ import zipfile
 import pytest
 
 from competition.code_audit import (
-    collect_final_code_evidence, finalize_code_audit, verify_code_audit_receipt,
+    automatic_code_audit, collect_final_code_evidence, finalize_code_audit,
+    validated_audit_policy, verify_code_audit_receipt,
 )
 from competition.code_audit_setup import prepare_code_audit
 from competition.publication import canonical_sha256
@@ -30,6 +31,11 @@ def _wheel():
     with zipfile.ZipFile(stream, "w") as archive:
         archive.writestr("example_miner/__init__.py", "def extract(request):\n    return request\n")
     return stream.getvalue()
+
+
+def _auto_policy():
+    return {"min_completed_papers": 2, "max_repeated_output_fraction": 1.0,
+            "max_cap_trip_fraction": 0.0, "max_claim_count_ratio": 2.0}
 
 
 class Backend:
@@ -140,6 +146,50 @@ def test_review_cannot_skip_or_invent_a_check():
         })
 
 
+def test_automatic_audit_recomputes_frozen_thresholds_and_rejects_tampering():
+    package = _wheel()
+    evidence = collect_final_code_evidence(
+        "week1", backend=Backend(hashlib.sha256(package).hexdigest()),
+        fetch_package=lambda _: package,
+    )
+    policy = _auto_policy()
+    receipt = automatic_code_audit(evidence, policy)
+    assert verify_code_audit_receipt(receipt, evidence, policy=policy) == {"miner": True}
+    with pytest.raises(ValueError, match="frozen policy"):
+        verify_code_audit_receipt(receipt, evidence, policy={**policy,
+            "max_repeated_output_fraction": 0.5})
+    tampered = json.loads(json.dumps(receipt))
+    tampered["packages"][0]["checks"]["cap_evasion"] = False
+    with pytest.raises(ValueError, match="frozen policy"):
+        verify_code_audit_receipt(tampered, evidence, policy=policy)
+    with pytest.raises(ValueError, match="no frozen policy"):
+        verify_code_audit_receipt(receipt, evidence)
+    changed = json.loads(json.dumps(evidence))
+    changed["packages"][0]["cap_trip_count"] = 1
+    assert automatic_code_audit(changed, policy)["packages"][0]["checks"]["cap_evasion"] is False
+    changed["packages"][0]["completed_claim_count_median"] = 10
+    assert automatic_code_audit(changed, policy)["packages"][0]["checks"]["fragmentation"] is False
+    assert automatic_code_audit(evidence, {**policy,
+        "max_repeated_output_fraction": 0.5})["packages"][0]["checks"]["hardcoded_output"] is False
+    with pytest.raises(ValueError, match="thresholds"):
+        validated_audit_policy({"min_completed_papers": 2})
+
+
+@pytest.mark.parametrize("literal,check", [
+    ("paper-1", "hardcoded_output"), ("input.json", "evaluation_context"),
+])
+def test_automatic_audit_flags_embedded_sample_ids_and_context(literal, check):
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        archive.writestr("example_miner/__init__.py", f"MARKER = {literal!r}\n")
+    package = stream.getvalue()
+    evidence = collect_final_code_evidence(
+        "week1", backend=Backend(hashlib.sha256(package).hexdigest()),
+        fetch_package=lambda _: package,
+    )
+    assert automatic_code_audit(evidence, _auto_policy())["packages"][0]["checks"][check] is False
+
+
 def test_malformed_finalist_archive_fails_its_build_check_without_blocking_audit():
     package = b"not a wheel or source archive"
     package_hash = hashlib.sha256(package).hexdigest()
@@ -204,3 +254,35 @@ def test_audit_setup_writes_private_review_bound_receipt(tmp_path):
     with pytest.raises(ValueError, match="already differs"):
         prepare_code_audit("week1", backend=backend, storage=Storage(),
                            directory=tmp_path, review=review)
+
+
+def test_audit_setup_writes_automatic_receipt_without_review(tmp_path):
+    package = _wheel()
+    package_hash = hashlib.sha256(package).hexdigest()
+    policy = _auto_policy()
+
+    class AutoBackend(Backend):
+        def get_round(self, round_id):
+            return {**super().get_round(round_id),
+                    "rules_public": {"policy": {"code_audit": policy}}}
+
+    backend = AutoBackend(package_hash)
+    (tmp_path / "week1.json").write_text(json.dumps({
+        "round_id": "week1", "configuration": {"pilot": True},
+        "configuration_sha256": canonical_sha256({"pilot": True}),
+        "baseline_upload": {"hotkey": "baseline", "package_sha256": "b" * 64},
+    }))
+
+    class Storage:
+        def package_for_submission(self, upload):
+            assert upload["package_sha256"] == package_hash
+            return package
+
+    result = prepare_code_audit("week1", backend=backend, storage=Storage(), directory=tmp_path)
+    assert result["status"] == "receipt_ready"
+    evidence = json.loads((tmp_path / "week1.audit-evidence.json").read_text())
+    receipt = json.loads((tmp_path / "week1.audit.json").read_text())
+    assert verify_code_audit_receipt(receipt, evidence, policy=policy) == {"miner": True}
+    with pytest.raises(ValueError, match="does not accept manual review"):
+        prepare_code_audit("week1", backend=backend, storage=Storage(), directory=tmp_path,
+                           review={"round_id": "week1"})

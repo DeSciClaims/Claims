@@ -9,11 +9,15 @@ from competition.pilot_controller_factory import (
 )
 from competition.duplicate_review import accepted_snapshot, make_duplicate_review
 from competition.controller_inputs import build_provisional_evaluation_policy
-from competition.code_audit import finalize_code_audit
+from competition.code_audit import automatic_code_audit, finalize_code_audit
 from competition.publication import canonical_sha256
 
 
 class Backend:
+    def get_round(self, round_id):
+        policy = {"code_audit": self.audit_policy} if hasattr(self, "audit_policy") else {}
+        return {"round_id": round_id, "network": "testnet", "rules_public": {"policy": policy}}
+
     def qualification_snapshot(self, round_id, hotkeys):
         return {"round_id": round_id, "hotkeys": [
             {"hotkey": key, "qualified": key != "unqualified"} for key in hotkeys
@@ -131,6 +135,48 @@ def test_late_voter_and_code_audit_receipts_are_package_bound(tmp_path, monkeypa
     with pytest.raises(ValueError, match="frozen package"):
         _final_audit(backend, chain, "week1", owner_hotkey="owner", operator_hotkey="operator",
                      fetch_package=lambda job: b"package")
+
+
+def test_controller_recomputes_automatic_code_audit(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAIMS_COMPETITION_ROUNDS_DIR", str(tmp_path))
+    monkeypatch.setenv("CLAIMS_COMPETITION_NETUID", "111")
+    policy = {"min_completed_papers": 2, "max_repeated_output_fraction": 0.5,
+              "max_cap_trip_fraction": 0.0, "max_claim_count_ratio": 3.0}
+    evidence = {"schema_version": "claims_final_code_audit_v1", "round_id": "week1",
+                "stage": "final", "sample_sha256": "s" * 64,
+                "packages": [{
+                    "hotkey": "miner-a", "package_sha256": "a" * 64,
+                    "build_passed": True, "denied_egress_packets": 0,
+                    "final_job_count": 2, "completed_job_count": 2,
+                    "cap_trip_count": 0, "max_same_statement_set_papers": 1,
+                    "completed_claim_count_median": 3, "baseline_claim_count_median": 2,
+                    "source_indicators": {"embedded_sample_paper_id_count": 0,
+                                          "embedded_sample_pdf_hash_count": 0,
+                                          "evaluation_context_markers": []},
+                }]}
+    monkeypatch.setattr("competition.pilot_controller_factory.collect_final_code_evidence",
+                        lambda *args, **kwargs: evidence)
+    backend = Backend()
+    backend.audit_policy = policy
+    chain = SimpleNamespace(subtensor=SimpleNamespace(
+        metagraph=lambda netuid: SimpleNamespace(hotkeys=[
+            "owner", "operator", "miner-a", "incumbent",
+        ]),
+    ))
+    audit = _final_audit(backend, chain, "week1", owner_hotkey="owner",
+                         operator_hotkey="operator", fetch_package=lambda job: b"package")
+    assert audit.code_passed_by_hotkey == {"miner-a": True}
+    receipt = json.loads((tmp_path / "week1.audit.json").read_text())
+    assert receipt == automatic_code_audit(evidence, policy)
+    assert (tmp_path / "week1.audit-evidence.json").stat().st_mode & 0o777 == 0o600
+    assert (tmp_path / "week1.audit.json").stat().st_mode & 0o777 == 0o600
+    assert _final_audit(backend, chain, "week1", owner_hotkey="owner",
+                        operator_hotkey="operator", fetch_package=lambda job: b"package") == audit
+    receipt["packages"][0]["checks"]["hardcoded_output"] = False
+    (tmp_path / "week1.audit.json").write_text(json.dumps(receipt))
+    with pytest.raises(ValueError, match="already differs"):
+        _final_audit(backend, chain, "week1", owner_hotkey="owner",
+                     operator_hotkey="operator", fetch_package=lambda job: b"package")
 
 
 def test_controller_factory_rejects_runtime_that_differs_from_frozen_rules(monkeypatch):

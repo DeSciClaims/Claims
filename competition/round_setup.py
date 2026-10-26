@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any, Mapping
 
 from .controller_inputs import build_provisional_evaluation_policy
+from .code_audit import validated_audit_policy
 from .provisional_judges import require_provisional_provider_pins
 from .publication import canonical_sha256
 
@@ -113,6 +114,11 @@ def prepare_round(
     reference_lock = public_policy.get("reference_lock_sha256")
     if not isinstance(reference_lock, str) or not re.fullmatch(r"[0-9a-f]{64}", reference_lock):
         raise ValueError("public weekly policy needs the frozen Bronze reference lock SHA-256")
+    audit_policy = public_policy.get("code_audit")
+    if network == "mainnet" and audit_policy is None:
+        raise ValueError("mainnet round needs automatic code audit thresholds")
+    if audit_policy is not None:
+        validated_audit_policy(audit_policy)
     dispute_window = public_policy.get("duplicate_dispute_window")
     if dispute_window is None:
         raise ValueError("public duplicate dispute window is required")

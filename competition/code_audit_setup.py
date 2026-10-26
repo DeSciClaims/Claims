@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
-from .code_audit import collect_final_code_evidence, finalize_code_audit
+from .code_audit import automatic_code_audit, collect_final_code_evidence, finalize_code_audit
 from .package_inputs import CompetitionPackageResolver
 from .publication import canonical_sha256
 from .round_setup import _canonical_bytes, _write_once
@@ -47,6 +47,15 @@ def prepare_code_audit(
     evidence = collect_final_code_evidence(round_id, backend=backend, fetch_package=packages)
     digest = canonical_sha256(evidence)
     _write_once(directory / f"{round_id}.audit-evidence.json", _canonical_bytes(evidence), 0o600)
+    policy = (row.get("rules_public") or {}).get("policy", {}).get("code_audit")
+    if row.get("network") == "mainnet" and policy is None:
+        raise ValueError("mainnet code audit has no frozen automatic thresholds")
+    if policy is not None:
+        if review is not None:
+            raise ValueError("automatic code audit does not accept manual review")
+        receipt = automatic_code_audit(evidence, policy)
+        _write_once(directory / f"{round_id}.audit.json", _canonical_bytes(receipt), 0o600)
+        return {"round_id": round_id, "evidence_sha256": digest, "status": "receipt_ready"}
     if review is None:
         return {"round_id": round_id, "evidence_sha256": digest, "status": "evidence_ready"}
     receipt = finalize_code_audit(evidence, review)

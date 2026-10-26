@@ -1,4 +1,4 @@
-"""Produce a final code-audit draft, then bind reviewed decisions to it."""
+"""Produce a final code-audit receipt from frozen rules or a testnet review."""
 
 from __future__ import annotations
 
@@ -25,7 +25,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--round-id", required=True)
     parser.add_argument("--rounds-dir", required=True, type=Path)
     parser.add_argument("--backend-url", required=True)
-    parser.add_argument("--review-file", type=Path)
+    parser.add_argument("--review-file", type=Path,
+                        help="Testnet legacy review only; automatic rounds use published thresholds")
     args = parser.parse_args(argv)
     try:
         backend = CompetitionBackend(

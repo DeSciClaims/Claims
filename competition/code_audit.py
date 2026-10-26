@@ -8,7 +8,9 @@ from the absence of a simple string pattern.
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import math
 from collections import Counter
 from statistics import median
 from typing import Any, Callable, Mapping
@@ -16,12 +18,85 @@ from typing import Any, Callable, Mapping
 from miner.agent_v1.artifact_models import Artifact
 
 from .duplicates import python_source_fingerprint
+from .duplicate_candidates import VENDOR_PARTS, _archive_members, _without_docstrings
 from .final_stage import effective_final_stage
 from .publication import canonical_sha256
 
 
 REVIEW_CHECKS = frozenset({"hardcoded_output", "evaluation_context", "cap_evasion", "fragmentation"})
 AUDIT_SCHEMA = "claims_final_code_audit_v1"
+AUTO_REVIEWER = "automated:claims-code-audit-v1"
+AUDIT_POLICY_FIELDS = frozenset({
+    "min_completed_papers", "max_repeated_output_fraction",
+    "max_cap_trip_fraction", "max_claim_count_ratio",
+})
+CONTEXT_MARKERS = ("input.json", "claims_competition_rounds_dir", "competition_round_id")
+
+
+def validated_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Accept only calibrated, public thresholds; there are no hidden defaults."""
+    if not isinstance(value, Mapping) or set(value) != AUDIT_POLICY_FIELDS:
+        raise ValueError("code audit policy has missing or extra thresholds")
+    count = value["min_completed_papers"]
+    if type(count) is not int or not 2 <= count <= 10_000:
+        raise ValueError("code audit minimum completed papers is invalid")
+    parsed = {"min_completed_papers": count}
+    for name in ("max_repeated_output_fraction", "max_cap_trip_fraction",
+                 "max_claim_count_ratio"):
+        raw = value[name]
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            raise ValueError(f"code audit {name} is invalid")
+        try:
+            number = float(raw)
+        except OverflowError as exc:
+            raise ValueError(f"code audit {name} is invalid") from exc
+        if not math.isfinite(number):
+            raise ValueError(f"code audit {name} is invalid")
+        if ((name == "max_claim_count_ratio" and not 1 <= number <= 100)
+            or (name != "max_claim_count_ratio" and not 0 <= number <= 1)):
+            raise ValueError(f"code audit {name} is out of range")
+        parsed[name] = number
+    return parsed
+
+
+def _source_indicators(package: bytes, paper_ids: list[str], pdf_hashes: list[str]) -> dict[str, Any]:
+    """Read first-party Python literals without importing or executing a package."""
+    paper_id_set = set(paper_ids)
+    pdf_hash_set = set(pdf_hashes)
+    matched_papers: set[str] = set()
+    matched_hashes: set[str] = set()
+    matched_context: set[str] = set()
+    source_bytes = 0
+    saw_source = False
+    for name, body in _archive_members(package):
+        parts = {part.lower() for part in name.replace("\\", "/").split("/")}
+        if (not name.endswith(".py") or parts & VENDOR_PARTS
+            or any(part.endswith(".dist-info") for part in parts)):
+            continue
+        saw_source = True
+        source_bytes += len(body)
+        if source_bytes > 20_000_000:
+            raise ValueError("audit Python source exceeds scanner limit")
+        try:
+            tree = _without_docstrings(ast.parse(body.decode("utf-8-sig")))
+        except (UnicodeError, SyntaxError, RecursionError) as exc:
+            raise ValueError("audit Python source is invalid") from exc
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+                continue
+            literal = node.value
+            if literal in paper_id_set:
+                matched_papers.add(literal)
+            if literal in pdf_hash_set:
+                matched_hashes.add(literal)
+            matched_context.update(marker for marker in CONTEXT_MARKERS if marker in literal.casefold())
+    if not saw_source:
+        raise ValueError("audit package has no Python source")
+    return {
+        "embedded_sample_paper_id_count": len(matched_papers),
+        "embedded_sample_pdf_hash_count": len(matched_hashes),
+        "evaluation_context_markers": sorted(matched_context),
+    }
 
 
 def _claim_statements(artifact: Mapping[str, Any], paper_id: str) -> tuple[int, str]:
@@ -54,6 +129,8 @@ def collect_final_code_evidence(
     paper_ids = [row["paper_id"] for row in sample]
     if not paper_ids or len(set(paper_ids)) != len(paper_ids):
         raise ValueError("code audit final sample is empty or repeated")
+    pdf_hashes = [row["source_sha256"] for row in sample
+                  if isinstance(row.get("source_sha256"), str)]
     jobs_by_hotkey: dict[str, list[dict[str, Any]]] = {key: [] for key in expected}
     for paper_id in paper_ids:
         jobs = backend.list_paper_jobs(round_id, stage, paper_id)
@@ -87,11 +164,13 @@ def collect_final_code_evidence(
             raise ValueError("code audit package differs from frozen final")
         try:
             fingerprint = python_source_fingerprint(package, max_source_bytes=100_000_000)
+            indicators = _source_indicators(package, paper_ids, pdf_hashes)
             source_scan_error = None
         except ValueError as exc:
             # A malformed finalist archive must fail that finalist's build
             # check, not prevent every other finalist from being audited.
             fingerprint = None
+            indicators = None
             source_scan_error = str(exc)
         statuses: Counter[str] = Counter()
         claims: list[int] = []
@@ -125,8 +204,10 @@ def collect_final_code_evidence(
             "hotkey": hotkey,
             "package_sha256": package_hash,
             "source_fingerprint": fingerprint,
+            "source_indicators": indicators,
             "source_scan_error": source_scan_error,
             "final_job_count": len(jobs_by_hotkey[hotkey]),
+            "completed_job_count": statuses["completed"],
             "status_counts": dict(sorted(statuses.items())),
             "build_passed": bool(fingerprint and claims and not statuses["build_failed"]),
             "cap_trip_count": caps,
@@ -183,10 +264,69 @@ def finalize_code_audit(
     }
 
 
+def automatic_code_audit(
+    evidence: Mapping[str, Any], policy: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply the published, calibrated thresholds to sealed final evidence."""
+    thresholds = validated_audit_policy(policy)
+    packages = []
+    for row in evidence["packages"]:
+        completed = row["completed_job_count"]
+        total = row["final_job_count"]
+        indicators = row["source_indicators"]
+        if (type(completed) is not int or type(total) is not int or not 0 <= completed <= total
+            or total < 1 or not isinstance(indicators, (dict, type(None)))):
+            raise ValueError("automatic audit has malformed package evidence")
+        sufficient = completed >= thresholds["min_completed_papers"]
+        clean_source = bool(indicators is not None
+                            and indicators["embedded_sample_paper_id_count"] == 0
+                            and indicators["embedded_sample_pdf_hash_count"] == 0)
+        baseline = row["baseline_claim_count_median"]
+        candidate = row["completed_claim_count_median"]
+        checks = {
+            "build": row["build_passed"],
+            "hardcoded_output": bool(
+                sufficient and clean_source
+                and row["max_same_statement_set_papers"] / completed
+                <= thresholds["max_repeated_output_fraction"]
+            ),
+            "evaluation_context": bool(
+                indicators is not None and not indicators["evaluation_context_markers"]
+            ),
+            "cap_evasion": bool(
+                row["denied_egress_packets"] == 0
+                and row["cap_trip_count"] / total <= thresholds["max_cap_trip_fraction"]
+            ),
+            "fragmentation": bool(
+                sufficient and isinstance(candidate, (int, float))
+                and isinstance(baseline, (int, float))
+                and candidate <= max(1, baseline) * thresholds["max_claim_count_ratio"]
+            ),
+        }
+        packages.append({
+            "hotkey": row["hotkey"], "package_sha256": row["package_sha256"],
+            "checks": checks,
+        })
+    return {
+        "schema_version": AUDIT_SCHEMA,
+        "round_id": evidence["round_id"],
+        "evidence_sha256": canonical_sha256(evidence),
+        "policy_sha256": canonical_sha256(thresholds),
+        "reviewer": AUTO_REVIEWER,
+        "packages": packages,
+    }
+
+
 def verify_code_audit_receipt(
     receipt: Mapping[str, Any], evidence: Mapping[str, Any],
+    *, policy: Mapping[str, Any] | None = None,
 ) -> dict[str, bool]:
     """Reject a stale or altered review before it can influence the crown."""
+    if policy is not None:
+        if dict(receipt) != automatic_code_audit(evidence, policy):
+            raise ValueError("automatic code audit differs from frozen policy or evidence")
+    elif receipt.get("reviewer") == AUTO_REVIEWER:
+        raise ValueError("automatic code audit has no frozen policy")
     if (receipt.get("schema_version") != AUDIT_SCHEMA
         or receipt.get("round_id") != evidence.get("round_id")
         or receipt.get("evidence_sha256") != canonical_sha256(evidence)
