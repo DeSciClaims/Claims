@@ -75,6 +75,11 @@ Each paper job has one retry after an expired lease or a reported
 infrastructure fault. A second failure is terminal; scoring drops the affected
 paper for every package. A stale worker cannot complete it, and each attempt
 has a distinct private log object.
+`ProductionReleaseReader` opens the active release pointer and package through
+private owned file descriptors, verifies the package hash, and returns bytes
+to a trusted production runner without executing them. It can read handoffs
+and rollbacks atomically; the production runner and health checks remain to be
+wired.
 Before advancing a staged screen or opening Gold, the controller counts
 incumbent package failures on papers without a global infrastructure fault.
 The final selector repeats the check. A strict rate above 20% starts a durable
