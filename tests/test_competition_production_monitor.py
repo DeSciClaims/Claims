@@ -47,6 +47,11 @@ def test_health_reports_active_queue_without_exposing_results():
     assert check_production_health(
         network="testnet", reader=Reader(False), backend=Backend(), now=NOW,
     )["status"] == "inactive"
+    missing = check_production_health(
+        network="testnet", reader=Reader(False), backend=Backend(), now=NOW,
+        required_active_at=datetime(2026, 11, 16, 9, tzinfo=UTC),
+    )
+    assert missing["alerts"] == ["missing_active_release"]
 
 
 def test_health_alerts_on_faults_expired_leases_and_stale_queue():
@@ -74,6 +79,7 @@ def test_health_rejects_mismatched_backend_summary(changes):
 
 def test_cli_uses_results_token_and_nonzero_alert_exit(monkeypatch, capsys):
     monkeypatch.setenv("CLAIMS_PRODUCTION_RESULTS_TOKEN", "reader-only")
+    monkeypatch.setenv("CLAIMS_PRODUCTION_START_AT", "2026-11-16T09:00:00+00:00")
     captured = {}
 
     def backend(*, base_url, controller_token):

@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from competition.intake_lock import CompetitionBackend
@@ -23,11 +24,16 @@ def main(argv: list[str] | None = None) -> int:
     token = os.environ.get("CLAIMS_PRODUCTION_RESULTS_TOKEN", "")
     if not token:
         parser.error("CLAIMS_PRODUCTION_RESULTS_TOKEN is required")
+    start_raw = os.environ.get("CLAIMS_PRODUCTION_START_AT", "")
+    if not start_raw:
+        parser.error("CLAIMS_PRODUCTION_START_AT is required")
     try:
+        start = datetime.fromisoformat(start_raw)
         backend = CompetitionBackend(base_url=args.backend_url, controller_token=token)
         report = check_production_health(
             network=args.network, reader=ProductionReleaseReader(args.production_root),
             backend=backend, max_queued_seconds=args.max_queued_seconds,
+            required_active_at=start,
         )
         print(json.dumps(report, sort_keys=True), flush=True)
         return 2 if report["status"] == "alert" else 0

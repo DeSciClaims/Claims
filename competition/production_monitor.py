@@ -11,14 +11,19 @@ from .production_reader import ProductionReleaseReader
 def check_production_health(
     *, network: str, reader: ProductionReleaseReader, backend: Any,
     now: datetime | None = None, max_queued_seconds: int = 0,
+    required_active_at: datetime | None = None,
 ) -> dict[str, Any]:
     """Return a small, secret-free health report; never changes job state."""
     clock = now or datetime.now(UTC)
     if (network not in {"mainnet", "testnet"} or clock.tzinfo is None
-        or type(max_queued_seconds) is not int or max_queued_seconds < 0):
+        or type(max_queued_seconds) is not int or max_queued_seconds < 0
+        or (required_active_at is not None and required_active_at.tzinfo is None)):
         raise ValueError("invalid production health policy")
     active = reader.read_active()
     if active is None:
+        if required_active_at is not None and clock >= required_active_at:
+            return {"network": network, "status": "alert",
+                    "alerts": ["missing_active_release"]}
         return {"network": network, "status": "inactive", "alerts": []}
     health = backend.production_health(
         network=network, receipt_sha256=active.receipt_sha256,
