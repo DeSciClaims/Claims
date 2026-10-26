@@ -67,6 +67,30 @@ class CompetitionBackend:
             "selected": list(snapshot.selected),
         })
 
+    def reveal_sample(self, round_id: str, receipt: dict[str, Any]) -> dict[str, Any]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/sample"
+        return self._request("POST", path, receipt)
+
+    def enqueue_jobs(self, round_id: str, jobs: list[dict[str, Any]]) -> dict[str, Any]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/jobs"
+        return self._request("POST", path, {"jobs": jobs})
+
+    def claim_job(self, round_id: str, *, worker_id: str, lease_seconds: int) -> dict[str, Any] | None:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/jobs/claim"
+        return self._request("POST", path, {
+            "worker_id": worker_id, "lease_seconds": lease_seconds,
+        })
+
+    def complete_job(
+        self, job_id: str, *, worker_id: str, lease_token: str,
+        result: dict[str, Any], log_object_key: str | None,
+    ) -> dict[str, Any]:
+        path = "/internal/competition/jobs/" + urllib.parse.quote(job_id, safe="") + "/complete"
+        return self._request("POST", path, {
+            "worker_id": worker_id, "lease_token": lease_token,
+            "result": result, "log_object_key": log_object_key,
+        })
+
 
 def read_sealed_package(
     s3_client: Any, *, bucket: str, upload: Mapping[str, Any],
