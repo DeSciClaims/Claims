@@ -235,9 +235,13 @@ archive-node commitment for each qualified package, redraws the sample from a
 separately verified drand beacon and frozen public paper pool, reproduces the
 duplicate lottery, and derives the first-stage job grid. It needs a separately
 transferred baseline package receipt whose bytes match the public hash.
-Independent execution, adjudication, advancement, and signed vector publication
-still need their own runner and store; the input plan alone is not an
-independent validation.
+`ReplayStore` persists that grid, leases baseline jobs before challengers,
+records worker results, and freezes independent per-paper adjudications and
+pair scores. `ReplayRuntimeBackend` combines only those local writes with
+read-only Bronze and PDF inputs, so existing worker and scorer components can
+be reused. The replay process, later-stage advancement, Gold integration, and
+publication of its own signed vector still need orchestration and testing;
+the current components alone are not an independent validation.
 Pilot judge providers are set with CLAIMS_JUDGE_J1_A_PROVIDER,
 CLAIMS_JUDGE_J1_B_PROVIDER, CLAIMS_JUDGE_J2_A_PROVIDER,
 CLAIMS_JUDGE_J2_B_PROVIDER, and CLAIMS_JUDGE_TIEBREAK_PROVIDER. Round setup
