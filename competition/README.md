@@ -5,6 +5,14 @@ They lock submissions, release the sample, run and score paper jobs, tally Gold,
 and sign the weekly publication. See the Team vault engineering plan for the
 round schedule and repository ownership.
 
+After the deadline lock, `reveal_selected_sample` verifies the D+600 drand
+beacon, uses its seed for the duplicate lottery, and publishes exactly the
+papers required by the surviving entrant count. `start_revealed_round` replays
+that draw, checks any previously stored duplicate verdicts, writes missing
+verdicts, and starts the first stage. It is safe to retry after a crash between
+those writes. Both steps require the same frozen package bytes and any reviewed
+duplicate-link evidence.
+
 ## Early-stage Decision API pilot
 
 The Zils checkpoint named in the reward proposal is unavailable. The
