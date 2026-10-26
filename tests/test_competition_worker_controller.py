@@ -103,10 +103,10 @@ class Backend:
 
 
 def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False, execution=None,
-        attempt=1):
+        attempt=1, hotkey=None):
     signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
     job = {
-        "job_id": "a" * 64, "round_id": "week2", "hotkey": signer.ss58_address,
+        "job_id": "a" * 64, "round_id": "week2", "hotkey": hotkey or signer.ss58_address,
         "package_sha256": hashlib.sha256(package).hexdigest(),
         "stage": "week_one", "paper_id": "paper-1", "lease_token": "lease-token",
         "attempts": attempt,
@@ -149,6 +149,12 @@ def test_retry_writes_a_distinct_log_object():
     _, _, second_logs, _, _ = run(attempt=2)
     assert first_logs.key != second_logs.key
     assert second_logs.key.endswith("-attempt-2.txt")
+
+
+def test_reference_service_identity_can_run_and_store_a_log():
+    result, _, logs, _, job = run(hotkey="claims-reference")
+    assert result["status"] == "completed"
+    assert f"/{job['hotkey']}/" in logs.key
 
 
 def test_over_cap_output_is_not_scored_as_a_success():

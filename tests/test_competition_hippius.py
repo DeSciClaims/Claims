@@ -28,7 +28,11 @@ def test_private_storage_checks_package_and_writes_scoped_log():
     key = f"logs/testnet/week2/{'5' * 48}/{'a' * 64}/{'b' * 64}-attempt-1.txt"
     storage.put(key, b"installed\nran\n")
     storage.put(key.replace("attempt-1", "attempt-2"), b"retry\n")
-    assert [row["Key"] for row in client.logged] == [key, key.replace("attempt-1", "attempt-2")]
+    reference_key = key.replace("5" * 48, "claims-reference")
+    storage.put(reference_key, b"reference\n")
+    assert [row["Key"] for row in client.logged] == [
+        key, key.replace("attempt-1", "attempt-2"), reference_key,
+    ]
     assert all(row["Bucket"] == "logs" for row in client.logged)
     assert client.logged[0]["Metadata"]["sha256"] == hashlib.sha256(b"installed\nran\n").hexdigest()
     with pytest.raises(ValueError, match="path or size"):

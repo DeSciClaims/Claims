@@ -118,7 +118,7 @@ def run_claimed_job(
     if any(not job.get(field) for field in required):
         raise ValueError("claimed job lacks immutable identity or lease token")
     if (not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", str(job["round_id"]))
-        or not re.fullmatch(r"[A-Za-z0-9]{20,80}", str(job["hotkey"]))
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}", str(job["hotkey"]))
         or not re.fullmatch(r"[0-9a-f]{64}", str(job["job_id"]))
         or not re.fullmatch(r"[0-9a-f]{64}", str(job["package_sha256"]))
         or not re.fullmatch(r"[0-9a-f]{64}", expected_pdf_sha256)):
