@@ -269,6 +269,9 @@ components alone are not an independent validation.
 `select_replay_final` can apply the usual crown rules to the local complete
 pair grid and frozen local audit once a complete, policy-approved Gold outcome
 for the local finalists is supplied. It does not infer one from primary votes.
+`replay_weight_plan` then allocates 70/20/10 from that local selection using
+an explicit qualification snapshot and independently resolved current UIDs;
+it does not sign or submit weights.
 `python -m neurons.competition_replay_service --role controller --round-id ID
 --backend-url URL --db-path PATH` runs the replay scoring step repeatedly;
 `--role worker --worker-id ID` runs one local paper job per poll. `--once`
