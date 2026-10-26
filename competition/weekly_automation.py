@@ -66,9 +66,10 @@ def _deadline_and_gates(round_record: Mapping[str, Any]) -> tuple[datetime, date
     if deadline.tzinfo is None:
         raise ValueError("competition deadline must have a timezone")
     deadline = deadline.astimezone(UTC)
-    if (deadline.weekday(), deadline.hour, deadline.minute, deadline.second) != (0, 12, 0, 0):
-        raise ValueError("competition deadline must be Monday 12:00 UTC")
-    close = deadline + timedelta(days=3)
+    if (deadline.weekday(), deadline.hour, deadline.minute, deadline.second,
+        deadline.microsecond) != (4, 12, 0, 0, 0):
+        raise ValueError("competition deadline must be Friday 12:00 UTC")
+    close = deadline + timedelta(days=6)
     return deadline, close, close + timedelta(hours=6)
 
 

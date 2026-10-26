@@ -72,9 +72,9 @@ class ProductionHandoffService:
             if utc_deadline != rule_deadline.astimezone(UTC):
                 raise ValueError("published round deadline differs from signed rules")
             if (utc_deadline.weekday(), utc_deadline.hour, utc_deadline.minute,
-                utc_deadline.second) != (0, 12, 0, 0):
-                raise ValueError("published round has no Monday noon deadline")
-            gate = utc_deadline + timedelta(days=7, hours=-3)
+                utc_deadline.second, utc_deadline.microsecond) != (4, 12, 0, 0, 0):
+                raise ValueError("published round has no Friday noon deadline")
+            gate = utc_deadline + timedelta(days=10, hours=-3)
             if cached is not None and cached[1] != gate:
                 raise ValueError("published round gate changed after verification")
             self._verified_gates[row["round_id"]] = (rules_sha256, gate)

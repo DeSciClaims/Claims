@@ -185,7 +185,7 @@ current metagraph. Automating reviewer judgments and checking live archive
 and signer compatibility remain integration work.
 The competition_round_setup CLI opens intake from an operator draft. It
 reconstructs the provisional judge runtime, verifies sealed baseline and
-fallback package bytes through Hippius, checks the Monday 12:00 UTC / D+600
+fallback package bytes through Hippius, checks the Friday 12:00 UTC / D+600
 calendar, writes matching private and public rules JSON, then creates the
 backend round with the exact rules body and its hash. The backend serves
 `GET /public/competition/rounds/{round_id}/rules` before the submission

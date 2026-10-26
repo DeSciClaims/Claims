@@ -23,7 +23,7 @@ def _fixture(decision="new_crown"):
     signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
     round_record = {
         "round_id": "week2", "network": "testnet", "status": "published",
-        "deadline_at": "2026-10-26T12:00:00+00:00", "incumbent_hotkey": "incumbent",
+        "deadline_at": "2026-10-30T12:00:00+00:00", "incumbent_hotkey": "incumbent",
         "archive_block_hash": "0x" + "a" * 64, "drand_round": 10,
         "drand_seed": "b" * 64, "drand_chain_hash": "c" * 64,
         "drand_public_key": "d" * 96, "drand_signature": "e" * 192,
@@ -76,9 +76,9 @@ def _plan(signer, round_record, stage, receipt, now):
 def test_new_crown_waits_until_monday_and_binds_exact_package():
     signer, round_record, stage, receipt = _fixture()
     assert _plan(signer, round_record, stage, receipt,
-                 datetime(2026, 11, 2, 8, 59, tzinfo=UTC)) is None
+                 datetime(2026, 11, 9, 8, 59, tzinfo=UTC)) is None
     plan = _plan(signer, round_record, stage, receipt,
-                 datetime(2026, 11, 2, 9, 0, tzinfo=UTC))
+                 datetime(2026, 11, 9, 9, 0, tzinfo=UTC))
     assert plan.hotkey == "winner"
     assert plan.package_sha256 == PACKAGE_SHA
     assert plan.receipt_sha256 == receipt["bundle_sha256"]
@@ -87,12 +87,12 @@ def test_new_crown_waits_until_monday_and_binds_exact_package():
 def test_continuing_incumbent_has_no_handoff():
     signer, round_record, stage, receipt = _fixture("incumbent_continues")
     assert _plan(signer, round_record, stage, receipt,
-                 datetime(2026, 11, 2, 9, 0, tzinfo=UTC)) is None
+                 datetime(2026, 11, 9, 9, 0, tzinfo=UTC)) is None
 
 
 def test_rejects_package_or_frozen_round_change():
     signer, round_record, stage, receipt = _fixture()
-    now = datetime(2026, 11, 2, 9, 0, tzinfo=UTC)
+    now = datetime(2026, 11, 9, 9, 0, tzinfo=UTC)
     stage["entries"][0]["package_sha256"] = "5" * 64
     with pytest.raises(ValueError, match="signed final paper grid"):
         _plan(signer, round_record, stage, receipt, now)
@@ -107,20 +107,20 @@ def test_handoff_gate_cannot_move_after_rules_are_signed():
     round_record["deadline_at"] = "2026-11-02T12:00:00+00:00"
     with pytest.raises(ValueError, match="signed rules"):
         _plan(signer, round_record, stage, receipt,
-              datetime(2026, 11, 2, 9, tzinfo=UTC))
+              datetime(2026, 11, 9, 9, tzinfo=UTC))
 
 
 def test_verified_handoff_writes_atomic_pointer_and_rejects_stale_replay(tmp_path):
     signer, round_record, stage, receipt = _fixture()
     store = FilesystemProductionReleaseStore(tmp_path / "production")
-    now = datetime(2026, 11, 2, 9, 0, tzinfo=UTC)
+    now = datetime(2026, 11, 9, 9, 0, tzinfo=UTC)
     kwargs = {
         "receipt": receipt, "round_record": round_record, "final_stage": stage,
         "expected_signer_hotkey": signer.ss58_address, "network": "testnet", "now": now,
         "releases": store,
     }
     assert activate_verified_handoff(
-        **{**kwargs, "now": datetime(2026, 11, 2, 8, 59, tzinfo=UTC)},
+        **{**kwargs, "now": datetime(2026, 11, 9, 8, 59, tzinfo=UTC)},
         fetch_package=lambda _: pytest.fail("package fetched before activation gate"),
     ) is None
     active = activate_verified_handoff(**kwargs, fetch_package=lambda _: PACKAGE)
@@ -155,7 +155,7 @@ def test_verified_handoff_writes_atomic_pointer_and_rejects_stale_replay(tmp_pat
 def test_first_release_cannot_roll_back_without_previous_package(tmp_path):
     signer, round_record, stage, receipt = _fixture()
     store = FilesystemProductionReleaseStore(tmp_path / "production")
-    now = datetime(2026, 11, 2, 9, 0, tzinfo=UTC)
+    now = datetime(2026, 11, 9, 9, 0, tzinfo=UTC)
     plan = _plan(signer, round_record, stage, receipt, now)
     store.activate(plan, PACKAGE, now=now)
     with pytest.raises(ValueError, match="no previous release"):
@@ -196,11 +196,11 @@ def test_handoff_controller_resolves_only_winning_sealed_upload(tmp_path):
         "expected_signer_hotkey": signer.ss58_address, "network": "testnet",
     }
     assert activate_published_round(
-        "week2", **kwargs, now=datetime(2026, 11, 2, 8, 59, tzinfo=UTC),
+        "week2", **kwargs, now=datetime(2026, 11, 9, 8, 59, tzinfo=UTC),
     ) is None
     assert storage.seen is None
     active = activate_published_round(
-        "week2", **kwargs, now=datetime(2026, 11, 2, 9, 0, tzinfo=UTC),
+        "week2", **kwargs, now=datetime(2026, 11, 9, 9, 0, tzinfo=UTC),
     )
     assert active["package_sha256"] == PACKAGE_SHA
     assert active["manifest"] == MANIFEST
@@ -239,7 +239,7 @@ def test_failed_incumbent_hands_production_to_unpaid_reference(tmp_path):
     })
     receipt = sign_publication(bundle, signer)
     plan = _plan(signer, round_record, stage, receipt,
-                 datetime(2026, 11, 2, 9, tzinfo=UTC))
+                 datetime(2026, 11, 9, 9, tzinfo=UTC))
     assert plan.hotkey == "team-reference"
     assert plan.package_sha256 == reference_hash
 
@@ -264,7 +264,7 @@ def test_failed_incumbent_hands_production_to_unpaid_reference(tmp_path):
         sealed_packages=Storage(),
         releases=FilesystemProductionReleaseStore(tmp_path / "production"),
         expected_signer_hotkey=signer.ss58_address, network="testnet",
-        now=datetime(2026, 11, 2, 9, tzinfo=UTC),
+        now=datetime(2026, 11, 9, 9, tzinfo=UTC),
         reference_upload={"hotkey": "team-reference", "package_sha256": reference_hash,
                           "package_object_key": "sealed/reference.zip", "manifest": MANIFEST},
     )
@@ -303,7 +303,7 @@ def test_week_one_no_crown_activates_reference_package(tmp_path):
                     {"hotkey": "", "role": "runner_up_2_burned", "share": 0.01},
                 ]}
     ), signer)
-    now = datetime(2026, 11, 2, 9, tzinfo=UTC)
+    now = datetime(2026, 11, 9, 9, tzinfo=UTC)
     plan = _plan(signer, round_record, stage, receipt, now)
     assert (plan.hotkey, plan.package_sha256) == ("reference", reference_hash)
 

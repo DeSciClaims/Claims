@@ -228,9 +228,10 @@ def planned_production_handoff(
     deadline = deadline.astimezone(UTC)
     if deadline != stored_deadline.astimezone(UTC):
         raise ValueError("handoff deadline differs from signed rules")
-    if (deadline.weekday(), deadline.hour, deadline.minute, deadline.second) != (0, 12, 0, 0):
-        raise ValueError("handoff round has no Monday 12:00 UTC deadline")
-    activate_at = deadline + timedelta(days=7, hours=-3)
+    if (deadline.weekday(), deadline.hour, deadline.minute, deadline.second,
+        deadline.microsecond) != (4, 12, 0, 0, 0):
+        raise ValueError("handoff round has no Friday 12:00 UTC deadline")
+    activate_at = deadline + timedelta(days=10, hours=-3)
     if now.astimezone(UTC) < activate_at:
         return None
     results = bundle["results"]

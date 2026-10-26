@@ -6,7 +6,7 @@ import json
 import os
 import re
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Mapping
@@ -65,10 +65,11 @@ def prepare_round(
         raise ValueError("weekly deadline needs a timezone")
     deadline = deadline.astimezone(UTC)
     if (deadline.weekday(), deadline.hour, deadline.minute, deadline.second,
-        deadline.microsecond) != (0, 12, 0, 0, 0):
-        raise ValueError("weekly deadline must be Monday 12:00 UTC")
-    if str(draft.get("week_start")) != deadline.date().isoformat():
-        raise ValueError("week start differs from Monday deadline")
+        deadline.microsecond) != (4, 12, 0, 0, 0):
+        raise ValueError("weekly deadline must be Friday 12:00 UTC")
+    week_start = (deadline - timedelta(days=4)).date().isoformat()
+    if str(draft.get("week_start")) != week_start:
+        raise ValueError("week start differs from deadline week Monday")
     block = draft.get("deadline_block")
     reveal = draft.get("reveal_block")
     if (type(block) is not int or block < 0 or type(reveal) is not int
@@ -122,14 +123,15 @@ def prepare_round(
         or set(dispute_window) != {"opens_at", "closes_at"}
         or opened.tzinfo is None or closed.tzinfo is None
         or verdict_public_at.tzinfo is None
-        or verdict_public_at <= deadline or opened < verdict_public_at
-        or opened >= closed):
-        raise ValueError("duplicate verdict release and dispute window must follow the deadline")
+        or verdict_public_at.astimezone(UTC) != deadline + timedelta(days=4, hours=-3)
+        or opened.astimezone(UTC) != verdict_public_at.astimezone(UTC)
+        or closed.astimezone(UTC) != deadline + timedelta(days=4, hours=3)):
+        raise ValueError("duplicate verdict and dispute window must be Tuesday 09:00–15:00 UTC")
     config_hash = canonical_sha256(configuration)
     rules = {
         "schema_version": RULES_SCHEMA,
         "round_id": round_id, "network": network,
-        "week_start": deadline.date().isoformat(),
+        "week_start": week_start,
         "deadline_at": deadline.isoformat(),
         "deadline_block": block, "reveal_block": reveal,
         "configuration_sha256": config_hash,
