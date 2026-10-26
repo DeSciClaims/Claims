@@ -177,6 +177,20 @@ hashes, evaluation-context literals, denied egress and cap trips, repeated
 output sets, and claim-count ratio. The controller recomputes the verdicts
 from the sealed evidence and frozen thresholds. Calibrate the thresholds on
 week −1 perturbation and baseline runs before a paid round.
+To compare candidate thresholds with independently reviewed week −1 controls
+and deliberate attacks, run
+`python -m neurons.competition_audit_calibration --input private-cases.json --output aggregate-report.json`.
+The input is a private JSON object with `schema_version` set to
+`claims_code_audit_calibration_v1`, a proposed `policy.code_audit` body under
+`policy`, and `cases`. Each case has a unique `case_id`, one frozen
+`audit-evidence.json` body under `evidence`, and `expected_checks` keyed by
+finalist hotkey, each with Boolean `build`, `hardcoded_output`,
+`evaluation_context`, `cap_evasion`, and `fragmentation` labels. The report
+counts false rejections and missed attacks for each check, and shows whether
+the observed numeric controls and attacks can be separated by an upper
+threshold. It contains only aggregate counts and input/policy hashes, not
+package names or source. Keep the labeled input private; review the report
+and freeze chosen thresholds in the public rules before mainnet.
 For a testnet round without automatic thresholds, review the sealed source and this evidence, then provide a private
 review JSON with `round_id`, `evidence_sha256`, `reviewer`, and one package row
 per finalist: `hotkey`, `package_sha256`, and Boolean `checks` for

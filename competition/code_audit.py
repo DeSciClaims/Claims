@@ -2,8 +2,8 @@
 
 Static code inspection cannot prove that a package lacks a hidden branch or
 paper-keyed answer table. This module produces reproducible evidence and
-requires explicit review decisions for those checks; it never infers a pass
-from the absence of a simple string pattern.
+applies frozen public thresholds in mainnet rounds. Its automatic verdict is
+a bounded detector, not proof that malicious behavior is absent.
 """
 
 from __future__ import annotations
