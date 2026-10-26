@@ -36,7 +36,8 @@ def build_jobs(
     jobs: list[dict[str, Any]] = []
     hotkeys: set[str] = set()
     for submission in selected:
-        if not (submission.get("qualified") or submission.get("incumbent") or submission.get("reference")):
+        if not (submission.get("qualified") or submission.get("incumbent") or submission.get("reference")
+                or submission.get("role") in {"challenger", "incumbent", "reference"}):
             continue
         hotkey = str(submission["hotkey"])
         if hotkey in hotkeys:

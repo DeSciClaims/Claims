@@ -75,9 +75,42 @@ class CompetitionBackend:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/sample"
         return self._request("POST", path, receipt)
 
+    def list_sample(self, round_id: str) -> list[dict[str, Any]]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/sample"
+        return self._request("GET", path)
+
     def enqueue_jobs(self, round_id: str, jobs: list[dict[str, Any]]) -> dict[str, Any]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/jobs"
         return self._request("POST", path, {"jobs": jobs})
+
+    def list_stages(self, round_id: str) -> list[dict[str, Any]]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/stages"
+        return self._request("GET", path)
+
+    def start_stage(
+        self, round_id: str, stage: str, entries: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        if stage not in {"prescreen", "screen", "final", "week_one"}:
+            raise ValueError("unknown competition stage")
+        path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/stages/" + stage)
+        return self._request("POST", path, {"entries": entries})
+
+    def list_stage_scores(self, round_id: str, stage: str) -> list[dict[str, Any]]:
+        if stage not in {"prescreen", "screen", "final", "week_one", "rerun"}:
+            raise ValueError("unknown competition stage")
+        base = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/stages/" + stage + "/scores")
+        rows: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            page = self._request("GET", base + f"?limit=1000&offset={offset}")
+            rows.extend(page["scores"])
+            if page["next_offset"] is None:
+                return rows
+            if page["next_offset"] <= offset:
+                raise RuntimeError("competition score pagination did not advance")
+            offset = page["next_offset"]
 
     def claim_job(self, round_id: str, *, worker_id: str, lease_seconds: int) -> dict[str, Any] | None:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/jobs/claim"
