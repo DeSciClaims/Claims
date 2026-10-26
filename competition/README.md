@@ -8,6 +8,9 @@ round schedule and repository ownership.
 `BittensorArchive` supplies historical block hashes, raw commitment metadata,
 and block timestamps from the archive-node Subtensor SDK. The SDK's decoded
 commitment string is unsuitable for the two-field package commitment.
+`HippiusPrivateStorage` reads sealed package objects against their receipt
+hashes and writes scoped, checksum-tagged private worker logs. It belongs only
+in trusted controller or coordinator processes.
 
 After the deadline lock, `reveal_selected_sample` verifies the D+600 drand
 beacon, uses its seed for the duplicate lottery, and publishes exactly the
