@@ -33,15 +33,17 @@ def artifact():
 
 
 class Keys:
-    def __init__(self, over=False, expected_cap=1000):
+    def __init__(self, over=False, expected_cap=1000, expected_dollars=1.0):
         self.over = over
         self.expected_cap = expected_cap
+        self.expected_dollars = expected_dollars
         self.revoked = False
         self.created = False
 
     def create_paper_key(self, **kwargs):
         self.created = True
         assert kwargs["token_limit"] == self.expected_cap
+        assert kwargs["dollar_limit"] == pytest.approx(self.expected_dollars)
         assert kwargs["allowed_models"] == ("example/model",)
         return PaperKey("key-1", "sk-bf-short-lived", datetime.now(UTC) + timedelta(minutes=10),
                         self.expected_cap, kwargs["dollar_limit"])
@@ -163,6 +165,85 @@ def test_retry_writes_a_distinct_log_object():
     _, _, second_logs, _, _ = run(attempt=2)
     assert first_logs.key != second_logs.key
     assert second_logs.key.endswith("-attempt-2.txt")
+
+
+def test_retry_key_receives_only_unspent_paper_budget():
+    prior = {"status": "infrastructure_fault", "billing_observed": True,
+             "prompt_and_completion_tokens": 400, "inference_cost_usd": 0.25}
+    signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
+    package, pdf = b"package", b"%PDF sample"
+    job = {
+        "job_id": "a" * 64, "round_id": "week2", "hotkey": signer.ss58_address,
+        "package_sha256": hashlib.sha256(package).hexdigest(),
+        "stage": "week_one", "paper_id": "paper-1", "lease_token": "lease-token",
+        "attempts": 2, "result_private": prior,
+        "paper": {"paper_id": "paper-1", "title": "Paper"},
+        "manifest": {
+            "schema_version": "claims_competition_manifest_v1", "language": "python",
+            "package_format": "wheel",
+            "package_filename": "claims_sample_miner-0.1.0-py3-none-any.whl",
+            "source_included": True, "license_production_use": True,
+            "entrypoint": "claims_sample_miner.cli:main", "models": ["example/model"],
+        },
+    }
+    keys, logs, backend = Keys(expected_cap=600, expected_dollars=0.75), Logs(), Backend(job)
+    result = run_claimed_job(
+        job, backend=backend, worker_id="worker-1", network="testnet",
+        fetch_package=lambda _: package, fetch_pdf=lambda _: pdf,
+        expected_pdf_sha256=hashlib.sha256(pdf).hexdigest(),
+        keys=keys, execution=Executor(), logs=logs,
+        inference_base_url="http://gateway.internal:8080/v1",
+        allowed_models=("example/model",), published_token_ceiling=1000,
+        dollar_limit=1.0,
+    )
+    assert keys.created and keys.revoked
+    assert result["token_limit"] == 600
+    assert result["paper_token_limit"] == 1000
+    assert backend.receipt[1]["result"]["token_limit"] == 600
+
+
+@pytest.mark.parametrize("prior, expected", [
+    ({}, "unmetered_prior_attempt"),
+    ({"status": "infrastructure_fault", "billing_observed": True,
+      "prompt_and_completion_tokens": 1000, "inference_cost_usd": 0.1},
+     "prior_attempt_exhausted_budget"),
+])
+def test_retry_without_proven_remaining_allowance_never_issues_key(prior, expected):
+    class NoKeys(Keys):
+        def create_paper_key(self, **_):
+            pytest.fail("retry obtained a new inference key")
+
+    signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
+    package, pdf = b"package", b"%PDF sample"
+    job = {
+        "job_id": "a" * 64, "round_id": "week2", "hotkey": signer.ss58_address,
+        "package_sha256": hashlib.sha256(package).hexdigest(),
+        "stage": "week_one", "paper_id": "paper-1", "lease_token": "lease-token",
+        "attempts": 2, "result_private": prior,
+        "paper": {"paper_id": "paper-1", "title": "Paper"},
+        "manifest": {
+            "schema_version": "claims_competition_manifest_v1", "language": "python",
+            "package_format": "wheel",
+            "package_filename": "claims_sample_miner-0.1.0-py3-none-any.whl",
+            "source_included": True, "license_production_use": True,
+            "entrypoint": "claims_sample_miner.cli:main", "models": ["example/model"],
+        },
+    }
+    keys, logs, backend = NoKeys(), Logs(), Backend(job)
+    result = run_claimed_job(
+        job, backend=backend, worker_id="worker-1", network="testnet",
+        fetch_package=lambda _: package, fetch_pdf=lambda _: pdf,
+        expected_pdf_sha256=hashlib.sha256(pdf).hexdigest(),
+        keys=keys, execution=Executor(), logs=logs,
+        inference_base_url="http://gateway.internal:8080/v1",
+        allowed_models=("example/model",), published_token_ceiling=1000,
+        dollar_limit=1.0,
+    )
+    assert result["detail"] == expected
+    assert result["status"] == ("infrastructure_fault" if not prior else "cap_exceeded")
+    assert result["token_limit"] == 0
+    assert backend.receipt[1]["result"] == result
+    assert expected.encode() in logs.content
 
 
 def test_reference_service_identity_can_run_and_store_a_log():

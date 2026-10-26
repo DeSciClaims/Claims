@@ -61,15 +61,20 @@ def _lease(active):
 
 
 class Keys:
-    def __init__(self, over=False):
+    def __init__(self, over=False, expected_tokens=1000, expected_dollars=1.0):
         self.over = over
         self.revoked = False
+        self.created = False
+        self.expected_tokens = expected_tokens
+        self.expected_dollars = expected_dollars
 
     def create_paper_key(self, **kwargs):
+        self.created = True
         assert kwargs["allowed_models"] == ("example/model",)
-        assert kwargs["token_limit"] == 1000
+        assert kwargs["token_limit"] == self.expected_tokens
+        assert kwargs["dollar_limit"] == pytest.approx(self.expected_dollars)
         return PaperKey("key", TOKEN, datetime.now(UTC) + timedelta(minutes=10),
-                        1000, kwargs["dollar_limit"])
+                        self.expected_tokens, kwargs["dollar_limit"])
 
     def check_budget(self, key):
         return PaperUsage(1100 if self.over else 350, 0.12, self.over)
@@ -104,15 +109,15 @@ class Results:
         self.receipt = None
 
     def complete_production_job(self, job_id, **kwargs):
-        assert self.keys.revoked
+        assert self.keys.revoked or not self.keys.created
         self.receipt = job_id, kwargs
 
 
 def _run(*, over=False, artifact=None, lease=None, active=None, execution=None,
-         is_current_release=None):
+         is_current_release=None, keys=None):
     active = active or _active()
     lease = lease or _lease(active)
-    keys = Keys(over)
+    keys = keys or Keys(over)
     logs = Logs()
     results = Results(keys)
     runner = execution or Execution(artifact)
@@ -170,6 +175,42 @@ def test_production_transport_fault_revokes_key_and_records_fault():
     assert result["status"] == "infrastructure_fault"
     assert result["artifact"] is None
     assert "private transport detail" not in str(receipts.receipt)
+
+
+def test_production_retry_uses_only_recorded_remaining_budget():
+    active = _active()
+    lease = _lease(active)
+    lease["attempts"] = 2
+    lease["result_private"] = {
+        "status": "infrastructure_fault", "billing_observed": True,
+        "prompt_and_completion_tokens": 300, "inference_cost_usd": 0.2,
+    }
+    result, keys, _, _, execution = _run(
+        active=active, lease=lease,
+        keys=Keys(expected_tokens=700, expected_dollars=0.8),
+    )
+    assert keys.created and keys.revoked and execution.calls == 1
+    assert result["token_limit"] == 700
+    assert result["paper_token_limit"] == 1000
+
+
+@pytest.mark.parametrize("prior, expected", [
+    ({}, "unmetered_prior_attempt"),
+    ({"status": "infrastructure_fault", "billing_observed": True,
+      "prompt_and_completion_tokens": 1000, "inference_cost_usd": 0.2},
+     "prior_attempt_exhausted_budget"),
+])
+def test_production_retry_without_allowance_never_runs_miner(prior, expected):
+    active = _active()
+    lease = _lease(active)
+    lease["attempts"] = 2
+    lease["result_private"] = prior
+    result, keys, logs, receipts, execution = _run(active=active, lease=lease)
+    assert not keys.created and execution.calls == 0
+    assert result["detail"] == expected
+    assert result["status"] == ("infrastructure_fault" if not prior else "cap_exceeded")
+    assert receipts.receipt[1]["result"] == result
+    assert expected.encode() in logs.receipt[1]
 
 
 def test_production_discards_result_when_handoff_changes_during_execution():

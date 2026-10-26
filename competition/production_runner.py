@@ -18,7 +18,10 @@ from miner.agent_v1.artifact_validator import validate_agent_artifact
 
 from .production_reader import ActiveProductionPackage
 from .worker_contract import build_worker_contract
-from .worker_controller import DisposableExecution, ExecutionOutput, InferenceKeys, PrivateLogs
+from .worker_controller import (
+    DisposableExecution, ExecutionOutput, InferenceKeys, PrivateLogs,
+    remaining_attempt_budget,
+)
 
 
 class ProductionResults(Protocol):
@@ -69,7 +72,7 @@ def run_production_paper(
         or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}", active.hotkey)
         or active.manifest is None or not isinstance(active.manifest, dict)
         or hashlib.sha256(active.package).hexdigest() != active.package_sha256
-        or not 1 <= key_lifetime_seconds <= 7200 or token_limit < 1
+        or not 1 <= key_lifetime_seconds <= 3600 or token_limit < 1
         or dollar_limit <= 0 or max_output_bytes < 1):
         raise ValueError("production release or resource budget is invalid")
     job = {
@@ -87,10 +90,38 @@ def run_production_paper(
         raise ValueError("production PDF differs from its pinned source hash")
     if is_current_release is not None and not is_current_release():
         raise ValueError("production release changed before paper execution")
+    attempt_tokens, attempt_dollars, stop_reason = remaining_attempt_budget(
+        dict(lease), paper_token_limit=token_limit, dollar_limit=dollar_limit,
+    )
+    log_key = (
+        f"logs/{network}/{active.round_id}/{active.hotkey}/"
+        f"{hashlib.sha256(paper_id.encode()).hexdigest()}/"
+        f"{job_id}-attempt-{attempt}.txt"
+    )
+    if stop_reason is not None:
+        result = {
+            "status": ("cap_exceeded" if stop_reason == "prior_attempt_exhausted_budget"
+                       else "infrastructure_fault"),
+            "artifact": None,
+            "round_id": active.round_id, "hotkey": active.hotkey,
+            "receipt_sha256": active.receipt_sha256,
+            "package_sha256": active.package_sha256,
+            "paper_id": paper_id, "source_sha256": pdf_sha256,
+            "prompt_and_completion_tokens": 0, "token_limit": 0,
+            "paper_token_limit": token_limit, "inference_cost_usd": 0.0,
+            "denied_egress_packets": 0, "vm_elapsed_seconds": None,
+            "vm_cost_estimate_usd": None, "detail": stop_reason,
+        }
+        logs.put(log_key, f"[trusted-budget] {stop_reason}\n".encode())
+        results.complete_production_job(
+            job_id, worker_id=worker_id, lease_token=lease_token, result=result,
+            log_object_key=log_key,
+        )
+        return result
     key = keys.create_paper_key(
         round_id=active.round_id, paper_id=paper_id, hotkey=active.hotkey,
-        allowed_models=contract["allowed_models"], token_limit=token_limit,
-        dollar_limit=dollar_limit,
+        allowed_models=contract["allowed_models"], token_limit=attempt_tokens,
+        dollar_limit=attempt_dollars,
         expires_at=datetime.now(UTC) + timedelta(seconds=key_lifetime_seconds),
     )
     try:
@@ -144,11 +175,6 @@ def run_production_paper(
                 raise ValueError("production artifact paper ID or agent_v1 schema is invalid")
         except (TypeError, ValueError) as exc:
             status, artifact, detail = "invalid_output", None, str(exc)
-    log_key = (
-        f"logs/{network}/{active.round_id}/{active.hotkey}/"
-        f"{hashlib.sha256(paper_id.encode()).hexdigest()}/"
-        f"{job_id}-attempt-{attempt}.txt"
-    )
     safe_log = output.log_bytes.replace(key.value.encode(), b"[REDACTED_PAPER_KEY]")
     if status == "invalid_output":
         safe_log += f"\n[trusted-validate] {detail}\n".encode()
@@ -160,7 +186,8 @@ def run_production_paper(
         "package_sha256": active.package_sha256,
         "paper_id": paper_id, "source_sha256": pdf_sha256,
         "prompt_and_completion_tokens": usage.tokens,
-        "token_limit": token_limit,
+        "token_limit": attempt_tokens,
+        "paper_token_limit": token_limit,
         "inference_cost_usd": usage.dollar_cost_usd,
         "denied_egress_packets": output.denied_egress_packets,
         "vm_elapsed_seconds": output.vm_elapsed_seconds,

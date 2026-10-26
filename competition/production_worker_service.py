@@ -76,6 +76,7 @@ class ProductionWorkerCoordinator:
             allowed_models=tuple(policy["allowed_models"]),
             token_limit=policy["published_token_ceiling"],
             dollar_limit=float(policy["dollar_limit_usd"]),
+            key_lifetime_seconds=min(policy["lease_seconds"], 3600),
             is_current_release=lambda: (
                 (current := self.reader.read_active()) is not None
                 and current.receipt_sha256 == active.receipt_sha256

@@ -97,6 +97,28 @@ def paper_token_cap(
     return min(published_ceiling, max(1, usage * 3 // 2)), "baseline_usage_1_5x"
 
 
+def remaining_attempt_budget(
+    job: dict[str, Any], *, paper_token_limit: int, dollar_limit: float,
+) -> tuple[int, float, str | None]:
+    """A fresh retry key may use only the first attempt's unspent allowance."""
+    if job.get("attempts", 1) == 1:
+        return paper_token_limit, dollar_limit, None
+    prior = job.get("result_private")
+    if not isinstance(prior, dict) or prior.get("billing_observed") is not True:
+        return 0, 0.0, "unmetered_prior_attempt"
+    tokens = prior.get("prompt_and_completion_tokens")
+    cost = prior.get("inference_cost_usd")
+    if (isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0
+        or isinstance(cost, bool) or not isinstance(cost, int | float)
+        or not math.isfinite(cost) or cost < 0):
+        return 0, 0.0, "unmetered_prior_attempt"
+    remaining_tokens = paper_token_limit - tokens
+    remaining_dollars = dollar_limit - cost
+    if remaining_tokens < 1 or remaining_dollars <= 0:
+        return 0, 0.0, "prior_attempt_exhausted_budget"
+    return remaining_tokens, remaining_dollars, None
+
+
 def run_claimed_job(
     job: dict[str, Any], *, backend: JobBackend,
     worker_id: str, network: str,
@@ -130,7 +152,7 @@ def run_claimed_job(
     attempt = job.get("attempts", 1)
     if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt not in {1, 2}:
         raise ValueError("worker lease attempt must be one or two")
-    if (not 1 <= key_lifetime_seconds <= 7200 or published_token_ceiling < 1
+    if (not 1 <= key_lifetime_seconds <= 3600 or published_token_ceiling < 1
         or dollar_limit <= 0 or max_output_bytes < 1):
         raise ValueError("paper key budget or lifetime is invalid")
     package = fetch_package(job)
@@ -143,13 +165,38 @@ def run_claimed_job(
         job, allowed_models=allowed_models,
         max_output_tokens=max_inference_output_tokens,
     )
-    token_limit, cap_source = paper_token_cap(
+    paper_limit, cap_source = paper_token_cap(
         job, backend=backend, published_ceiling=published_token_ceiling,
     )
+    token_limit, attempt_dollars, stop_reason = remaining_attempt_budget(
+        job, paper_token_limit=paper_limit, dollar_limit=dollar_limit,
+    )
+    log_key = (
+        f"logs/{network}/{job['round_id']}/{job['hotkey']}/"
+        f"{hashlib.sha256(job['paper_id'].encode()).hexdigest()}/"
+        f"{job['job_id']}-attempt-{attempt}.txt"
+    )
+    if stop_reason is not None:
+        status = ("cap_exceeded" if stop_reason == "prior_attempt_exhausted_budget"
+                  else "infrastructure_fault")
+        result = {
+            "status": status, "artifact": None,
+            "prompt_and_completion_tokens": 0, "inference_cost_usd": 0.0,
+            "vm_elapsed_seconds": None, "vm_cost_estimate_usd": None,
+            "denied_egress_packets": 0, "token_limit": 0,
+            "paper_token_limit": paper_limit, "cap_source": cap_source,
+            "detail": stop_reason,
+        }
+        logs.put(log_key, f"[trusted-budget] {stop_reason}\n".encode())
+        backend.complete_job(
+            job["job_id"], worker_id=worker_id, lease_token=job["lease_token"],
+            result=result, log_object_key=log_key,
+        )
+        return result
     key = keys.create_paper_key(
         round_id=job["round_id"], paper_id=job["paper_id"], hotkey=job["hotkey"],
         allowed_models=contract["allowed_models"], token_limit=token_limit,
-        dollar_limit=dollar_limit,
+        dollar_limit=attempt_dollars,
         expires_at=datetime.now(UTC) + timedelta(seconds=key_lifetime_seconds),
     )
     try:
@@ -198,11 +245,6 @@ def run_claimed_job(
         except (TypeError, ValueError) as exc:
             status = "invalid_output"
             validation_error = str(exc)
-    log_key = (
-        f"logs/{network}/{job['round_id']}/{job['hotkey']}/"
-        f"{hashlib.sha256(job['paper_id'].encode()).hexdigest()}/"
-        f"{job['job_id']}-attempt-{attempt}.txt"
-    )
     # The worker can print its scoped key; remove it before logs become visible.
     safe_log = output.log_bytes.replace(key.value.encode(), b"[REDACTED_PAPER_KEY]")
     if validation_error:
@@ -217,6 +259,7 @@ def run_claimed_job(
         "vm_cost_estimate_usd": output.vm_cost_estimate_usd,
         "denied_egress_packets": output.denied_egress_packets,
         "token_limit": token_limit,
+        "paper_token_limit": paper_limit,
         "cap_source": cap_source,
         "detail": validation_error or output.detail,
     }
@@ -272,5 +315,6 @@ def run_next_claimed_job(
         allowed_models=allowed_models,
         published_token_ceiling=published_token_ceiling,
         dollar_limit=dollar_limit,
+        key_lifetime_seconds=min(lease_seconds, 3600),
         max_inference_output_tokens=max_inference_output_tokens,
     )
