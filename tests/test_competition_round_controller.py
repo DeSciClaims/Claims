@@ -7,6 +7,7 @@ from bittensor_wallet import Keypair
 from competition.commitments import manifest_id
 from competition.drand import DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY, VerifiedBeacon
 from competition.policy import commitment_hash
+from competition.publication import canonical_sha256
 from competition.round_controller import (
     lock_ready_round, reveal_ready_sample, reveal_selected_sample, start_revealed_round,
 )
@@ -129,7 +130,9 @@ def test_revealed_round_duplicate_draw_resumes_after_partial_write(monkeypatch):
 
         def get_round(self, _round_id):
             return {"status": "revealed", "drand_seed": "a" * 64,
-                    "incumbent_hotkey": None, "baseline_package_sha256": "b" * 64}
+                    "incumbent_hotkey": None, "baseline_package_sha256": "b" * 64,
+                    "duplicate_review_links": [],
+                    "duplicate_review_sha256": canonical_sha256([])}
 
         def list_stages(self, _round_id):
             return self.stages
@@ -156,6 +159,12 @@ def test_revealed_round_duplicate_draw_resumes_after_partial_write(monkeypatch):
         return {"status": "started", "stage": "week_one"}
 
     monkeypatch.setattr("competition.round_controller.start_initial_stage", start)
+    with pytest.raises(ValueError, match="duplicate review differs"):
+        start_revealed_round(
+            "week1", backend=backend, baseline=baseline,
+            package_for_submission=lambda _: package,
+            linked_pairs=[("miner-a", "miner-b", "late change")],
+        )
     assert start_revealed_round(
         "week1", backend=backend, baseline=baseline,
         package_for_submission=lambda _: package,
@@ -181,7 +190,9 @@ def test_revealed_round_rejects_changed_duplicate_receipt(monkeypatch):
     class Backend:
         def get_round(self, _round_id):
             return {"status": "revealed", "drand_seed": "a" * 64,
-                    "incumbent_hotkey": None, "baseline_package_sha256": "b" * 64}
+                    "incumbent_hotkey": None, "baseline_package_sha256": "b" * 64,
+                    "duplicate_review_links": [],
+                    "duplicate_review_sha256": canonical_sha256([])}
 
         def list_stages(self, _round_id):
             return []
@@ -244,6 +255,19 @@ def test_sample_release_uses_seeded_distinct_entrant_count(monkeypatch):
     assert result["final_paper_count"] == 500
     assert result["stages"] == ["final"]
     assert {row["stage"] for row in backend.receipt["papers"]} == {"final"}
+    reviewed = Backend()
+    linked_result = reveal_selected_sample(
+        "week2", backend=reviewed, chain=object(), papers=papers,
+        baseline={"hotkey": "incumbent", "team_id": "incumbent-team",
+                  "package_sha256": "b" * 64},
+        package_for_submission=lambda row: packages[row["hotkey"]],
+        weekly_budget_usd=295,
+        linked_pairs=[("miner-3", "miner-2", "reviewed similarity")],
+    )
+    assert linked_result["selected_count"] == 2
+    assert reviewed.receipt["duplicate_review_links"] == [{
+        "left": "miner-2", "right": "miner-3", "reason": "reviewed similarity",
+    }]
 
 
 def test_week_one_release_uses_proposal_320_paper_launch_sample(monkeypatch):

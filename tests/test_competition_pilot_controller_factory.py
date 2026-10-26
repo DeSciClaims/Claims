@@ -5,8 +5,9 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from competition.pilot_controller_factory import (
-    _final_audit, _voters, create_controller_inputs,
+    _duplicate_links, _final_audit, _voters, create_controller_inputs,
 )
+from competition.duplicate_review import make_duplicate_review
 from competition.controller_inputs import build_provisional_evaluation_policy
 from competition.code_audit import finalize_code_audit
 from competition.publication import canonical_sha256
@@ -28,6 +29,39 @@ class Backend:
             {"hotkey": "incumbent", "package_sha256": "b" * 64,
              "team_id": "king", "role": "incumbent"},
         ]}]
+
+
+def test_factory_reads_post_lock_duplicate_review_and_checks_reveal(tmp_path, monkeypatch):
+    monkeypatch.setenv("CLAIMS_COMPETITION_ROUNDS_DIR", str(tmp_path))
+    class ReviewBackend:
+        record = {"round_id": "week1", "status": "locked",
+                  "archive_block_hash": "0x" + "a" * 64,
+                  "baseline_package_sha256": "9" * 64,
+                  "incumbent_hotkey": None}
+        submissions = [{"hotkey": key, "team_id": key,
+                        "package_sha256": digest * 64, "status": "accepted",
+                        "qualified": True}
+                       for key, digest in (("a", "1"), ("b", "2"))]
+
+        def get_round(self, _):
+            return self.record
+
+        def list_submissions(self, _):
+            return self.submissions
+
+    backend = ReviewBackend()
+    review = make_duplicate_review(
+        "week1", round_record=backend.record, submissions=backend.submissions,
+        linked_pairs=[("a", "b", "reviewed match")],
+    )
+    (tmp_path / "week1.duplicates.json").write_text(json.dumps(review))
+    assert _duplicate_links(backend, "week1") == [("a", "b", "reviewed match")]
+    backend.record.update(status="revealed", duplicate_review_links=review["links"],
+                          duplicate_review_sha256=review["links_sha256"])
+    assert _duplicate_links(backend, "week1") == [("a", "b", "reviewed match")]
+    backend.record["duplicate_review_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="revealed sample"):
+        _duplicate_links(backend, "week1")
 
 
 def test_late_voter_and_code_audit_receipts_are_package_bound(tmp_path, monkeypatch):

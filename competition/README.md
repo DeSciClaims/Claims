@@ -63,8 +63,17 @@ beacon, uses its seed for the duplicate lottery, and publishes exactly the
 papers required by the surviving entrant count. `start_revealed_round` replays
 that draw, checks any previously stored duplicate verdicts, writes missing
 verdicts, and starts the first stage. It is safe to retry after a crash between
-those writes. Both steps require the same frozen package bytes and any reviewed
-duplicate-link evidence.
+those writes. Both steps require the same frozen package bytes and reviewed
+duplicate-link evidence. After intake locks, create `<round_id>.duplicates.json`
+with `python -m neurons.competition_duplicate_review --round-id ID --rounds-dir DIR --backend-url URL --links-file LINKS.json`.
+The input file is `{"links":[{"left":"hotkey-a","right":"hotkey-b","reason":"reviewed match"}]}`;
+use an empty list when no additional links were found. The receipt binds the
+review to the locked archive block, baseline package, and qualified package hashes. Reviewed
+links may point to the frozen incumbent hotkey. A new version from the incumbent's
+team must use a separate qualified hotkey because stage jobs are keyed by hotkey. The backend
+freezes its private link list and publishes the hash with the sample. A restarted controller
+checks both before starting a stage. Links cannot be supplied in the
+pre-deadline round draft.
 The week-one reference launch releases exactly 320 papers; later staged finals
 require at least 500. For later weeks the controller computes the final count
 from the frozen weekly dollar budget and the number of distinct challengers

@@ -104,6 +104,8 @@ def prepare_round(
                or any(not isinstance(value, str) or not value for value in pair)
                for pair in links)):
         raise ValueError("reviewed duplicate links are malformed")
+    if links:
+        raise ValueError("duplicate links must be reviewed after the intake lock")
     config_hash = canonical_sha256(configuration)
     rules = {
         "schema_version": RULES_SCHEMA,

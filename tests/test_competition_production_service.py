@@ -138,7 +138,9 @@ def test_scheduler_verifies_signature_before_using_activation_gate(tmp_path):
         "drand_round": 1, "drand_seed": "b" * 64,
         "drand_chain_hash": "c" * 64, "drand_public_key": "d" * 96,
         "drand_signature": "e" * 192, "drand_scheduled_at": 1_800_000_000,
-        "paper_pool_sha256": "f" * 64, "configuration_sha256": "1" * 64,
+        "paper_pool_sha256": "f" * 64,
+        "duplicate_review_sha256": "a" * 64,
+        "configuration_sha256": "1" * 64,
         "baseline_package_sha256": "2" * 64,
         "reference_package_sha256": "3" * 64,
     })

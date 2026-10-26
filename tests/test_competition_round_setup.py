@@ -61,6 +61,10 @@ def test_prepare_round_rejects_invalid_calendar_before_writing(tmp_path):
     draft["reveal_block"] = 699
     with pytest.raises(ValueError, match=r"D\+600"):
         prepare_round(draft, backend=object(), directory=tmp_path)
+    draft = _draft()
+    draft["linked_pairs"] = [["a", "b", "reviewed copy"]]
+    with pytest.raises(ValueError, match="after the intake lock"):
+        prepare_round(draft, backend=object(), directory=tmp_path)
     assert list(tmp_path.iterdir()) == []
 
 

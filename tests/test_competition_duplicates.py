@@ -62,6 +62,30 @@ def test_incumbent_copy_from_other_team_cannot_win_group_lottery():
     assert ("b", "c", "reviewed variant") in result.evidence
 
 
+def test_reviewed_near_copy_of_incumbent_is_excluded_with_public_link_evidence():
+    incumbent = _entry("king", "king-team", "9")
+    entries = [_entry("copy", "other-team", "1"),
+               _entry("new-version", "king-team", "2")]
+    selection = select_distinct_submissions(
+        entries, seed=b"s" * 32, incumbent=incumbent,
+        linked_pairs=[("copy", "king", "reviewed structural match")],
+    )
+    assert selection.selected_hotkeys == ("new-version",)
+    assert selection.excluded_hotkeys == ("copy",)
+    verdict = duplicate_verdicts(
+        selection, seed=b"s" * 32, incumbent_hotkey="king",
+    )[0]
+    assert verdict["duplicate_of_hotkey"] == "king"
+    assert verdict["evidence"]["links"] == [{
+        "left": "copy", "right": "king", "reason": "reviewed structural match",
+    }]
+    with pytest.raises(ValueError, match="distinct qualified hotkey"):
+        select_distinct_submissions(
+            [_entry("king", "king-team", "2")], seed=b"s" * 32,
+            incumbent=incumbent,
+        )
+
+
 def test_source_fingerprint_creates_a_link_without_identical_wheel_hash():
     packages = {"a": _wheel("def run(x): return x+1\n"), "b": _wheel("def run(x):\n    return x + 1  # same logic\n")}
     entries = [

@@ -14,6 +14,7 @@ from typing import Any, Mapping
 from .chain_archive import BittensorArchive
 from .code_audit import collect_final_code_evidence, verify_code_audit_receipt
 from .controller_inputs import CompetitionControllerInputs, build_provisional_evaluation_policy
+from .duplicate_review import verify_duplicate_review
 from .hippius import HippiusPrivateStorage, hippius_s3_client
 from .judge_usage import JudgeUsageCapture
 from .package_inputs import CompetitionPackageResolver
@@ -72,6 +73,14 @@ def _voters(backend: Any, round_id: str) -> list[dict[str, str]]:
         raise ValueError("voter team differs from an entrant declaration")
     return [{"voter_hotkey": row["voter_hotkey"], "team_id": row["team_id"]}
             for row in voters]
+
+
+def _duplicate_links(backend: Any, round_id: str) -> list[tuple[str, str, str]]:
+    return verify_duplicate_review(
+        _late_receipt(round_id, "duplicates"), round_id=round_id,
+        round_record=backend.get_round(round_id),
+        submissions=backend.list_submissions(round_id),
+    )
 
 
 def _final_audit(
@@ -139,6 +148,8 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
                or any(not isinstance(value, str) or not value for value in pair)
                for pair in links)):
         raise ValueError("reviewed duplicate links are malformed")
+    if links:
+        raise ValueError("duplicate links must be reviewed after the intake lock")
     import bittensor as bt
 
     chain = BittensorArchive(bt.Subtensor(network=_required("CLAIMS_ARCHIVE_SUBTENSOR_NETWORK")))
@@ -189,7 +200,7 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         operator_hotkey=operator, paper_inputs=papers, packages=packages,
         evaluation=policy, weekly_budget_usd=float(configuration["weekly_budget_usd"]),
         judge_usage_capture=judge_usage_capture,
-        linked_pairs=tuple(tuple(pair) for pair in links),
+        linked_pairs=(), duplicate_review_reader=lambda rid: _duplicate_links(backend, rid),
         qualified_voters=lambda rid: _voters(backend, rid),
         audited_finalists=lambda rid: _final_audit(
             backend, chain, rid, owner_hotkey=owner, operator_hotkey=operator,

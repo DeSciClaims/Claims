@@ -114,6 +114,7 @@ class CompetitionControllerInputs:
     qualified_voters: Callable[[str], list[dict[str, str]]]
     audited_finalists: Callable[[str], FinalAudit]
     judge_usage_capture: JudgeUsageCapture | None = None
+    duplicate_review_reader: Callable[[str], list[tuple[str, str, str]]] | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -175,6 +176,8 @@ class CompetitionControllerInputs:
 
     def linked_pairs_for_round(self, round_id: str) -> list[tuple[str, str, str]]:
         self._round(round_id)
+        if self.duplicate_review_reader is not None:
+            return self.duplicate_review_reader(round_id)
         return list(self.linked_pairs)
 
     def weekly_budget_for_round(self, round_id: str) -> float:

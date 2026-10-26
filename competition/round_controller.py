@@ -15,8 +15,25 @@ from .budget import final_paper_count
 from .duplicates import duplicate_verdicts, select_distinct_submissions
 from .intake_lock import ArchiveReader, CompetitionBackend, snapshot_round
 from .sample_release import PaperRecord, sample_receipt
+from .publication import canonical_sha256
 from .stage_controller import start_initial_stage
 from .stages import stage_plan
+
+
+def _review_links(linked_pairs: list[tuple[str, str, str]] | None) -> list[dict[str, str]]:
+    links = []
+    for pair in linked_pairs or []:
+        if (not isinstance(pair, (list, tuple)) or len(pair) != 3
+            or any(not isinstance(value, str) or not value for value in pair)):
+            raise ValueError("duplicate review link is malformed")
+        left, right, reason = pair
+        if left == right or not reason.strip() or len(reason) > 240:
+            raise ValueError("duplicate review link is invalid")
+        links.append({"left": min(left, right), "right": max(left, right), "reason": reason})
+    links.sort(key=lambda row: (row["left"], row["right"]))
+    if len({(row["left"], row["right"]) for row in links}) != len(links):
+        raise ValueError("duplicate review repeats a link")
+    return links
 
 
 def lock_ready_round(
@@ -59,6 +76,7 @@ def reveal_ready_sample(
         prescreen_count=prescreen_count, screen_count=screen_count,
         final_count=final_count, week_one=week_one,
     )
+    receipt["duplicate_review_links"] = []
     return backend.reveal_sample(round_id, receipt)
 
 
@@ -110,6 +128,7 @@ def reveal_selected_sample(
         final_count=final_count,
         week_one="week_one" in stages,
     )
+    receipt["duplicate_review_links"] = _review_links(linked_pairs)
     result = backend.reveal_sample(round_id, receipt)
     return {**result, "selected_count": len(selection.selected_hotkeys),
             "final_paper_count": final_count, "stages": list(stages)}
@@ -134,6 +153,11 @@ def start_revealed_round(
         return {"status": "already_started", "stage": stages[0]["stage"]}
     if round_record["status"] != "revealed":
         raise ValueError("sample must be revealed before duplicate selection")
+    frozen_links = round_record.get("duplicate_review_links")
+    if (not isinstance(frozen_links, list)
+        or round_record.get("duplicate_review_sha256") != canonical_sha256(frozen_links)
+        or frozen_links != _review_links(linked_pairs)):
+        raise ValueError("duplicate review differs from frozen sample")
     seed = bytes.fromhex(round_record["drand_seed"])
     if len(seed) != 32:
         raise ValueError("round has no verified 32-byte draw seed")

@@ -51,7 +51,10 @@ def duplicate_verdicts(
             raise ValueError("incumbent-copy group has no incumbent hotkey")
         links = [{"left": left, "right": right, "reason": reason}
                  for left, right, reason in selection.evidence
-                 if left in group and right in group]
+                 if ((left in group and right in group)
+                     or (incumbent_hotkey is not None
+                         and ((left == incumbent_hotkey and right in group)
+                              or (right == incumbent_hotkey and left in group))))]
         for hotkey in sorted(set(group) & excluded):
             verdicts.append({
                 "hotkey": hotkey, "duplicate_of_hotkey": representative,
@@ -238,11 +241,25 @@ def select_distinct_submissions(
             members.sort()
             for other in members[1:]:
                 link(members[0], other, field)
-    for left, right, reason in linked_pairs or []:
-        link(left, right, reason)
-
     incumbent_team = str(incumbent["team_id"]) if incumbent else None
     incumbent_hash = str(incumbent["package_sha256"]) if incumbent else None
+    incumbent_hotkey = str(incumbent["hotkey"]) if incumbent else None
+    if incumbent_hotkey in by_hotkey:
+        raise ValueError("incumbent version needs a distinct qualified hotkey")
+    reviewed_incumbent_copies: set[str] = set()
+    for left, right, reason in linked_pairs or []:
+        if incumbent_hotkey in {left, right}:
+            if not incumbent_hotkey or not reason:
+                raise ValueError("duplicate link has no frozen incumbent")
+            other = right if left == incumbent_hotkey else left
+            if other not in by_hotkey or other == incumbent_hotkey:
+                raise ValueError("duplicate link has unknown challenger")
+            evidence.append((*sorted((left, right)), reason))
+            if str(by_hotkey[other]["team_id"]) != incumbent_team:
+                reviewed_incumbent_copies.add(other)
+        else:
+            link(left, right, reason)
+
     incumbent_source = ""
     if incumbent_package is not None:
         if incumbent is None or hashlib.sha256(incumbent_package).hexdigest() != incumbent_hash:
@@ -251,7 +268,7 @@ def select_distinct_submissions(
             incumbent_source = python_source_fingerprint(incumbent_package) or ""
         except ValueError:
             incumbent_source = ""
-    copied_incumbent = {
+    copied_incumbent = reviewed_incumbent_copies | {
         hotkey for hotkey, item in by_hotkey.items()
         if incumbent and str(item["team_id"]) != incumbent_team
         and (str(item["package_sha256"]) == incumbent_hash or (incumbent_source and fingerprints.get(hotkey) == incumbent_source))

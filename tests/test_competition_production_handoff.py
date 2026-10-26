@@ -28,6 +28,7 @@ def _fixture(decision="new_crown"):
         "drand_seed": "b" * 64, "drand_chain_hash": "c" * 64,
         "drand_public_key": "d" * 96, "drand_signature": "e" * 192,
         "drand_scheduled_at": 1_800_000_000, "paper_pool_sha256": "f" * 64,
+        "duplicate_review_sha256": canonical_sha256([]),
         "rules_sha256": "1" * 64, "configuration_sha256": "2" * 64,
         "baseline_package_sha256": "3" * 64,
         "reference_package_sha256": "4" * 64,
