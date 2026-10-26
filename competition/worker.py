@@ -33,7 +33,7 @@ class WorkerResult:
 
 def _phase(
     command: list[str], *, cwd: Path, env: dict[str, str], log,
-    timeout_seconds: int, label: str,
+    timeout_seconds: float, label: str,
 ) -> tuple[int | None, float]:
     log.write(f"\n[{label}] start: {shlex.join(command)}\n".encode())
     log.flush()
@@ -98,6 +98,7 @@ def run_one_paper(
     }
     venv_dir = work_dir / "venv"
     started = time.monotonic()
+    install_deadline = started + install_timeout_seconds
     with log_path.open("wb") as log:
         code, _ = _phase(
             [sys.executable, "-m", "venv", str(venv_dir)],
@@ -107,10 +108,15 @@ def run_one_paper(
         if code != 0:
             return WorkerResult("build_failed", output_path, log_path, time.monotonic() - started, "venv creation failed")
         python = venv_dir / "bin" / "python"
+        remaining_install = install_deadline - time.monotonic()
+        if remaining_install <= 0:
+            log.write(b"\n[install] shared build budget exhausted\n")
+            return WorkerResult("build_failed", output_path, log_path,
+                                time.monotonic() - started, "package install timed out")
         code, _ = _phase(
             [str(python), "-m", "pip", "install", "--no-index", "--find-links", str(wheelhouse), str(package_path)],
             cwd=work_dir, env=environment, log=log,
-            timeout_seconds=install_timeout_seconds, label="install",
+            timeout_seconds=remaining_install, label="install",
         )
         if code != 0:
             return WorkerResult("build_failed", output_path, log_path, time.monotonic() - started, "package install failed")

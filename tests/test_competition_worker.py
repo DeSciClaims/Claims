@@ -3,6 +3,7 @@ import zipfile
 
 import pytest
 
+from competition import worker
 from competition.worker import run_one_paper
 
 
@@ -71,3 +72,39 @@ def test_worker_rejects_entrypoint_injection(tmp_path):
             work_dir=tmp_path / "work", log_path=tmp_path / "log.txt", wheelhouse=wheelhouse,
             inference_base_url="http://gateway/v1", paper_key="sk-bf-test",
         )
+
+
+@pytest.mark.parametrize("venv_elapsed,expected_install_budget", [(250, 350), (600, None)])
+def test_venv_and_install_share_one_build_budget(
+    tmp_path, monkeypatch, venv_elapsed, expected_install_budget,
+):
+    package = tmp_path / "sample-0.1.0-py3-none-any.whl"
+    package.write_bytes(b"wheel")
+    request = tmp_path / "request.json"
+    request.write_text("{}")
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    now = [0.0]
+    calls = []
+
+    def fake_phase(_command, **kwargs):
+        calls.append((kwargs["label"], kwargs["timeout_seconds"]))
+        if kwargs["label"] == "venv":
+            now[0] = float(venv_elapsed)
+            return 0, float(venv_elapsed)
+        return 1, 0.0
+
+    monkeypatch.setattr(worker.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(worker, "_phase", fake_phase)
+    result = run_one_paper(
+        package_path=package, entrypoint="sample:main",
+        request_path=request, output_path=tmp_path / "output.json",
+        work_dir=tmp_path / "work", log_path=tmp_path / "log.txt",
+        wheelhouse=wheelhouse, inference_base_url="https://gateway/v1",
+        paper_key="scoped-key", install_timeout_seconds=600,
+    )
+    assert result.status == "build_failed"
+    assert calls == ([("venv", 600)] if expected_install_budget is None else
+                     [("venv", 600), ("install", expected_install_budget)])
+    if expected_install_budget is None:
+        assert "shared build budget exhausted" in (tmp_path / "log.txt").read_text()
