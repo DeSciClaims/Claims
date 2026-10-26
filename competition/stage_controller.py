@@ -89,22 +89,25 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend) -> dict[s
     baseline = [row for row in entries if row["role"] in {"incumbent", "reference"}]
     if len(baseline) != 1:
         raise ValueError("active stage has no unique baseline")
-    expected = {(paper_id, row["hotkey"]) for paper_id in paper_ids for row in entries}
-    scores = backend.list_stage_scores(round_id, stage)
+    challengers = [entry for entry in entries if entry["role"] == "challenger"]
+    expected = {(paper_id, row["hotkey"]) for paper_id in paper_ids for row in challengers}
+    pairs = backend.list_stage_pairs(round_id, stage)
     grid: dict[tuple[str, str], dict[str, Any]] = {}
-    package_by_hotkey = {row["hotkey"]: row["package_sha256"] for row in entries}
-    for row in scores:
-        identity = (row["paper_id"], row["hotkey"])
+    package_by_hotkey = {row["hotkey"]: row["package_sha256"] for row in challengers}
+    for row in pairs:
+        identity = (row["paper_id"], row["challenger_hotkey"])
         if (identity not in expected or identity in grid or row["stage"] != stage
-            or row["package_sha256"] != package_by_hotkey[row["hotkey"]]):
-            raise ValueError("stage score grid differs from frozen entrants and sample")
+            or row["challenger_package_sha256"] != package_by_hotkey[row["challenger_hotkey"]]
+            or row["baseline_hotkey"] != baseline[0]["hotkey"]
+            or row["baseline_package_sha256"] != baseline[0]["package_sha256"]):
+            raise ValueError("stage pair grid differs from frozen entrants and sample")
         grid[identity] = row
     if len(grid) != len(expected):
         return {"stage": stage, "status": "waiting_for_scores",
                 "scored": len(grid), "expected": len(expected)}
     infrastructure_faults = {
         paper_id for paper_id in paper_ids
-        if any(grid[(paper_id, row["hotkey"])]["fault_kind"] == "infrastructure" for row in entries)
+        if any(grid[(paper_id, row["hotkey"])]["infrastructure_fault"] for row in challengers)
     }
     commits = {
         row["hotkey"]: int(row["commit_block"])
@@ -121,8 +124,8 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend) -> dict[s
         result = paired_result([
             PaperPairScore(
                 paper_id,
-                grid[(paper_id, hotkey)]["score"],
-                grid[(paper_id, baseline[0]["hotkey"])]["score"],
+                grid[(paper_id, hotkey)]["challenger_score"],
+                grid[(paper_id, hotkey)]["baseline_score"],
                 infrastructure_fault=paper_id in infrastructure_faults,
             ) for paper_id in paper_ids
         ])

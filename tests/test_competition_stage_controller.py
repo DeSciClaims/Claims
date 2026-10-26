@@ -15,7 +15,7 @@ class Backend:
         ]
         self.ledger = []
         self.enqueued = []
-        self.scores = []
+        self.pairs = []
         self.submissions = [
             {"hotkey": "miner-a", "commit_block": 98, "status": "accepted"},
             {"hotkey": "miner-b", "commit_block": 99, "status": "accepted"},
@@ -32,8 +32,8 @@ class Backend:
     def list_stages(self, round_id):
         return self.ledger
 
-    def list_stage_scores(self, round_id, stage):
-        return self.scores
+    def list_stage_pairs(self, round_id, stage):
+        return self.pairs
 
     def list_submissions(self, round_id):
         return self.submissions
@@ -69,25 +69,25 @@ def test_stage_controller_waits_for_full_grid_and_advances_one_per_team():
     assert {job["paper_id"] for job in backend.enqueued} == {"paper-1", "paper-2"}
     assert advance_ready_stage("week2", backend=backend)["status"] == "waiting_for_scores"
     values = {
-        "paper-1": {"incumbent": 0.4, "miner-a": 0.9, "miner-b": 0.5,
-                    "miner-c": 0.45, "miner-d": 0.3},
-        "paper-2": {"incumbent": 0.0, "miner-a": 0.0, "miner-b": 0.0,
-                    "miner-c": 0.0, "miner-d": 0.0},
+        "miner-a": (0.9, 0.8), "miner-b": (0.5, 0.1),
+        "miner-c": (0.45, 0.4), "miner-d": (0.3, 0.4),
     }
-    for paper_id, scores in values.items():
-        for hotkey, value in scores.items():
-            digest = {"incumbent": "a", "miner-a": "b", "miner-b": "c",
-                      "miner-c": "e", "miner-d": "f"}[hotkey] * 64
-            backend.scores.append({
-                "stage": "screen", "paper_id": paper_id, "hotkey": hotkey,
-                "package_sha256": digest, "score": value,
-                "fault_kind": "infrastructure" if paper_id == "paper-2" else "none",
+    for paper_id in ("paper-1", "paper-2"):
+        for hotkey, (challenger, baseline) in values.items():
+            digest = {"miner-a": "b", "miner-b": "c", "miner-c": "e", "miner-d": "f"}[hotkey] * 64
+            backend.pairs.append({
+                "stage": "screen", "paper_id": paper_id,
+                "challenger_hotkey": hotkey, "challenger_package_sha256": digest,
+                "baseline_hotkey": "incumbent", "baseline_package_sha256": "a" * 64,
+                "challenger_score": challenger if paper_id == "paper-1" else 0,
+                "baseline_score": baseline if paper_id == "paper-1" else 0,
+                "infrastructure_fault": paper_id == "paper-2",
             })
     result = advance_ready_stage("week2", backend=backend)
     assert result == {"stage": "final", "status": "started",
-                      "selected_hotkeys": ["miner-a", "miner-c", "miner-d"]}
+                      "selected_hotkeys": ["miner-b", "miner-c", "miner-d"]}
     assert [row["hotkey"] for row in backend.ledger[1]["entries"]] == [
-        "incumbent", "miner-a", "miner-c", "miner-d",
+        "incumbent", "miner-b", "miner-c", "miner-d",
     ]
-    assert backend.ledger[1]["entries"][1]["paired_gain"] == 0.5
+    assert backend.ledger[1]["entries"][1]["paired_gain"] == 0.4
     assert {job["paper_id"] for job in backend.enqueued[-4:]} == {"paper-3"}

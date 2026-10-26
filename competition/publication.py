@@ -12,7 +12,7 @@ FROZEN_FIELDS = (
     "round_id", "network", "archive_block_hash", "drand_round",
     "drand_seed", "drand_chain_hash", "drand_public_key",
     "drand_signature", "drand_scheduled_at", "paper_pool_sha256",
-    "rules_sha256", "configuration_sha256",
+    "rules_sha256", "configuration_sha256", "baseline_package_sha256",
 )
 
 

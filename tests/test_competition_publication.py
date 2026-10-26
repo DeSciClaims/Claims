@@ -12,6 +12,7 @@ def test_publication_hash_and_hotkey_signature_are_reproducible():
         "drand_signature": "b" * 192, "drand_scheduled_at": 1_800_000_000,
         "paper_pool_sha256": "c" * 64, "rules_sha256": "d" * 64,
         "configuration_sha256": "e" * 64,
+        "baseline_package_sha256": "1" * 64,
     }
     bundle = publication_bundle(round_record, results={"decision": "crowned"}, weights={"vector": [{"uid": 0, "weight": 0.1}]})
     signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())

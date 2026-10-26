@@ -112,6 +112,31 @@ class CompetitionBackend:
                 raise RuntimeError("competition score pagination did not advance")
             offset = page["next_offset"]
 
+    def list_stage_pairs(self, round_id: str, stage: str) -> list[dict[str, Any]]:
+        if stage not in {"prescreen", "screen", "final", "week_one"}:
+            raise ValueError("unknown competition stage")
+        base = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/stages/" + stage + "/pairs")
+        rows: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            page = self._request("GET", base + f"?limit=1000&offset={offset}")
+            rows.extend(page["pairs"])
+            if page["next_offset"] is None:
+                return rows
+            if page["next_offset"] <= offset:
+                raise RuntimeError("competition pair pagination did not advance")
+            offset = page["next_offset"]
+
+    def record_pair_score(
+        self, round_id: str, stage: str, payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        if stage not in {"prescreen", "screen", "final", "week_one"}:
+            raise ValueError("unknown competition stage")
+        path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/stages/" + stage + "/pairs")
+        return self._request("POST", path, payload)
+
     def claim_job(self, round_id: str, *, worker_id: str, lease_seconds: int) -> dict[str, Any] | None:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/jobs/claim"
         return self._request("POST", path, {
