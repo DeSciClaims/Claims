@@ -74,8 +74,9 @@ def test_closed_escalation_scores_feed_crown_selection(monkeypatch):
         "round_id": "week2", "case_id": "gold-1", "paper_id": "paper-0",
         "challenger_hotkey": "challenger", "incumbent_hotkey": "incumbent",
         "excluded_team_ids": ["incumbent-team", "other-team"],
-        "case_public": {"review_purposes": ["escalation"]},
-        "answer_private": {"silver_unit_id": "unit-1", "tiebreak": "challenger"},
+        "case_public": {},
+        "answer_private": {"silver_unit_id": "unit-1", "tiebreak": "challenger",
+                           "review_purposes": ["escalation"]},
     }
     backend.list_gold_cases = lambda _round_id, **_: [case]
     backend.list_gold_voters = lambda _round_id: [

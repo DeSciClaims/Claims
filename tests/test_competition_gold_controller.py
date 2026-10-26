@@ -27,7 +27,7 @@ class Backend:
         self.round["status"] = "gold"
         return {"case_count": len(cases)}
 
-    def list_gold_cases(self, round_id):
+    def list_gold_cases(self, round_id, *, include_answers=False):
         return self.cases
 
     def list_gold_voters(self, round_id):
@@ -178,8 +178,9 @@ def test_check_draw_and_escalation_draw_have_separate_purposes():
     assert result["check_count"] == 5
     assert result["escalation_count"] == 10
     assert 10 <= result["case_count"] <= 15
-    assert sum("check" in row["case_public"]["review_purposes"] for row in backend.cases) == 5
-    assert sum("escalation" in row["case_public"]["review_purposes"] for row in backend.cases) == 10
+    assert sum("check" in row["answer_private"]["review_purposes"] for row in backend.cases) == 5
+    assert sum("escalation" in row["answer_private"]["review_purposes"] for row in backend.cases) == 10
+    assert all("review_purposes" not in row["case_public"] for row in backend.cases)
     for case in backend.cases:
         backend.votes.extend({"case_id": case["case_id"], "voter_hotkey": f"voter-{index}",
                               "choice": "incumbent"} for index in range(12))

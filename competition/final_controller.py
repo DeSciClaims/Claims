@@ -71,7 +71,7 @@ def select_ready_final(
     if round_record["status"] == "gold_closed":
         cases = backend.list_gold_cases(round_id, include_answers=True)
         escalation_cases = [case for case in cases
-                            if "escalation" in case["case_public"].get("review_purposes", [])]
+                            if "escalation" in case["answer_private"].get("review_purposes", [])]
         if escalation_cases:
             decisions = closed_gold_decisions(round_id, backend=backend)
             by_paper: dict[str, list[dict[str, Any]]] = {}

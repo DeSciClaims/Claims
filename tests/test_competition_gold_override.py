@@ -50,8 +50,9 @@ def _frozen_result():
 def _case(purpose):
     return {
         "case_id": "gold-1", "paper_id": "paper-1", "challenger_hotkey": "challenger",
-        "incumbent_hotkey": "incumbent", "case_public": {"review_purposes": [purpose]},
-        "answer_private": {"silver_unit_id": "unit-c", "tiebreak": "challenger"},
+        "incumbent_hotkey": "incumbent", "case_public": {},
+        "answer_private": {"silver_unit_id": "unit-c", "tiebreak": "challenger",
+                           "review_purposes": [purpose]},
     }
 
 

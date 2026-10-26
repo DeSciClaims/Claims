@@ -191,14 +191,14 @@ def prepare_gold_review(
         "challenger_hotkey": case.challenger_hotkey,
         "incumbent_hotkey": case.incumbent_hotkey,
         "excluded_team_ids": sorted(case.excluded_team_ids),
-        "case_public": {
-            **dict(by_id[case.case_id].case_public),
+        "case_public": dict(by_id[case.case_id].case_public),
+        "answer_private": {
+            **dict(by_id[case.case_id].answer_private),
             "review_purposes": [purpose for purpose, included in (
                 ("check", case.case_id in check_ids),
                 ("escalation", case.case_id in escalation_ids),
             ) if included],
         },
-        "answer_private": dict(by_id[case.case_id].answer_private),
     } for case in selected])
     return {"round_id": round_id, "case_count": len(selected),
             "check_count": len(check), "escalation_count": len(escalation),
@@ -242,7 +242,7 @@ def tally_closed_gold_review(
 ) -> dict[str, GoldResult]:
     """Tally only after closing intake; group the veto by challenger."""
     decisions = closed_gold_decisions(round_id, backend=backend)
-    cases = backend.list_gold_cases(round_id)
+    cases = backend.list_gold_cases(round_id, include_answers=True)
     final = next((row for row in backend.list_stages(round_id)
                   if row["stage"] in {"final", "week_one"}), None)
     if final is None:
@@ -251,7 +251,7 @@ def tally_closed_gold_review(
         entry["hotkey"]: [] for entry in final["entries"] if entry["role"] == "challenger"
     }
     for row in cases:
-        purposes = row["case_public"].get("review_purposes", ["check"])
+        purposes = row["answer_private"].get("review_purposes", ["check"])
         if "check" in purposes:
             if row["challenger_hotkey"] not in decisions_by_challenger:
                 raise ValueError("Gold check case is outside frozen finalists")

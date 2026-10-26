@@ -34,7 +34,7 @@ def rescore_final_paper_from_escalations(
     for case in sealed_cases:
         if case["paper_id"] != silver.paper_id:
             raise ValueError("Gold override case belongs to another paper")
-        if "escalation" not in case["case_public"].get("review_purposes", []):
+        if "escalation" not in case["answer_private"].get("review_purposes", []):
             continue
         answer = case["answer_private"]
         if answer["silver_unit_id"] not in units or answer["tiebreak"] not in {"challenger", "incumbent"}:
