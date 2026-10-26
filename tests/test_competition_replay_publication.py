@@ -6,6 +6,7 @@ import pytest
 from bittensor_wallet import Keypair
 
 from competition.final_selection import FinalSelection, FinalistVerdict
+from competition.gold import GoldResult
 from competition.replay_publication import (
     replay_publication_bundle, sign_replay_publication, verify_replay_publication,
 )
@@ -49,6 +50,9 @@ def _selection(backend):
     )
 
 
+GOLD = {"miner-1": GoldResult(0, 0, 0, None, False)}
+
+
 def test_signed_replay_receipt_binds_local_grid_and_explicit_gold_policy():
     backend = LocalResult()
     weights = WeightPlan(
@@ -61,6 +65,7 @@ def test_signed_replay_receipt_binds_local_grid_and_explicit_gold_policy():
         "week-1", backend=backend, selection=_selection(backend),
         weight_plan=weights, gold_policy_id="independent-gold-v1",
         gold_evidence_sha256="3" * 64, qualification_evidence_sha256="4" * 64,
+        gold_by_hotkey=GOLD, case_decisions_sha256="5" * 64,
     )
     assert bundle["local_pairs_sha256"] != bundle["local_sample_sha256"]
     assert bundle["weights"]["vector"][2] == {"uid": 2, "weight": 0.07}
@@ -81,6 +86,7 @@ def test_signed_replay_receipt_binds_local_grid_and_explicit_gold_policy():
             "week-1", backend=backend, selection=_selection(LocalResult()),
             weight_plan=weights, gold_policy_id="independent-gold-v1",
             gold_evidence_sha256="3" * 64, qualification_evidence_sha256="4" * 64,
+            gold_by_hotkey=GOLD, case_decisions_sha256="5" * 64,
         )
 
 
@@ -92,4 +98,5 @@ def test_replay_publication_requires_gold_and_qualification_evidence():
             weight_plan=WeightPlan({1: 1.0}, (("operator", "operator", 1.0),), 0.0),
             gold_policy_id="independent-gold-v1",
             gold_evidence_sha256="", qualification_evidence_sha256="4" * 64,
+            gold_by_hotkey=GOLD, case_decisions_sha256="5" * 64,
         )

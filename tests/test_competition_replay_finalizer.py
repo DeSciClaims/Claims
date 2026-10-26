@@ -93,5 +93,6 @@ def test_replay_finalizer_waits_then_signs_own_gold_and_vector(monkeypatch):
         {"uid": 2, "weight": 0.07},
     ]
     assert seen["receipt"]["bundle"]["gold_adjusted_pairs_sha256"] == canonical_sha256(pairs)
+    assert seen["receipt"]["bundle"]["results"]["gold"]["miner-1"]["refusal"] is False
     assert finalize_replay("week-1", **params) == first
     assert len(seen["published"]) == 2

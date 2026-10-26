@@ -92,6 +92,8 @@ def finalize_replay(
         gold_policy_id="independent-gold-v1",
         gold_evidence_sha256=tally["evidence_sha256"],
         qualification_evidence_sha256=canonical_sha256(qualification),
+        gold_by_hotkey=gold,
+        case_decisions_sha256=canonical_sha256(tally["case_decisions"]),
         allow_gold_adjustments=True,
     )
     receipt = sign_replay_publication(bundle, signer)

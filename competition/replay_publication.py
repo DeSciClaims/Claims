@@ -8,6 +8,7 @@ from typing import Any, Callable, Mapping
 
 from .final_selection import FinalSelection
 from .final_stage import effective_final_stage
+from .gold import GoldResult
 from .publication import canonical_sha256
 from .weights import WeightPlan
 
@@ -20,6 +21,8 @@ def replay_publication_bundle(
     round_id: str, *, backend: Any, selection: FinalSelection,
     weight_plan: WeightPlan, gold_policy_id: str,
     gold_evidence_sha256: str, qualification_evidence_sha256: str,
+    gold_by_hotkey: Mapping[str, GoldResult],
+    case_decisions_sha256: str,
     allow_gold_adjustments: bool = False,
 ) -> dict[str, Any]:
     """Bind independent scores and audited inputs to an explicit Gold policy.
@@ -31,8 +34,12 @@ def replay_publication_bundle(
     if snapshot.get("round_id") != round_id or not gold_policy_id or len(gold_policy_id) > 120:
         raise ValueError("replay publication has no frozen round or Gold policy")
     if any(not isinstance(value, str) or not _SHA256.fullmatch(value)
-           for value in (gold_evidence_sha256, qualification_evidence_sha256)):
+           for value in (gold_evidence_sha256, qualification_evidence_sha256,
+                         case_decisions_sha256)):
         raise ValueError("replay publication lacks Gold or qualification evidence")
+    if (set(gold_by_hotkey) != {row.hotkey for row in selection.verdicts}
+        or any(not isinstance(row, GoldResult) for row in gold_by_hotkey.values())):
+        raise ValueError("replay publication lacks finalist Gold results")
     stage = effective_final_stage(backend.list_stages(round_id))
     local_pairs = backend.list_stage_pairs(round_id, stage)
     adjusted_pairs = selection.final_pair_rows
@@ -84,6 +91,9 @@ def replay_publication_bundle(
             "production_hotkey": selection.production_hotkey,
             "winner_gain": selection.winner_gain,
             "finalists": [asdict(row) for row in selection.verdicts],
+            "gold": {hotkey: asdict(row)
+                     for hotkey, row in sorted(gold_by_hotkey.items())},
+            "gold_case_decisions_sha256": case_decisions_sha256,
         },
         "weights": weights,
     }
