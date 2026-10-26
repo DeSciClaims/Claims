@@ -91,7 +91,8 @@ def test_local_reference_rerun_reads_original_stage_bronze():
 
         def list_stages(self, round_id):
             return [{"stage": "screen"},
-                    {"stage": "rerun", "source_stage": "screen"}]
+                    {"stage": "rerun", "source_stage": "screen"},
+                    {"stage": "final"}]
 
     backend = ReplayRuntimeBackend(
         LocalStore(),
