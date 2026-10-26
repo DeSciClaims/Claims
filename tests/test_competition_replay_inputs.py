@@ -9,7 +9,8 @@ import pytest
 from competition.publication import canonical_sha256
 from competition.drand import VerifiedBeacon
 from competition.replay_inputs import (
-    CompetitionReplayInputs, validate_replay_snapshot, verify_replay_sample,
+    CompetitionReplayInputs, _gold_vote_message, validate_replay_snapshot,
+    verify_replay_sample,
 )
 from competition.sample_release import PaperRecord, frozen_pool_hash, sample_receipt
 
@@ -101,6 +102,48 @@ def test_replay_client_checks_entire_released_pool_hash():
         client.paper_pool(
             "week-1", reference_release_id="reference-v1", expected_sha256=digest,
         )
+
+
+def test_replay_client_verifies_closed_gold_votes_and_exclusions():
+    message = _gold_vote_message("week-1", "case-1", "voter-1", "challenger")
+    body = {
+        "round_id": "week-1",
+        "cases": [{
+            "case_id": "case-1", "paper_id": "paper-1",
+            "challenger_hotkey": "miner-1", "incumbent_hotkey": "reference",
+            "excluded_team_ids": ["team-miner-1"],
+            "case_public": {"statement": "Claim"}, "review_purposes": ["check"],
+        }],
+        "voters": [{"voter_hotkey": "voter-1", "team_id": "team-voter"}],
+        "votes": [{
+            "case_id": "case-1", "voter_hotkey": "voter-1",
+            "voter_team_id": "team-voter", "choice": "challenger",
+            "signed_payload_sha256": hashlib.sha256(message).hexdigest(),
+            "signature_hex": "a" * 128,
+        }],
+    }
+    requests = []
+
+    def respond(request, *, timeout):
+        requests.append(request.full_url)
+        assert request.get_method() == "GET" and timeout == 30
+        return io.BytesIO(json.dumps(body).encode())
+
+    client = CompetitionReplayInputs(
+        "https://backend.example", "replay-only", open_request=respond,
+    )
+    def verify(hotkey, payload, signature):
+        return hotkey == "voter-1" and payload == message and signature == bytes.fromhex("a" * 128)
+
+    assert client.closed_gold_review("week-1", verify_signature=verify) == body
+    assert requests[0].endswith("/replay/rounds/week-1/gold-review")
+    body["votes"][0]["choice"] = "incumbent"
+    with pytest.raises(ValueError, match="signed choice"):
+        client.closed_gold_review("week-1", verify_signature=verify)
+    body["votes"][0]["choice"] = "challenger"
+    body["cases"][0]["excluded_team_ids"].append("team-voter")
+    with pytest.raises(ValueError, match="qualified case"):
+        client.closed_gold_review("week-1", verify_signature=verify)
 
 
 def test_replay_snapshot_rejects_changed_rule_and_missing_package():

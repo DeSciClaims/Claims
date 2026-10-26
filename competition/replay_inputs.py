@@ -6,6 +6,7 @@ independent package execution, adjudication, or signed weight publication.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import urllib.error
@@ -20,6 +21,23 @@ from .sample_release import PaperRecord, frozen_pool_hash, sample_receipt
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def _gold_vote_message(round_id: str, case_id: str, voter_hotkey: str, choice: str) -> bytes:
+    payload = {
+        "schema_version": "claims_competition_gold_vote_v1",
+        "round_id": round_id, "case_id": case_id,
+        "voter_hotkey": voter_hotkey, "choice": choice,
+    }
+    return b"claims-gold-vote-v1\0" + json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    ).encode()
+
+
+def _verify_gold_signature(hotkey: str, message: bytes, signature: bytes) -> bool:
+    from bittensor_wallet import Keypair
+
+    return bool(Keypair(ss58_address=hotkey).verify(message, signature))
 
 
 def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[str, Any]:
@@ -212,6 +230,70 @@ class CompetitionReplayInputs:
         if frozen_pool_hash(papers) != expected_sha256:
             raise ValueError("replay paper pool differs from frozen hash")
         return papers
+
+    def closed_gold_review(
+        self, round_id: str, *,
+        verify_signature: Callable[[str, bytes, bytes], bool] = _verify_gold_signature,
+    ) -> dict[str, Any]:
+        """Read closed primary votes and verify signatures before using them."""
+        path = "/internal/competition/replay/rounds/" + urllib.parse.quote(round_id, safe="")
+        body = self._get(path + "/gold-review")
+        cases, voters, votes = (body.get(key) for key in ("cases", "voters", "votes"))
+        if (set(body) != {"round_id", "cases", "voters", "votes"}
+            or body["round_id"] != round_id
+            or not all(isinstance(rows, list) for rows in (cases, voters, votes))):
+            raise ValueError("replay Gold review is malformed")
+        cases_by_id = {}
+        case_fields = {"case_id", "paper_id", "challenger_hotkey", "incumbent_hotkey",
+                       "excluded_team_ids", "case_public", "review_purposes"}
+        for case in cases:
+            if (not isinstance(case, dict) or set(case) != case_fields
+                or any(not isinstance(case.get(key), str) or not case[key]
+                       for key in ("case_id", "paper_id", "challenger_hotkey", "incumbent_hotkey"))
+                or not isinstance(case["case_public"], dict)
+                or not isinstance(case["excluded_team_ids"], list)
+                or any(not isinstance(team, str) or not team for team in case["excluded_team_ids"])
+                or len(set(case["excluded_team_ids"])) != len(case["excluded_team_ids"])
+                or not isinstance(case["review_purposes"], list)
+                or not case["review_purposes"]
+                or set(case["review_purposes"]) - {"check", "escalation", "challenge"}
+                or case["case_id"] in cases_by_id):
+                raise ValueError("replay Gold case is malformed")
+            cases_by_id[case["case_id"]] = case
+        voters_by_hotkey = {}
+        for voter in voters:
+            if (not isinstance(voter, dict)
+                or set(voter) != {"voter_hotkey", "team_id"}
+                or not isinstance(voter["voter_hotkey"], str) or not voter["voter_hotkey"]
+                or not isinstance(voter["team_id"], str) or not voter["team_id"]
+                or voter["voter_hotkey"] in voters_by_hotkey):
+                raise ValueError("replay Gold voter is malformed")
+            voters_by_hotkey[voter["voter_hotkey"]] = voter["team_id"]
+        seen_votes = set()
+        vote_fields = {"case_id", "voter_hotkey", "voter_team_id", "choice",
+                       "signed_payload_sha256", "signature_hex"}
+        for vote in votes:
+            if not isinstance(vote, dict) or set(vote) != vote_fields:
+                raise ValueError("replay Gold vote is malformed")
+            case_id, hotkey = vote["case_id"], vote["voter_hotkey"]
+            identity = (case_id, hotkey)
+            if (identity in seen_votes or case_id not in cases_by_id
+                or hotkey not in voters_by_hotkey
+                or vote["voter_team_id"] != voters_by_hotkey[hotkey]
+                or vote["voter_team_id"] in cases_by_id[case_id]["excluded_team_ids"]
+                or vote["choice"] not in {"challenger", "incumbent", "neither"}):
+                raise ValueError("replay Gold vote is outside its qualified case")
+            seen_votes.add(identity)
+            message = _gold_vote_message(round_id, case_id, hotkey, vote["choice"])
+            try:
+                signature = bytes.fromhex(vote["signature_hex"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError("replay Gold vote signature is malformed") from exc
+            if (len(signature) != 64
+                or vote["signed_payload_sha256"] != hashlib.sha256(message).hexdigest()
+                or not verify_signature(hotkey, message, signature)):
+                raise ValueError("replay Gold vote signature differs from signed choice")
+        return body
 
     def bronze(self, round_id: str, stage: str, paper_id: str) -> dict[str, Any]:
         path = ("/internal/competition/replay/rounds/"

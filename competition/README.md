@@ -243,6 +243,11 @@ and beacon check, then writes the verified plan into the local replay store.
 The store treats the primary runner's later `evaluating` or `finished` status
 as the original accepted upload, so a second validator can restart or begin
 after primary execution without changing its locked package identities.
+After Gold voting closes, `/gold-review` serves public case prompts, the
+voter roster, and signed votes, but no private answers or check seed. The
+replay client verifies every vote signature, case, team, and exclusion before
+returning the closed record. Applying those votes to an independently
+generated Silver case set remains a separate policy step.
 `ReplayStore` persists that grid, leases baseline jobs before challengers,
 records worker results, and freezes independent per-paper adjudications and
 pair scores. `ReplayRuntimeBackend` combines only those local writes with
@@ -255,8 +260,8 @@ advancement. `tick_replay` is a restartable controller step that scores ready
 local papers, advances the stage, handles an incumbent failure by rerunning
 the same papers against the frozen reference, and stops at a complete final
 score grid. Rerun Bronze reads use the original stage even when the primary
-validator did not rerun it. Gold and code checks, and its own signed vector
-still need implementation; the current
+validator did not rerun it. Gold integration and its own signed vector still
+need implementation; the current
 components alone are not an independent validation.
 `python -m neurons.competition_replay_service --role controller --round-id ID
 --backend-url URL --db-path PATH` runs the replay scoring step repeatedly;
