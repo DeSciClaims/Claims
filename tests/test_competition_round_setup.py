@@ -26,6 +26,7 @@ def _draft():
         "configuration": {"pilot": True},
         "policy_public": {
             "min_final_papers": 500,
+            "duplicate_verdict_public_at": "2026-11-10T09:00:00+00:00",
             "duplicate_dispute_window": {
                 "opens_at": "2026-11-10T09:00:00+00:00",
                 "closes_at": "2026-11-10T15:00:00+00:00",
@@ -84,12 +85,17 @@ def test_prepare_round_freezes_review_only_dispute_window(tmp_path):
     prepare_round(draft, backend=Backend(), directory=tmp_path)
     rules = json.loads((tmp_path / "week1.rules.json").read_text())
     assert rules["policy"]["duplicate_dispute_window"] == draft["policy_public"]["duplicate_dispute_window"]
+    assert rules["policy"]["duplicate_verdict_public_at"] == "2026-11-10T09:00:00+00:00"
     draft["policy_public"]["duplicate_dispute_window"]["opens_at"] = "2026-11-09T10:00:00+00:00"
     with pytest.raises(ValueError, match="must follow the deadline"):
         prepare_round(draft, backend=Backend(), directory=tmp_path)
     draft = _draft()
     del draft["policy_public"]["duplicate_dispute_window"]
     with pytest.raises(ValueError, match="window is required"):
+        prepare_round(draft, backend=Backend(), directory=tmp_path)
+    draft = _draft()
+    draft["policy_public"]["duplicate_verdict_public_at"] = "2026-11-10T10:00:00+00:00"
+    with pytest.raises(ValueError, match="must follow the deadline"):
         prepare_round(draft, backend=Backend(), directory=tmp_path)
 
 

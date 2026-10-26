@@ -115,13 +115,16 @@ def prepare_round(
     try:
         opened = datetime.fromisoformat(dispute_window["opens_at"])
         closed = datetime.fromisoformat(dispute_window["closes_at"])
+        verdict_public_at = datetime.fromisoformat(public_policy["duplicate_verdict_public_at"])
     except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("duplicate dispute window is malformed") from exc
+        raise ValueError("duplicate verdict release or dispute window is malformed") from exc
     if (not isinstance(dispute_window, dict)
         or set(dispute_window) != {"opens_at", "closes_at"}
         or opened.tzinfo is None or closed.tzinfo is None
-        or opened <= deadline or opened >= closed):
-        raise ValueError("duplicate dispute window must follow the deadline")
+        or verdict_public_at.tzinfo is None
+        or verdict_public_at <= deadline or opened < verdict_public_at
+        or opened >= closed):
+        raise ValueError("duplicate verdict release and dispute window must follow the deadline")
     config_hash = canonical_sha256(configuration)
     rules = {
         "schema_version": RULES_SCHEMA,

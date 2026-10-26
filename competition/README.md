@@ -84,8 +84,11 @@ team must use a separate qualified hotkey because stage jobs are keyed by hotkey
 freezes its private link list and publishes the hash with the sample. A restarted controller
 checks both before starting a stage. Links cannot be supplied in the
 pre-deadline round draft.
-The round's public policy must freeze `duplicate_dispute_window.opens_at` and
-`closes_at` as timezone-aware ISO timestamps after the submission deadline.
+The round's public policy must freeze `duplicate_verdict_public_at` and
+`duplicate_dispute_window.opens_at`/`closes_at` as timezone-aware ISO
+timestamps after the submission deadline. The verdict release must be no later
+than the dispute window opening. Public intake masks duplicate status and
+evidence until that release time.
 During that window a hotkey-signed miner can appeal one duplicate exclusion per
 team through `claims-miner-uploads`. The backend stores the private reason and
 an immutable `pending`, `upheld`, or `overturned` review. An overturned appeal
