@@ -11,6 +11,11 @@ commitment string is unsuitable for the two-field package commitment.
 `HippiusPrivateStorage` reads sealed package objects against their receipt
 hashes and writes scoped, checksum-tagged private worker logs. It belongs only
 in trusted controller or coordinator processes.
+`CompetitionPaperInputs` reads the Bronze-backed pool captured atomically at
+intake lock. The backend excludes papers without a matching complete Bronze
+source, pins each Bronze and full-source ID, and rejects a reveal outside the
+locked pool or with a different pool hash. The controller can obtain the pinned
+PDF URL and SHA-256, Bronze artifact, and source-span context for scoring.
 
 After the deadline lock, `reveal_selected_sample` verifies the D+600 drand
 beacon, uses its seed for the duplicate lottery, and publishes exactly the

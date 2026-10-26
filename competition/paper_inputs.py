@@ -66,6 +66,8 @@ class CompetitionPaperInputs:
                 or record.get("source_sha256") != self._sample[key]
                 or not isinstance(record.get("artifact"), dict)
                 or not isinstance(record.get("source_context_by_span_id"), dict)
+                or not isinstance(record.get("source_url"), str)
+                or not record["source_url"]
                 or not record.get("bronze_record_id") or not record.get("full_source_id")):
                 raise ValueError("Bronze record differs from the released paper")
             self._bronze[key] = record
@@ -73,6 +75,10 @@ class CompetitionPaperInputs:
 
     def bronze_for_paper(self, stage: str, paper_id: str) -> dict[str, Any]:
         return copy.deepcopy(self._source(stage, paper_id)["artifact"])
+
+    def pdf_source_for_paper(self, stage: str, paper_id: str) -> tuple[str, str]:
+        record = self._source(stage, paper_id)
+        return record["source_url"], record["source_sha256"]
 
     def source_context_for_paper(self, paper_id: str) -> dict[str, str]:
         self._load_sample()

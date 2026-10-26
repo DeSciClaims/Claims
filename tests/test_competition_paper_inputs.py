@@ -29,6 +29,7 @@ def test_trusted_paper_inputs_bind_pool_sample_bronze_and_context():
             self.calls += 1
             return {
                 "paper_id": "paper-1", "source_sha256": PDF_SHA,
+                "source_url": "https://example.invalid/paper.pdf",
                 "bronze_record_id": "bronze-1", "full_source_id": "full-1",
                 "artifact": {"paper": {"paper_id": "paper-1"}},
                 "source_context_by_span_id": {"span-1": "Evidence"},
@@ -44,6 +45,9 @@ def test_trusted_paper_inputs_bind_pool_sample_bronze_and_context():
     artifact["paper"]["paper_id"] = "mutated"
     assert adapter.bronze_for_paper("final", "paper-1")["paper"]["paper_id"] == "paper-1"
     assert adapter.source_context_for_paper("paper-1") == {"span-1": "Evidence"}
+    assert adapter.pdf_source_for_paper("final", "paper-1") == (
+        "https://example.invalid/paper.pdf", PDF_SHA,
+    )
     assert backend.calls == 1
     with pytest.raises(ValueError, match="not in the released"):
         adapter.bronze_for_paper("screen", "paper-1")
@@ -54,6 +58,7 @@ def test_trusted_paper_inputs_reject_changed_pdf():
         list_sample=lambda _: [{"stage": "final", "paper_id": "paper-1", "source_sha256": PDF_SHA}],
         get_bronze_source=lambda *_, **__: {
             "paper_id": "paper-1", "source_sha256": "b" * 64,
+            "source_url": "https://example.invalid/paper.pdf",
             "bronze_record_id": "bronze-1", "full_source_id": "full-1",
             "artifact": {}, "source_context_by_span_id": {},
         },
