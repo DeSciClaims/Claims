@@ -175,6 +175,25 @@ def _limited_read(path: Path, limit: int, owner_uid: int) -> bytes:
     return body
 
 
+def _stop_unit(unit: str) -> None:
+    """Do not read miner-writable outputs while a guest process may still run."""
+    try:
+        subprocess.run(
+            ["systemctl", "stop", unit], stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=15, check=False,
+        )
+        state = subprocess.run(
+            ["systemctl", "is-active", unit],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, timeout=15, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError("worker control could not stop the guest unit") from exc
+    if state.stdout.decode().strip() not in {"inactive", "failed", "unknown"}:
+        raise RuntimeError("worker control guest unit is not confirmed stopped")
+
+
 def run_once(stream: BinaryIO, config: dict[str, Any]) -> dict[str, Any]:
     """Run one sealed bundle and return bounded result bytes over SSH stdout."""
     if os.geteuid() != 0:
@@ -208,9 +227,12 @@ def run_once(stream: BinaryIO, config: dict[str, Any]) -> dict[str, Any]:
             "--inference-base-url", config["inference_base_url"],
             "--paper-key-file", str(key_file),
         ]
-        process = subprocess.run(command, stdin=subprocess.DEVNULL,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 timeout=2600, check=False)
+        try:
+            process = subprocess.run(command, stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                     timeout=2600, check=False)
+        finally:
+            _stop_unit(unit)
         denied = _firewall_counters(miner_uid, config)
         log_path = results / "worker.log"
         log = _limited_read(log_path, MAX_LOG_BYTES, miner_uid) if log_path.exists() or log_path.is_symlink() else b""

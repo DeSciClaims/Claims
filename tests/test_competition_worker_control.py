@@ -13,7 +13,9 @@ import pytest
 from competition.ssh_worker import RestrictedSshWorkerTransport, _tar_bytes
 from competition.targon_vms import WorkerVm
 from competition.worker_contract import build_worker_contract
-from competition.worker_control import _firewall_counters, _limited_read, _read_bundle, load_config
+from competition.worker_control import (
+    _firewall_counters, _limited_read, _read_bundle, _stop_unit, load_config,
+)
 
 
 PACKAGE_NAME = "claims_sample_miner-0.1.0-py3-none-any.whl"
@@ -115,6 +117,26 @@ def test_control_firewall_rejects_an_extra_miner_route(monkeypatch):
     )
     with pytest.raises(ValueError, match="firewall differs"):
         _firewall_counters(995, config)
+
+
+def test_control_requires_the_guest_unit_to_be_stopped(monkeypatch):
+    calls = []
+    state = "deactivating"
+
+    def invoke(argv, **_):
+        calls.append(argv)
+        return subprocess.CompletedProcess(
+            argv, 0 if argv[1] == "stop" else 3,
+            (state + "\n").encode() if argv[1] == "is-active" else b"", b"",
+        )
+
+    monkeypatch.setattr("competition.worker_control.subprocess.run", invoke)
+    with pytest.raises(RuntimeError, match="not confirmed stopped"):
+        _stop_unit("claims-job-test")
+    assert calls == [["systemctl", "stop", "claims-job-test"],
+                     ["systemctl", "is-active", "claims-job-test"]]
+    state = "inactive"
+    _stop_unit("claims-job-test")
 
 
 def test_restricted_transport_uses_only_control_command_and_binds_response(tmp_path):
