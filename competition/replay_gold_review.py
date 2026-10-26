@@ -149,6 +149,7 @@ def prepare_replay_gold_review(
         "round_id": round_id, "stage": stage,
         "drand_seed": seed_hex,
         "local_candidate_sha256": canonical_sha256(candidate_identity),
+        "finalist_hotkeys": sorted(finalists),
         "known_answer_sha256": canonical_sha256([_identity(row) for row in known]),
         "check_count": len(check), "escalation_count": len(escalations),
         "known_answer_count": len(known),

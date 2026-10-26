@@ -316,6 +316,10 @@ closure, Gold tally, and automatic vector publication remain to be wired.
 The read-only replay API supplies the certified challenge bank once the
 primary final stage exists. The pilot controller chooses exact-PDF challenges
 for its own finalists and freezes its Gold review when at least 40 qualify.
+`tally_replay_gold_review` verifies votes over a replay-specific signed
+message, excludes the competing teams, applies quorum and agreement rules,
+and reports check outcomes and known-answer accuracy. The backend still needs
+the separate case/voter/vote ledger and miner routes that provide these votes.
 Pilot judge providers are set with CLAIMS_JUDGE_J1_A_PROVIDER,
 CLAIMS_JUDGE_J1_B_PROVIDER, CLAIMS_JUDGE_J2_A_PROVIDER,
 CLAIMS_JUDGE_J2_B_PROVIDER, and CLAIMS_JUDGE_TIEBREAK_PROVIDER. Round setup
