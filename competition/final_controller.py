@@ -68,7 +68,7 @@ def select_ready_final(
         grid[key] = row
     if set(grid) != expected:
         raise ValueError("final pair grid is incomplete")
-    if round_record["status"] == "gold_closed" and stage == "final":
+    if round_record["status"] == "gold_closed":
         cases = backend.list_gold_cases(round_id, include_answers=True)
         escalation_cases = [case for case in cases
                             if "escalation" in case["case_public"].get("review_purposes", [])]
@@ -78,7 +78,7 @@ def select_ready_final(
             for case in cases:
                 by_paper.setdefault(case["paper_id"], []).append(case)
             for paper_id in {case["paper_id"] for case in escalation_cases}:
-                receipt = backend.get_paper_evaluation(round_id, "final", paper_id)
+                receipt = backend.get_paper_evaluation(round_id, stage, paper_id)
                 if receipt is None:
                     raise ValueError("escalated final paper has no frozen evaluation")
                 frozen_result = receipt["result_private"]

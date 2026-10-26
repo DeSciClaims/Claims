@@ -71,9 +71,10 @@ def _evaluation(**kwargs):
             "details_public": {},
         },),
         pipeline=SimpleNamespace(
+            paper_id="paper-1", miner_submissions=[],
             scores=[SimpleNamespace(miner_id="challenger", score=0.7),
                     SimpleNamespace(miner_id="reference", score=0.6)],
-            silver_record=SimpleNamespace(model_dump=lambda **_: {"id": "silver-1"}),
+            silver_record=SimpleNamespace(model_dump=lambda **_: {"id": "silver-1"}, silver_units=[]),
             diff_cases=[], adjudication_consensus=[],
         ),
     )

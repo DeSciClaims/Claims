@@ -118,7 +118,7 @@ def score_ready_paper(
             pairs = list(evaluation.pair_rows)
             scores_by_hotkey = {row.miner_id: row.score for row in evaluation.pipeline.scores}
             gold_candidates = []
-            if stage == "final" and baseline[0]["role"] == "incumbent":
+            if stage in {"final", "week_one"}:
                 gold_candidates = [{
                     "case": {
                         "case_id": claim.case.case_id,
@@ -137,7 +137,7 @@ def score_ready_paper(
                                            for row in evaluation.pipeline.adjudication_consensus],
                 "gold_candidates": gold_candidates,
             }
-            if stage == "final":
+            if stage in {"final", "week_one"}:
                 silver["miner_submissions"] = [{
                     "miner_id": submission.miner_id,
                     "candidates": [candidate.model_dump(mode="json")

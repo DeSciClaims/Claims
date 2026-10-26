@@ -14,6 +14,7 @@ from .gold import GoldCase, GoldResult, GoldVote, VoteDecision, decide_gold_case
 class GoldBackend(Protocol):
     def get_round(self, round_id: str) -> dict[str, Any]: ...
     def list_sample(self, round_id: str) -> list[dict[str, Any]]: ...
+    def list_stages(self, round_id: str) -> list[dict[str, Any]]: ...
     def get_paper_evaluation(self, round_id: str, stage: str, paper_id: str) -> dict[str, Any] | None: ...
     def freeze_gold_voters(self, round_id: str, voters: list[dict[str, str]]) -> dict[str, Any]: ...
     def create_gold_cases(self, round_id: str, cases: list[dict[str, Any]]) -> dict[str, Any]: ...
@@ -43,9 +44,9 @@ def contested_claims_for_paper(
     by_hotkey = {entry["hotkey"]: entry for entry in entries}
     if len(by_hotkey) != len(entries):
         raise ValueError("Gold entrants contain duplicate hotkeys")
-    baseline = [entry for entry in entries if entry["role"] == "incumbent"]
+    baseline = [entry for entry in entries if entry["role"] in {"incumbent", "reference"}]
     if len(baseline) != 1:
-        raise ValueError("Gold review requires one incumbent")
+        raise ValueError("Gold review requires one incumbent or reference")
     incumbent = baseline[0]
     pipeline = evaluation.pipeline
     paper_id = pipeline.paper_id
@@ -116,11 +117,12 @@ def frozen_gold_candidates(round_id: str, *, backend: GoldBackend) -> list[Conte
     """Read final review candidates from immutable, private paper receipts."""
     candidates: list[ContestedClaim] = []
     case_ids: set[str] = set()
-    papers = [row for row in backend.list_sample(round_id) if row["stage"] == "final"]
-    if len({row["paper_id"] for row in papers}) != len(papers):
+    papers = [row for row in backend.list_sample(round_id)
+              if row["stage"] in {"final", "week_one"}]
+    if len({(row["stage"], row["paper_id"]) for row in papers}) != len(papers):
         raise ValueError("final sample contains duplicate papers")
     for paper in papers:
-        receipt = backend.get_paper_evaluation(round_id, "final", paper["paper_id"])
+        receipt = backend.get_paper_evaluation(round_id, paper["stage"], paper["paper_id"])
         if receipt is None:
             raise ValueError("final paper has no frozen evaluation")
         result = receipt["result_private"]
@@ -243,11 +245,17 @@ def tally_closed_gold_review(
     """Tally only after closing intake; group the veto by challenger."""
     decisions = closed_gold_decisions(round_id, backend=backend)
     cases = backend.list_gold_cases(round_id)
-    decisions_by_challenger: dict[str, list[VoteDecision]] = {}
+    final = next((row for row in backend.list_stages(round_id)
+                  if row["stage"] in {"final", "week_one"}), None)
+    if final is None:
+        raise ValueError("Gold tally has no frozen finalist stage")
+    decisions_by_challenger: dict[str, list[VoteDecision]] = {
+        entry["hotkey"]: [] for entry in final["entries"] if entry["role"] == "challenger"
+    }
     for row in cases:
         purposes = row["case_public"].get("review_purposes", ["check"])
         if "check" in purposes:
-            decisions_by_challenger.setdefault(row["challenger_hotkey"], []).append(
-                decisions[row["case_id"]]
-            )
+            if row["challenger_hotkey"] not in decisions_by_challenger:
+                raise ValueError("Gold check case is outside frozen finalists")
+            decisions_by_challenger[row["challenger_hotkey"]].append(decisions[row["case_id"]])
     return {hotkey: gold_result(decisions) for hotkey, decisions in decisions_by_challenger.items()}

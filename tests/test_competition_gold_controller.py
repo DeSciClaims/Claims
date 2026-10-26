@@ -36,6 +36,12 @@ class Backend:
     def list_gold_votes(self, round_id):
         return self.votes
 
+    def list_stages(self, round_id):
+        return [{"stage": "final", "entries": [
+            {"hotkey": "challenger", "role": "challenger"},
+            {"hotkey": "no-check", "role": "challenger"},
+        ]}]
+
 
 def test_gold_controller_draws_then_tallies_only_closed_outside_team_votes():
     backend = Backend()
@@ -68,6 +74,7 @@ def test_gold_controller_draws_then_tallies_only_closed_outside_team_votes():
     assert result.decided_contested_claims == 60
     assert result.incumbent_supported == 60
     assert result.refusal is True
+    assert tally_closed_gold_review("week2", backend=backend)["no-check"].sampled_cases == 0
 
 
 def test_gold_candidates_only_include_split_cases_with_pairwise_credit_effect():
@@ -128,6 +135,9 @@ def test_gold_candidates_only_include_split_cases_with_pairwise_credit_effect():
     assert cases[0].case_public["statement"] == "exclusive"
     assert cases[0].answer_private["tiebreak"] == "challenger"
     assert cases == contested_claims_for_paper("round-1", evaluation, entries)
+    reference_entries = [{**entry, "role": "reference"} if entry["hotkey"] == "incumbent" else entry
+                         for entry in entries]
+    assert len(contested_claims_for_paper("round-1", evaluation, reference_entries)) == 1
 
 
 def test_gold_candidates_replay_from_frozen_final_receipts():
