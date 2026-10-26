@@ -20,7 +20,7 @@ class FrozenEvaluationPolicy:
     round_id: str
     configuration_sha256: str
     configuration: Mapping[str, Any]
-    adjudication_passes: tuple[AdjudicationPass, AdjudicationPass]
+    adjudication_passes_by_judge: Mapping[str, tuple[AdjudicationPass, AdjudicationPass]]
     source_context_for_paper: Callable[[str], Mapping[str, str]]
     decision_api_key: str = field(repr=False)
     tiebreak_pass: AdjudicationPass | None = None
@@ -31,7 +31,8 @@ class FrozenEvaluationPolicy:
 
     def __post_init__(self) -> None:
         if (not self.round_id or not re.fullmatch(r"[0-9a-f]{64}", self.configuration_sha256)
-            or len(self.adjudication_passes) != 2
+            or set(self.adjudication_passes_by_judge) != {"J1", "J2"}
+            or any(len(passes) != 2 for passes in self.adjudication_passes_by_judge.values())
             or not 0.5 <= self.prescreen_threshold <= 1
             or not 0.5 <= self.screen_threshold <= 1):
             raise ValueError("weekly evaluation policy is incomplete")
@@ -84,7 +85,7 @@ class FrozenEvaluationPolicy:
             ).hexdigest()[:32]
             return evaluate_weekly_paper(
                 **kwargs, silver_record_id=silver_record_id,
-                adjudication_passes=list(self.adjudication_passes),
+                adjudication_passes_by_judge=self.adjudication_passes_by_judge,
                 tiebreak_pass=self.tiebreak_pass,
                 source_context_by_span_id=dict(context), decision_router=router,
             )

@@ -49,12 +49,18 @@ def sample_receipt(
         final_count=final_count,
     )
     rows: list[dict[str, Any]] = []
-    for stage, paper_ids in (("prescreen", draw.prescreen), ("screen", draw.screen)):
-        for position, paper_id in enumerate(paper_ids):
-            rows.append({
-                "stage": stage, "paper_id": paper_id, "position": position,
-                "judge_id": "routing", "source_sha256": paper_map[paper_id].source_sha256,
-            })
+    for position, paper_id in enumerate(draw.prescreen):
+        rows.append({
+            "stage": "prescreen", "paper_id": paper_id, "position": position,
+            "judge_id": "routing", "source_sha256": paper_map[paper_id].source_sha256,
+        })
+    screen_first = hashlib.sha256(b"claims-weekly-screen-judge-v1\0" + beacon.seed).digest()[0] & 1
+    for position, paper_id in enumerate(draw.screen):
+        rows.append({
+            "stage": "screen", "paper_id": paper_id, "position": position,
+            "judge_id": ("J1", "J2")[(screen_first + position) % 2],
+            "source_sha256": paper_map[paper_id].source_sha256,
+        })
     for position, (paper_id, judge_id) in enumerate(draw.judges):
         rows.append({
             "stage": "week_one" if week_one else "final",

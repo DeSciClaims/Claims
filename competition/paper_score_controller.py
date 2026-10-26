@@ -43,7 +43,7 @@ def score_ready_paper(
     """Return waiting or replay the immutable receipt into public score tables.
 
     ``evaluate`` is the frozen stage-specific policy: decision-model routing
-    for early stages or the two-judge canonical pipeline for the final.
+    for early stages or the assigned two-pass judge configuration for the final.
     """
     round_record = backend.get_round(round_id)
     stage_receipts = backend.list_stages(round_id)

@@ -31,6 +31,7 @@ def test_post_deadline_sample_receipt_is_order_independent_and_disjoint():
     assert len(first["papers"]) == 16
     assert len({row["paper_id"] for row in first["papers"]}) == 16
     assert {row["judge_id"] for row in first["papers"] if row["stage"] == "final"} == {"J1", "J2"}
+    assert {row["judge_id"] for row in first["papers"] if row["stage"] == "screen"} == {"J1", "J2"}
     assert sample_receipt(papers=pool, **{**parameters, "beacon": beacon(b"b" * 96)}) != first
 
 

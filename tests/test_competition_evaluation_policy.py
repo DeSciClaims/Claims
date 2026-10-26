@@ -11,6 +11,7 @@ ROUTING = {
     "prescreen_confidence_threshold": 0.8, "screen_confidence_threshold": 0.9,
 }
 CONFIGURATION = {"decision_routing": ROUTING, "judges": ["J1", "J2"]}
+PANELS = {"J1": (object(), object()), "J2": (object(), object())}
 
 
 def test_stage_factory_freezes_routing_and_never_uses_decisions_in_final(monkeypatch):
@@ -20,7 +21,7 @@ def test_stage_factory_freezes_routing_and_never_uses_decisions_in_final(monkeyp
     policy = FrozenEvaluationPolicy(
         round_id="week2", configuration_sha256=canonical_sha256(CONFIGURATION),
         configuration=CONFIGURATION,
-        adjudication_passes=(object(), object()),
+        adjudication_passes_by_judge=PANELS,
         source_context_for_paper=lambda paper_id: {"span-1": f"Source for {paper_id}"},
         decision_api_key="private-key",
     )
@@ -30,7 +31,7 @@ def test_stage_factory_freezes_routing_and_never_uses_decisions_in_final(monkeyp
                                       ("final", None), ("week_one", None)):
         evaluate = policy.evaluate_for_stage(stage)
         assert evaluate(stage=stage, paper_id="paper-1",
-                        judge_id="routing" if expected_threshold else "J1") == "evaluated"
+                        judge_id="routing" if stage == "prescreen" else "J1") == "evaluated"
         captured = calls[-1]
         assert captured["source_context_by_span_id"] == {"span-1": "Source for paper-1"}
         assert captured["silver_record_id"].startswith("competition_silver_")
@@ -47,7 +48,7 @@ def test_week_one_full_judges_do_not_require_decisions_credential():
     policy = FrozenEvaluationPolicy(
         round_id="week1", configuration_sha256=canonical_sha256(CONFIGURATION),
         configuration=CONFIGURATION,
-        adjudication_passes=(object(), object()),
+        adjudication_passes_by_judge=PANELS,
         source_context_for_paper=lambda _: {}, decision_api_key="",
     )
     policy.evaluate_for_stage("week_one")
@@ -59,7 +60,7 @@ def test_routing_settings_must_match_frozen_configuration():
     with pytest.raises(ValueError, match="frozen"):
         FrozenEvaluationPolicy(
             round_id="week2", configuration_sha256=canonical_sha256(CONFIGURATION),
-            configuration=CONFIGURATION, adjudication_passes=(object(), object()),
+            configuration=CONFIGURATION, adjudication_passes_by_judge=PANELS,
             source_context_for_paper=lambda _: {}, decision_api_key="private-key",
             screen_threshold=0.8,
         )
@@ -71,7 +72,7 @@ def test_policy_uses_its_frozen_tiebreak_judge_for_gold_audit():
     )
     policy = FrozenEvaluationPolicy(
         round_id="week2", configuration_sha256=canonical_sha256(CONFIGURATION),
-        configuration=CONFIGURATION, adjudication_passes=(object(), object()),
+        configuration=CONFIGURATION, adjudication_passes_by_judge=PANELS,
         source_context_for_paper=lambda _: {}, decision_api_key="private-key",
         tiebreak_pass=tiebreak,
     )

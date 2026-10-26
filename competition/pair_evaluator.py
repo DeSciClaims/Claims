@@ -26,7 +26,8 @@ def evaluate_weekly_paper(
     *, paper_id: str, bronze_artifact: dict[str, Any],
     artifacts_by_hotkey: Mapping[str, dict[str, Any] | None],
     baseline_hotkey: str, challenger_hotkeys: list[str],
-    silver_record_id: str, adjudication_passes: list[AdjudicationPass],
+    silver_record_id: str,
+    adjudication_passes_by_judge: Mapping[str, tuple[AdjudicationPass, AdjudicationPass]],
     tiebreak_pass: AdjudicationPass | None = None,
     judge_id: str = "J1", stage: str = "final",
     source_context_by_span_id: dict[str, str] | None = None,
@@ -36,14 +37,17 @@ def evaluate_weekly_paper(
 
     The trusted controller runs this after every worker result for the paper
     has arrived. A missing package output is scored zero for that package.
-    Judge order alternates with the released J1/J2 assignment.
+    The released assignment selects one frozen two-pass judge configuration.
+    Its own primary pair can split and invoke the common tiebreak pass.
     """
     if stage not in {"prescreen", "screen", "final", "week_one"}:
         raise ValueError("unknown competition stage")
-    if (judge_id not in {"J1", "J2", "routing"} or len(adjudication_passes) != 2
-        or (judge_id == "routing" and (stage not in {"prescreen", "screen"} or decision_router is None))
+    if (judge_id not in {"J1", "J2", "routing"}
+        or set(adjudication_passes_by_judge) != {"J1", "J2"}
+        or any(len(passes) != 2 for passes in adjudication_passes_by_judge.values())
+        or (judge_id == "routing" and (stage != "prescreen" or decision_router is None))
         or (stage in {"final", "week_one"} and decision_router is not None)):
-        raise ValueError("two frozen judges and a J1/J2 assignment are required")
+        raise ValueError("two frozen judge configurations and a valid assignment are required")
     if (not baseline_hotkey or not challenger_hotkeys
         or baseline_hotkey in challenger_hotkeys
         or len(challenger_hotkeys) != len(set(challenger_hotkeys))):
@@ -54,7 +58,9 @@ def evaluate_weekly_paper(
     for artifact in artifacts_by_hotkey.values():
         if artifact is not None and artifact.get("paper", {}).get("paper_id") != paper_id:
             raise ValueError("artifact belongs to another paper")
-    passes = adjudication_passes if judge_id == "J1" else list(reversed(adjudication_passes))
+    # The pre-screen has no seeded judge assignment. Its uncertain cases use
+    # the frozen J1 configuration; screen/final/week-one use their assignment.
+    passes = list(adjudication_passes_by_judge["J1" if judge_id == "routing" else judge_id])
     pipeline = run_paper_silver_pipeline(
         paper_id=paper_id, bronze_artifact=bronze_artifact,
         miner_artifacts=[MinerArtifactSubmission(miner_id=hotkey, artifact=artifact)

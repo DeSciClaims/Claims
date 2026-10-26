@@ -68,6 +68,12 @@ published routing fields before constructing stage evaluators, then keeps
 Decisions out of the final and week-one stages. The API key belongs only to
 the trusted controller.
 
+The post-deadline seed assigns each screen and final paper J1 or J2. Each
+configuration is a separate two-pass panel; only the assigned panel runs on a
+paper. A split within that panel can invoke the frozen tiebreak. Pre-screen
+uncertain cases use J1. The concrete model, prompt, and embedding hashes for
+both configurations still need to be frozen before a paid round.
+
 The final paper scorer freezes contested claim cases, including primary judge
 splits with pairwise credit effects. The backend commits to a private Gold
 check seed when the round is created, before any package is evaluated. Gold

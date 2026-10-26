@@ -118,8 +118,9 @@ def test_early_stage_routes_singleton_without_invoking_judges():
         paper_id="paper-1", bronze_artifact=artifact([]),
         artifacts_by_hotkey={"incumbent": artifact([]), "challenger": artifact([claim])},
         baseline_hotkey="incumbent", challenger_hotkeys=["challenger"],
-        silver_record_id="silver-1", adjudication_passes=passes,
-        judge_id="routing", stage="screen",
+        silver_record_id="silver-1",
+        adjudication_passes_by_judge={"J1": tuple(passes), "J2": tuple(passes)},
+        judge_id="J1", stage="screen",
         decision_router=OpenAIDecisionsRouter("secret", 0.9, http_post=post),
         source_context_by_span_id={"S1": "The paper found A reduced mortality."},
     )
