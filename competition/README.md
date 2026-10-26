@@ -464,3 +464,11 @@ Use `--once --audit-only` to check the latest receipt and current UID mapping
 without a transaction. The process has not been run against a live chain or
 deployed; its signature, fallback, projection, and cadence paths have local
 tests.
+
+For a second validator, use its own validator wallet and a separate cache path,
+and pass `--independent`. That mode verifies its separately signed replay
+receipt and reads `/independent-results`; it keeps the last verified vector
+while the newest round is still awaiting its independent Gold review. Set
+`claims_competition_weights_independent: true` for that validator's opt-in
+infra unit. Its normal validator weight path must also be disabled with
+`--claims.external-competition-weights`.

@@ -5,14 +5,17 @@ from __future__ import annotations
 import math
 import json
 import os
+import re
 import urllib.parse
 import urllib.request
+import urllib.error
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from bittensor_wallet import Keypair
 
 from .publication import FROZEN_FIELDS, PUBLICATION_SCHEMA, canonical_sha256
+from .replay_publication import REPLAY_PUBLICATION_SCHEMA
 
 ROLE_SHARES = {
     "operator": 0.90,
@@ -24,18 +27,37 @@ ROLE_SHARES = {
 
 def verify_weekly_receipt(
     receipt: Mapping[str, Any], *, expected_signer_hotkey: str, network: str,
+    independent: bool = False,
 ) -> dict[str, Any]:
     """Reject altered, unsigned, cross-network, or malformed publications."""
     if network not in {"testnet", "mainnet"} or not expected_signer_hotkey:
         raise ValueError("expected signer and competition network are required")
     bundle = receipt.get("bundle")
-    if not isinstance(bundle, dict) or bundle.get("schema_version") != PUBLICATION_SCHEMA:
+    schema = REPLAY_PUBLICATION_SCHEMA if independent else PUBLICATION_SCHEMA
+    if not isinstance(bundle, dict) or bundle.get("schema_version") != schema:
         raise ValueError("invalid weekly publication schema")
+    frozen_fields = (
+        "round_id", "network", "archive_block_hash", "drand_round", "drand_seed",
+        "paper_pool_sha256", "duplicate_review_sha256", "rules_sha256",
+        "configuration_sha256", "baseline_package_sha256",
+        "reference_package_sha256",
+    ) if independent else FROZEN_FIELDS
     if (bundle.get("network") != network
-        or any(bundle.get(field) is None for field in FROZEN_FIELDS)
+        or any(bundle.get(field) is None for field in frozen_fields)
         or not isinstance(bundle.get("results"), dict)
         or not bundle["results"].get("decision")):
         raise ValueError("weekly publication is for another network or no round")
+    if independent and (
+        type(bundle.get("drand_round")) is not int or bundle["drand_round"] < 1
+        or any(not re.fullmatch(r"[0-9a-f]{64}", str(bundle.get(field, "")))
+               for field in (
+                   "local_sample_sha256", "local_pairs_sha256",
+                   "gold_adjusted_pairs_sha256", "local_final_audit_input_sha256",
+                   "local_final_audit_sha256", "gold_evidence_sha256",
+                   "qualification_evidence_sha256",
+               ))
+    ):
+        raise ValueError("independent weekly evidence is malformed")
     digest = canonical_sha256(bundle)
     if digest != receipt.get("bundle_sha256") or receipt.get("signer_hotkey") != expected_signer_hotkey:
         raise ValueError("weekly publication digest or signer differs")
@@ -129,7 +151,9 @@ def project_weekly_weights(
     return dict(sorted(result.items()))
 
 
-def fetch_latest_publication(*, backend_url: str, network: str) -> dict[str, Any] | None:
+def fetch_latest_publication(
+    *, backend_url: str, network: str, independent: bool = False,
+) -> dict[str, Any] | None:
     """Read the newest published receipt; a current unpublished week is ignored."""
     parsed = urllib.parse.urlparse(backend_url)
     if parsed.scheme != "https" and parsed.hostname not in {"127.0.0.1", "localhost"}:
@@ -141,18 +165,26 @@ def fetch_latest_publication(*, backend_url: str, network: str) -> dict[str, Any
         rounds = json.load(response)
     if not isinstance(rounds, list):
         raise ValueError("competition round listing is malformed")
-    published = next((row for row in rounds if row.get("status") == "published"), None)
-    if published is None:
-        return None
-    round_id = str(published["round_id"])
-    with urllib.request.urlopen(
-        base + "/public/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/results",
-        timeout=15,
-    ) as response:
-        receipt = json.load(response)
-    if not isinstance(receipt, dict):
-        raise ValueError("competition publication is malformed")
-    return receipt
+    for published in rounds:
+        if published.get("status") != "published":
+            continue
+        round_id = str(published["round_id"])
+        suffix = "/independent-results" if independent else "/results"
+        try:
+            with urllib.request.urlopen(
+                base + "/public/competition/rounds/"
+                + urllib.parse.quote(round_id, safe="") + suffix,
+                timeout=15,
+            ) as response:
+                receipt = json.load(response)
+        except urllib.error.HTTPError as exc:
+            if independent and exc.code == 404:
+                continue
+            raise
+        if not isinstance(receipt, dict):
+            raise ValueError("competition publication is malformed")
+        return receipt
+    return None
 
 
 class WeeklyWeightHeartbeat:
@@ -163,6 +195,7 @@ class WeeklyWeightHeartbeat:
         operator_hotkey: str, wallet: Any, subtensor: Any,
         cache_path: Path, weight_period: int = 16,
         fetcher: Callable[[], dict[str, Any] | None] | None = None,
+        independent: bool = False,
     ) -> None:
         if not operator_hotkey or netuid < 0 or weight_period < 1:
             raise ValueError("invalid weekly weight heartbeat configuration")
@@ -173,9 +206,10 @@ class WeeklyWeightHeartbeat:
         self.subtensor = subtensor
         self.cache_path = cache_path
         self.weight_period = weight_period
+        self.independent = independent
         self.expected_signer = wallet.hotkey.ss58_address
         self.fetcher = fetcher or (lambda: fetch_latest_publication(
-            backend_url=backend_url, network=network,
+            backend_url=backend_url, network=network, independent=independent,
         ))
         self.last_submitted_block = 0
 
@@ -186,6 +220,7 @@ class WeeklyWeightHeartbeat:
             return None
         verify_weekly_receipt(
             receipt, expected_signer_hotkey=self.expected_signer, network=self.network,
+            independent=self.independent,
         )
         return receipt
 
@@ -203,6 +238,7 @@ class WeeklyWeightHeartbeat:
                 return cached, "cached" if cached else "unpublished"
             new_bundle = verify_weekly_receipt(
                 fetched, expected_signer_hotkey=self.expected_signer, network=self.network,
+                independent=self.independent,
             )
         except (OSError, ValueError, KeyError, TypeError) as exc:
             if cached is None:
@@ -210,7 +246,8 @@ class WeeklyWeightHeartbeat:
             return cached, "cached_after_fetch_error"
         if cached is not None:
             old_bundle = cached["bundle"]
-            new_time, old_time = int(new_bundle["drand_scheduled_at"]), int(old_bundle["drand_scheduled_at"])
+            order_field = "drand_round" if self.independent else "drand_scheduled_at"
+            new_time, old_time = int(new_bundle[order_field]), int(old_bundle[order_field])
             if new_time < old_time or (new_time == old_time and fetched["bundle_sha256"] != cached["bundle_sha256"]):
                 return cached, "cached_after_rollback"
             if fetched["bundle_sha256"] == cached["bundle_sha256"]:

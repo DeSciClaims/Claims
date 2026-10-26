@@ -1,6 +1,7 @@
 import copy
 import io
 import json
+import urllib.error
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -8,6 +9,7 @@ import pytest
 from bittensor_wallet import Keypair
 
 from competition.publication import canonical_sha256, publication_bundle, sign_publication
+from competition.replay_publication import sign_replay_publication
 from competition.weight_heartbeat import (
     WeeklyWeightHeartbeat,
     fetch_latest_publication,
@@ -41,6 +43,25 @@ def receipt():
         "burned_fraction": 0.01,
     })
     return signer, sign_publication(bundle, signer)
+
+
+def independent_receipt():
+    signer, primary = receipt()
+    original = primary["bundle"]
+    bundle = {key: value for key, value in original.items()
+              if key not in {"drand_chain_hash", "drand_public_key",
+                             "drand_signature", "drand_scheduled_at"}}
+    bundle.update({
+        "schema_version": "claims_competition_independent_replay_v1",
+        "local_stage": "final", "gold_policy_id": "independent-gold-v1",
+        **{key: "5" * 64 for key in (
+            "local_sample_sha256", "local_pairs_sha256",
+            "gold_adjusted_pairs_sha256", "local_final_audit_input_sha256",
+            "local_final_audit_sha256", "gold_evidence_sha256",
+            "qualification_evidence_sha256",
+        )},
+    })
+    return signer, sign_replay_publication(bundle, signer)
 
 
 def test_signed_roles_reproject_after_uid_change_and_burn_unregistered_miner():
@@ -164,3 +185,41 @@ def test_public_client_reads_latest_published_round_only():
             backend_url="https://backend.example", network="testnet",
         ) == signed
     assert urls[1].endswith("/public/competition/rounds/week2/results")
+
+
+def test_independent_heartbeat_uses_own_signed_result_and_skips_late_round(tmp_path):
+    signer, signed = independent_receipt()
+    chain = Chain(signer.ss58_address)
+    heartbeat = WeeklyWeightHeartbeat(
+        network="testnet", netuid=111, backend_url="https://backend.example",
+        operator_hotkey="operator", wallet=SimpleNamespace(hotkey=signer),
+        subtensor=chain, cache_path=tmp_path / "independent.json",
+        fetcher=lambda: signed, independent=True,
+    )
+    assert heartbeat.step()["status"] == "submitted"
+    assert chain.calls[0]["uids"] == [0, 2, 3, 4]
+    with pytest.raises(ValueError, match="schema"):
+        verify_weekly_receipt(
+            signed, expected_signer_hotkey=signer.ss58_address,
+            network="testnet",
+        )
+    urls = []
+
+    def respond(url, *, timeout):
+        assert timeout == 15
+        urls.append(url)
+        if url.endswith("?network=testnet&limit=100"):
+            return io.BytesIO(json.dumps([
+                {"round_id": "week3", "status": "published"},
+                {"round_id": "week2", "status": "published"},
+            ]).encode())
+        if url.endswith("/week3/independent-results"):
+            raise urllib.error.HTTPError(url, 404, "not ready", None, None)
+        return io.BytesIO(json.dumps(signed).encode())
+
+    with patch("competition.weight_heartbeat.urllib.request.urlopen", side_effect=respond):
+        assert fetch_latest_publication(
+            backend_url="https://backend.example", network="testnet",
+            independent=True,
+        ) == signed
+    assert urls[-1].endswith("/week2/independent-results")

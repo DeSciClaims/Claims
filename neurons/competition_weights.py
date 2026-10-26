@@ -30,6 +30,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--poll-seconds", type=int, default=60)
     parser.add_argument("--weight-period", type=int, default=16)
     parser.add_argument("--audit-only", action="store_true")
+    parser.add_argument("--independent", action="store_true",
+                        help="Read the second validator's signed independent result")
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args(argv)
     if not 10 <= args.poll_seconds <= 600:
@@ -46,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         network=args.network, netuid=args.netuid, backend_url=args.backend_url,
         operator_hotkey=args.operator_hotkey, wallet=wallet, subtensor=subtensor,
         cache_path=args.cache_path.expanduser(), weight_period=args.weight_period,
+        independent=args.independent,
     )
     while True:
         try:
