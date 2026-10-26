@@ -8,6 +8,7 @@ from competition.pilot_controller_factory import (
     _final_audit, _voters, create_controller_inputs,
 )
 from competition.controller_inputs import build_provisional_evaluation_policy
+from competition.code_audit import finalize_code_audit
 from competition.publication import canonical_sha256
 
 
@@ -38,12 +39,21 @@ def test_late_voter_and_code_audit_receipts_are_package_bound(tmp_path, monkeypa
             {"voter_hotkey": "voter-b", "team_id": "team-b"},
         ],
     }))
-    checks = {key: True for key in (
-        "build", "hardcoded_output", "evaluation_context", "cap_evasion", "fragmentation",
-    )}
-    receipt = {"round_id": "week1", "packages": [
-        {"hotkey": "miner-a", "package_sha256": "a" * 64, "checks": checks},
-    ]}
+    evidence = {"schema_version": "claims_final_code_audit_v1", "round_id": "week1",
+                "stage": "final", "sample_sha256": "s" * 64,
+                "packages": [{"hotkey": "miner-a", "package_sha256": "a" * 64,
+                              "build_passed": True, "denied_egress_packets": 0}]}
+    monkeypatch.setattr("competition.pilot_controller_factory.collect_final_code_evidence",
+                        lambda *args, **kwargs: evidence)
+    receipt = finalize_code_audit(evidence, {
+        "round_id": "week1", "evidence_sha256": canonical_sha256(evidence),
+        "reviewer": "claims-reviewer", "packages": [{
+            "hotkey": "miner-a", "package_sha256": "a" * 64,
+            "checks": {key: True for key in (
+                "hardcoded_output", "evaluation_context", "cap_evasion", "fragmentation",
+            )},
+        }],
+    })
     (tmp_path / "week1.audit.json").write_text(json.dumps(receipt))
     backend = Backend()
     assert [row["voter_hotkey"] for row in _voters(backend, "week1")] == ["miner-a", "voter-b"]
@@ -54,6 +64,7 @@ def test_late_voter_and_code_audit_receipts_are_package_bound(tmp_path, monkeypa
     ))
     audit = _final_audit(
         backend, chain, "week1", owner_hotkey="owner", operator_hotkey="operator",
+        fetch_package=lambda job: b"package",
     )
     assert audit.code_passed_by_hotkey == {"miner-a": True}
     assert audit.qualified_by_hotkey == {"incumbent": True, "miner-a": True}
@@ -62,7 +73,8 @@ def test_late_voter_and_code_audit_receipts_are_package_bound(tmp_path, monkeypa
     receipt["packages"][0]["package_sha256"] = "c" * 64
     (tmp_path / "week1.audit.json").write_text(json.dumps(receipt))
     with pytest.raises(ValueError, match="frozen package"):
-        _final_audit(backend, chain, "week1", owner_hotkey="owner", operator_hotkey="operator")
+        _final_audit(backend, chain, "week1", owner_hotkey="owner", operator_hotkey="operator",
+                     fetch_package=lambda job: b"package")
 
 
 def test_controller_factory_rejects_runtime_that_differs_from_frozen_rules(monkeypatch):

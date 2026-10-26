@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .chain_archive import BittensorArchive
+from .code_audit import collect_final_code_evidence, verify_code_audit_receipt
 from .controller_inputs import CompetitionControllerInputs, build_provisional_evaluation_policy
 from .hippius import HippiusPrivateStorage, hippius_s3_client
 from .package_inputs import CompetitionPackageResolver
@@ -74,6 +75,7 @@ def _voters(backend: Any, round_id: str) -> list[dict[str, str]]:
 def _final_audit(
     backend: Any, chain: BittensorArchive, round_id: str,
     *, owner_hotkey: str, operator_hotkey: str,
+    fetch_package: Any,
 ) -> FinalAudit:
     stages = backend.list_stages(round_id)
     if not stages:
@@ -84,23 +86,10 @@ def _final_audit(
     if not finalists or len(baselines) != 1:
         raise ValueError("final code audit has no frozen entrants")
     record = _late_receipt(round_id, "audit")
-    receipts = record.get("packages")
-    if not isinstance(receipts, list) or len(receipts) != len(finalists):
-        raise ValueError("final code audit is incomplete")
-    code_passed: dict[str, bool] = {}
-    required_checks = {"build", "hardcoded_output", "evaluation_context",
-                       "cap_evasion", "fragmentation"}
-    for receipt in receipts:
-        if not isinstance(receipt, dict):
-            raise ValueError("code audit receipt is malformed")
-        hotkey = receipt.get("hotkey")
-        if (hotkey not in finalists or hotkey in code_passed
-            or receipt.get("package_sha256") != finalists[hotkey]["package_sha256"]
-            or not isinstance(receipt.get("checks"), dict)
-            or set(receipt["checks"]) != required_checks
-            or any(not isinstance(value, bool) for value in receipt["checks"].values())):
-            raise ValueError("code audit receipt differs from frozen package")
-        code_passed[hotkey] = all(receipt["checks"].values())
+    evidence = collect_final_code_evidence(
+        round_id, backend=backend, fetch_package=fetch_package,
+    )
+    code_passed = verify_code_audit_receipt(record, evidence)
     if set(code_passed) != set(finalists):
         raise ValueError("final code audit omits a finalist")
     payout_hotkeys = sorted(set(finalists) | {baselines[0]["hotkey"]})
@@ -192,5 +181,6 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         qualified_voters=lambda rid: _voters(backend, rid),
         audited_finalists=lambda rid: _final_audit(
             backend, chain, rid, owner_hotkey=owner, operator_hotkey=operator,
+            fetch_package=packages,
         ),
     )

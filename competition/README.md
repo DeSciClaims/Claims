@@ -119,13 +119,24 @@ It reconstructs the provisional Decisions and J1/J2 runtime from the round
 file, checks its hash, and binds the archive node, validator signer, paper
 pool, and sealed packages. It loads `<round_id>.voters.json` only when Gold
 opens and `<round_id>.audit.json` only before publication. The voter file
-names qualified hotkeys and team IDs; the audit file binds each finalist
-hotkey and package SHA-256 to explicit `build`, `hardcoded_output`,
-`evaluation_context`, `cap_evasion`, and `fragmentation` pass/fail checks.
-Absent or mismatched files stop the transition. The controller checks voter
+names qualified hotkeys and team IDs. Run
+`python -m neurons.competition_code_audit --round-id ID --rounds-dir DIR --backend-url URL`
+after the final job grid completes. It writes a private
+`<round_id>.audit-evidence.json` containing sealed source fingerprints, build
+outcomes, gateway usage, denied egress, and claim-count/repeated-output
+statistics. Review the sealed source and this evidence, then provide a private
+review JSON with `round_id`, `evidence_sha256`, `reviewer`, and one package row
+per finalist: `hotkey`, `package_sha256`, and Boolean `checks` for
+`hardcoded_output`, `evaluation_context`, `cap_evasion`, and `fragmentation`.
+Run the same command with `--review-file PATH` to write `<round_id>.audit.json`.
+The `build` result is derived from trusted jobs and cannot be overridden.
+The controller recomputes the evidence and rejects a stale or altered review;
+absent or mismatched files stop the transition. These source-behavior checks
+still need reviewer judgment until calibrated automatic detectors are added.
+The controller checks voter
 qualification against backend consensus records and payout UIDs against the
-current metagraph. Producing the audit receipts automatically and checking
-live archive and signer compatibility remain integration work.
+current metagraph. Automating reviewer judgments and checking live archive
+and signer compatibility remain integration work.
 The competition_round_setup CLI opens intake from an operator draft. It
 reconstructs the provisional judge runtime, verifies sealed baseline and
 fallback package bytes through Hippius, checks the Monday 12:00 UTC / D+600
@@ -147,8 +158,10 @@ live model endpoints and cost; placeholder slugs are only valid for tests.
 For the final stage, it now recomputes each finalist's output-copy verdict
 from the frozen private Silver receipt and paired score grid. The 85% accepted
 unit overlap and two-standard-error gain rule is applied against the baseline,
-and the evidence is included in the signed public result. Other automated
-code-integrity checks still need concrete audit adapters.
+and the evidence is included in the signed public result. The final code-audit
+evidence collector now binds review to measured worker and sealed package
+receipts; automatic detection of hard-coded outputs, context gaming, cap
+evasion and fragmentation still needs calibration.
 The disposable worker firewall also counts denied packets for the miner UID.
 The trusted SSH transport checks the reviewed two-rule policy before and after
 each run, records blocked attempts even when the guest exits unsuccessfully,
