@@ -150,6 +150,11 @@ class CompetitionBackend:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/voters"
         return self._request("POST", path, {"voters": voters})
 
+    def list_gold_known_answer_candidates(self, round_id: str) -> list[dict[str, Any]]:
+        path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/gold/known-answer-candidates")
+        return self._request("GET", path)
+
     def create_gold_cases(self, round_id: str, cases: list[dict[str, Any]]) -> dict[str, Any]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/cases"
         return self._request("POST", path, {"cases": cases})

@@ -23,7 +23,7 @@ def _context():
     )
 
 
-def _response(probability):
+def _response(probability, confidence=None):
     class Response:
         def raise_for_status(self):
             pass
@@ -31,6 +31,7 @@ def _response(probability):
         def json(self):
             return {"answers": [{
                 "type": "choice", "name": "supported_candidate", "choice": "miner:c1",
+                "confidence": probability if confidence is None else confidence,
                 "probabilities": [
                     {"value": "miner:c1", "probability": probability},
                     {"value": "neither", "probability": 1 - probability},
@@ -56,6 +57,10 @@ def test_decision_router_accepts_only_high_confidence_singletons():
     assert "secret" not in repr(router)
     uncertain = OpenAIDecisionsRouter("secret", 0.95, http_post=lambda *_, **__: _response(0.93))
     assert uncertain(_context()) is None
+    uncertain_confidence = OpenAIDecisionsRouter(
+        "secret", 0.9, http_post=lambda *_, **__: _response(0.98, confidence=0.7),
+    )
+    assert uncertain_confidence(_context()) is None
     no_source = _context()
     no_source.source_context = ""
     assert router(no_source) is None
@@ -85,6 +90,7 @@ def test_early_stage_routes_singleton_without_invoking_judges():
             def json(self):
                 return {"answers": [{
                     "type": "choice", "name": "supported_candidate", "choice": candidate_id,
+                    "confidence": 0.95,
                     "probabilities": [
                         {"value": candidate_id, "probability": 0.96},
                         {"value": "neither", "probability": 0.04},

@@ -11,7 +11,8 @@ DEADLINE = datetime(2026, 10, 26, 12, tzinfo=UTC)
 
 def _round(status):
     return {"status": status, "deadline_at": DEADLINE.isoformat(),
-            "reveal_block": 700, "gold_check_seed_private": "c" * 64,
+            "reveal_block": 700, "drand_seed": "a" * 64,
+            "gold_check_seed_private": "c" * 64,
             "gold_check_commitment": "d" * 64}
 
 
@@ -69,6 +70,9 @@ def test_tick_scores_only_ready_final_papers_then_opens_gold(monkeypatch):
             return [{"hotkey": hotkey, "status": status}
                     for hotkey in ("incumbent", "challenger")]
 
+        def list_gold_known_answer_candidates(self, _):
+            return []
+
     class Inputs:
         def bronze_for_paper(self, stage, paper_id):
             assert (stage, paper_id) == ("final", "paper-1")
@@ -93,6 +97,8 @@ def test_tick_scores_only_ready_final_papers_then_opens_gold(monkeypatch):
     opened = []
     monkeypatch.setattr("competition.weekly_automation.prepare_frozen_gold_review",
                         lambda *_, **__: opened.append(True) or {"case_count": 0})
+    monkeypatch.setattr("competition.weekly_automation.build_known_answer_challenges",
+                        lambda *_, **__: [object()] * 40)
     result = tick_round("week", backend=backend, inputs=Inputs(),
                         now=DEADLINE + timedelta(days=1))
     assert result["status"] == "waiting_for_final_scores"
@@ -142,6 +148,9 @@ def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
                         lambda *_, **__: calls.append("tally") or {"challenger": object()})
     monkeypatch.setattr("competition.weekly_automation.frozen_gold_candidates",
                         lambda *_, **__: [SimpleNamespace(case=SimpleNamespace(case_id="case-1"))])
+    monkeypatch.setattr("competition.weekly_automation.audit_closed_known_answers",
+                        lambda *_, **__: {"cases": [], "decided_correct": 0,
+                                          "decided_total": 0, "voters": {}})
     monkeypatch.setattr("competition.weekly_automation.select_ready_final",
                         lambda *_, **__: calls.append("select") or object())
     monkeypatch.setattr("competition.weekly_automation.publish_selected_round",

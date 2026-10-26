@@ -24,6 +24,7 @@ def publish_selected_round(
     production_team_id: str | None,
     gold_by_hotkey: Mapping[str, GoldResult],
     gold_check: Mapping[str, Any] | None = None,
+    known_answer_audit: Mapping[str, Any] | None = None,
     burn_uid: int = 0,
 ) -> dict[str, Any]:
     """Sign results and 70/20/10 shares; backend checks frozen inputs and grid."""
@@ -86,6 +87,7 @@ def publish_selected_round(
         "finalists": [asdict(row) for row in selection.verdicts],
         "gold": {hotkey: asdict(result) for hotkey, result in sorted(gold_by_hotkey.items())},
         "gold_check": dict(gold_check) if gold_check else None,
+        "known_answer_audit": dict(known_answer_audit) if known_answer_audit else None,
         "final_pair_scores": list(selection.final_pair_rows),
     }
     weights = {

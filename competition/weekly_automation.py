@@ -13,8 +13,10 @@ from typing import Any, Callable, Mapping, Protocol
 
 from .drand import BlockClock
 from .final_controller import select_ready_final
+from .gold_challenges import build_known_answer_challenges
 from .gold_controller import (
-    frozen_gold_candidates, prepare_frozen_gold_review, tally_closed_gold_review,
+    audit_closed_known_answers, frozen_gold_candidates, prepare_frozen_gold_review,
+    tally_closed_gold_review,
 )
 from .intake_lock import ArchiveReader, CompetitionBackend
 from .paper_score_controller import score_ready_paper
@@ -115,9 +117,19 @@ def _score_active_stage(
                 "scored_papers_this_tick": attempted}
     if now >= gold_close:
         return {"status": "missed_gold_window", "stage": stage}
+    round_record = backend.get_round(round_id)
+    known_answers = build_known_answer_challenges(
+        round_id,
+        certified=backend.list_gold_known_answer_candidates(round_id),
+        final_sample=papers, final_entries=ledger[-1]["entries"],
+        seed=bytes.fromhex(round_record["drand_seed"]),
+    )
     result = prepare_frozen_gold_review(
         round_id, backend=backend, voters=inputs.voters_for_round(round_id),
+        known_answers=known_answers, minimum_known_answers=40,
     )
+    if result.get("status") == "waiting_for_known_answers":
+        return result
     return {"status": "gold_open", "stage": stage,
             "case_count": result["case_count"]}
 
@@ -196,6 +208,7 @@ def tick_round(
                 "candidate_ids": sorted(candidate.case.case_id for candidate in candidates),
                 "case_ids": check_ids,
             },
+            known_answer_audit=audit_closed_known_answers(round_id, backend=backend),
         )
         return {"status": "published", "bundle_sha256": receipt["bundle_sha256"]}
     if status == "published":

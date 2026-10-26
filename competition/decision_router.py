@@ -87,6 +87,7 @@ class OpenAIDecisionsRouter:
             raise ValueError("Decisions response has an unexpected answer type")
         choice = answer.get("choice")
         probabilities = answer.get("probabilities")
+        confidence = answer.get("confidence")
         if choice not in {candidate.candidate_id, "neither"} or not isinstance(probabilities, list):
             raise ValueError("Decisions response has an invalid choice")
         by_value = {row["value"]: row["probability"] for row in probabilities}
@@ -95,8 +96,9 @@ class OpenAIDecisionsRouter:
                    for value in by_value.values())
             or abs(sum(by_value.values()) - 1) > 0.02):
             raise ValueError("Decisions response has invalid probabilities")
-        probability = float(by_value[choice])
-        if probability < self.threshold:
+        if not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
+            raise ValueError("Decisions response has invalid confidence")
+        if confidence < self.threshold:
             return None
         if candidate.origin == "bronze":
             disposition = "miner_error" if choice == candidate.candidate_id else "reference_error"
@@ -105,11 +107,11 @@ class OpenAIDecisionsRouter:
         vote = AdjudicationVote(
             case_id=case.case_id, pass_id="openai-decisions", adjudication_profile_id=PROMPT_SHA256,
             model_runtime_id=self.model, candidate_order=[candidate.candidate_id],
-            disposition=disposition, confidence=probability,
+            disposition=disposition, confidence=float(confidence),
             rationale="High-confidence direct choice from frozen Decisions configuration.",
         )
         return AdjudicationConsensus(
             case_id=case.case_id, votes=[vote], final_disposition=disposition,
-            final_confidence=probability, agreement_rate=1.0, route="decision_model",
+            final_confidence=float(confidence), agreement_rate=1.0, route="decision_model",
             rationale=vote.rationale,
         )

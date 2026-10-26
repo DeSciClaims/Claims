@@ -27,7 +27,7 @@ The Zils checkpoint named in the reward proposal is unavailable. The
 `OpenAIDecisionsRouter` is a temporary trusted-controller adapter for the
 pre-screen and screen. It submits only single-candidate cases with source
 context to OpenAI Decisions (`gpt-6-luna`); pairs, missing source context, and
-choices below the frozen stage threshold go to the two full judges. The router
+choices below the frozen stage confidence threshold go to the two full judges. The router
 is never passed to the final or week-one evaluator. Freeze the provider,
 model, prompt hash, and thresholds in the weekly configuration. Do not enable
 the route for a paid round until its confidence buckets have been measured on
@@ -43,7 +43,11 @@ the signed result reveals the Gold seed and candidate IDs; the backend verifies
 the draw against frozen paper receipts. Decided escalation votes rescore final
 pairs, including accepted units and rejected miner claims whose votes reverse
 the tiebreak. Check cases alone supply the crown veto. Hidden known-answer
-cases and live end-to-end execution remain.
+cases from the certified consensus bank are mixed into Gold when at least 40
+unused cases match the exact final PDF versions. Their answer keys stay sealed
+until closure, then voter and decided-vote accuracy is included in the signed
+result. Gold waits if the bank cannot supply 40 matching cases. Provisioning
+those cases for each fresh final sample and live end-to-end execution remain.
 
 ## Weight heartbeat
 

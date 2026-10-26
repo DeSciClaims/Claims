@@ -10,6 +10,12 @@ from .pair_evaluator import WeeklyPaperEvaluation
 
 from .gold import GoldCase, GoldResult, GoldVote, VoteDecision, decide_gold_case, draw_gold_cases, gold_result
 
+GOLD_QUESTION = (
+    "Does this statement accurately describe the cited paper evidence? "
+    "Vote for its claim side if supported, the other side if contradicted, "
+    "or neither if the evidence is inconclusive."
+)
+
 
 class GoldBackend(Protocol):
     def get_round(self, round_id: str) -> dict[str, Any]: ...
@@ -18,7 +24,7 @@ class GoldBackend(Protocol):
     def get_paper_evaluation(self, round_id: str, stage: str, paper_id: str) -> dict[str, Any] | None: ...
     def freeze_gold_voters(self, round_id: str, voters: list[dict[str, str]]) -> dict[str, Any]: ...
     def create_gold_cases(self, round_id: str, cases: list[dict[str, Any]]) -> dict[str, Any]: ...
-    def list_gold_cases(self, round_id: str) -> list[dict[str, Any]]: ...
+    def list_gold_cases(self, round_id: str, *, include_answers: bool = False) -> list[dict[str, Any]]: ...
     def list_gold_voters(self, round_id: str) -> list[dict[str, Any]]: ...
     def list_gold_votes(self, round_id: str) -> list[dict[str, Any]]: ...
 
@@ -100,9 +106,10 @@ def contested_claims_for_paper(
                 )
                 claims.append(ContestedClaim(
                     case,
-                    {"question": diff.question, "statement": unit.statement,
+                    {"question": GOLD_QUESTION, "statement": unit.statement,
                      "source_quotes": unit.source_quotes,
                      "source_span_ids": unit.source_span_ids,
+                     "claim_side": tiebreak,
                      "challenger_hotkey": challenger_hotkey,
                      "incumbent_hotkey": incumbent["hotkey"]},
                     {"kind": "silver_unit", "tiebreak": tiebreak,
@@ -129,9 +136,10 @@ def contested_claims_for_paper(
             )
             claims.append(ContestedClaim(
                 case,
-                {"question": diff.question, "statement": candidate.statement,
+                {"question": GOLD_QUESTION, "statement": candidate.statement,
                  "source_quotes": candidate.source_quotes,
                  "source_span_ids": candidate.source_span_ids,
+                 "claim_side": ("challenger" if invalid.miner_id == challenger_hotkey else "incumbent"),
                  "challenger_hotkey": challenger_hotkey,
                  "incumbent_hotkey": incumbent["hotkey"]},
                 {"kind": "invalid_candidate",
@@ -180,10 +188,13 @@ def frozen_gold_candidates(round_id: str, *, backend: GoldBackend) -> list[Conte
 def prepare_frozen_gold_review(
     round_id: str, *, backend: GoldBackend,
     voters: list[dict[str, str]], limit: int = 300, escalation_limit: int = 1700,
+    known_answers: list[ContestedClaim] | None = None,
+    minimum_known_answers: int = 0,
 ) -> dict[str, Any]:
     return prepare_gold_review(
         round_id, backend=backend, candidates=frozen_gold_candidates(round_id, backend=backend),
         voters=voters, limit=limit, escalation_limit=escalation_limit,
+        known_answers=known_answers, minimum_known_answers=minimum_known_answers,
     )
 
 
@@ -191,6 +202,8 @@ def prepare_gold_review(
     round_id: str, *, backend: GoldBackend, candidates: list[ContestedClaim],
     voters: list[dict[str, str]], limit: int = 300,
     escalation_limit: int | None = None,
+    known_answers: list[ContestedClaim] | None = None,
+    minimum_known_answers: int = 0,
 ) -> dict[str, Any]:
     """Seal a random Gold check and a separately capped escalation stream."""
     round_record = backend.get_round(round_id)
@@ -201,6 +214,25 @@ def prepare_gold_review(
         raise ValueError("round has no valid released draw seed")
     if len({candidate.case.case_id for candidate in candidates}) != len(candidates):
         raise ValueError("contested Gold case IDs must be distinct")
+    known_answers = known_answers or []
+    if minimum_known_answers < 0:
+        raise ValueError("minimum known-answer count cannot be negative")
+    if len(known_answers) < minimum_known_answers:
+        return {"status": "waiting_for_known_answers", "available": len(known_answers),
+                "required": minimum_known_answers}
+    all_ids = [row.case.case_id for row in [*candidates, *known_answers]]
+    if len(all_ids) != len(set(all_ids)):
+        raise ValueError("Gold challenge case IDs collide with contested cases")
+    public_keys = {"question", "statement", "source_quotes", "source_span_ids",
+                   "claim_side", "challenger_hotkey", "incumbent_hotkey"}
+    for challenge in known_answers:
+        answer = challenge.answer_private
+        if (set(challenge.case_public) != public_keys
+            or answer.get("kind") != "known_answer"
+            or answer.get("correct_choice") not in {"challenger", "incumbent"}
+            or not answer.get("source_challenge_id")
+            or len(str(answer.get("certificate_sha256") or "")) != 64):
+            raise ValueError("Gold known-answer challenge lacks a certified review contract")
     by_id = {candidate.case.case_id: candidate for candidate in candidates}
     check_seed = bytes.fromhex(round_record["gold_check_seed_private"])
     commitment = hashlib.sha256(
@@ -222,8 +254,7 @@ def prepare_gold_review(
     check_ids = {case.case_id for case in check}
     escalation_ids = {case.case_id for case in escalation}
     selected = [by_id[case_id].case for case_id in sorted(check_ids | escalation_ids)]
-    backend.freeze_gold_voters(round_id, voters)
-    receipt = backend.create_gold_cases(round_id, [{
+    selected_rows = [{
         "case_id": case.case_id, "paper_id": case.paper_id,
         "challenger_hotkey": case.challenger_hotkey,
         "incumbent_hotkey": case.incumbent_hotkey,
@@ -236,9 +267,22 @@ def prepare_gold_review(
                 ("escalation", case.case_id in escalation_ids),
             ) if included],
         },
-    } for case in selected])
-    return {"round_id": round_id, "case_count": len(selected),
+    } for case in selected]
+    selected_rows.extend({
+        "case_id": challenge.case.case_id,
+        "paper_id": challenge.case.paper_id,
+        "challenger_hotkey": challenge.case.challenger_hotkey,
+        "incumbent_hotkey": challenge.case.incumbent_hotkey,
+        "excluded_team_ids": sorted(challenge.case.excluded_team_ids),
+        "case_public": dict(challenge.case_public),
+        "answer_private": {**dict(challenge.answer_private),
+                           "review_purposes": ["challenge"]},
+    } for challenge in known_answers)
+    backend.freeze_gold_voters(round_id, voters)
+    receipt = backend.create_gold_cases(round_id, selected_rows)
+    return {"round_id": round_id, "case_count": len(selected_rows),
             "check_count": len(check), "escalation_count": len(escalation),
+            "known_answer_count": len(known_answers),
             "receipt": receipt}
 
 
@@ -294,3 +338,45 @@ def tally_closed_gold_review(
                 raise ValueError("Gold check case is outside frozen finalists")
             decisions_by_challenger[row["challenger_hotkey"]].append(decisions[row["case_id"]])
     return {hotkey: gold_result(decisions) for hotkey, decisions in decisions_by_challenger.items()}
+
+
+def audit_closed_known_answers(round_id: str, *, backend: GoldBackend) -> dict[str, Any]:
+    """Score eligible voter choices on sealed known-answer cases after closure."""
+    decisions = closed_gold_decisions(round_id, backend=backend)
+    cases = backend.list_gold_cases(round_id, include_answers=True)
+    team_by_hotkey = {row["voter_hotkey"]: row["team_id"]
+                      for row in backend.list_gold_voters(round_id)}
+    votes_by_case: dict[str, list[dict[str, Any]]] = {}
+    for vote in backend.list_gold_votes(round_id):
+        votes_by_case.setdefault(vote["case_id"], []).append(vote)
+    per_voter: dict[str, dict[str, int]] = {}
+    published_cases = []
+    decided_count = decided_correct = 0
+    for row in cases:
+        answer = row["answer_private"]
+        if "challenge" not in answer.get("review_purposes", []):
+            continue
+        correct = answer.get("correct_choice")
+        if answer.get("kind") != "known_answer" or correct not in {"challenger", "incumbent"}:
+            raise ValueError("sealed known-answer case has no valid key")
+        decision = decisions[row["case_id"]]
+        if decision.choice is not None:
+            decided_count += 1
+            decided_correct += decision.choice == correct
+        for vote in votes_by_case.get(row["case_id"], []):
+            hotkey = vote["voter_hotkey"]
+            if team_by_hotkey.get(hotkey) in row["excluded_team_ids"] or hotkey not in team_by_hotkey:
+                continue
+            score = per_voter.setdefault(hotkey, {"correct": 0, "total": 0})
+            score["total"] += 1
+            score["correct"] += vote["choice"] == correct
+        published_cases.append({
+            "case_id": row["case_id"], "source_challenge_id": answer["source_challenge_id"],
+            "certificate_sha256": answer["certificate_sha256"], "correct_choice": correct,
+            "decision": decision.choice,
+        })
+    return {
+        "cases": sorted(published_cases, key=lambda case: case["case_id"]),
+        "decided_correct": decided_correct, "decided_total": decided_count,
+        "voters": {hotkey: score for hotkey, score in sorted(per_voter.items())},
+    }
