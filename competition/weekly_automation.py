@@ -51,6 +51,7 @@ class TrustedRoundInputs(Protocol):
     def bronze_for_paper(self, stage: str, paper_id: str) -> Mapping[str, Any]: ...
     def evaluate_for_stage(self, stage: str) -> Callable[..., Any]: ...
     def voters_for_round(self, round_id: str) -> list[dict[str, str]]: ...
+    def judge_known_answer(self, sealed_case: Mapping[str, Any]) -> Mapping[str, str]: ...
     def final_audit(self, round_id: str) -> FinalAudit: ...
 
 
@@ -208,7 +209,9 @@ def tick_round(
                 "candidate_ids": sorted(candidate.case.case_id for candidate in candidates),
                 "case_ids": check_ids,
             },
-            known_answer_audit=audit_closed_known_answers(round_id, backend=backend),
+            known_answer_audit=audit_closed_known_answers(
+                round_id, backend=backend, tiebreak_judge=inputs.judge_known_answer,
+            ),
         )
         return {"status": "published", "bundle_sha256": receipt["bundle_sha256"]}
     if status == "published":

@@ -131,6 +131,10 @@ def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
         signer = object()
         operator_hotkey = "operator"
 
+        def judge_known_answer(self, _):
+            return {"choice": "neither", "vote_sha256": "a" * 64,
+                    "model_runtime_id": "model", "adjudication_profile_id": "profile"}
+
         def final_audit(self, _):
             return FinalAudit({"challenger": True}, {"challenger": False},
                               {"challenger": True}, {"challenger": 1}, "team-i")
@@ -150,7 +154,8 @@ def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
                         lambda *_, **__: [SimpleNamespace(case=SimpleNamespace(case_id="case-1"))])
     monkeypatch.setattr("competition.weekly_automation.audit_closed_known_answers",
                         lambda *_, **__: {"cases": [], "decided_correct": 0,
-                                          "decided_total": 0, "voters": {}})
+                                          "decided_total": 0, "tiebreak_correct": 0,
+                                          "tiebreak_total": 0, "voters": {}})
     monkeypatch.setattr("competition.weekly_automation.select_ready_final",
                         lambda *_, **__: calls.append("select") or object())
     monkeypatch.setattr("competition.weekly_automation.publish_selected_round",

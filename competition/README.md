@@ -49,7 +49,9 @@ the tiebreak. Check cases alone supply the crown veto. Hidden known-answer
 cases from the certified consensus bank are mixed into Gold when at least 40
 unused cases match the exact final PDF versions. Their answer keys stay sealed
 until closure, then voter and decided-vote accuracy is included in the signed
-result. The prompt uses a verified source span from the pinned Bronze full
+result. The frozen tiebreak judge also evaluates the same sealed cases after
+vote closure; its accuracy and vote hashes appear beside voter accuracy. The
+prompt uses a verified source span from the pinned Bronze full
 source; cases without that evidence are excluded. Gold waits if the bank cannot supply 40 matching cases. Provisioning
 those cases for each fresh final sample and live end-to-end execution remain.
 

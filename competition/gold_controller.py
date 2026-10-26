@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 from .pair_evaluator import WeeklyPaperEvaluation
 
@@ -340,7 +340,10 @@ def tally_closed_gold_review(
     return {hotkey: gold_result(decisions) for hotkey, decisions in decisions_by_challenger.items()}
 
 
-def audit_closed_known_answers(round_id: str, *, backend: GoldBackend) -> dict[str, Any]:
+def audit_closed_known_answers(
+    round_id: str, *, backend: GoldBackend,
+    tiebreak_judge: Callable[[Mapping[str, Any]], Mapping[str, str]] | None = None,
+) -> dict[str, Any]:
     """Score eligible voter choices on sealed known-answer cases after closure."""
     decisions = closed_gold_decisions(round_id, backend=backend)
     cases = backend.list_gold_cases(round_id, include_answers=True)
@@ -351,7 +354,7 @@ def audit_closed_known_answers(round_id: str, *, backend: GoldBackend) -> dict[s
         votes_by_case.setdefault(vote["case_id"], []).append(vote)
     per_voter: dict[str, dict[str, int]] = {}
     published_cases = []
-    decided_count = decided_correct = 0
+    decided_count = decided_correct = tiebreak_correct = 0
     for row in cases:
         answer = row["answer_private"]
         if "challenge" not in answer.get("review_purposes", []):
@@ -359,6 +362,15 @@ def audit_closed_known_answers(round_id: str, *, backend: GoldBackend) -> dict[s
         correct = answer.get("correct_choice")
         if answer.get("kind") != "known_answer" or correct not in {"challenger", "incumbent"}:
             raise ValueError("sealed known-answer case has no valid key")
+        if tiebreak_judge is None:
+            raise ValueError("known-answer accuracy needs the frozen tiebreak judge")
+        judged = tiebreak_judge(row)
+        if (judged.get("choice") not in {"challenger", "incumbent", "neither"}
+            or any(not isinstance(judged.get(key), str) or not judged[key]
+                   for key in ("vote_sha256", "model_runtime_id", "adjudication_profile_id"))
+            or len(judged["vote_sha256"]) != 64):
+            raise ValueError("known-answer tiebreak judge returned an invalid receipt")
+        tiebreak_correct += judged["choice"] == correct
         decision = decisions[row["case_id"]]
         if decision.choice is not None:
             decided_count += 1
@@ -373,10 +385,14 @@ def audit_closed_known_answers(round_id: str, *, backend: GoldBackend) -> dict[s
         published_cases.append({
             "case_id": row["case_id"], "source_challenge_id": answer["source_challenge_id"],
             "certificate_sha256": answer["certificate_sha256"], "correct_choice": correct,
-            "decision": decision.choice,
+            "decision": decision.choice, "tiebreak_choice": judged["choice"],
+            "tiebreak_vote_sha256": judged["vote_sha256"],
+            "tiebreak_model_runtime_id": judged["model_runtime_id"],
+            "tiebreak_profile_id": judged["adjudication_profile_id"],
         })
     return {
         "cases": sorted(published_cases, key=lambda case: case["case_id"]),
         "decided_correct": decided_correct, "decided_total": decided_count,
+        "tiebreak_correct": tiebreak_correct, "tiebreak_total": len(published_cases),
         "voters": {hotkey: score for hotkey, score in sorted(per_voter.items())},
     }

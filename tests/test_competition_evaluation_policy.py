@@ -1,4 +1,5 @@
 import pytest
+from validator.agent_v1.adjudication_passes import StaticAdjudicationPass
 
 from competition.evaluation_policy import FrozenEvaluationPolicy
 from competition.decision_router import PROMPT_SHA256
@@ -62,3 +63,22 @@ def test_routing_settings_must_match_frozen_configuration():
             source_context_for_paper=lambda _: {}, decision_api_key="private-key",
             screen_threshold=0.8,
         )
+
+
+def test_policy_uses_its_frozen_tiebreak_judge_for_gold_audit():
+    tiebreak = StaticAdjudicationPass(
+        "tie", "profile", "model", {}, default_disposition="accepted_improvement",
+    )
+    policy = FrozenEvaluationPolicy(
+        round_id="week2", configuration_sha256=canonical_sha256(CONFIGURATION),
+        configuration=CONFIGURATION, adjudication_passes=(object(), object()),
+        source_context_for_paper=lambda _: {}, decision_api_key="private-key",
+        tiebreak_pass=tiebreak,
+    )
+    sealed_case = {
+        "case_id": "gold-1", "paper_id": "paper-1", "challenger_hotkey": "challenger",
+        "case_public": {"question": "Is this supported?", "statement": "A improved survival.",
+                        "source_quotes": ["The trial found greater survival with A."],
+                        "source_span_ids": ["span-1"], "claim_side": "incumbent"},
+    }
+    assert policy.judge_known_answer(sealed_case)["choice"] == "incumbent"

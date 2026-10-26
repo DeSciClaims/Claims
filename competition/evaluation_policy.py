@@ -10,6 +10,7 @@ from typing import Any, Callable, Mapping
 from validator.agent_v1.adjudication_runner import AdjudicationPass
 
 from .decision_router import OpenAIDecisionsRouter, PROMPT_SHA256
+from .gold_judge import judge_known_answer_case
 from .pair_evaluator import WeeklyPaperEvaluation, evaluate_weekly_paper
 from .publication import canonical_sha256
 
@@ -45,6 +46,11 @@ class FrozenEvaluationPolicy:
             "prescreen_confidence_threshold": self.prescreen_threshold,
             "screen_confidence_threshold": self.screen_threshold,
         }
+
+    def judge_known_answer(self, sealed_case: Mapping[str, Any]) -> dict[str, str]:
+        if self.tiebreak_pass is None:
+            raise ValueError("known-answer audit needs the frozen tiebreak judge")
+        return judge_known_answer_case(sealed_case, tiebreak_pass=self.tiebreak_pass)
 
     def evaluate_for_stage(self, stage: str) -> Callable[..., WeeklyPaperEvaluation]:
         if stage not in {"prescreen", "screen", "final", "week_one"}:

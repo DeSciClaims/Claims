@@ -97,9 +97,16 @@ def test_closed_known_answer_audit_excludes_competing_team_and_reveals_key():
                     for index in range(11)] + [
                 {"case_id": "gold-1", "voter_hotkey": "excluded", "choice": "challenger"}]
 
-    audit = audit_closed_known_answers("week2", backend=Backend())
+    audit = audit_closed_known_answers(
+        "week2", backend=Backend(), tiebreak_judge=lambda _: {
+            "choice": "challenger", "vote_sha256": "b" * 64,
+            "model_runtime_id": "judge-model", "adjudication_profile_id": "judge-profile",
+        },
+    )
     assert audit["decided_total"] == audit["decided_correct"] == 1
     assert audit["cases"][0]["correct_choice"] == "incumbent"
+    assert audit["tiebreak_correct"] == 0
+    assert audit["tiebreak_total"] == 1
     assert audit["voters"]["voter-0"] == {"correct": 1, "total": 1}
     assert audit["voters"]["voter-10"] == {"correct": 0, "total": 1}
     assert "excluded" not in audit["voters"]
