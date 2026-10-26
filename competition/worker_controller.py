@@ -102,7 +102,7 @@ def run_claimed_job(
     keys: InferenceKeys, execution: DisposableExecution,
     logs: PrivateLogs, inference_base_url: str,
     allowed_models: tuple[str, ...], published_token_ceiling: int,
-    dollar_limit: float, key_lifetime_seconds: int = 2400,
+    dollar_limit: float, key_lifetime_seconds: int = 3600,
     max_output_bytes: int = 10_000_000,
     max_inference_output_tokens: int = 8192,
 ) -> dict[str, Any]:

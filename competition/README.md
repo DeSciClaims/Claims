@@ -28,10 +28,22 @@ to the models declared by that manifest, after checking the frozen whitelist.
 `build_worker_bundle` produces deterministic `input.json`, `request.json`,
 one package and one PDF. The guest verifies all hashes before it installs the
 package; `worker_guest` then invokes `run_one_paper` and writes a result and
-full install/execution log. The transport must mount the input directory
-read-only, provide a pinned offline wheelhouse, and run the guest harness as an
+full install/execution log. The transport must keep the input directory
+unwritable by the miner user, provide a pinned offline wheelhouse, and run the guest harness as an
 unprivileged user. The scoped token is transferred separately and never enters
 the durable bundle.
+`PinnedSshWorkerTransport` implements this transfer for a prepared VM. It
+requires a preverified SSH host key, stages bundle files with read-only modes under a
+separate OS owner, sends the scoped token on stdin, runs the guest harness with
+an empty environment as `claims-miner`, fetches bounded result/log bytes, and
+removes its job directory. The VM image must provide passwordless sudo only
+for the specified staging commands, a pinned runtime/wheelhouse, and a host
+firewall allowing the miner process to reach only the inference endpoint.
+The Targon Workloads API does not supply an SSH host-key fingerprint, so the
+transport cannot safely connect to a newly provisioned VM until that key has
+been authenticated through a separate trusted channel. A prepared pilot VM
+can use an operator-verified known_hosts entry; automated fresh-VM transport
+remains an integration gate.
 `TargonVmLifecycle` follows Targon's documented register/deploy/state/delete
 API. It creates a separate VM for a job, enforces an hourly price ceiling,
 and deletes a failed provision. `DisposableVmExecution` also deletes the VM

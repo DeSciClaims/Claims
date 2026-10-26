@@ -1,8 +1,8 @@
 """Guest-side entrypoint for one verified bundle and one paper-scoped key.
 
 Run only inside the disposable worker VM. The VM image supplies a pinned,
-offline wheelhouse and this trusted harness. The transport mounts input_dir
-read-only and makes result_dir writable; miner code is installed after bundle
+offline wheelhouse and this trusted harness. The transport keeps input_dir
+unwritable by the miner user and makes result_dir writable; miner code is installed after bundle
 verification. The transport collects result.json and install/run log.
 """
 
