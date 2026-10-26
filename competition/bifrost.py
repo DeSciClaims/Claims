@@ -1,6 +1,6 @@
 """Trusted control-plane client for maximhq/Bifrost virtual keys.
 
-Targets the v1.5 governance API. Workers receive only the returned virtual
+Targets the v1.6.3 governance API. Workers receive only the returned virtual
 key and the inference /v1 URL, never this client or its management credential.
 """
 
@@ -86,9 +86,15 @@ class BifrostClient:
         allowed_models: tuple[str, ...], token_limit: int,
         dollar_limit: float, expires_at: datetime,
     ) -> PaperKey:
-        if not allowed_models or any(not model for model in allowed_models):
-            raise ValueError("at least one allowed model is required")
-        if token_limit < 1 or dollar_limit <= 0:
+        if (not allowed_models
+            or any(not isinstance(model, str) or not model or "*" in model
+                   for model in allowed_models)
+            or len(set(allowed_models)) != len(allowed_models)):
+            raise ValueError("paper key needs distinct concrete allowed models")
+        if (isinstance(token_limit, bool) or not isinstance(token_limit, int)
+            or token_limit < 1 or isinstance(dollar_limit, bool)
+            or not isinstance(dollar_limit, int | float)
+            or not math.isfinite(dollar_limit) or dollar_limit <= 0):
             raise ValueError("paper token and dollar limits must be positive")
         if expires_at.tzinfo is None or expires_at <= datetime.now(UTC):
             raise ValueError("paper key expiry must be a future timezone-aware timestamp")
@@ -122,7 +128,48 @@ class BifrostClient:
         key_id, value = item.get("id"), item.get("value")
         if not isinstance(key_id, str) or not isinstance(value, str) or not value.startswith("sk-bf-"):
             raise BifrostError("Bifrost did not return a usable virtual key")
-        return PaperKey(key_id, value, expires_at, token_limit, dollar_limit)
+        key = PaperKey(key_id, value, expires_at, token_limit, dollar_limit)
+        try:
+            stored_expiry = item.get("expires_at")
+            if not isinstance(stored_expiry, str):
+                raise BifrostError("Bifrost did not persist paper key expiry")
+            parsed_expiry = datetime.fromisoformat(stored_expiry.replace("Z", "+00:00"))
+            if (parsed_expiry.tzinfo is None
+                or abs((parsed_expiry.astimezone(UTC) - expires_at.astimezone(UTC)).total_seconds()) > 1
+                or item.get("allow_all_providers") is True):
+                raise BifrostError("Bifrost paper key expiry or provider scope differs")
+            quota = self._request(
+                "GET", "/api/governance/virtual-keys/quota", virtual_key=value,
+            )
+            providers = quota.get("provider_configs")
+            rate = quota.get("rate_limit")
+            budgets = quota.get("budgets")
+            if (quota.get("is_active") is not True
+                or not isinstance(providers, list) or len(providers) != 1
+                or providers[0].get("provider") != "openrouter"
+                or not isinstance(providers[0].get("allowed_models"), list)
+                or (len(providers[0]["allowed_models"]) != len(allowed_models)
+                    or set(providers[0]["allowed_models"]) != set(allowed_models))
+                or providers[0].get("key_ids") != ["*"]
+                or not isinstance(rate, dict)
+                or isinstance(rate.get("token_max_limit"), bool)
+                or rate.get("token_max_limit") != token_limit
+                or rate.get("token_reset_duration") != "1h"
+                or rate.get("token_current_usage") != 0
+                or not isinstance(budgets, list) or len(budgets) != 1
+                or budgets[0].get("reset_duration") != "1h"
+                or isinstance(budgets[0].get("max_limit"), bool)
+                or not isinstance(budgets[0].get("max_limit"), int | float)
+                or not math.isclose(budgets[0]["max_limit"], dollar_limit, abs_tol=1e-9)
+                or budgets[0].get("current_usage") != 0):
+                raise BifrostError("Bifrost paper key limits were not persisted")
+        except (BifrostError, TypeError, ValueError, AttributeError) as exc:
+            try:
+                self.revoke(key)
+            except BifrostError as revoke_exc:
+                raise BifrostError("Bifrost paper key verification and revocation failed") from revoke_exc
+            raise BifrostError("Bifrost paper key verification failed") from exc
+        return key
 
     def token_usage(self, key: PaperKey) -> int:
         # Self-service quota is scoped to this virtual key, including streams.
