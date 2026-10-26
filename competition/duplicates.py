@@ -14,6 +14,7 @@ import json
 import tarfile
 import zipfile
 from dataclasses import dataclass
+from email.parser import Parser
 from typing import Any, Callable, Mapping
 
 
@@ -39,12 +40,14 @@ def python_source_fingerprint(package: bytes, *, max_source_bytes: int = 5_000_0
 
     Archives are read without extraction or execution. Limits protect the
     controller from a compressed source bomb. Package identity and dependency
-    metadata are deliberately excluded; only all Python modules combined
-    can establish this conservative duplicate evidence.
+    build-only wheel metadata is excluded, while dependencies and package
+    resources are included so a changed prompt or model file cannot be
+    mislabeled as an identical pipeline.
     """
     if not 0 < len(package) <= 100_000_000:
         raise ValueError("package exceeds duplicate scanner size limit")
     sources: list[bytes] = []
+    resources: list[tuple[str, str]] = []
     total = 0
     stream = io.BytesIO(package)
     try:
@@ -54,12 +57,24 @@ def python_source_fingerprint(package: bytes, *, max_source_bytes: int = 5_000_0
                 if len(members) > 10_000:
                     raise ValueError("package has too many archive members")
                 for member in members:
-                    if not member.filename.endswith(".py"):
+                    if member.is_dir():
                         continue
                     total += member.file_size
                     if total > max_source_bytes:
-                        raise ValueError("Python source exceeds scanner limit")
-                    sources.append(archive.read(member))
+                        raise ValueError("package contents exceed scanner limit")
+                    if member.filename.endswith(".py"):
+                        sources.append(archive.read(member))
+                    elif ".dist-info/" in member.filename:
+                        name = member.filename.rsplit("/", 1)[-1]
+                        if name == "METADATA":
+                            parsed = Parser().parsestr(archive.read(member).decode("utf-8"))
+                            requirements = sorted(parsed.get_all("Requires-Dist", []) or [])
+                            requirements.append(parsed.get("Requires-Python", ""))
+                            resources.append(("requirements", hashlib.sha256(json.dumps(requirements).encode()).hexdigest()))
+                        elif name == "entry_points.txt":
+                            resources.append(("entry_points", hashlib.sha256(archive.read(member)).hexdigest()))
+                    else:
+                        resources.append((member.filename, hashlib.sha256(archive.read(member)).hexdigest()))
         else:
             stream.seek(0)
             with tarfile.open(fileobj=stream, mode="r|gz") as archive:
@@ -70,6 +85,8 @@ def python_source_fingerprint(package: bytes, *, max_source_bytes: int = 5_000_0
                     if member_count > 10_000 or expanded > 200_000_000:
                         raise ValueError("source archive exceeds scanner limit")
                     if not member.isfile() or not member.name.endswith(".py"):
+                        if member.isfile():
+                            resources.append((member.name, hashlib.sha256(archive.extractfile(member).read()).hexdigest()))
                         continue
                     total += member.size
                     if total > max_source_bytes:
@@ -86,7 +103,7 @@ def python_source_fingerprint(package: bytes, *, max_source_bytes: int = 5_000_0
         canonical = sorted(ast.dump(_without_docstrings(ast.parse(source.decode("utf-8-sig"))), include_attributes=False) for source in sources)
     except (SyntaxError, UnicodeError, ValueError) as exc:
         raise ValueError("invalid Python source in package") from exc
-    return hashlib.sha256(json.dumps(canonical, separators=(",", ":")).encode()).hexdigest()
+    return hashlib.sha256(json.dumps([canonical, sorted(resources)], separators=(",", ":")).encode()).hexdigest()
 
 
 def _lottery(seed: bytes, label: str, value: str) -> bytes:
@@ -123,7 +140,13 @@ def select_distinct_submissions(
             package = package_for_submission(item)
             if hashlib.sha256(package).hexdigest() != item["package_sha256"]:
                 raise ValueError("duplicate scanner package differs from sealed receipt")
-            fingerprints[hotkey] = python_source_fingerprint(package) or ""
+            try:
+                fingerprints[hotkey] = python_source_fingerprint(package) or ""
+            except ValueError:
+                # Build validation will report a malformed archive separately.
+                # Scanner limits must not turn one miner's package into a
+                # round-wide infrastructure failure.
+                fingerprints[hotkey] = ""
     parent = {hotkey: hotkey for hotkey in by_hotkey}
     evidence: list[tuple[str, str, str]] = []
 
@@ -162,7 +185,10 @@ def select_distinct_submissions(
     if incumbent_package is not None:
         if incumbent is None or hashlib.sha256(incumbent_package).hexdigest() != incumbent_hash:
             raise ValueError("incumbent package differs from sealed release")
-        incumbent_source = python_source_fingerprint(incumbent_package) or ""
+        try:
+            incumbent_source = python_source_fingerprint(incumbent_package) or ""
+        except ValueError:
+            incumbent_source = ""
     copied_incumbent = {
         hotkey for hotkey, item in by_hotkey.items()
         if incumbent and str(item["team_id"]) != incumbent_team

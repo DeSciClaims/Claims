@@ -7,10 +7,12 @@ import pytest
 from competition.duplicates import python_source_fingerprint, select_distinct_submissions
 
 
-def _wheel(source: str) -> bytes:
+def _wheel(source: str, prompt: str | None = None) -> bytes:
     target = io.BytesIO()
     with zipfile.ZipFile(target, "w") as archive:
         archive.writestr("miner/pipeline.py", source)
+        if prompt is not None:
+            archive.writestr("miner/prompts/extraction.md", prompt)
     return target.getvalue()
 
 
@@ -27,6 +29,7 @@ def test_python_fingerprint_ignores_formatting_comments_and_docstrings():
     c = _wheel('def run(x):\n    return x + 2\n')
     assert python_source_fingerprint(a) == python_source_fingerprint(b)
     assert python_source_fingerprint(a) != python_source_fingerprint(c)
+    assert python_source_fingerprint(_wheel("def run(x): return x", "Prompt A")) != python_source_fingerprint(_wheel("def run(x): return x", "Prompt B"))
     with pytest.raises(ValueError, match="invalid package"):
         python_source_fingerprint(b"not an archive")
 
