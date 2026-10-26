@@ -22,6 +22,13 @@ through an allowlisted HTTPS host or a private Hippius S3 client, bounds its
 size, checks its SHA-256, and gives only the bytes to the disposable worker.
 `run_next_claimed_job` joins these inputs to the existing per-paper Bifrost
 key, execution, log, and completion lifecycle.
+`TargonVmLifecycle` follows Targon's documented register/deploy/state/delete
+API. It creates a separate VM for a job, enforces an hourly price ceiling,
+and deletes a failed provision. `DisposableVmExecution` also deletes the VM
+after worker transport returns or raises. This is lifecycle code, not a live
+runner: SSH host authentication, guest image, ingress/egress firewall, and the
+transport that stages bytes and calls `run_one_paper` still need to be built
+and tested. Do not run untrusted packages on a VM without those controls.
 
 After the deadline lock, `reveal_selected_sample` verifies the D+600 drand
 beacon, uses its seed for the duplicate lottery, and publishes exactly the
