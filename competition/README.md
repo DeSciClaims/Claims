@@ -24,6 +24,7 @@ require at least 500. For later weeks the controller computes the final count
 from the frozen weekly dollar budget and the number of distinct challengers
 after the duplicate draw, using the proposal's pre-screen, screen, and final
 cost formula. A budget that cannot fund 500 final papers fails before release.
+With one or two challengers, the single stage is capped at 1,000 papers.
 
 `weekly_automation.tick_round` is the trusted timer entrypoint. Each call
 reads the durable round state and performs one transition: deadline lock,

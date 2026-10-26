@@ -44,4 +44,4 @@ def final_paper_count(
                 .to_integral_value(rounding=ROUND_FLOOR))
     if count < 500:
         raise ValueError("weekly budget cannot fund the 500-paper staged final")
-    return count
+    return min(count, 1000) if distinct_challengers <= 2 else count
