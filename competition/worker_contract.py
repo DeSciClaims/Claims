@@ -10,6 +10,23 @@ from typing import Any, Mapping
 _ENTRYPOINT = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
+def validated_package_filename(filename: Any, package_format: Any) -> str:
+    """Keep pip's wheel name while refusing paths or surprising archive names."""
+    if (not isinstance(filename, str) or len(filename) > 200
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.+-]*", filename)
+        or ".." in filename):
+        raise ValueError("selected package has an unsafe filename")
+    if package_format == "wheel":
+        if not filename.endswith(".whl") or filename.count("-") < 4:
+            raise ValueError("selected wheel needs its real pip filename")
+    elif package_format == "tar.gz":
+        if not filename.endswith(".tar.gz"):
+            raise ValueError("selected source archive needs a tar.gz filename")
+    else:
+        raise ValueError("selected package format is unsupported")
+    return filename
+
+
 def build_worker_contract(
     job: Mapping[str, Any], *, allowed_models: tuple[str, ...],
     max_output_tokens: int,
@@ -33,6 +50,9 @@ def build_worker_contract(
     entrypoint = manifest.get("entrypoint")
     if not isinstance(entrypoint, str) or _ENTRYPOINT.fullmatch(entrypoint) is None:
         raise ValueError("selected package has an invalid entrypoint")
+    package_filename = validated_package_filename(
+        manifest.get("package_filename"), manifest["package_format"],
+    )
     models = manifest.get("models")
     if (not isinstance(models, list) or not models
         or any(not isinstance(model, str) or not model or len(model) > 200 for model in models)
@@ -59,7 +79,7 @@ def build_worker_contract(
         raise ValueError("worker request metadata is not canonical JSON") from exc
     return {
         "entrypoint": entrypoint,
-        "package_filename": "miner.whl" if manifest["package_format"] == "wheel" else "miner.tar.gz",
+        "package_filename": package_filename,
         "allowed_models": tuple(models),
         "request": request,
     }

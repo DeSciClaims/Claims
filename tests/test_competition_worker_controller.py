@@ -113,7 +113,8 @@ def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False, ex
         "paper": {"paper_id": "paper-1", "title": "Paper"},
         "manifest": {
             "schema_version": "claims_competition_manifest_v1", "language": "python",
-            "package_format": "wheel", "source_included": True,
+            "package_format": "wheel",
+            "package_filename": "claims_sample_miner-0.1.0-py3-none-any.whl", "source_included": True,
             "license_production_use": True, "entrypoint": "claims_sample_miner.cli:main",
             "models": ["example/model"],
         },
@@ -266,7 +267,8 @@ def test_claimed_job_uses_locked_pdf_source_before_worker_execution():
         fetch_package=lambda _: package,
         manifest_for_job=lambda _: {
             "schema_version": "claims_competition_manifest_v1", "language": "python",
-            "package_format": "wheel", "source_included": True,
+            "package_format": "wheel",
+            "package_filename": "claims_sample_miner-0.1.0-py3-none-any.whl", "source_included": True,
             "license_production_use": True, "entrypoint": "claims_sample_miner.cli:main",
             "models": ["example/model"],
         },

@@ -42,6 +42,7 @@ def _active():
         at, at, None, PACKAGE,
         {"schema_version": "claims_competition_manifest_v1",
          "language": "python", "package_format": "wheel",
+            "package_filename": "claims_sample_miner-0.1.0-py3-none-any.whl",
          "source_included": True, "license_production_use": True,
          "entrypoint": "sample.cli:main", "models": ["example/model"]},
     )

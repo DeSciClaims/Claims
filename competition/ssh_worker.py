@@ -30,7 +30,7 @@ def _tar_bytes(files: dict[str, bytes]) -> bytes:
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode="w", format=tarfile.USTAR_FORMAT) as archive:
         for name, content in sorted(files.items()):
-            if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+            if not re.fullmatch(r"[A-Za-z0-9_.+-]+", name):
                 raise ValueError("worker bundle has an unsafe filename")
             member = tarfile.TarInfo(name)
             member.size = len(content)

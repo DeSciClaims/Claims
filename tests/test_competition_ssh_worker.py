@@ -19,7 +19,8 @@ def _job(package, pdf):
         "expected_pdf_sha256": hashlib.sha256(pdf).hexdigest(),
         "manifest": {
             "schema_version": "claims_competition_manifest_v1", "language": "python",
-            "package_format": "wheel", "source_included": True,
+            "package_format": "wheel",
+            "package_filename": "claims_sample_miner-0.1.0-py3-none-any.whl", "source_included": True,
             "license_production_use": True, "entrypoint": "miner.cli:main",
             "models": ["allowed/model"],
         },
@@ -94,7 +95,8 @@ def test_pinned_ssh_transport_keeps_key_out_of_bundle_and_deletes_job_dir(tmp_pa
         assert result.artifact is None
     assert result.denied_egress_packets == denied_packets
     assert nft_reads == 2
-    assert sorted(staged) == ["input.json", "miner.whl", "paper.pdf", "request.json"]
+    assert sorted(staged) == ["claims_sample_miner-0.1.0-py3-none-any.whl",
+                              "input.json", "paper.pdf", "request.json"]
     assert any(data == b"scoped-key" for _, _, data in commands)
     service = next(command for _, command, _ in commands if "competition.worker_guest" in command)
     assert "systemd-run" in service

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .worker import run_one_paper
+from .worker_contract import validated_package_filename
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -37,11 +38,14 @@ def run_bundle(
     filename = receipt.get("package_filename")
     paper = request.get("paper")
     if (receipt.get("schema_version") != "claims_worker_bundle_v1"
-        or filename not in {"miner.whl", "miner.tar.gz"}
         or not re.fullmatch(r"[0-9a-f]{64}", str(receipt.get("job_id", "")))
         or not isinstance(paper, dict) or paper.get("paper_id") != receipt.get("paper_id")
         or request.get("pdf_path") != "paper.pdf"):
         raise ValueError("worker bundle receipt is invalid")
+    validated_package_filename(
+        filename, "wheel" if isinstance(filename, str) and filename.endswith(".whl")
+        else "tar.gz",
+    )
     for name, digest in (
         (filename, receipt.get("package_sha256")),
         ("paper.pdf", receipt.get("pdf_sha256")),

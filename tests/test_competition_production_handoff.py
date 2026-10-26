@@ -15,7 +15,8 @@ from competition.publication import canonical_sha256, publication_bundle, sign_p
 PACKAGE = b"sealed-production-package"
 PACKAGE_SHA = hashlib.sha256(PACKAGE).hexdigest()
 MANIFEST = {"schema_version": "claims_competition_manifest_v1",
-            "entrypoint": "claims_sample_miner.cli:main", "models": ["example/model"]}
+            "entrypoint": "claims_sample_miner.cli:main", "models": ["example/model"],
+            "package_filename": "claims_sample_miner-0.1.0-py3-none-any.whl"}
 
 
 def _fixture(decision="new_crown"):

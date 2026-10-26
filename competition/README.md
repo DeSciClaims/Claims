@@ -26,7 +26,7 @@ It now reads the selected upload's manifest and the pinned Bronze paper
 metadata before making a worker contract. The Bifrost paper key is restricted
 to the models declared by that manifest, after checking the frozen whitelist.
 `build_worker_bundle` produces deterministic `input.json`, `request.json`,
-one package and one PDF. The guest verifies all hashes before it installs the
+one package under its real pip filename, and one PDF. The guest verifies all hashes before it installs the
 package; `worker_guest` then invokes `run_one_paper` and writes a result and
 full install/execution log. The transport must keep the input directory
 unwritable by the miner user, provide a pinned offline wheelhouse, and run the

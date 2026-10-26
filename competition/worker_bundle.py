@@ -7,6 +7,8 @@ import json
 import re
 from typing import Any, Mapping
 
+from .worker_contract import validated_package_filename
+
 
 def _json_bytes(value: Mapping[str, Any]) -> bytes:
     return (json.dumps(value, sort_keys=True, separators=(",", ":"),
@@ -25,8 +27,10 @@ def build_worker_bundle(
     if not isinstance(contract, dict) or not re.fullmatch(r"[0-9a-f]{64}", str(job.get("job_id", ""))):
         raise ValueError("worker bundle lacks a validated job contract")
     filename = contract.get("package_filename")
-    if filename not in {"miner.whl", "miner.tar.gz"}:
-        raise ValueError("worker bundle has an unsupported package name")
+    validated_package_filename(
+        filename, "wheel" if isinstance(filename, str) and filename.endswith(".whl")
+        else "tar.gz",
+    )
     request = contract.get("request")
     entrypoint = contract.get("entrypoint")
     if not isinstance(request, dict) or not isinstance(entrypoint, str):

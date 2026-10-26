@@ -8,7 +8,8 @@ def job():
         "paper_id": "paper-1", "paper": {"paper_id": "paper-1", "title": "Study"},
         "manifest": {
             "schema_version": "claims_competition_manifest_v1",
-            "package_format": "wheel", "language": "python",
+            "package_format": "wheel",
+            "package_filename": "claims_sample_miner-0.1.0-py3-none-any.whl", "language": "python",
             "source_included": True, "license_production_use": True,
             "entrypoint": "claims_sample_miner.cli:main",
             "models": ["example/model-a", "example/model-b"],
@@ -22,7 +23,7 @@ def test_contract_scopes_key_to_declared_models_and_builds_sample_request():
         max_output_tokens=8192,
     )
     assert contract["allowed_models"] == ("example/model-a", "example/model-b")
-    assert contract["package_filename"] == "miner.whl"
+    assert contract["package_filename"] == "claims_sample_miner-0.1.0-py3-none-any.whl"
     assert contract["request"] == {
         "schema_version": "claims_competition_request_v1",
         "paper": {"paper_id": "paper-1", "title": "Study"},
@@ -44,3 +45,15 @@ def test_contract_rejects_undeclared_or_unapproved_models_and_wrong_paper():
     data["paper"]["paper_id"] = "other-paper"
     with pytest.raises(ValueError, match="metadata"):
         build_worker_contract(data, allowed_models=("example/model-a",), max_output_tokens=8192)
+
+
+@pytest.mark.parametrize("filename", ["miner.whl", "../miner.whl",
+                                      "sample-0.1.0-py3-none-any.tar.gz"])
+def test_contract_rejects_noninstallable_or_unsafe_wheel_name(filename):
+    data = job()
+    data["manifest"]["package_filename"] = filename
+    with pytest.raises(ValueError, match="filename|wheel"):
+        build_worker_contract(
+            data, allowed_models=("example/model-a", "example/model-b"),
+            max_output_tokens=8192,
+        )
