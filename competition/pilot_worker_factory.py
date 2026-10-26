@@ -21,7 +21,7 @@ from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
 from .pdf_fetch import TrustedPdfFetcher
 from .publication import canonical_sha256
-from .ssh_worker import PinnedSshWorkerTransport
+from .ssh_worker import RestrictedSshWorkerTransport
 from .targon_vms import DisposableVmExecution, TargonVmLifecycle
 from .worker_service import CompetitionWorkerCoordinator
 
@@ -117,7 +117,7 @@ def create_worker_coordinator(
         ssh_key_uid=_required("CLAIMS_TARGON_SSH_KEY_UID"),
         max_hourly_cost_usd=float(_required("CLAIMS_TARGON_MAX_HOURLY_USD")),
     )
-    transport = PinnedSshWorkerTransport(
+    transport = RestrictedSshWorkerTransport(
         identity_file=Path(_required("CLAIMS_WORKER_SSH_IDENTITY")),
         known_hosts_file=Path(_required("CLAIMS_WORKER_SSH_KNOWN_HOSTS")),
         inference_base_url=gateway,

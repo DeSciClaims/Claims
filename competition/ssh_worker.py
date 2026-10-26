@@ -9,6 +9,7 @@ disabled host-key checks are used. Guest firewall enforcement is separate.
 from __future__ import annotations
 
 import hashlib
+import base64
 import io
 import ipaddress
 import json
@@ -248,3 +249,55 @@ class PinnedSshWorkerTransport:
             )
         finally:
             self._ssh(vm, f"sudo -n rm -rf -- {shlex.quote(root)}", timeout=120)
+
+
+@dataclass(frozen=True)
+class RestrictedSshWorkerTransport(PinnedSshWorkerTransport):
+    """Use only the root-owned worker control command on a prepared VM.
+
+    The dedicated SSH account has no general sudo rights. The VM helper
+    validates the bundle, gateway, firewall, result files, and limits.
+    """
+
+    ssh_user: str = "claims-control"
+
+    def run(
+        self, vm: WorkerVm, *, job: dict[str, Any], package: bytes, pdf: bytes,
+        inference_base_url: str, paper_key: str,
+    ) -> ExecutionOutput:
+        if inference_base_url != self.inference_base_url or not paper_key:
+            raise ValueError("worker gateway URL or scoped key differs from transport policy")
+        bundle = build_worker_bundle(job=job, package=package, pdf=pdf)
+        job_id = job.get("job_id")
+        if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-f]{64}", job_id):
+            raise ValueError("worker job ID is invalid")
+        archive = _tar_bytes({**bundle, "paper-key": paper_key.encode("ascii")})
+        response_bytes = self._ssh(
+            vm, "sudo -n /usr/local/sbin/claims-worker-control run",
+            input_bytes=archive, timeout=self.command_timeout_seconds,
+        )
+        if len(response_bytes) > self.max_result_bytes + 2 * self.max_log_bytes + 4096:
+            raise ValueError("worker control response exceeds its size limit")
+        result = json.loads(response_bytes)
+        if (not isinstance(result, dict)
+            or result.get("schema_version") != "claims_worker_control_response_v1"
+            or result.get("job_id") != job_id
+            or result.get("inference_base_url") != self.inference_base_url
+            or result.get("gateway_ip") != self.gateway_ip
+            or result.get("gateway_port") != self.gateway_port
+            or result.get("status") not in {"completed", "build_failed", "package_failed",
+                                            "invalid_output", "timeout", "security_violation"}
+            or type(result.get("denied_egress_packets")) is not int
+            or result["denied_egress_packets"] < 0
+            or not isinstance(result.get("log_base64"), str)):
+            raise ValueError("worker control response differs from the leased job")
+        if bool(result["denied_egress_packets"]) != (result["status"] == "security_violation"):
+            raise ValueError("worker control egress verdict is inconsistent")
+        log = base64.b64decode(result["log_base64"], validate=True)
+        if len(log) > self.max_log_bytes:
+            raise ValueError("worker control log exceeds its size limit")
+        return ExecutionOutput(
+            status=result["status"], artifact=result.get("artifact"), log_bytes=log,
+            detail=str(result.get("detail") or ""),
+            denied_egress_packets=result["denied_egress_packets"],
+        )

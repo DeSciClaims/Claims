@@ -5,6 +5,7 @@ import pytest
 from competition.pilot_worker_factory import create_worker_coordinator
 from competition.publication import canonical_sha256
 from competition.policy_runtime import policy_runtime_config
+from competition.ssh_worker import RestrictedSshWorkerTransport
 
 
 def test_pilot_worker_factory_binds_all_adapters_to_frozen_rules(tmp_path, monkeypatch):
@@ -59,6 +60,8 @@ def test_pilot_worker_factory_binds_all_adapters_to_frozen_rules(tmp_path, monke
     assert worker.paper_inputs.backend is backend
     assert worker.evaluation.configuration_sha256 == digest
     assert worker.execution.transport.inference_base_url == "https://gateway.example/v1"
+    assert isinstance(worker.execution.transport, RestrictedSshWorkerTransport)
+    assert worker.execution.transport.ssh_user == "claims-control"
     assert worker.execution.transport.gateway_port == 443
     assert worker.packages.baseline_upload == document["baseline_upload"]
 

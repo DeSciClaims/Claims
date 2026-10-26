@@ -32,17 +32,17 @@ full install/execution log. The transport must keep the input directory
 unwritable by the miner user, provide a pinned offline wheelhouse, and run the
 guest harness as an unprivileged user. The scoped token is transferred
 separately and never enters the durable bundle.
-`PinnedSshWorkerTransport` implements this transfer for a prepared VM. It
-requires a preverified SSH host key, stages bundle files with read-only modes
-under a separate OS owner, sends the scoped token on stdin, runs the guest
-harness with an empty environment as `claims-miner` in a transient systemd unit
-with process-group cleanup and resource limits, fetches bounded result/log
-bytes, and removes its job directory. Before staging, it checks the miner UID, exact
-`nftables` allowlist, and gateway hostname resolution; a missing or changed
-policy fails closed. The pilot SSH user needs passwordless sudo on this
-credentialless VM; production should restrict that account to a fixed worker
-control command. The image also needs a pinned runtime/wheelhouse and a host
-firewall allowing the miner process to reach only the inference endpoint.
+`RestrictedSshWorkerTransport` is the default prepared-VM transport. It
+requires a preverified SSH host key and sends one tar stream to the VM's
+root-owned `claims-worker-control run` command. The dedicated `claims-control`
+SSH account has only that sudo permission. The helper checks the exact
+`nftables` allowlist and pinned gateway address, stages read-only bundle files,
+and passes the scoped key to an unprivileged `claims-miner` systemd unit with
+resource limits. It rejects miner-created symlink outputs, returns bounded
+result/log bytes, and removes its job directory. The image needs a pinned
+runtime/wheelhouse and a host firewall allowing the miner process to reach
+only the inference endpoint. The earlier `PinnedSshWorkerTransport` remains
+for pilot compatibility but is not used by the worker factories.
 The `miner` and `miner.agent_v1` package exports are lazy, so the guest harness
 loads the canonical Pydantic artifact schema without loading Claims' full
 PDF/model runtime.

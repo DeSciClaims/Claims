@@ -13,7 +13,7 @@ from .pilot_worker_factory import _csv, _required, _round_file
 from .production_reader import ActiveProductionPackage, ProductionReleaseReader
 from .production_worker_service import ProductionWorkerCoordinator
 from .publication import canonical_sha256
-from .ssh_worker import PinnedSshWorkerTransport
+from .ssh_worker import RestrictedSshWorkerTransport
 from .targon_vms import DisposableVmExecution, TargonVmLifecycle
 
 
@@ -53,7 +53,7 @@ def create_production_worker(
         ssh_key_uid=_required("CLAIMS_TARGON_SSH_KEY_UID"),
         max_hourly_cost_usd=float(_required("CLAIMS_TARGON_MAX_HOURLY_USD")),
     )
-    transport = PinnedSshWorkerTransport(
+    transport = RestrictedSshWorkerTransport(
         identity_file=Path(_required("CLAIMS_WORKER_SSH_IDENTITY")),
         known_hosts_file=Path(_required("CLAIMS_WORKER_SSH_KNOWN_HOSTS")),
         inference_base_url=gateway,
