@@ -29,18 +29,23 @@ to the models declared by that manifest, after checking the frozen whitelist.
 one package and one PDF. The guest verifies all hashes before it installs the
 package; `worker_guest` then invokes `run_one_paper` and writes a result and
 full install/execution log. The transport must keep the input directory
-unwritable by the miner user, provide a pinned offline wheelhouse, and run the guest harness as an
-unprivileged user. The scoped token is transferred separately and never enters
-the durable bundle.
+unwritable by the miner user, provide a pinned offline wheelhouse, and run the
+guest harness as an unprivileged user. The scoped token is transferred
+separately and never enters the durable bundle.
 `PinnedSshWorkerTransport` implements this transfer for a prepared VM. It
-requires a preverified SSH host key, stages bundle files with read-only modes under a
-separate OS owner, sends the scoped token on stdin, runs the guest harness with
-an empty environment as `claims-miner`, fetches bounded result/log bytes, and
-removes its job directory. Before staging, it checks the miner UID, exact
+requires a preverified SSH host key, stages bundle files with read-only modes
+under a separate OS owner, sends the scoped token on stdin, runs the guest
+harness with an empty environment as `claims-miner` in a transient systemd unit
+with process-group cleanup and resource limits, fetches bounded result/log
+bytes, and removes its job directory. Before staging, it checks the miner UID, exact
 `nftables` allowlist, and gateway hostname resolution; a missing or changed
-policy fails closed. The VM image must provide passwordless sudo only
-for the specified staging commands, a pinned runtime/wheelhouse, and a host
+policy fails closed. The pilot SSH user needs passwordless sudo on this
+credentialless VM; production should restrict that account to a fixed worker
+control command. The image also needs a pinned runtime/wheelhouse and a host
 firewall allowing the miner process to reach only the inference endpoint.
+The `miner` and `miner.agent_v1` package exports are lazy, so the guest harness
+loads the canonical Pydantic artifact schema without loading Claims' full
+PDF/model runtime.
 The Targon Workloads API does not supply an SSH host-key fingerprint, so the
 transport cannot safely connect to a newly provisioned VM until that key has
 been authenticated through a separate trusted channel. A prepared pilot VM
@@ -49,10 +54,9 @@ remains an integration gate.
 `TargonVmLifecycle` follows Targon's documented register/deploy/state/delete
 API. It creates a separate VM for a job, enforces an hourly price ceiling,
 and deletes a failed provision. `DisposableVmExecution` also deletes the VM
-after worker transport returns or raises. This is lifecycle code, not a live
-runner: SSH host authentication, guest image, ingress/egress firewall, and the
-transport that stages bytes and calls `run_one_paper` still need to be built
-and tested. Do not run untrusted packages on a VM without those controls.
+after worker transport returns or raises. Automated fresh-VM use still needs
+an authenticated SSH host-key source and a preconfigured guest image. The
+prepared-VM SSH transport has local tests; live isolation remains unverified.
 
 After the deadline lock, `reveal_selected_sample` verifies the D+600 drand
 beacon, uses its seed for the duplicate lottery, and publishes exactly the

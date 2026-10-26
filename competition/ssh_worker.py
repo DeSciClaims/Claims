@@ -52,7 +52,9 @@ class PinnedSshWorkerTransport:
     guest_python: str = "/opt/claims-worker/venv/bin/python"
     wheelhouse: str = "/opt/claims-worker/wheelhouse"
     remote_jobs_dir: str = "/var/lib/claims-worker/jobs"
-    command_timeout_seconds: int = 2450
+    command_timeout_seconds: int = 2600
+    memory_max_bytes: int = 16 * 1024 * 1024 * 1024
+    tasks_max: int = 128
     max_result_bytes: int = 10_000_000
     max_log_bytes: int = 10_000_000
     invoke: Callable[..., subprocess.CompletedProcess[bytes]] = subprocess.run
@@ -77,8 +79,9 @@ class PinnedSshWorkerTransport:
             raise ValueError("gateway IP is invalid") from exc
         if address.version != 4 or not 1 <= self.gateway_port <= 65535:
             raise ValueError("worker gateway must use a fixed IPv4 address and port")
-        if (self.command_timeout_seconds < 1 or self.max_result_bytes < 1
-            or self.max_log_bytes < 1):
+        if (self.command_timeout_seconds < 120 or self.max_result_bytes < 1
+            or self.max_log_bytes < 1 or self.memory_max_bytes < 256 * 1024 * 1024
+            or self.tasks_max < 1):
             raise ValueError("invalid SSH worker output limits")
 
     def _ssh(self, vm: WorkerVm, command: str, *, input_bytes: bytes = b"",
@@ -172,8 +175,17 @@ class PinnedSshWorkerTransport:
                 ),
                 input_bytes=paper_key.encode(),
             )
+            unit_name = "claims-job-" + job_id[:16] + "-" + directory[-12:]
             command = shlex.join([
-                "sudo", "-n", "-u", self.guest_user,
+                "sudo", "-n", "systemd-run", "--quiet", "--wait", "--collect", "--pipe",
+                f"--unit={unit_name}", f"--uid={self.guest_user}",
+                "--property=KillMode=control-group",
+                f"--property=RuntimeMaxSec={self.command_timeout_seconds - 30}",
+                f"--property=MemoryMax={self.memory_max_bytes}",
+                f"--property=TasksMax={self.tasks_max}",
+                "--property=NoNewPrivileges=yes", "--property=PrivateTmp=yes",
+                "--property=ProtectSystem=strict",
+                f"--property=ReadWritePaths={results}",
                 "env", "-i", "PATH=/usr/bin:/bin", f"HOME=/home/{self.guest_user}",
                 "LANG=C.UTF-8", self.guest_python,
                 "-m", "competition.worker_guest", "--input-dir", inputs,

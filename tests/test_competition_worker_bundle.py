@@ -1,5 +1,7 @@
 import hashlib
 import json
+import subprocess
+import sys
 import pytest
 
 from competition.worker import WorkerResult
@@ -71,3 +73,12 @@ def test_bundle_refuses_unverified_package_bytes():
     job = _job(b"expected", b"%PDF")
     with pytest.raises(ValueError, match="verified inputs"):
         build_worker_bundle(job=job, package=b"substituted", pdf=b"%PDF")
+
+
+def test_guest_import_does_not_boot_the_full_miner_runtime():
+    command = (
+        "import sys; import competition.worker_guest; "
+        "assert 'miner.agent_v1.runner' not in sys.modules; "
+        "assert 'miner.agent_v1.ingest' not in sys.modules"
+    )
+    subprocess.run([sys.executable, "-c", command], check=True, capture_output=True)
