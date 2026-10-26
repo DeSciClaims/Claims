@@ -13,6 +13,7 @@ from .decision_router import OpenAIDecisionsRouter, PROMPT_SHA256
 from .gold_judge import judge_known_answer_case
 from .pair_evaluator import WeeklyPaperEvaluation, evaluate_weekly_paper
 from .publication import canonical_sha256
+from .silver_runtime import silver_runtime_config
 
 
 def _pass_descriptor(adjudication_pass: AdjudicationPass) -> dict[str, Any]:
@@ -76,10 +77,16 @@ class FrozenEvaluationPolicy:
     def _verify_frozen_runtime(self) -> None:
         frozen = judge_runtime_config(self.adjudication_passes_by_judge, self.tiebreak_pass)
         panels = frozen["judge_panels"]
+        silver = silver_runtime_config()
+        embedding_mode = silver["settings"]["CLAIMS_SILVER_PAIRING_EMBEDDING_MODE"].strip().lower()
+        if (embedding_mode in {"openrouter", "on", "true", "1"}
+            and not silver["embedding_credential_present"]):
+            raise ValueError("enabled Silver embeddings have no trusted controller credential")
         if (canonical_sha256(self.configuration) != self.configuration_sha256
             or self.configuration.get("decision_routing") != self.public_routing_config()
+            or self.configuration.get("silver_runtime") != silver
             or any(self.configuration.get(key) != value for key, value in frozen.items())):
-            raise ValueError("judge runtime or Decision routing differs from frozen weekly configuration")
+            raise ValueError("Silver runtime, judge runtime or Decision routing differs from frozen weekly configuration")
         def model_signature(judge_id: str) -> tuple[tuple[Any, Any, Any], ...]:
             return tuple((row.get("model"), row["adjudication_profile_id"],
                           row["model_runtime_id"]) for row in panels[judge_id])
@@ -90,7 +97,8 @@ class FrozenEvaluationPolicy:
     def public_routing_config(self) -> dict[str, object]:
         """Fields to bind into the round's frozen configuration before intake."""
         return {
-            "provider": "openai", "model": "gpt-6-luna", "prompt_sha256": PROMPT_SHA256,
+            "provider": "openai", "model": "gpt-6-luna", "api_base": self.decision_api_base,
+            "prompt_sha256": PROMPT_SHA256,
             "prescreen_confidence_threshold": self.prescreen_threshold,
             "screen_confidence_threshold": self.screen_threshold,
         }

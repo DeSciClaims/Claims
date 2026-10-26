@@ -101,10 +101,14 @@ configuration is a separate two-pass panel; only the assigned panel runs on a
 paper. A split within that panel can invoke the frozen tiebreak. Pre-screen
 uncertain cases use J1. `judge_runtime_config` puts each pass's implementation,
 profile, model runtime, model name, endpoint and inference parameters into the
-weekly configuration hash. `FrozenEvaluationPolicy` checks these descriptors
-again before each paper and Gold known-answer audit. The prompt and embedding
-artifacts used by the Silver pipeline still need independent hashes and a
-runtime check before a paid round.
+weekly configuration hash. `silver_runtime_config` adds hashes of the Silver
+prompt/scorer source files and the embedding model, endpoint and thresholds.
+Neither descriptor contains a credential value. `FrozenEvaluationPolicy`
+checks both before each paper and Gold known-answer audit, and fails closed if
+embeddings are enabled without a trusted controller credential. The embedding
+provider remains shared across J1/J2; different providers by judge would need
+a separate scoring-path change. Live judge panels and a frozen deploy artifact
+still need to be selected for a paid round.
 
 The final paper scorer freezes contested claim cases, including primary judge
 splits with pairwise credit effects. The backend commits to a private Gold
