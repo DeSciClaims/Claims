@@ -15,12 +15,16 @@ from competition.sample_release import PaperRecord, frozen_pool_hash, sample_rec
 
 
 def _snapshot():
-    rules = {"configuration": {"worker_policy": {"allowed_models": ["model-a"]}}}
-    return {
+    configuration = {"worker_policy": {"allowed_models": ["model-a"]}}
+    snapshot = {
         "schema_version": "claims_competition_replay_snapshot_v1",
         "round_id": "week-1", "network": "testnet",
-        "rules_public": rules, "rules_sha256": canonical_sha256(rules),
-        "configuration_sha256": canonical_sha256(rules["configuration"]),
+        "configuration_sha256": canonical_sha256(configuration),
+        "deadline_block": 100, "reveal_block": 700,
+        "reference_release_id": "bronze-release-1",
+        "incumbent_hotkey": None,
+        "baseline_package_sha256": "d" * 64,
+        "reference_package_sha256": "d" * 64,
         "paper_pool_sha256": "a" * 64,
         "duplicate_review_links": [],
         "duplicate_review_sha256": canonical_sha256([]),
@@ -36,6 +40,18 @@ def _snapshot():
                      "salt_hex": "e" * 64, "commitment": "f" * 64,
                      "commit_block": 123, "status": "accepted"}],
     }
+    rules = {
+        "schema_version": "claims_competition_rules_v1",
+        "configuration": configuration,
+        **{key: snapshot[key] for key in (
+            "round_id", "network", "deadline_block", "reveal_block",
+            "configuration_sha256", "reference_release_id", "incumbent_hotkey",
+            "baseline_package_sha256", "reference_package_sha256",
+        )},
+    }
+    snapshot["rules_public"] = rules
+    snapshot["rules_sha256"] = canonical_sha256(rules)
+    return snapshot
 
 
 def test_replay_client_uses_get_only_and_validates_frozen_inputs():
@@ -108,6 +124,19 @@ def test_replay_snapshot_rejects_changed_rule_and_missing_package():
     snapshot["uploads"][0]["status"] = "duplicate"
     with pytest.raises(ValueError, match="excluded duplicate"):
         validate_replay_snapshot(snapshot, "week-1")
+
+
+def test_replay_snapshot_binds_identity_to_hashed_production_rules():
+    snapshot = _snapshot()
+    validate_replay_snapshot(snapshot, "week-1")
+    for field, changed in (
+        ("reference_release_id", "other-release"),
+        ("baseline_package_sha256", "0" * 64),
+        ("deadline_block", 101),
+    ):
+        altered = {**snapshot, field: changed}
+        with pytest.raises(ValueError, match="identity differs"):
+            validate_replay_snapshot(altered, "week-1")
 
 
 def test_replay_client_rejects_unprotected_backend_url():

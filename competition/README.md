@@ -231,7 +231,9 @@ including duplicate exclusions, with commitment metadata and sealed object
 keys, but no private Gold seed or answers. The replay principal cannot call
 primary-round mutation routes and needs separate read-only Hippius access to
 fetch package and PDF bytes. `CompetitionReplayInputs` validates the public
-rules and reviewed-link hashes. `build_replay_initial_plan` checks the
+rules schema and hash, binds the snapshot's deadline, network, reference
+release and package hashes back to those rules, and checks reviewed-link
+hashes. `build_replay_initial_plan` checks the
 archive-node commitment for each qualified package, redraws the sample from a
 separately verified drand beacon and hash-checked full paper pool, reproduces the
 duplicate lottery, and derives the first-stage job grid. It needs a separately

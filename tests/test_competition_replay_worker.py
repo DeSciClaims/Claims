@@ -44,7 +44,6 @@ def _replay():
     }
     configuration = {"worker_policy": policy,
                      "competition_policy_runtime": policy_runtime_config()}
-    rules = {"configuration": configuration}
     sample = [{"stage": "week_one", "paper_id": "paper-1", "position": 0,
                "judge_id": "J1", "source_sha256": hashlib.sha256(PDF).hexdigest()}]
     baseline = {"hotkey": "reference", "team_id": "team-reference",
@@ -67,8 +66,8 @@ def _replay():
     snapshot = {
         "schema_version": "claims_competition_replay_snapshot_v1",
         "round_id": "round-1", "network": "testnet",
-        "rules_public": rules, "rules_sha256": canonical_sha256(rules),
         "configuration_sha256": canonical_sha256(configuration),
+        "deadline_block": 100, "reveal_block": 700,
         "reference_release_id": "release-1",
         "paper_pool_sha256": frozen_pool_hash([PaperRecord("paper-1", sample[0]["source_sha256"])]),
         "drand_seed": "c" * 64, "archive_block_hash": "0x" + "d" * 64,
@@ -78,6 +77,16 @@ def _replay():
         "reference_package_sha256": baseline["package_sha256"],
         "sample": sample, "stages": [], "uploads": [challenger],
     }
+    rules = {
+        "schema_version": "claims_competition_rules_v1", "configuration": configuration,
+        **{key: snapshot[key] for key in (
+            "round_id", "network", "deadline_block", "reveal_block",
+            "configuration_sha256", "reference_release_id", "incumbent_hotkey",
+            "baseline_package_sha256", "reference_package_sha256",
+        )},
+    }
+    snapshot["rules_public"] = rules
+    snapshot["rules_sha256"] = canonical_sha256(rules)
     jobs = build_jobs(
         round_id="round-1", selected=entries, sample=sample,
         stage="week_one", configuration_sha256=snapshot["configuration_sha256"],

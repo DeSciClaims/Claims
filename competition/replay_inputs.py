@@ -37,6 +37,16 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
         or canonical_sha256(snapshot["duplicate_review_links"])
             != snapshot.get("duplicate_review_sha256")):
         raise ValueError("replay snapshot differs from frozen round rules")
+    rules = snapshot["rules_public"]
+    if rules.get("schema_version") != "claims_competition_rules_v1":
+        raise ValueError("replay rules use an unknown schema")
+    pinned = (
+        "round_id", "network", "deadline_block", "reveal_block",
+        "configuration_sha256", "reference_release_id", "incumbent_hotkey",
+        "baseline_package_sha256", "reference_package_sha256",
+    )
+    if any(snapshot.get(key) != rules.get(key) for key in pinned):
+        raise ValueError("replay snapshot identity differs from hashed rules")
     sample = snapshot.get("sample")
     stages = snapshot.get("stages")
     uploads = snapshot.get("uploads")

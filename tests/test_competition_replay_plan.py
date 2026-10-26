@@ -40,16 +40,15 @@ def _upload(hotkey, package):
 
 
 def _snapshot():
-    rules = {"configuration": {"pilot": True}}
+    configuration = {"pilot": True}
     draw = sample_receipt(
         papers=PAPER_POOL, beacon=BEACON, prescreen_count=0,
         screen_count=0, final_count=1, week_one=True,
     )
-    return {
+    snapshot = {
         "schema_version": "claims_competition_replay_snapshot_v1",
         "round_id": "week-1", "network": "testnet",
-        "rules_public": rules, "rules_sha256": canonical_sha256(rules),
-        "configuration_sha256": canonical_sha256(rules["configuration"]),
+        "configuration_sha256": canonical_sha256(configuration),
         "deadline_block": 100, "reveal_block": 700,
         "archive_block_hash": "0x" + "a" * 64,
         **{key: value for key, value in draw.items() if key != "papers"},
@@ -57,11 +56,24 @@ def _snapshot():
         "duplicate_review_links": [],
         "duplicate_review_sha256": canonical_sha256([]),
         "baseline_package_sha256": hashlib.sha256(BASELINE).hexdigest(),
+        "reference_package_sha256": hashlib.sha256(BASELINE).hexdigest(),
+        "reference_release_id": "release-1",
         "incumbent_hotkey": None,
         "sample": draw["papers"],
         "stages": [],
         "uploads": [_upload(hotkey, package) for hotkey, package in PACKAGES.items()],
     }
+    rules = {
+        "schema_version": "claims_competition_rules_v1", "configuration": configuration,
+        **{key: snapshot[key] for key in (
+            "round_id", "network", "deadline_block", "reveal_block",
+            "configuration_sha256", "reference_release_id", "incumbent_hotkey",
+            "baseline_package_sha256", "reference_package_sha256",
+        )},
+    }
+    snapshot["rules_public"] = rules
+    snapshot["rules_sha256"] = canonical_sha256(rules)
+    return snapshot
 
 
 class Archive:

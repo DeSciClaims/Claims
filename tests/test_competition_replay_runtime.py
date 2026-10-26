@@ -60,7 +60,7 @@ def test_replay_runtime_rejects_changed_local_configuration(tmp_path):
     store.initialize(snapshot, plan)
     reader = CompetitionReplayInputs("https://backend.example", "replay-only")
     changed = {**snapshot, "network": "mainnet"}
-    with pytest.raises(ValueError, match="stored frozen inputs"):
+    with pytest.raises(ValueError, match="identity differs from hashed rules"):
         ReplayRuntimeBackend(
             store, reader, changed, (PaperRecord("paper-1", "e" * 64),),
         )

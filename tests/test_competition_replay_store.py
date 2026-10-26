@@ -19,7 +19,7 @@ NOW = datetime(2026, 10, 30, 14, tzinfo=UTC)
 
 
 def _inputs():
-    rules = {"configuration": {"worker_policy": {"allowed_models": ["model-a"]}}}
+    configuration = {"worker_policy": {"allowed_models": ["model-a"]}}
     sample = [{"stage": "week_one", "paper_id": "paper-1", "position": 0,
                "judge_id": "J1", "source_sha256": "e" * 64}]
     entries = [
@@ -31,8 +31,7 @@ def _inputs():
     snapshot = {
         "schema_version": "claims_competition_replay_snapshot_v1",
         "round_id": "round-1", "network": "testnet",
-        "rules_public": rules, "rules_sha256": canonical_sha256(rules),
-        "configuration_sha256": canonical_sha256(rules["configuration"]),
+        "configuration_sha256": canonical_sha256(configuration),
         "paper_pool_sha256": frozen_pool_hash([PaperRecord("paper-1", "e" * 64)]),
         "drand_seed": "b" * 64,
         "archive_block_hash": "0x" + "f" * 64,
@@ -50,6 +49,16 @@ def _inputs():
                      "commit_block": 90, "status": "accepted"}],
         "sample": sample, "stages": [],
     }
+    rules = {
+        "schema_version": "claims_competition_rules_v1", "configuration": configuration,
+        **{key: snapshot[key] for key in (
+            "round_id", "network", "deadline_block", "reveal_block",
+            "configuration_sha256", "reference_release_id", "incumbent_hotkey",
+            "baseline_package_sha256", "reference_package_sha256",
+        )},
+    }
+    snapshot["rules_public"] = rules
+    snapshot["rules_sha256"] = canonical_sha256(rules)
     jobs = build_jobs(
         round_id="round-1", selected=entries, sample=sample,
         stage="week_one", configuration_sha256=snapshot["configuration_sha256"],
