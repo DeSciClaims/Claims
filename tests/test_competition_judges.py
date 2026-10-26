@@ -9,6 +9,7 @@ from competition.evaluation_policy import FrozenEvaluationPolicy, judge_runtime_
 from competition.judges import build_weekly_judges
 from competition.publication import canonical_sha256
 from competition.silver_runtime import silver_runtime_config
+from competition.policy_runtime import policy_runtime_config
 
 
 def _configs():
@@ -34,6 +35,7 @@ def test_builds_two_model_backed_panels_and_hides_credential(monkeypatch):
             "prescreen_confidence_threshold": 0.8, "screen_confidence_threshold": 0.9,
         },
         "silver_runtime": silver_runtime_config(),
+        "competition_policy_runtime": policy_runtime_config(),
         **judge_runtime_config(panels, tie),
     }
     policy = FrozenEvaluationPolicy(

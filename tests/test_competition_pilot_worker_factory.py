@@ -4,10 +4,11 @@ import pytest
 
 from competition.pilot_worker_factory import create_worker_coordinator
 from competition.publication import canonical_sha256
+from competition.policy_runtime import policy_runtime_config
 
 
 def test_pilot_worker_factory_binds_all_adapters_to_frozen_rules(tmp_path, monkeypatch):
-    configuration = {"worker_policy": {
+    configuration = {"competition_policy_runtime": policy_runtime_config(), "worker_policy": {
         "inference_base_url": "https://gateway.example/v1",
         "allowed_models": ["qwen/qwen3-32b"],
         "published_token_ceiling": 100_000,

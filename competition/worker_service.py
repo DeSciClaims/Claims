@@ -7,6 +7,7 @@ from typing import Any
 
 from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
+from .policy_runtime import policy_runtime_config
 from .publication import canonical_sha256
 from .worker_controller import run_next_claimed_job
 
@@ -40,6 +41,7 @@ class CompetitionWorkerCoordinator:
         if (record.get("round_id") != self.round_id
             or record.get("network") != self.network
             or record.get("configuration_sha256") != self.evaluation.configuration_sha256
+            or self.evaluation.configuration.get("competition_policy_runtime") != policy_runtime_config()
             or canonical_sha256(self.evaluation.configuration) != self.evaluation.configuration_sha256):
             raise ValueError("worker coordinator differs from the frozen round")
         policy = self.evaluation.configuration.get("worker_policy")

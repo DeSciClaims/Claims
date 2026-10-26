@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from competition.publication import canonical_sha256
+from competition.policy_runtime import policy_runtime_config
 from competition.worker_service import CompetitionWorkerCoordinator
 
 
@@ -15,7 +16,8 @@ def test_worker_coordinator_uses_only_frozen_round_policy(monkeypatch):
         "lease_seconds": 3600,
         "inference_base_url": "https://gateway.example/v1",
     }
-    configuration = {"worker_policy": worker_policy}
+    configuration = {"worker_policy": worker_policy,
+                     "competition_policy_runtime": policy_runtime_config()}
     digest = canonical_sha256(configuration)
 
     class Backend:

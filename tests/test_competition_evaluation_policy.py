@@ -5,6 +5,7 @@ from validator.agent_v1.adjudication_passes import StaticAdjudicationPass
 from competition.evaluation_policy import FrozenEvaluationPolicy, judge_runtime_config
 from competition.decision_router import PROMPT_SHA256
 from competition.publication import canonical_sha256
+from competition.policy_runtime import policy_runtime_config
 from competition.silver_runtime import silver_runtime_config
 
 
@@ -26,6 +27,7 @@ TIEBREAK = StaticAdjudicationPass(
 
 def _configuration(tiebreak=None):
     return {"decision_routing": ROUTING, "silver_runtime": silver_runtime_config(),
+            "competition_policy_runtime": policy_runtime_config(),
             **judge_runtime_config(PANELS, tiebreak)}
 
 
@@ -128,6 +130,7 @@ def test_pass_ids_alone_do_not_make_two_distinct_judges():
         ) for index in (1, 2)),
     }
     configuration = {"decision_routing": ROUTING, "silver_runtime": silver_runtime_config(),
+                     "competition_policy_runtime": policy_runtime_config(),
                      **judge_runtime_config(same_model_panels, None)}
     with pytest.raises(ValueError, match="distinct"):
         FrozenEvaluationPolicy(
@@ -162,6 +165,23 @@ def test_silver_prompt_source_change_after_freeze_stops_scoring(monkeypatch):
 
     monkeypatch.setattr(Path, "read_bytes", changed_source)
     with pytest.raises(ValueError, match="Silver runtime"):
+        policy.evaluate_for_stage("final")(stage="final", paper_id="paper-1", judge_id="J1")
+
+
+def test_competition_policy_source_change_after_freeze_stops_scoring(monkeypatch):
+    policy = FrozenEvaluationPolicy(
+        round_id="week2", configuration_sha256=canonical_sha256(CONFIGURATION),
+        configuration=CONFIGURATION, adjudication_passes_by_judge=PANELS,
+        source_context_for_paper=lambda _: {}, decision_api_key="private-key",
+    )
+    original = Path.read_bytes
+
+    def changed_source(path):
+        content = original(path)
+        return content + b"\n" if path.name == "policy.py" else content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_source)
+    with pytest.raises(ValueError, match="runtime"):
         policy.evaluate_for_stage("final")(stage="final", paper_id="paper-1", judge_id="J1")
 
 

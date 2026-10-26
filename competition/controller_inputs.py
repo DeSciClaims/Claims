@@ -14,6 +14,7 @@ from .decision_router import PROMPT_SHA256
 from .evaluation_policy import FrozenEvaluationPolicy, judge_runtime_config
 from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
+from .policy_runtime import policy_runtime_config
 from .provisional_judges import PROVISIONAL_MODEL_ALLOWLIST, build_provisional_judges
 from .publication import canonical_sha256
 from .silver_runtime import silver_runtime_config
@@ -72,6 +73,7 @@ def build_provisional_evaluation_policy(
             "screen_confidence_threshold": screen_threshold,
         },
         "silver_runtime": silver_runtime_config(),
+        "competition_policy_runtime": policy_runtime_config(),
         "judge_model_allowlist": sorted(PROVISIONAL_MODEL_ALLOWLIST),
         "weekly_budget_usd": format(budget.normalize(), "f"),
         "worker_policy": frozen_worker,

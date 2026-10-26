@@ -126,6 +126,16 @@ Absent or mismatched files stop the transition. The controller checks voter
 qualification against backend consensus records and payout UIDs against the
 current metagraph. Producing the audit receipts automatically and checking
 live archive and signer compatibility remain integration work.
+The competition_round_setup CLI opens intake from an operator draft. It
+reconstructs the provisional judge runtime, verifies sealed baseline and
+fallback package bytes through Hippius, checks the Monday 12:00 UTC / D+600
+calendar, writes matching private and publishable rules JSON, then creates
+the backend round with those hashes. The public rules artifact still needs
+hosting before miners submit.
+The frozen configuration also hashes the competition policy, stage, Gold,
+copy, weight, and worker source modules. The controller checks that fingerprint
+before scoring; the worker checks it before leasing a job. A midweek code
+change therefore stops that round until the pinned build is restored.
 For the final stage, it now recomputes each finalist's output-copy verdict
 from the frozen private Silver receipt and paired score grid. The 85% accepted
 unit overlap and two-standard-error gain rule is applied against the baseline,

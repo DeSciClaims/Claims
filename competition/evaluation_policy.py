@@ -13,6 +13,7 @@ from .decision_router import OpenAIDecisionsRouter, PROMPT_SHA256
 from .gold_judge import judge_known_answer_case
 from .pair_evaluator import WeeklyPaperEvaluation, evaluate_weekly_paper
 from .publication import canonical_sha256
+from .policy_runtime import policy_runtime_config
 from .silver_runtime import silver_runtime_config
 
 
@@ -86,6 +87,7 @@ class FrozenEvaluationPolicy:
         if (canonical_sha256(self.configuration) != self.configuration_sha256
             or self.configuration.get("decision_routing") != self.public_routing_config()
             or self.configuration.get("silver_runtime") != silver
+            or self.configuration.get("competition_policy_runtime") != policy_runtime_config()
             or any(self.configuration.get(key) != value for key, value in frozen.items())):
             raise ValueError("Silver runtime, judge runtime or Decision routing differs from frozen weekly configuration")
         def model_signature(judge_id: str) -> tuple[tuple[Any, Any, Any], ...]:

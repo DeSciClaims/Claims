@@ -65,6 +65,9 @@ class CompetitionBackend:
             raise ValueError("unknown competition network")
         return self._request("GET", "/internal/competition/rounds?network=" + network)
 
+    def create_round(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/internal/competition/rounds", payload)
+
     def list_submissions(self, round_id: str) -> list[dict[str, Any]]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/submissions"
         return self._request("GET", path)
