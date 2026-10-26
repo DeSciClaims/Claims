@@ -78,8 +78,11 @@ has a distinct private log object.
 `ProductionReleaseReader` opens the active release pointer and package through
 private owned file descriptors, verifies the package and manifest hashes, and
 returns the release to a trusted production runner without executing it. It can read handoffs
-and rollbacks atomically; the production runner and health checks remain to be
-wired.
+and rollbacks atomically. `run_production_paper` checks a leased PDF and the
+active release, gives only a paper-scoped key to the disposable VM, revokes it,
+checks the structured output, and records private logs and usage. It performs
+no Bronze comparison or competition scoring. A durable production lease and
+result store, service wiring, and health checks remain to be built.
 Before advancing a staged screen or opening Gold, the controller counts
 incumbent package failures on papers without a global infrastructure fault.
 The final selector repeats the check. A strict rate above 20% starts a durable
