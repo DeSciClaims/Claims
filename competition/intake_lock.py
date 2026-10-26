@@ -95,6 +95,10 @@ class CompetitionBackend:
             "result": result, "log_object_key": log_object_key,
         })
 
+    def record_score(self, job_id: str, score: dict[str, Any]) -> dict[str, Any]:
+        path = "/internal/competition/jobs/" + urllib.parse.quote(job_id, safe="") + "/score"
+        return self._request("POST", path, score)
+
 
 def read_sealed_package(
     s3_client: Any, *, bucket: str, upload: Mapping[str, Any],
