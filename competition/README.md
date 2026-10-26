@@ -101,8 +101,19 @@ Thursday 12:00 UTC; it will not publish a crown without the Gold vote.
 unpublished round through the controller-authenticated backend API. The
 controller advances each once per cycle; a worker claims at most one job per
 active round. They return redacted status records and let another round
-continue after one fails. A live process timer and credentialed adapter
-factories still need deployment wiring.
+continue after one fails. The controller's credentialed adapter factory and
+service deployment wiring remain.
+`python -m neurons.competition_service` is the polling process. It runs in
+controller or worker mode, reads the backend token only from its environment,
+and loads a trusted `competition.*` adapter module from the Claims checkout.
+`--once` runs one cycle for a local rehearsal. `pilot_worker_factory` composes
+the worker's Hippius, Bifrost, Targon, PDF and pinned SSH adapters from host
+settings and a round JSON file under `CLAIMS_COMPETITION_ROUNDS_DIR`. The file
+contains `round_id`, the full public `configuration`, its SHA-256, and sealed
+`baseline_upload` / optional `reference_upload` receipts; it contains no
+credentials. The factory checks its configuration hash against the backend
+before it creates privileged adapters. Fresh Targon VMs still need an
+authenticated SSH host-key source for this factory to execute a job.
 For the final stage, it now recomputes each finalist's output-copy verdict
 from the frozen private Silver receipt and paired score grid. The 85% accepted
 unit overlap and two-standard-error gain rule is applied against the baseline,

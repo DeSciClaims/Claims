@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .evaluation_policy import FrozenEvaluationPolicy
 from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
 from .publication import canonical_sha256
@@ -22,7 +21,7 @@ class CompetitionWorkerCoordinator:
     backend: Any = field(repr=False)
     paper_inputs: CompetitionPaperInputs = field(repr=False)
     packages: CompetitionPackageResolver = field(repr=False)
-    evaluation: FrozenEvaluationPolicy = field(repr=False)
+    evaluation: Any = field(repr=False)
     pdf_fetcher: Any = field(repr=False)
     keys: Any = field(repr=False)
     execution: Any = field(repr=False)
