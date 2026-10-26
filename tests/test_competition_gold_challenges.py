@@ -7,6 +7,7 @@ from competition.gold_controller import audit_closed_known_answers, prepare_gold
 def _certified(index):
     return {
         "challenge_id": f"msc_{index}", "status": "certified",
+        "source_quote": "In the trial, treatment increased survival compared with control.",
         "answer_key": {"correct_option": "candidate_a"},
         "certificate": {
             "certification_state": "certified", "supported_candidate": "candidate_a",
@@ -36,6 +37,9 @@ def test_certified_challenges_match_final_pdf_and_genuine_case_shape():
     assert len(challenges) == 2
     assert all(challenge.case.paper_id == "paper-1" for challenge in challenges)
     assert all(challenge.case.case_id.startswith("gold_") for challenge in challenges)
+    assert all(challenge.case_public["source_quotes"] == [
+        "In the trial, treatment increased survival compared with control."
+    ] for challenge in challenges)
     assert {frozenset(challenge.case_public) for challenge in challenges} == {
         frozenset({"question", "statement", "source_quotes", "source_span_ids",
                    "claim_side", "challenger_hotkey", "incumbent_hotkey"})

@@ -45,6 +45,7 @@ def build_known_answer_challenges(
                     for item in case.get("findings", []) if isinstance(item, dict)}
         paper_id = document.get("paper_id")
         challenge_id = row.get("challenge_id")
+        source_quote = row.get("source_quote")
         if (not isinstance(challenge_id, str) or not challenge_id
             or row.get("status") != "certified"
             or certificate.get("certification_state") != "certified"
@@ -52,6 +53,7 @@ def build_known_answer_challenges(
             or certificate.get("supported_candidate") != "candidate_a"
             or certificate.get("corrupted_candidate") != "candidate_b"
             or papers.get(paper_id) != document.get("source_sha256")
+            or not isinstance(source_quote, str) or not source_quote.strip()
             or not all(isinstance(findings.get(key), str) and findings[key].strip()
                        for key in ("candidate_a", "candidate_b"))
             or findings["candidate_a"] == findings["candidate_b"]):
@@ -90,7 +92,7 @@ def build_known_answer_challenges(
                      baseline_row["hotkey"],
                      frozenset({challenger["team_id"], baseline_row["team_id"]})),
             {"question": GOLD_QUESTION, "statement": statement,
-             "source_quotes": [findings["candidate_a"]],
+             "source_quotes": [row["source_quote"]],
              "source_span_ids": [span_id] if isinstance(span_id, str) and span_id else [],
              "claim_side": claim_side,
              "challenger_hotkey": challenger["hotkey"],
