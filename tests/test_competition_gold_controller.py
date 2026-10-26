@@ -1,5 +1,8 @@
 from competition.gold import GoldCase
 from types import SimpleNamespace
+import hashlib
+
+from competition.drand import DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY, VerifiedBeacon
 
 from competition.gold_controller import (
     ContestedClaim, closed_gold_decisions, contested_claims_for_paper, frozen_gold_candidates,
@@ -43,6 +46,12 @@ class Backend:
         ]}]
 
 
+def _post_vote_beacon():
+    signature = b"b" * 96
+    return VerifiedBeacon(500, hashlib.sha256(signature).digest(), signature.hex(),
+                          DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY, 2000)
+
+
 def test_gold_controller_draws_then_tallies_only_closed_outside_team_votes():
     backend = Backend()
     candidates = [ContestedClaim(
@@ -53,9 +62,9 @@ def test_gold_controller_draws_then_tallies_only_closed_outside_team_votes():
     voters = [{"voter_hotkey": f"voter-{index}", "team_id": f"other-{index}"}
               for index in range(12)]
     prepared = prepare_gold_review("week2", backend=backend, candidates=candidates,
-                                   voters=voters, limit=60)
-    assert prepared["case_count"] == 60
-    assert len({row["case_id"] for row in backend.cases}) == 60
+                                   voters=voters, escalation_limit=65)
+    assert prepared["case_count"] == 65
+    assert len({row["case_id"] for row in backend.cases}) == 65
     assert len(backend.voters) == 12
     for case in backend.cases:
         backend.votes.extend({"case_id": case["case_id"], "voter_hotkey": f"voter-{index}",
@@ -63,18 +72,22 @@ def test_gold_controller_draws_then_tallies_only_closed_outside_team_votes():
         backend.votes.extend({"case_id": case["case_id"], "voter_hotkey": f"voter-{index}",
                               "choice": "challenger"} for index in range(9, 12))
     try:
-        tally_closed_gold_review("week2", backend=backend)
+        tally_closed_gold_review("week2", backend=backend, beacon=_post_vote_beacon(),
+                                 gold_close_timestamp=1000, limit=60)
     except ValueError as exc:
         assert "closed" in str(exc)
     else:
         raise AssertionError("Gold tally accepted open votes")
     backend.round["status"] = "gold_closed"
-    result = tally_closed_gold_review("week2", backend=backend)["challenger"]
+    closed = tally_closed_gold_review("week2", backend=backend, beacon=_post_vote_beacon(),
+                                       gold_close_timestamp=1000, limit=60)
+    result = closed.results["challenger"]
     assert result.sampled_cases == 60
     assert result.decided_contested_claims == 60
     assert result.incumbent_supported == 60
     assert result.refusal is True
-    assert tally_closed_gold_review("week2", backend=backend)["no-check"].sampled_cases == 0
+    assert len(closed.check_case_ids) == 60
+    assert closed.results["no-check"].sampled_cases == 0
 
 
 def test_gold_candidates_only_include_split_cases_with_pairwise_credit_effect():
@@ -162,7 +175,7 @@ def test_gold_candidates_replay_from_frozen_final_receipts():
     assert cases[0].answer_private == {"tiebreak": "challenger"}
 
 
-def test_check_draw_and_escalation_draw_have_separate_purposes():
+def test_check_draw_uses_post_vote_beacon_and_sealed_vote_pool():
     backend = Backend()
     candidates = [ContestedClaim(
         GoldCase(f"case-{index}", f"paper-{index}", "challenger", "incumbent",
@@ -173,12 +186,12 @@ def test_check_draw_and_escalation_draw_have_separate_purposes():
               for index in range(12)]
     result = prepare_gold_review(
         "week2", backend=backend, candidates=candidates, voters=voters,
-        limit=5, escalation_limit=10,
+        escalation_limit=10,
     )
-    assert result["check_count"] == 5
+    assert result["check_count"] == 0
     assert result["escalation_count"] == 10
-    assert 10 <= result["case_count"] <= 15
-    assert sum("check" in row["answer_private"]["review_purposes"] for row in backend.cases) == 5
+    assert result["case_count"] == 10
+    assert all("check" not in row["answer_private"]["review_purposes"] for row in backend.cases)
     assert sum("escalation" in row["answer_private"]["review_purposes"] for row in backend.cases) == 10
     assert all("review_purposes" not in row["case_public"] for row in backend.cases)
     for case in backend.cases:
@@ -186,7 +199,10 @@ def test_check_draw_and_escalation_draw_have_separate_purposes():
                               "choice": "incumbent"} for index in range(12))
     backend.round["status"] = "gold_closed"
     assert len(closed_gold_decisions("week2", backend=backend)) == result["case_count"]
-    assert tally_closed_gold_review("week2", backend=backend)["challenger"].sampled_cases == 5
+    closed = tally_closed_gold_review("week2", backend=backend, beacon=_post_vote_beacon(),
+                                       gold_close_timestamp=1000, limit=5)
+    assert closed.results["challenger"].sampled_cases == 5
+    assert len(closed.check_case_ids) == 5
 
 
 def test_zero_contested_cases_close_as_nonbinding_gold():
@@ -196,6 +212,8 @@ def test_zero_contested_cases_close_as_nonbinding_gold():
     )
     assert prepared["check_count"] == prepared["escalation_count"] == 0
     backend.round["status"] = "gold_closed"
-    result = tally_closed_gold_review("week2", backend=backend)
-    assert set(result) == {"challenger", "no-check"}
-    assert all(not item.refusal and item.decided_contested_claims == 0 for item in result.values())
+    result = tally_closed_gold_review("week2", backend=backend, beacon=_post_vote_beacon(),
+                                      gold_close_timestamp=1000)
+    assert set(result.results) == {"challenger", "no-check"}
+    assert all(not item.refusal and item.decided_contested_claims == 0
+               for item in result.results.values())

@@ -56,6 +56,7 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
             "winner": GoldResult(60, 60, 10, 1 / 6, False),
             "runner": GoldResult(60, 60, 20, 1 / 3, False),
         },
+        gold_check={"drand_round": 11, "case_ids": ["case-1"]},
     )
     assert backend.published == ("week2", receipt)
     assert receipt["bundle_sha256"] == canonical_sha256(receipt["bundle"])
@@ -64,6 +65,7 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
     )
     bundle = receipt["bundle"]
     assert bundle["results"]["gold"]["winner"]["refusal"] is False
+    assert bundle["results"]["gold_check"]["case_ids"] == ["case-1"]
     assert len(bundle["results"]["final_pair_scores"]) == 2
     assert {row["uid"]: row["weight"] for row in bundle["weights"]["vector"]} == {
         0: 0.01, 1: 0.07, 2: 0.02, 9: 0.90,

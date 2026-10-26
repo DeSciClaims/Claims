@@ -1,9 +1,11 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+import hashlib
 
 import pytest
 
 from competition.weekly_automation import FinalAudit, tick_round
+from competition.drand import VerifiedBeacon, DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY
 
 
 DEADLINE = datetime(2026, 10, 26, 12, tzinfo=UTC)
@@ -133,8 +135,15 @@ def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
     assert tick_round("week", backend=backend, inputs=inputs,
                       now=DEADLINE + timedelta(days=3, hours=5))["status"] == "waiting_for_publication"
     calls = []
+    signature = b"c" * 96
+    beacon = VerifiedBeacon(50, hashlib.sha256(signature).digest(), signature.hex(),
+                            DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY,
+                            int((DEADLINE + timedelta(days=3, seconds=30)).timestamp()))
+    monkeypatch.setattr("competition.weekly_automation.fetch_verified_beacon",
+                        lambda **_: beacon)
     monkeypatch.setattr("competition.weekly_automation.tally_closed_gold_review",
-                        lambda *_, **__: calls.append("tally") or {"challenger": object()})
+                        lambda *_, **__: calls.append("tally") or SimpleNamespace(
+                            results={"challenger": object()}, check_case_ids=("case-1",)))
     monkeypatch.setattr("competition.weekly_automation.select_ready_final",
                         lambda *_, **__: calls.append("select") or object())
     monkeypatch.setattr("competition.weekly_automation.publish_selected_round",
