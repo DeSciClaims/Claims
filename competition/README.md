@@ -117,7 +117,8 @@ artifact before a paid round.
 For each paper key, the controller reads Bifrost's final token and dollar
 usage before revoking it. The private completed-job receipt includes
 `inference_cost_usd`; the paper score stores the same measured value in its
-public-detail field, which the public score API does not currently expose.
+public-detail field. The public score API exposes only worker token and dollar
+usage from that field, never its other contents.
 Publication signs a backend-recomputed sum by stage and for the round.
 The sum covers completed worker job receipts only. It excludes judge and
 Decision API calls, VM time, storage, and spend on expired attempts. A live
