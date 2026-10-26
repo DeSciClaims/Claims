@@ -5,9 +5,12 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from .intake_lock import CompetitionBackend
-from .failure_policy import ReferenceFallbackRequired, incumbent_failure_summary
+from .failure_policy import (
+    IncumbentFailureSummary, ReferenceFallbackRequired, incumbent_failure_summary,
+)
 from .jobs import build_jobs
 from .policy import PaperPairScore, paired_result
+from .reference_rerun import reference_rerun_plan
 from .stages import StageCandidate, advance, stage_plan
 
 
@@ -65,6 +68,44 @@ def start_initial_stage(
     return receipt
 
 
+def start_failed_incumbent_reference_rerun(
+    round_id: str, *, backend: CompetitionBackend,
+    failure: IncumbentFailureSummary, reference: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist and enqueue the precommitted reference on the failed paper grid."""
+    round_record = backend.get_round(round_id)
+    ledger = backend.list_stages(round_id)
+    if not ledger:
+        raise ValueError("reference rerun has no source stage")
+    sample = backend.list_sample(round_id)
+    plan = reference_rerun_plan(
+        failure=failure, round_record=round_record,
+        source_receipt=ledger[-1], sample=sample, reference=reference,
+    )
+    started = backend.start_reference_rerun(round_id, reference)
+    if started["stage"] != "rerun" or started["source_stage"] != plan.source_stage:
+        raise ValueError("stored reference rerun differs from failed stage")
+    frozen = backend.list_stages(round_id)[-1]
+    if (frozen["stage"] != "rerun"
+        or any(frozen["entries"][index][key] != entry[key]
+               for index, entry in enumerate(plan.entries)
+               for key in ("hotkey", "package_sha256", "team_id", "role", "position"))
+        or len(frozen["entries"]) != len(plan.entries)):
+        raise ValueError("stored reference rerun entrants differ from plan")
+    frozen_sample = [row for row in backend.list_sample(round_id) if row["stage"] == "rerun"]
+    if (len(frozen_sample) != len(plan.papers)
+        or any(frozen_sample[index][key] != paper[key]
+               for index, paper in enumerate(plan.papers)
+               for key in ("stage", "paper_id", "position", "judge_id", "source_sha256"))):
+        raise ValueError("stored reference rerun sample differs from failed stage")
+    _enqueue_current_stage(round_id, backend=backend, round_record=round_record,
+                           receipt=frozen, sample=backend.list_sample(round_id))
+    return {"status": "reference_rerun_started", "stage": "rerun",
+            "source_stage": plan.source_stage,
+            "failed_papers": failure.failed_papers,
+            "eligible_papers": failure.eligible_papers}
+
+
 def advance_ready_stage(round_id: str, *, backend: CompetitionBackend) -> dict[str, Any]:
     """Re-enqueue current jobs, then advance once every paired score exists.
 
@@ -81,9 +122,10 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend) -> dict[s
     sample = backend.list_sample(round_id)
     _enqueue_current_stage(round_id, backend=backend, round_record=round_record,
                            receipt=current, sample=sample)
-    if stage in {"final", "week_one"}:
+    source_stage = current.get("source_stage") if stage == "rerun" else stage
+    if stage in {"final", "week_one"} or source_stage == "final":
         return {"stage": stage, "status": "final_running"}
-    if stage not in {"prescreen", "screen"}:
+    if source_stage not in {"prescreen", "screen"}:
         raise ValueError("unexpected active stage")
     paper_ids = [row["paper_id"] for row in sample if row["stage"] == stage]
     entries = current["entries"]
@@ -141,8 +183,8 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend) -> dict[s
         candidates.append(StageCandidate(
             hotkey, entry["team_id"], result.mean_gain, commits[hotkey],
         ))
-    winners = advance(candidates, stage=stage)
-    next_stage = "screen" if stage == "prescreen" else "final"
+    winners = advance(candidates, stage=source_stage)
+    next_stage = "screen" if source_stage == "prescreen" else "final"
     if next_stage not in {row["stage"] for row in sample}:
         raise ValueError("released sample is missing the next stage")
     by_hotkey = {row["hotkey"]: row for row in entries}

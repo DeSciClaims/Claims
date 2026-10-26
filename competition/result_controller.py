@@ -6,6 +6,7 @@ from dataclasses import asdict
 from typing import Any, Mapping, Protocol
 
 from .final_selection import FinalSelection
+from .final_stage import effective_final_stage
 from .gold import GoldResult
 from .judge_diagnostics import final_judge_diagnostics
 from .publication import publication_bundle, sign_publication
@@ -47,17 +48,26 @@ def publish_selected_round(
     if not finalist_hotkeys <= set(qualified_by_hotkey):
         raise ValueError("finalist qualification snapshot is incomplete")
     stages = backend.list_stages(round_id)
-    if not stages or stages[-1]["stage"] not in {"final", "week_one"}:
-        raise ValueError("final stage is missing")
+    effective_final_stage(stages)
     if {row["hotkey"] for row in stages[-1]["entries"] if row["role"] == "challenger"} != finalist_hotkeys:
         raise ValueError("publication finalists differ from frozen final stage")
     baseline = [row for row in stages[-1]["entries"] if row["role"] in {"incumbent", "reference"}]
-    if (len(baseline) != 1 or
-        (round_record["incumbent_hotkey"] is not None
-         and baseline[0]["hotkey"] != round_record["incumbent_hotkey"])):
+    if len(baseline) != 1:
         raise ValueError("frozen production baseline is missing")
-    if round_record["incumbent_hotkey"] is not None and production_team_id != baseline[0]["team_id"]:
+    if (baseline[0]["role"] == "incumbent"
+        and (baseline[0]["hotkey"] != round_record["incumbent_hotkey"]
+             or baseline[0]["package_sha256"] != round_record["baseline_package_sha256"])):
+        raise ValueError("frozen production baseline differs from round")
+    if (baseline[0]["role"] == "reference"
+        and baseline[0]["package_sha256"] != round_record["reference_package_sha256"]):
+        raise ValueError("frozen reference baseline differs from round")
+    if baseline[0]["role"] == "incumbent" and production_team_id != baseline[0]["team_id"]:
         raise ValueError("production team differs from frozen baseline")
+    if selection.decision == "reference_fallback" and (
+        baseline[0]["role"] != "reference" or selection.production_hotkey is not None
+        or round_record["incumbent_hotkey"] is None
+    ):
+        raise ValueError("reference fallback decision differs from frozen final")
     finalists = [Payee(
         row.hotkey, row.team_id, qualified_by_hotkey[row.hotkey], row.mean_gain,
         copy=row.reason == "copy", code_passed=row.reason != "code_failed",
@@ -79,7 +89,8 @@ def publish_selected_round(
         if finalist:
             production = finalist
         else:
-            if (selection.production_hotkey != round_record["incumbent_hotkey"]
+            if (baseline[0]["role"] != "incumbent"
+                or selection.production_hotkey != round_record["incumbent_hotkey"]
                 or not production_team_id or selection.winner_gain != 0):
                 raise ValueError("production hotkey is not a finalist or frozen incumbent")
             production = Payee(
@@ -98,6 +109,8 @@ def publish_selected_round(
     results = {
         "decision": selection.decision,
         "production_hotkey": selection.production_hotkey,
+        "fallback_reference_hotkey": baseline[0]["hotkey"]
+        if selection.decision == "reference_fallback" else None,
         "winner_hotkey": selection.production_hotkey if selection.decision == "new_crown" else None,
         "winner_gain": selection.winner_gain,
         "finalists": [asdict(row) for row in selection.verdicts],

@@ -67,3 +67,25 @@ def test_trusted_paper_inputs_reject_changed_pdf():
     adapter = CompetitionPaperInputs(backend, "week-1", "release-1")
     with pytest.raises(ValueError, match="differs"):
         adapter.bronze_for_paper("final", "paper-1")
+
+
+def test_paper_inputs_refresh_only_for_frozen_reference_rerun():
+    rows = [{"stage": "screen", "paper_id": "paper-1", "source_sha256": PDF_SHA}]
+    backend = SimpleNamespace(
+        list_sample=lambda _: rows,
+        get_bronze_source=lambda _round_id, *, stage, paper_id, reference_release_id: {
+            "paper_id": paper_id, "source_sha256": PDF_SHA,
+            "source_url": "https://example.invalid/paper.pdf",
+            "bronze_record_id": "bronze-1", "full_source_id": "full-1",
+            "artifact": {"paper": {"paper_id": paper_id}},
+            "source_context_by_span_id": {},
+        },
+    )
+    adapter = CompetitionPaperInputs(backend, "week-2", "release-1")
+    assert adapter.bronze_for_paper("screen", "paper-1")["paper"]["paper_id"] == "paper-1"
+    rows.append({"stage": "rerun", "paper_id": "paper-1", "source_sha256": PDF_SHA})
+    assert adapter.bronze_for_paper("rerun", "paper-1")["paper"]["paper_id"] == "paper-1"
+    assert adapter.source_context_for_paper("paper-1") == {}
+    rows[0] = {**rows[0], "source_sha256": "b" * 64}
+    with pytest.raises(ValueError, match="malformed paper versions"):
+        adapter.bronze_for_paper("prescreen", "paper-1")

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from .final_stage import effective_final_stage
+
 
 class SecurityAuditBackend(Protocol):
     def get_round(self, round_id: str) -> dict[str, Any]: ...
@@ -14,8 +16,7 @@ class SecurityAuditBackend(Protocol):
 
 def audit_final_worker_security(round_id: str, *, backend: SecurityAuditBackend) -> dict[str, dict[str, Any]]:
     """Fail closed if a final worker lacks a counter or tried denied egress."""
-    round_record = backend.get_round(round_id)
-    stage = "week_one" if round_record.get("incumbent_hotkey") is None else "final"
+    stage = effective_final_stage(backend.list_stages(round_id))
     ledgers = [row for row in backend.list_stages(round_id) if row.get("stage") == stage]
     if len(ledgers) != 1:
         raise ValueError("security audit has no unique final stage")

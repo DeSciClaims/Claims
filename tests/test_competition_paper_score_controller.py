@@ -113,3 +113,27 @@ def test_infrastructure_fault_skips_adjudication_and_scores_everyone_zero():
     assert {row["fault_kind"] for row in backend.scores.values()} == {"infrastructure"}
     assert all(row["score"] == 0 for row in backend.scores.values())
     assert backend.pairs["challenger"]["infrastructure_fault"] is True
+
+
+def test_reference_rerun_uses_original_stage_scoring_policy():
+    backend = Backend()
+    for job in backend.jobs:
+        job["status"] = "completed"
+        job["stage"] = "rerun"
+    backend.list_sample = lambda _: [{"stage": "rerun", "paper_id": "paper-1",
+                                      "judge_id": "J1", "source_sha256": "e" * 64}]
+    backend.list_stages = lambda _: [{"stage": "rerun", "source_stage": "screen",
+                                      "entries": Backend.list_stages(backend, "round-1")[0]["entries"]}]
+    backend.freeze_paper_evaluation = lambda _, stage, paper_id, *, input_sha256, result_private: {
+        "input_sha256": input_sha256, "result_private": result_private,
+    }
+    backend.record_pair_score = lambda _, stage, pair: pair
+
+    def evaluate(**kwargs):
+        assert kwargs["stage"] == "screen"
+        return _evaluation(**kwargs)
+
+    assert score_ready_paper(
+        "round-1", "rerun", "paper-1", backend=backend,
+        bronze_artifact={"paper": {"paper_id": "paper-1"}}, evaluate=evaluate,
+    )["status"] == "scored"

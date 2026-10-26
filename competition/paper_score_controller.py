@@ -52,6 +52,9 @@ def score_ready_paper(
     receipt = next((row for row in stage_receipts if row["stage"] == stage), None)
     if receipt is None:
         raise ValueError("stage has no frozen entrants")
+    scoring_stage = receipt.get("source_stage") if stage == "rerun" else stage
+    if scoring_stage not in {"prescreen", "screen", "final", "week_one"}:
+        raise ValueError("paper evaluation has an invalid source stage")
     paper = next((row for row in backend.list_sample(round_id)
                   if row["stage"] == stage and row["paper_id"] == paper_id), None)
     if paper is None:
@@ -117,7 +120,7 @@ def score_ready_paper(
             artifacts = {hotkey: outcome.get("artifact") if faults[hotkey] == "none" else None
                          for hotkey, outcome in outcomes.items()}
             evaluation = evaluate(
-                paper_id=paper_id, stage=stage, judge_id=paper["judge_id"],
+                paper_id=paper_id, stage=scoring_stage, judge_id=paper["judge_id"],
                 bronze_artifact=dict(bronze_artifact), artifacts_by_hotkey=artifacts,
                 baseline_hotkey=baseline[0]["hotkey"],
                 challenger_hotkeys=[row["hotkey"] for row in challengers],
@@ -125,7 +128,7 @@ def score_ready_paper(
             pairs = list(evaluation.pair_rows)
             scores_by_hotkey = {row.miner_id: row.score for row in evaluation.pipeline.scores}
             gold_candidates = []
-            if stage in {"final", "week_one"}:
+            if scoring_stage in {"final", "week_one"}:
                 gold_candidates = [{
                     "case": {
                         "case_id": claim.case.case_id,
@@ -144,7 +147,7 @@ def score_ready_paper(
                                            for row in evaluation.pipeline.adjudication_consensus],
                 "gold_candidates": gold_candidates,
             }
-            if stage in {"final", "week_one"}:
+            if scoring_stage in {"final", "week_one"}:
                 silver["miner_submissions"] = [{
                     "miner_id": submission.miner_id,
                     "candidates": [candidate.model_dump(mode="json")

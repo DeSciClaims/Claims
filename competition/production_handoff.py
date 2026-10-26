@@ -209,6 +209,36 @@ def planned_production_handoff(
             or results.get("production_hotkey") != expected_hotkey):
             raise ValueError("no-change decision names another production hotkey")
         return None
+    if decision == "reference_fallback":
+        baseline = [row for row in final_stage.get("entries", [])
+                    if row.get("role") == "reference"]
+        hotkey = results.get("fallback_reference_hotkey")
+        roles = bundle["weights"].get("roles", [])
+        pairs = results.get("final_pair_scores")
+        security = results.get("worker_security_audit", {})
+        if (round_record.get("incumbent_hotkey") is None
+            or results.get("production_hotkey") is not None
+            or len(baseline) != 1 or hotkey != baseline[0].get("hotkey")
+            or baseline[0].get("package_sha256") != bundle["reference_package_sha256"]
+            or final_stage.get("stage") not in {"final", "rerun"}
+            or (final_stage.get("stage") == "rerun"
+                and final_stage.get("source_stage") != "final")
+            or not isinstance(roles, list)
+            or not any(row.get("role") == "production_burned" and row.get("share") == 0.07
+                       for row in roles)
+            or any(row.get("role") == "production" for row in roles)
+            or not isinstance(security, dict) or security.get(hotkey, {}).get("passed") is not True
+            or not isinstance(pairs, list) or not pairs
+            or any(row.get("stage") != final_stage["stage"]
+                   or row.get("baseline_hotkey") != hotkey
+                   or row.get("baseline_package_sha256") != bundle["reference_package_sha256"]
+                   for row in pairs)):
+            raise ValueError("reference fallback differs from signed final evidence")
+        return ProductionHandoffPlan(
+            round_id=bundle["round_id"], receipt_sha256=receipt["bundle_sha256"],
+            hotkey=hotkey, package_sha256=bundle["reference_package_sha256"],
+            activate_at=activate_at,
+        )
     if decision not in {"new_crown", "incumbent_version_swap"}:
         raise ValueError("handoff decision is unknown")
     hotkey = results.get("production_hotkey")
@@ -220,8 +250,10 @@ def planned_production_handoff(
     paid = [row for row in roles if row["role"].removesuffix("_burned") == "production"]
     if len(paid) != 1 or paid[0]["hotkey"] != hotkey:
         raise ValueError("handoff winner differs from signed production role")
-    stage = "week_one" if round_record.get("incumbent_hotkey") is None else "final"
-    if final_stage.get("stage") != stage:
+    stage = final_stage.get("stage")
+    if stage not in {"final", "week_one", "rerun"} or (
+        stage == "rerun" and final_stage.get("source_stage") != "final"
+    ):
         raise ValueError("handoff stage differs from frozen final stage")
     entries = [row for row in final_stage.get("entries", [])
                if row.get("hotkey") == hotkey and row.get("role") == "challenger"]
@@ -229,8 +261,14 @@ def planned_production_handoff(
         raise ValueError("handoff winner has no unique frozen finalist package")
     baseline = [row for row in final_stage["entries"]
                 if row.get("role") in {"incumbent", "reference"}]
-    if (len(baseline) != 1 or baseline[0].get("package_sha256") != bundle["baseline_package_sha256"]
-        or (stage == "final" and baseline[0].get("hotkey") != round_record["incumbent_hotkey"])):
+    if len(baseline) != 1:
+        raise ValueError("handoff baseline differs from signed round")
+    expected_baseline_hash = (bundle["reference_package_sha256"]
+                              if baseline[0]["role"] == "reference"
+                              else bundle["baseline_package_sha256"])
+    if (baseline[0].get("package_sha256") != expected_baseline_hash
+        or (baseline[0]["role"] == "incumbent"
+            and baseline[0].get("hotkey") != round_record["incumbent_hotkey"])):
         raise ValueError("handoff baseline differs from signed round")
     same_team = entries[0].get("team_id") == baseline[0].get("team_id")
     if not entries[0].get("team_id") or not baseline[0].get("team_id") or same_team != (decision == "incumbent_version_swap"):

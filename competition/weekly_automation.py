@@ -25,7 +25,7 @@ from .paper_score_controller import score_ready_paper
 from .result_controller import publish_selected_round
 from .round_controller import lock_ready_round, reveal_selected_sample, start_revealed_round
 from .sample_release import PaperRecord
-from .stage_controller import advance_ready_stage
+from .stage_controller import advance_ready_stage, start_failed_incumbent_reference_rerun
 from .worker_security_audit import audit_final_worker_security
 
 
@@ -47,6 +47,7 @@ class TrustedRoundInputs(Protocol):
     def package_for_submission(self, submission: Mapping[str, Any]) -> bytes: ...
     def papers_for_round(self, round_id: str) -> list[PaperRecord]: ...
     def baseline_for_round(self, round_id: str) -> Mapping[str, Any]: ...
+    def reference_for_round(self, round_id: str) -> Mapping[str, Any]: ...
     def incumbent_package_for_round(self, round_id: str) -> bytes | None: ...
     def linked_pairs_for_round(self, round_id: str) -> list[tuple[str, str, str]]: ...
     def weekly_budget_for_round(self, round_id: str) -> float: ...
@@ -76,8 +77,9 @@ def _score_active_stage(
     if not ledger:
         raise ValueError("active evaluation has no stage receipt")
     stage = ledger[-1]["stage"]
-    if stage not in {"prescreen", "screen", "final", "week_one"}:
+    if stage not in {"prescreen", "screen", "final", "week_one", "rerun"}:
         raise ValueError("active evaluation has an unknown stage")
+    scoring_stage = ledger[-1].get("source_stage") if stage == "rerun" else stage
     first = advance_ready_stage(round_id, backend=backend)
     if first["status"] == "started":
         return first
@@ -104,10 +106,10 @@ def _score_active_stage(
         score_ready_paper(
             round_id, stage, paper_id, backend=backend,
             bronze_artifact=inputs.bronze_for_paper(stage, paper_id),
-            evaluate=inputs.evaluate_for_stage(stage),
+            evaluate=inputs.evaluate_for_stage(scoring_stage),
         )
         attempted += 1
-    if stage in {"prescreen", "screen"}:
+    if scoring_stage in {"prescreen", "screen"}:
         result = advance_ready_stage(round_id, backend=backend)
         if result["status"] == "started":
             return result
@@ -194,10 +196,10 @@ def tick_round(
                 round_id, backend=backend, inputs=inputs, now=now, gold_close=gold_close,
             )
         except ReferenceFallbackRequired as exc:
-            return {"status": "reference_fallback_required",
-                    "stage": exc.summary.stage,
-                    "failed_papers": exc.summary.failed_papers,
-                    "eligible_papers": exc.summary.eligible_papers}
+            return start_failed_incumbent_reference_rerun(
+                round_id, backend=backend, failure=exc.summary,
+                reference=inputs.reference_for_round(round_id),
+            )
     if status == "gold":
         if now < gold_close:
             return {"status": "waiting_for_gold_close", "close_at": gold_close.isoformat()}

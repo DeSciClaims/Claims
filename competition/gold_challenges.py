@@ -29,7 +29,7 @@ def build_known_answer_challenges(
     if len(seed) != 32 or limit < 1:
         raise ValueError("known-answer selection needs a seed and positive limit")
     papers = {row["paper_id"]: row["source_sha256"] for row in final_sample
-              if row["stage"] in {"final", "week_one"}}
+              if row["stage"] in {"final", "week_one", "rerun"}}
     baseline = [row for row in final_entries if row["role"] in {"incumbent", "reference"}]
     challengers = sorted((row for row in final_entries if row["role"] == "challenger"),
                          key=lambda row: row["hotkey"])

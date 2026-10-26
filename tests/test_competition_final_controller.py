@@ -17,7 +17,9 @@ class Backend:
         } for index in range(5)]
 
     def get_round(self, _round_id):
-        return {"status": self.status, "incumbent_hotkey": "incumbent"}
+        return {"status": self.status, "incumbent_hotkey": "incumbent",
+                "baseline_package_sha256": "c" * 64,
+                "reference_package_sha256": "d" * 64}
 
     def list_stages(self, _round_id):
         return [{"stage": "final", "entries": [
@@ -129,3 +131,27 @@ def test_final_controller_requires_reference_if_incumbent_fails_over_one_fifth()
                            code_passed_by_hotkey={"challenger": True},
                            copy_by_hotkey={"challenger": False}, gold_by_hotkey={})
     assert (exc.value.summary.failed_papers, exc.value.summary.eligible_papers) == (2, 5)
+
+
+def test_uncrowned_reference_fallback_does_not_keep_failed_incumbent():
+    backend = Backend()
+    backend.pairs = [{**row, "baseline_hotkey": "team-reference",
+                      "baseline_package_sha256": "d" * 64,
+                      "challenger_score": 0.3, "baseline_score": 0.5}
+                     for row in backend.pairs]
+    original_entries = backend.list_stages("week2")[0]["entries"]
+    backend.list_stages = lambda _round_id: [
+        {"stage": "screen", "entries": []},
+        {"stage": "rerun", "source_stage": "screen", "entries": []},
+        {"stage": "final", "entries": [
+            {"role": "reference", "hotkey": "team-reference",
+             "team_id": "claims-reference", "package_sha256": "d" * 64},
+            original_entries[1],
+        ]},
+    ]
+    selection = select_ready_final(
+        "week2", backend=backend, code_passed_by_hotkey={"challenger": True},
+        copy_by_hotkey={"challenger": False}, gold_by_hotkey={},
+    )
+    assert selection.decision == "reference_fallback"
+    assert selection.production_hotkey is None

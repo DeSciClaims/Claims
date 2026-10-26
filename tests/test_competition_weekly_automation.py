@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from competition.failure_policy import IncumbentFailureSummary, ReferenceFallbackRequired
 from competition.weekly_automation import FinalAudit, tick_round
 
 
@@ -191,3 +192,32 @@ def test_tick_rejects_non_monday_deadline():
 
     with pytest.raises(ValueError, match="Monday"):
         tick_round("week", backend=Backend(), inputs=object(), now=DEADLINE)
+
+
+def test_tick_starts_frozen_reference_rerun_after_incumbent_failure(monkeypatch):
+    class Backend:
+        def get_round(self, _):
+            return _round("screening")
+
+        def list_stages(self, _):
+            return [{"stage": "screen", "entries": []}]
+
+    class Inputs:
+        def reference_for_round(self, _):
+            return {"hotkey": "team-reference", "package_sha256": "b" * 64,
+                    "team_id": "claims-reference"}
+
+    failure = IncumbentFailureSummary("screen", 120, 25)
+    def fail(*_, **__):
+        raise ReferenceFallbackRequired(failure)
+
+    monkeypatch.setattr("competition.weekly_automation.advance_ready_stage", fail)
+
+    def start(_, *, backend, failure, reference):
+        assert reference["hotkey"] == "team-reference"
+        assert (failure.failed_papers, failure.eligible_papers) == (25, 120)
+        return {"status": "reference_rerun_started", "source_stage": "screen"}
+
+    monkeypatch.setattr("competition.weekly_automation.start_failed_incumbent_reference_rerun", start)
+    assert tick_round("week", backend=Backend(), inputs=Inputs(),
+                      now=DEADLINE + timedelta(hours=3))["status"] == "reference_rerun_started"

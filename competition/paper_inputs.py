@@ -39,22 +39,31 @@ class CompetitionPaperInputs:
             raise ValueError("approved paper pool changed after it was frozen")
         return papers
 
-    def _load_sample(self) -> None:
-        if self._sample:
+    def _load_sample(self, *, refresh: bool = False) -> None:
+        if self._sample and not refresh:
             return
         rows = self.backend.list_sample(self.round_id)
         if not rows:
             raise ValueError("competition sample has not been released")
+        had_sample = bool(self._sample)
+        candidate: dict[tuple[str, str], str] = {}
         for row in rows:
             key = (str(row["stage"]), str(row["paper_id"]))
             digest = str(row["source_sha256"])
-            if key in self._sample or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            if (key in candidate or not re.fullmatch(r"[0-9a-f]{64}", digest)
+                or (key in self._sample and self._sample[key] != digest)
+                or (had_sample and key not in self._sample and key[0] != "rerun")):
                 raise ValueError("released sample contains malformed paper versions")
-            self._sample[key] = digest
+            candidate[key] = digest
+        if refresh and not set(self._sample) <= set(candidate):
+            raise ValueError("released sample removed a frozen paper")
+        self._sample = candidate
 
     def _source(self, stage: str, paper_id: str) -> dict[str, Any]:
         self._load_sample()
         key = (stage, paper_id)
+        if key not in self._sample:
+            self._load_sample(refresh=True)
         if key not in self._sample:
             raise ValueError("paper is not in the released stage sample")
         if key not in self._bronze:
@@ -89,9 +98,13 @@ class CompetitionPaperInputs:
     def source_context_for_paper(self, paper_id: str) -> dict[str, str]:
         self._load_sample()
         matches = [stage for stage, selected_id in self._sample if selected_id == paper_id]
-        if len(matches) != 1:
-            raise ValueError("paper must appear in exactly one stage")
-        context = self._source(matches[0], paper_id)["source_context_by_span_id"]
+        original = [stage for stage in matches if stage != "rerun"]
+        if (len(original) != 1 or len(matches) not in {1, 2}
+            or (len(matches) == 2 and (
+                "rerun" not in matches
+                or self._sample[("rerun", paper_id)] != self._sample[(original[0], paper_id)]))):
+            raise ValueError("paper must appear in one original stage and its exact rerun")
+        context = self._source(original[0], paper_id)["source_context_by_span_id"]
         if any(not isinstance(key, str) or not isinstance(value, str)
                for key, value in context.items()):
             raise ValueError("Bronze source context is malformed")

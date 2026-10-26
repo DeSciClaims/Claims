@@ -26,7 +26,8 @@ class Backend:
 
     def list_stages(self, _round_id):
         return [{"stage": "final", "entries": [
-            {"hotkey": "incumbent", "role": "incumbent", "team_id": "old-team"},
+            {"hotkey": "incumbent", "role": "incumbent", "team_id": "old-team",
+             "package_sha256": "1" * 64},
             {"hotkey": "winner", "role": "challenger", "team_id": "new-team"},
             {"hotkey": "runner", "role": "challenger", "team_id": "runner-team"},
         ]}]

@@ -11,6 +11,7 @@ from typing import Any, Callable, Mapping, Protocol
 from .production_handoff import (
     FilesystemProductionReleaseStore, ProductionHandoffPlan, activate_verified_handoff,
 )
+from .final_stage import effective_final_stage
 
 
 class HandoffBackend(Protocol):
@@ -43,19 +44,27 @@ def activate_published_round(
     sealed_packages: SealedPackages,
     releases: FilesystemProductionReleaseStore,
     expected_signer_hotkey: str, network: str, now: datetime,
+    reference_upload: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Verify the result, resolve the unique upload, and switch local pointer."""
     round_record = backend.get_round(round_id)
     if round_record.get("round_id") != round_id:
         raise ValueError("handoff backend returned another round")
     stages = backend.list_stages(round_id)
-    expected_stage = "week_one" if round_record.get("incumbent_hotkey") is None else "final"
-    final = [row for row in stages if row.get("stage") == expected_stage]
-    if len(final) != 1 or stages[-1] is not final[0]:
+    expected_stage = effective_final_stage(stages)
+    final = stages[-1]
+    if final.get("stage") != expected_stage:
         raise ValueError("handoff round has no final frozen stage")
     receipt = publication_for_round(round_id)
 
     def fetch_package(plan: ProductionHandoffPlan) -> bytes:
+        if (receipt.get("bundle", {}).get("results", {}).get("decision") == "reference_fallback"
+            and reference_upload is not None
+            and plan.hotkey == reference_upload.get("hotkey")
+            and plan.package_sha256 == round_record.get("reference_package_sha256")):
+            if reference_upload.get("package_sha256") != plan.package_sha256:
+                raise ValueError("handoff reference upload differs from frozen round")
+            return sealed_packages.package_for_submission(reference_upload)
         uploads = [row for row in backend.list_submissions(round_id)
                    if row.get("hotkey") == plan.hotkey
                    and row.get("package_sha256") == plan.package_sha256
@@ -65,7 +74,7 @@ def activate_published_round(
         return sealed_packages.package_for_submission(uploads[0])
 
     return activate_verified_handoff(
-        receipt=receipt, round_record=round_record, final_stage=final[0],
+        receipt=receipt, round_record=round_record, final_stage=final,
         expected_signer_hotkey=expected_signer_hotkey, network=network, now=now,
         fetch_package=fetch_package, releases=releases,
     )

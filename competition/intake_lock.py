@@ -125,6 +125,14 @@ class CompetitionBackend:
                 + "/stages/" + stage)
         return self._request("POST", path, {"entries": entries})
 
+    def start_reference_rerun(
+        self, round_id: str, reference: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/reference-rerun")
+        return self._request("POST", path, {key: reference[key]
+                                           for key in ("hotkey", "package_sha256", "team_id")})
+
     def list_stage_scores(self, round_id: str, stage: str) -> list[dict[str, Any]]:
         if stage not in {"prescreen", "screen", "final", "week_one", "rerun"}:
             raise ValueError("unknown competition stage")
@@ -142,7 +150,7 @@ class CompetitionBackend:
             offset = page["next_offset"]
 
     def list_stage_pairs(self, round_id: str, stage: str) -> list[dict[str, Any]]:
-        if stage not in {"prescreen", "screen", "final", "week_one"}:
+        if stage not in {"prescreen", "screen", "final", "week_one", "rerun"}:
             raise ValueError("unknown competition stage")
         base = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
                 + "/stages/" + stage + "/pairs")
@@ -160,7 +168,7 @@ class CompetitionBackend:
     def record_pair_score(
         self, round_id: str, stage: str, payload: dict[str, Any],
     ) -> dict[str, Any]:
-        if stage not in {"prescreen", "screen", "final", "week_one"}:
+        if stage not in {"prescreen", "screen", "final", "week_one", "rerun"}:
             raise ValueError("unknown competition stage")
         path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
                 + "/stages/" + stage + "/pairs")

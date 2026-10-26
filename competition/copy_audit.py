@@ -6,6 +6,7 @@ from dataclasses import asdict
 from typing import Any, Protocol
 
 from .copy_check import output_copy_verdict
+from .final_stage import effective_final_stage
 from .policy import PaperPairScore
 
 
@@ -71,8 +72,7 @@ def _accepted_units(silver: dict[str, Any], paper_id: str,
 
 def audit_final_output_copies(round_id: str, *, backend: CopyAuditBackend) -> dict[str, dict[str, Any]]:
     """Return public-safe evidence for every finalist against the frozen baseline."""
-    round_record = backend.get_round(round_id)
-    stage = "week_one" if round_record.get("incumbent_hotkey") is None else "final"
+    stage = effective_final_stage(backend.list_stages(round_id))
     ledgers = [row for row in backend.list_stages(round_id) if row.get("stage") == stage]
     if len(ledgers) != 1:
         raise ValueError("copy audit has no unique frozen final stage")

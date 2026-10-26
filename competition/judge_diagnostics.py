@@ -17,7 +17,7 @@ def final_judge_diagnostics(
     statistic and these per-judge estimates. Every other row contributes its
     final post-escalation challenger-minus-baseline score.
     """
-    if stage not in {"final", "week_one"} or not finalist_hotkeys:
+    if stage not in {"final", "week_one", "rerun"} or not finalist_hotkeys:
         raise ValueError("judge diagnostics need a final stage and finalists")
     assignments = {str(row["paper_id"]): str(row["judge_id"])
                    for row in sample if row["stage"] == stage}

@@ -7,6 +7,7 @@ from typing import Any, Mapping, Protocol
 
 from .final_selection import FinalSelection, Finalist, select_final_production
 from .failure_policy import ReferenceFallbackRequired, incumbent_failure_summary
+from .final_stage import effective_final_stage
 from .gold import GoldResult
 from .gold_controller import closed_gold_decisions
 from .gold_override import rescore_final_paper_from_escalations
@@ -35,17 +36,21 @@ def select_ready_final(
     round_record = backend.get_round(round_id)
     if round_record["status"] not in {"final", "gold_closed"}:
         raise ValueError("final round has not finished evaluation or Gold voting")
-    stage = "week_one" if round_record["incumbent_hotkey"] is None else "final"
     ledgers = backend.list_stages(round_id)
-    if not ledgers or ledgers[-1]["stage"] != stage:
-        raise ValueError("final stage has not started")
+    stage = effective_final_stage(ledgers)
     entries = ledgers[-1]["entries"]
     baseline = [row for row in entries if row["role"] in {"incumbent", "reference"}]
     challengers = [row for row in entries if row["role"] == "challenger"]
     if len(baseline) != 1 or not challengers:
         raise ValueError("final stage needs one baseline and at least one finalist")
-    if (stage == "final" and baseline[0]["hotkey"] != round_record["incumbent_hotkey"]):
-        raise ValueError("final baseline differs from frozen incumbent")
+    if baseline[0]["role"] == "incumbent":
+        if (baseline[0]["hotkey"] != round_record["incumbent_hotkey"]
+            or baseline[0]["package_sha256"] != round_record["baseline_package_sha256"]):
+            raise ValueError("final baseline differs from frozen incumbent")
+    elif (baseline[0]["package_sha256"] != round_record["reference_package_sha256"]
+          or (round_record["incumbent_hotkey"] is not None
+              and not any(row["stage"] == "rerun" for row in ledgers))):
+        raise ValueError("final reference differs from frozen fallback")
     if set(code_passed_by_hotkey) != {row["hotkey"] for row in challengers} or set(copy_by_hotkey) != set(code_passed_by_hotkey):
         raise ValueError("finalist code and copy verdicts must be complete")
     if round_record["status"] == "gold_closed":
@@ -99,7 +104,7 @@ def select_ready_final(
                                  "baseline_score": adjusted["baseline_score"]}
     faults = {paper_id: any(grid[(paper_id, row["hotkey"])]["infrastructure_fault"]
                             for row in challengers) for paper_id in paper_ids}
-    if stage == "final":
+    if baseline[0]["role"] == "incumbent":
         failure = incumbent_failure_summary(
             round_id, stage=stage, paper_ids=paper_ids,
             excluded_infrastructure_papers={paper_id for paper_id, fault in faults.items() if fault},
@@ -124,7 +129,11 @@ def select_ready_final(
             gold_by_hotkey[hotkey].refusal if hotkey in gold_by_hotkey else False,
         ))
     selection = select_final_production(
-        finalists, incumbent_hotkey=round_record["incumbent_hotkey"],
-        incumbent_team_id=baseline[0]["team_id"] if stage == "final" else None,
+        finalists,
+        incumbent_hotkey=round_record["incumbent_hotkey"] if baseline[0]["role"] == "incumbent" else None,
+        incumbent_team_id=baseline[0]["team_id"] if baseline[0]["role"] == "incumbent" else None,
     )
+    if (baseline[0]["role"] == "reference" and round_record["incumbent_hotkey"] is not None
+        and selection.decision == "no_crown"):
+        selection = replace(selection, decision="reference_fallback")
     return replace(selection, final_pair_rows=tuple(grid[key] for key in sorted(grid)))

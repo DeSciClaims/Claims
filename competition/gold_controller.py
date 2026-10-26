@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping, Protocol
 from .pair_evaluator import WeeklyPaperEvaluation
 
 from .gold import GoldCase, GoldResult, GoldVote, VoteDecision, decide_gold_case, draw_gold_cases, gold_result
+from .final_stage import effective_final_stage
 
 GOLD_QUESTION = (
     "Does this statement accurately describe the cited paper evidence? "
@@ -155,8 +156,8 @@ def frozen_gold_candidates(round_id: str, *, backend: GoldBackend) -> list[Conte
     """Read final review candidates from immutable, private paper receipts."""
     candidates: list[ContestedClaim] = []
     case_ids: set[str] = set()
-    papers = [row for row in backend.list_sample(round_id)
-              if row["stage"] in {"final", "week_one"}]
+    stage = effective_final_stage(backend.list_stages(round_id))
+    papers = [row for row in backend.list_sample(round_id) if row["stage"] == stage]
     if len({(row["stage"], row["paper_id"]) for row in papers}) != len(papers):
         raise ValueError("final sample contains duplicate papers")
     for paper in papers:
@@ -324,9 +325,10 @@ def tally_closed_gold_review(
     """Tally only after closing intake; group the veto by challenger."""
     decisions = closed_gold_decisions(round_id, backend=backend)
     cases = backend.list_gold_cases(round_id, include_answers=True)
-    final = next((row for row in backend.list_stages(round_id)
-                  if row["stage"] in {"final", "week_one"}), None)
-    if final is None:
+    ledger = backend.list_stages(round_id)
+    stage = effective_final_stage(ledger)
+    final = ledger[-1]
+    if final["stage"] != stage:
         raise ValueError("Gold tally has no frozen finalist stage")
     decisions_by_challenger: dict[str, list[VoteDecision]] = {
         entry["hotkey"]: [] for entry in final["entries"] if entry["role"] == "challenger"

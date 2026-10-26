@@ -65,12 +65,20 @@ class CompetitionPackageResolver:
             raise ValueError("job package differs from selected stage entry")
         role = entries[0]["role"]
         if role in {"reference", "incumbent"}:
-            upload = self.baseline_upload
+            if role == "reference" and round_record.get("incumbent_hotkey") is not None:
+                if not any(row["stage"] == "rerun" for row in self.backend.list_stages(round_id)):
+                    raise ValueError("reference job has no frozen failure rerun")
+                upload = self._reference_upload_for_round(round_id)
+                expected_hash = round_record["reference_package_sha256"]
+            else:
+                upload = self.baseline_upload
+                expected_hash = round_record["baseline_package_sha256"]
             if (upload.get("hotkey") != hotkey
                 or upload.get("package_sha256") != package_sha256
-                or round_record["baseline_package_sha256"] != package_sha256
+                or expected_hash != package_sha256
                 or (role == "incumbent" and round_record.get("incumbent_hotkey") != hotkey)
-                or (role == "reference" and round_record.get("incumbent_hotkey") is not None)):
+                or (role == "reference" and round_record.get("incumbent_hotkey") is None
+                    and round_record.get("reference_package_sha256") != package_sha256)):
                 raise ValueError("baseline upload differs from frozen round")
         elif role == "challenger":
             uploads = [row for row in self.backend.list_submissions(round_id)

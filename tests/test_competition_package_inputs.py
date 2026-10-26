@@ -70,6 +70,9 @@ def test_incumbent_week_resolves_only_the_reference_frozen_before_scoring():
             return {"incumbent_hotkey": "king", "baseline_package_sha256": "a" * 64,
                     "reference_package_sha256": "b" * 64}
 
+        def list_stages(self, _):
+            return [{"stage": "rerun", "entries": [{**reference, "role": "reference"}]}]
+
     storage = SimpleNamespace(package_for_submission=lambda upload: upload["package_object_key"].encode())
     incumbent = {"hotkey": "king", "package_sha256": "a" * 64,
                  "package_object_key": "sealed/king"}
@@ -79,6 +82,7 @@ def test_incumbent_week_resolves_only_the_reference_frozen_before_scoring():
     resolver = CompetitionPackageResolver(Backend(), storage, incumbent, reference)
     assert resolver.reference_package_for_round("week-2") == b"sealed/reference"
     assert resolver.reference_manifest_for_round("week-2") == {"entrypoint": "reference.cli:main"}
+    assert resolver({"round_id": "week-2", "stage": "rerun", **reference}) == b"sealed/reference"
     with pytest.raises(ValueError, match="reference upload differs"):
         CompetitionPackageResolver(Backend(), storage, incumbent, {
             **reference, "package_sha256": "c" * 64,

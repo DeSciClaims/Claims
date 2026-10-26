@@ -184,6 +184,9 @@ def test_rejected_claim_is_contested_and_can_enter_escalation():
 
 def test_gold_candidates_replay_from_frozen_final_receipts():
     class FrozenBackend:
+        def list_stages(self, _):
+            return [{"stage": "final", "entries": []}]
+
         def list_sample(self, _):
             return [{"stage": "screen", "paper_id": "unused"},
                     {"stage": "final", "paper_id": "paper-1"}]
