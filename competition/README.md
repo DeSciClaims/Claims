@@ -36,7 +36,9 @@ the durable bundle.
 requires a preverified SSH host key, stages bundle files with read-only modes under a
 separate OS owner, sends the scoped token on stdin, runs the guest harness with
 an empty environment as `claims-miner`, fetches bounded result/log bytes, and
-removes its job directory. The VM image must provide passwordless sudo only
+removes its job directory. Before staging, it checks the miner UID, exact
+`nftables` allowlist, and gateway hostname resolution; a missing or changed
+policy fails closed. The VM image must provide passwordless sudo only
 for the specified staging commands, a pinned runtime/wheelhouse, and a host
 firewall allowing the miner process to reach only the inference endpoint.
 The Targon Workloads API does not supply an SSH host-key fingerprint, so the

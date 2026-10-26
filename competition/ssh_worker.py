@@ -16,6 +16,7 @@ import re
 import shlex
 import subprocess
 import tarfile
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -44,6 +45,8 @@ class PinnedSshWorkerTransport:
     identity_file: Path
     known_hosts_file: Path
     inference_base_url: str
+    gateway_ip: str
+    gateway_port: int
     ssh_user: str = "ubuntu"
     guest_user: str = "claims-miner"
     guest_python: str = "/opt/claims-worker/venv/bin/python"
@@ -65,8 +68,15 @@ class PinnedSshWorkerTransport:
         for path in (self.guest_python, self.wheelhouse, self.remote_jobs_dir):
             if not path.startswith("/") or not re.fullmatch(r"/[A-Za-z0-9_./-]+", path) or ".." in path:
                 raise ValueError("worker VM path is unsafe")
-        if not self.inference_base_url.startswith("https://"):
+        parsed = urllib.parse.urlsplit(self.inference_base_url)
+        if parsed.scheme != "https" or not parsed.hostname or (parsed.port or 443) != self.gateway_port:
             raise ValueError("worker inference URL must use HTTPS")
+        try:
+            address = ipaddress.ip_address(self.gateway_ip)
+        except ValueError as exc:
+            raise ValueError("gateway IP is invalid") from exc
+        if address.version != 4 or not 1 <= self.gateway_port <= 65535:
+            raise ValueError("worker gateway must use a fixed IPv4 address and port")
         if (self.command_timeout_seconds < 1 or self.max_result_bytes < 1
             or self.max_log_bytes < 1):
             raise ValueError("invalid SSH worker output limits")
@@ -97,6 +107,37 @@ class PinnedSshWorkerTransport:
             raise RuntimeError(f"worker SSH operation failed with exit {result.returncode}")
         return result.stdout
 
+    def _check_egress(self, vm: WorkerVm) -> None:
+        """Fail closed unless the miner UID has precisely the expected rules."""
+        uid_text = self._ssh(vm, f"id -u {shlex.quote(self.guest_user)}").decode().strip()
+        if not re.fullmatch(r"[1-9][0-9]*", uid_text):
+            raise ValueError("worker miner UID is invalid")
+        rules = self._ssh(vm, "sudo -n nft list chain inet claims_worker output").decode()
+        lines = [re.sub(r"\s+# handle [0-9]+$", "", line.strip())
+                 for line in rules.splitlines()]
+        body = [line for line in lines
+                if line and line not in {"table inet claims_worker {", "chain output {", "}"}
+                and not line.startswith("type filter hook output priority ")]
+        expected = [
+            f"meta skuid {uid_text} ip daddr {self.gateway_ip} tcp dport {self.gateway_port} accept",
+            f"meta skuid {uid_text} reject",
+        ]
+        if body != expected or not any("policy accept;" in line for line in lines):
+            raise ValueError("worker egress policy differs from the reviewed allowlist")
+        hostname = urllib.parse.urlsplit(self.inference_base_url).hostname
+        if hostname is None:
+            raise ValueError("worker inference host is missing")
+        try:
+            resolved_ip = ipaddress.ip_address(hostname)
+        except ValueError:
+            answers = self._ssh(vm, f"getent ahostsv4 {shlex.quote(hostname)}").decode()
+            addresses = {line.split()[0] for line in answers.splitlines() if line.strip()}
+            if addresses != {self.gateway_ip}:
+                raise ValueError("worker gateway hostname does not resolve to its allowed IP")
+        else:
+            if str(resolved_ip) != self.gateway_ip:
+                raise ValueError("worker inference URL differs from its allowed IP")
+
     def run(
         self, vm: WorkerVm, *, job: dict[str, Any], package: bytes, pdf: bytes,
         inference_base_url: str, paper_key: str,
@@ -104,6 +145,7 @@ class PinnedSshWorkerTransport:
         if inference_base_url != self.inference_base_url or not paper_key:
             raise ValueError("worker gateway URL or scoped key differs from transport policy")
         bundle = build_worker_bundle(job=job, package=package, pdf=pdf)
+        self._check_egress(vm)
         job_id = str(job["job_id"])
         lease_token = str(job.get("lease_token", ""))
         if not lease_token:

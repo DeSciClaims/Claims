@@ -45,6 +45,19 @@ def test_pinned_ssh_transport_keeps_key_out_of_bundle_and_deletes_job_dir(tmp_pa
         assert "StrictHostKeyChecking=yes" in argv
         assert str(known_hosts) in " ".join(argv)
         assert "scoped-key" not in " ".join(argv)
+        if command == "id -u claims-miner":
+            return subprocess.CompletedProcess(argv, 0, b"995\n", b"")
+        if command == "sudo -n nft list chain inet claims_worker output":
+            return subprocess.CompletedProcess(argv, 0, (
+                "table inet claims_worker {\n"
+                "  chain output {\n"
+                "    type filter hook output priority filter; policy accept;\n"
+                "    meta skuid 995 ip daddr 192.0.2.20 tcp dport 443 accept\n"
+                "    meta skuid 995 reject\n"
+                "  }\n}\n"
+            ).encode(), b"")
+        if command == "getent ahostsv4 gateway.example":
+            return subprocess.CompletedProcess(argv, 0, b"192.0.2.20 STREAM gateway.example\n", b"")
         if "tar -xf" in command:
             with tarfile.open(fileobj=io.BytesIO(kwargs["input"]), mode="r:") as archive:
                 staged.extend(archive.getnames())
@@ -61,7 +74,8 @@ def test_pinned_ssh_transport_keeps_key_out_of_bundle_and_deletes_job_dir(tmp_pa
         return subprocess.CompletedProcess(argv, 0, stdout, b"")
 
     transport = PinnedSshWorkerTransport(
-        identity, known_hosts, "https://gateway.example/v1", invoke=invoke,
+        identity, known_hosts, "https://gateway.example/v1", "192.0.2.20", 443,
+        invoke=invoke,
     )
     result = transport.run(
         WorkerVm("wrk-example", "192.0.2.1", 20005, 1.0),
@@ -84,11 +98,25 @@ def test_ssh_transport_cleans_up_after_guest_failure(tmp_path):
     def invoke(argv, **kwargs):
         command = argv[-1]
         commands.append(command)
+        if command == "id -u claims-miner":
+            return subprocess.CompletedProcess(argv, 0, b"995\n", b"")
+        if command == "sudo -n nft list chain inet claims_worker output":
+            return subprocess.CompletedProcess(argv, 0, (
+                "table inet claims_worker {\n"
+                "  chain output {\n"
+                "    type filter hook output priority filter; policy accept;\n"
+                "    meta skuid 995 ip daddr 192.0.2.20 tcp dport 443 accept\n"
+                "    meta skuid 995 reject\n"
+                "  }\n}\n"
+            ).encode(), b"")
+        if command == "getent ahostsv4 gateway.example":
+            return subprocess.CompletedProcess(argv, 0, b"192.0.2.20 STREAM gateway.example\n", b"")
         code = 1 if "competition.worker_guest" in command else 0
         return subprocess.CompletedProcess(argv, code, b"", b"failure")
 
     transport = PinnedSshWorkerTransport(
-        identity, known_hosts, "https://gateway.example/v1", invoke=invoke,
+        identity, known_hosts, "https://gateway.example/v1", "192.0.2.20", 443,
+        invoke=invoke,
     )
     with pytest.raises(RuntimeError, match="exit 1"):
         transport.run(
@@ -104,4 +132,29 @@ def test_ssh_transport_requires_a_pinned_host_key_file(tmp_path):
     identity.write_text("test key", encoding="utf-8")
     known_hosts.write_text("", encoding="utf-8")
     with pytest.raises(ValueError, match="empty"):
-        PinnedSshWorkerTransport(identity, known_hosts, "https://gateway.example/v1")
+        PinnedSshWorkerTransport(identity, known_hosts, "https://gateway.example/v1", "192.0.2.20", 443)
+
+
+def test_transport_rejects_missing_firewall_before_staging(tmp_path):
+    identity, known_hosts = tmp_path / "id", tmp_path / "known_hosts"
+    identity.write_text("test key", encoding="utf-8")
+    known_hosts.write_text("pinned host", encoding="utf-8")
+    commands = []
+
+    def invoke(argv, **kwargs):
+        commands.append(argv[-1])
+        value = b"995\n" if argv[-1] == "id -u claims-miner" else b"table inet claims_worker {}\n"
+        return subprocess.CompletedProcess(argv, 0, value, b"")
+
+    package, pdf = b"package", b"%PDF"
+    transport = PinnedSshWorkerTransport(
+        identity, known_hosts, "https://gateway.example/v1", "192.0.2.20", 443,
+        invoke=invoke,
+    )
+    with pytest.raises(ValueError, match="egress policy"):
+        transport.run(
+            WorkerVm("wrk-example", "192.0.2.1", 20005, 1.0),
+            job=_job(package, pdf), package=package, pdf=pdf,
+            inference_base_url="https://gateway.example/v1", paper_key="scoped-key",
+        )
+    assert len(commands) == 2
