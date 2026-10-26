@@ -1,7 +1,7 @@
 import pytest
 from validator.agent_v1.adjudication_passes import StaticAdjudicationPass
 
-from competition.evaluation_policy import FrozenEvaluationPolicy
+from competition.evaluation_policy import FrozenEvaluationPolicy, judge_runtime_config
 from competition.decision_router import PROMPT_SHA256
 from competition.publication import canonical_sha256
 
@@ -10,8 +10,22 @@ ROUTING = {
     "provider": "openai", "model": "gpt-6-luna", "prompt_sha256": PROMPT_SHA256,
     "prescreen_confidence_threshold": 0.8, "screen_confidence_threshold": 0.9,
 }
-CONFIGURATION = {"decision_routing": ROUTING, "judges": ["J1", "J2"]}
-PANELS = {"J1": (object(), object()), "J2": (object(), object())}
+PANELS = {
+    judge_id: tuple(StaticAdjudicationPass(
+        f"{judge_id}-{index}", f"profile-{judge_id}", f"model-{judge_id}", {},
+    ) for index in (1, 2))
+    for judge_id in ("J1", "J2")
+}
+TIEBREAK = StaticAdjudicationPass(
+    "tie", "profile", "model", {}, default_disposition="accepted_improvement",
+)
+
+
+def _configuration(tiebreak=None):
+    return {"decision_routing": ROUTING, **judge_runtime_config(PANELS, tiebreak)}
+
+
+CONFIGURATION = _configuration()
 
 
 def test_stage_factory_freezes_routing_and_never_uses_decisions_in_final(monkeypatch):
@@ -67,14 +81,12 @@ def test_routing_settings_must_match_frozen_configuration():
 
 
 def test_policy_uses_its_frozen_tiebreak_judge_for_gold_audit():
-    tiebreak = StaticAdjudicationPass(
-        "tie", "profile", "model", {}, default_disposition="accepted_improvement",
-    )
+    configuration = _configuration(TIEBREAK)
     policy = FrozenEvaluationPolicy(
-        round_id="week2", configuration_sha256=canonical_sha256(CONFIGURATION),
-        configuration=CONFIGURATION, adjudication_passes_by_judge=PANELS,
+        round_id="week2", configuration_sha256=canonical_sha256(configuration),
+        configuration=configuration, adjudication_passes_by_judge=PANELS,
         source_context_for_paper=lambda _: {}, decision_api_key="private-key",
-        tiebreak_pass=tiebreak,
+        tiebreak_pass=TIEBREAK,
     )
     sealed_case = {
         "case_id": "gold-1", "paper_id": "paper-1", "challenger_hotkey": "challenger",
@@ -83,3 +95,39 @@ def test_policy_uses_its_frozen_tiebreak_judge_for_gold_audit():
                         "source_span_ids": ["span-1"], "claim_side": "incumbent"},
     }
     assert policy.judge_known_answer(sealed_case)["choice"] == "incumbent"
+
+
+def test_policy_rejects_substituted_judge_after_freeze():
+    policy = FrozenEvaluationPolicy(
+        round_id="week2", configuration_sha256=canonical_sha256(CONFIGURATION),
+        configuration=CONFIGURATION, adjudication_passes_by_judge=PANELS,
+        source_context_for_paper=lambda _: {}, decision_api_key="private-key",
+    )
+    substitute = StaticAdjudicationPass("J2-1", "profile-J2", "other-model", {})
+    PANELS["J2"] = (substitute, PANELS["J2"][1])
+    try:
+        with pytest.raises(ValueError, match="judge runtime"):
+            policy.evaluate_for_stage("final")(
+                stage="final", paper_id="paper-1", judge_id="J2",
+            )
+    finally:
+        PANELS["J2"] = (StaticAdjudicationPass(
+            "J2-1", "profile-J2", "model-J2", {},
+        ), PANELS["J2"][1])
+
+
+def test_pass_ids_alone_do_not_make_two_distinct_judges():
+    same_model_panels = {
+        "J1": PANELS["J1"],
+        "J2": tuple(StaticAdjudicationPass(
+            f"J2-{index}", "profile-J1", "model-J1", {},
+        ) for index in (1, 2)),
+    }
+    configuration = {"decision_routing": ROUTING,
+                     **judge_runtime_config(same_model_panels, None)}
+    with pytest.raises(ValueError, match="distinct"):
+        FrozenEvaluationPolicy(
+            round_id="week2", configuration_sha256=canonical_sha256(configuration),
+            configuration=configuration, adjudication_passes_by_judge=same_model_panels,
+            source_context_for_paper=lambda _: {}, decision_api_key="private-key",
+        )

@@ -15,6 +15,41 @@ from .pair_evaluator import WeeklyPaperEvaluation, evaluate_weekly_paper
 from .publication import canonical_sha256
 
 
+def _pass_descriptor(adjudication_pass: AdjudicationPass) -> dict[str, Any]:
+    """Public, credential-free identity of the configured judge runtime."""
+    fields = ("pass_id", "adjudication_profile_id", "model_runtime_id", "model",
+              "api_base", "temperature", "max_tokens")
+    descriptor = {
+        "implementation": (type(adjudication_pass).__module__ + "."
+                           + type(adjudication_pass).__qualname__),
+    }
+    for key in fields:
+        value = getattr(adjudication_pass, key, None)
+        if value is not None:
+            if not isinstance(value, (str, int, float, bool)):
+                raise ValueError("judge runtime descriptor contains an unsupported value")
+            descriptor[key] = value
+    if not all(descriptor.get(key) for key in fields[:3]):
+        raise ValueError("judge pass has no stable runtime identity")
+    return descriptor
+
+
+def judge_runtime_config(
+    panels: Mapping[str, tuple[AdjudicationPass, AdjudicationPass]],
+    tiebreak_pass: AdjudicationPass | None,
+) -> dict[str, Any]:
+    """Descriptor to include in the hashed weekly rules before intake."""
+    if set(panels) != {"J1", "J2"} or any(len(passes) != 2 for passes in panels.values()):
+        raise ValueError("J1 and J2 each need two passes")
+    return {
+        "judge_panels": {
+            judge_id: [_pass_descriptor(p) for p in panels[judge_id]]
+            for judge_id in ("J1", "J2")
+        },
+        "tiebreak_pass": _pass_descriptor(tiebreak_pass) if tiebreak_pass else None,
+    }
+
+
 @dataclass(frozen=True)
 class FrozenEvaluationPolicy:
     round_id: str
@@ -36,9 +71,21 @@ class FrozenEvaluationPolicy:
             or not 0.5 <= self.prescreen_threshold <= 1
             or not 0.5 <= self.screen_threshold <= 1):
             raise ValueError("weekly evaluation policy is incomplete")
+        self._verify_frozen_runtime()
+
+    def _verify_frozen_runtime(self) -> None:
+        frozen = judge_runtime_config(self.adjudication_passes_by_judge, self.tiebreak_pass)
+        panels = frozen["judge_panels"]
         if (canonical_sha256(self.configuration) != self.configuration_sha256
-            or self.configuration.get("decision_routing") != self.public_routing_config()):
-            raise ValueError("Decision routing differs from frozen weekly configuration")
+            or self.configuration.get("decision_routing") != self.public_routing_config()
+            or any(self.configuration.get(key) != value for key, value in frozen.items())):
+            raise ValueError("judge runtime or Decision routing differs from frozen weekly configuration")
+        def model_signature(judge_id: str) -> tuple[tuple[Any, Any, Any], ...]:
+            return tuple((row.get("model"), row["adjudication_profile_id"],
+                          row["model_runtime_id"]) for row in panels[judge_id])
+
+        if model_signature("J1") == model_signature("J2"):
+            raise ValueError("J1 and J2 must be distinct frozen judge configurations")
 
     def public_routing_config(self) -> dict[str, object]:
         """Fields to bind into the round's frozen configuration before intake."""
@@ -48,7 +95,11 @@ class FrozenEvaluationPolicy:
             "screen_confidence_threshold": self.screen_threshold,
         }
 
+    def public_judge_config(self) -> dict[str, Any]:
+        return judge_runtime_config(self.adjudication_passes_by_judge, self.tiebreak_pass)
+
     def judge_known_answer(self, sealed_case: Mapping[str, Any]) -> dict[str, str]:
+        self._verify_frozen_runtime()
         if self.tiebreak_pass is None:
             raise ValueError("known-answer audit needs the frozen tiebreak judge")
         return judge_known_answer_case(sealed_case, tiebreak_pass=self.tiebreak_pass)
@@ -68,6 +119,7 @@ class FrozenEvaluationPolicy:
             )
 
         def evaluate(**kwargs) -> WeeklyPaperEvaluation:
+            self._verify_frozen_runtime()
             if kwargs.get("stage") != stage:
                 raise ValueError("evaluation stage differs from frozen policy")
             paper_id = kwargs.get("paper_id")
