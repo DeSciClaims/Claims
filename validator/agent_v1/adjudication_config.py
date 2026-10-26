@@ -42,6 +42,9 @@ class SilverAdjudicationConfig:
     model_a: str = "gpt-5"
     model_b: str = "gpt-5-mini"
     tiebreak_model: str = ""
+    provider_slug_a: str = ""
+    provider_slug_b: str = ""
+    provider_slug_tiebreak: str = ""
     cli_command_a: str = ""
     cli_command_b: str = ""
     cli_tiebreak_command: str = ""
@@ -71,6 +74,9 @@ class SilverAdjudicationConfig:
             model_a=os.getenv("CLAIMS_SILVER_ADJUDICATION_MODEL_A", "gpt-5"),
             model_b=os.getenv("CLAIMS_SILVER_ADJUDICATION_MODEL_B", "gpt-5-mini"),
             tiebreak_model=os.getenv("CLAIMS_SILVER_ADJUDICATION_TIEBREAK_MODEL", ""),
+            provider_slug_a=os.getenv("CLAIMS_SILVER_PROVIDER_A", ""),
+            provider_slug_b=os.getenv("CLAIMS_SILVER_PROVIDER_B", ""),
+            provider_slug_tiebreak=os.getenv("CLAIMS_SILVER_PROVIDER_TIEBREAK", ""),
             cli_command_a=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_COMMAND_A", ""),
             cli_command_b=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_COMMAND_B", ""),
             cli_tiebreak_command=os.getenv("CLAIMS_SILVER_ADJUDICATION_CLI_TIEBREAK_COMMAND", ""),
@@ -181,6 +187,7 @@ def _openai_compatible_passes(
             model=model_a,
             api_key=api_key,
             api_base=config.api_base,
+            provider_slug=config.provider_slug_a,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
             timeout_seconds=config.timeout_seconds,
@@ -194,6 +201,7 @@ def _openai_compatible_passes(
             model=model_b,
             api_key=api_key,
             api_base=config.api_base,
+            provider_slug=config.provider_slug_b,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
             timeout_seconds=config.timeout_seconds,
@@ -211,6 +219,7 @@ def _openai_compatible_passes(
             model=tiebreak_model,
             api_key=api_key,
             api_base=config.api_base,
+            provider_slug=config.provider_slug_tiebreak,
             temperature=config.temperature,
             max_tokens=config.max_tokens,
             timeout_seconds=config.timeout_seconds,

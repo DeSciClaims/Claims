@@ -136,6 +136,12 @@ The frozen configuration also hashes the competition policy, stage, Gold,
 copy, weight, and worker source modules. The controller checks that fingerprint
 before scoring; the worker checks it before leasing a job. A midweek code
 change therefore stops that round until the pinned build is restored.
+Pilot judge providers are set with CLAIMS_JUDGE_J1_A_PROVIDER,
+CLAIMS_JUDGE_J1_B_PROVIDER, CLAIMS_JUDGE_J2_A_PROVIDER,
+CLAIMS_JUDGE_J2_B_PROVIDER, and CLAIMS_JUDGE_TIEBREAK_PROVIDER. Round setup
+requires all five pins. Each OpenRouter request uses only its frozen provider
+slug and disables provider fallback. The pins must be chosen after checking
+live model endpoints and cost; placeholder slugs are only valid for tests.
 For the final stage, it now recomputes each finalist's output-copy verdict
 from the frozen private Silver receipt and paired score grid. The 85% accepted
 unit overlap and two-standard-error gain rule is applied against the baseline,

@@ -21,7 +21,7 @@ def _pass_descriptor(adjudication_pass: AdjudicationPass) -> dict[str, Any]:
     """Public, credential-free identity of the configured judge runtime."""
     fields = ("pass_id", "adjudication_profile_id", "model_runtime_id", "model",
               "api_base", "temperature", "max_tokens", "timeout_seconds",
-              "num_retries", "prompt_mode")
+              "num_retries", "prompt_mode", "provider_slug")
     descriptor = {
         "implementation": (type(adjudication_pass).__module__ + "."
                            + type(adjudication_pass).__qualname__),

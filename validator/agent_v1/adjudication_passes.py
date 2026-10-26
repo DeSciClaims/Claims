@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterable
 from contextlib import contextmanager
@@ -97,6 +98,7 @@ class OpenAICompatibleAdjudicationPass:
     model: str
     api_key: str = field(repr=False)
     api_base: str = "https://api.openai.com/v1"
+    provider_slug: str = ""
     temperature: float = 0.0
     max_tokens: int = 8192
     timeout_seconds: float = 90.0
@@ -232,15 +234,24 @@ class OpenAICompatibleAdjudicationPass:
         timeout_seconds: float | None = None,
     ) -> tuple[str, dict[str, Any]]:
         endpoint = f"{self.api_base.rstrip('/')}/chat/completions"
-        request_body = json.dumps(
-            {
-                "model": self.model,
-                "messages": messages,
-                "temperature": self.temperature,
-                "max_tokens": self.max_tokens,
-                "response_format": {"type": "json_object"},
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+        if self.provider_slug:
+            if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,127}", self.provider_slug)
+                or urllib.parse.urlsplit(self.api_base).hostname not in {
+                    "openrouter.ai", "eu.openrouter.ai",
+                }):
+                raise ValueError("provider pin requires an OpenRouter endpoint and slug")
+            payload["provider"] = {
+                "order": [self.provider_slug], "only": [self.provider_slug],
+                "allow_fallbacks": False,
             }
-        ).encode("utf-8")
+        request_body = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
             endpoint,
             data=request_body,

@@ -61,6 +61,10 @@ def test_pilot_setup_checks_real_judges_and_sealed_baseline_before_intake(
     tmp_path, monkeypatch,
 ):
     monkeypatch.setenv("OPENROUTER_API_KEY", "pilot-test-key")
+    for key in ("CLAIMS_JUDGE_J1_A_PROVIDER", "CLAIMS_JUDGE_J1_B_PROVIDER",
+                "CLAIMS_JUDGE_J2_A_PROVIDER", "CLAIMS_JUDGE_J2_B_PROVIDER",
+                "CLAIMS_JUDGE_TIEBREAK_PROVIDER"):
+        monkeypatch.setenv(key, "pinned-provider")
     worker_policy = {
         "allowed_models": ["qwen/qwen3-32b"],
         "published_token_ceiling": 100_000,

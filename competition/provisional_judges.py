@@ -6,7 +6,10 @@ resolved provider endpoints before intake opens.
 
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import replace
+from typing import Any, Mapping
 
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig
 from validator.agent_v1.adjudication_runner import AdjudicationPass
@@ -26,6 +29,25 @@ PROVISIONAL_MODEL_ALLOWLIST = frozenset({
 })
 
 
+def require_provisional_provider_pins(configuration: Mapping[str, Any]) -> None:
+    """Reject a paid pilot whose OpenRouter endpoint could silently change."""
+    panels = configuration.get("judge_panels")
+    tie = configuration.get("tiebreak_pass")
+    if (not isinstance(panels, dict) or set(panels) != {"J1", "J2"}
+        or any(not isinstance(panels[judge], list) or len(panels[judge]) != 2
+               for judge in ("J1", "J2"))
+        or not isinstance(tie, dict)):
+        raise ValueError("pilot judge provider configuration is incomplete")
+    descriptors = [*panels["J1"], *panels["J2"], tie]
+    if any(not isinstance(descriptor, dict)
+           or descriptor.get("api_base") != "https://openrouter.ai/api/v1"
+           or not isinstance(descriptor.get("provider_slug"), str)
+           or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,127}",
+                               descriptor["provider_slug"])
+           for descriptor in descriptors):
+        raise ValueError("pilot judges need pinned OpenRouter providers before intake")
+
+
 def provisional_judge_configs() -> tuple[SilverAdjudicationConfig, SilverAdjudicationConfig]:
     """Return the named pilot configurations without reading a credential."""
     j1 = SilverAdjudicationConfig(
@@ -34,12 +56,17 @@ def provisional_judge_configs() -> tuple[SilverAdjudicationConfig, SilverAdjudic
         model_a=PROVISIONAL_JUDGE_MODELS["J1"][0],
         model_b=PROVISIONAL_JUDGE_MODELS["J1"][1],
         tiebreak_model=PROVISIONAL_TIEBREAK_MODEL,
+        provider_slug_a=os.getenv("CLAIMS_JUDGE_J1_A_PROVIDER", ""),
+        provider_slug_b=os.getenv("CLAIMS_JUDGE_J1_B_PROVIDER", ""),
+        provider_slug_tiebreak=os.getenv("CLAIMS_JUDGE_TIEBREAK_PROVIDER", ""),
         temperature=1.0, max_tokens=8192, timeout_seconds=180.0,
         max_in_flight=16,
     )
     return j1, replace(
         j1, model_a=PROVISIONAL_JUDGE_MODELS["J2"][0],
         model_b=PROVISIONAL_JUDGE_MODELS["J2"][1],
+        provider_slug_a=os.getenv("CLAIMS_JUDGE_J2_A_PROVIDER", ""),
+        provider_slug_b=os.getenv("CLAIMS_JUDGE_J2_B_PROVIDER", ""),
     )
 
 

@@ -17,6 +17,7 @@ from .hippius import HippiusPrivateStorage, hippius_s3_client
 from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
 from .pilot_worker_factory import FrozenWorkerRules, _required, _round_file
+from .provisional_judges import require_provisional_provider_pins
 from .weekly_automation import FinalAudit
 
 
@@ -122,6 +123,7 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
     configuration = document.get("configuration")
     if not isinstance(configuration, dict):
         raise ValueError("trusted round file has no frozen configuration")
+    require_provisional_provider_pins(configuration)
     rules = FrozenWorkerRules(round_id, str(row["configuration_sha256"]), configuration)
     if document.get("configuration_sha256") != rules.configuration_sha256:
         raise ValueError("trusted round file differs from frozen configuration")

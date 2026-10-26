@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any, Mapping
 
 from .controller_inputs import build_provisional_evaluation_policy
+from .provisional_judges import require_provisional_provider_pins
 from .publication import canonical_sha256
 
 
@@ -170,6 +171,7 @@ def prepare_pilot_round(
     )
     if policy.configuration != configuration:
         raise ValueError("pilot judge runtime differs from proposed frozen rules")
+    require_provisional_provider_pins(configuration)
     for upload in (draft.get("baseline_upload"), draft.get("reference_upload")):
         if upload is not None:
             storage.package_for_submission(upload)

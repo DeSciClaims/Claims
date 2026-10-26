@@ -71,7 +71,14 @@ def test_controller_factory_rejects_runtime_that_differs_from_frozen_rules(monke
                          "prescreen_confidence_threshold": 0.8,
                          "screen_confidence_threshold": 0.9,
                          "api_base": "https://api.openai.com/v1",
-                     }}
+                     },
+                     "judge_panels": {
+                         judge: [{"api_base": "https://openrouter.ai/api/v1",
+                                  "provider_slug": "pinned-provider"} for _ in range(2)]
+                         for judge in ("J1", "J2")
+                     },
+                     "tiebreak_pass": {"api_base": "https://openrouter.ai/api/v1",
+                                       "provider_slug": "pinned-provider"}}
     digest = canonical_sha256(configuration)
     document = {"round_id": "week1", "configuration": configuration,
                 "configuration_sha256": digest,
@@ -122,6 +129,10 @@ def test_controller_factory_rejects_runtime_that_differs_from_frozen_rules(monke
 
 def test_controller_factory_reconstructs_real_provisional_judges(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "pilot-test-key")
+    for key in ("CLAIMS_JUDGE_J1_A_PROVIDER", "CLAIMS_JUDGE_J1_B_PROVIDER",
+                "CLAIMS_JUDGE_J2_A_PROVIDER", "CLAIMS_JUDGE_J2_B_PROVIDER",
+                "CLAIMS_JUDGE_TIEBREAK_PROVIDER"):
+        monkeypatch.setenv(key, "pinned-provider")
     worker_policy = {
         "allowed_models": ["qwen/qwen3-32b"],
         "published_token_ceiling": 100_000,
