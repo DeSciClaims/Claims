@@ -57,7 +57,15 @@ class ReplayRuntimeBackend:
                   if row["stage"] == stage and row["paper_id"] == paper_id]
         if len(sample) != 1:
             raise ValueError("replay Bronze paper is outside the local sample")
-        result = self.inputs.bronze(round_id, stage, paper_id)
+        source_stage = stage
+        if stage == "rerun":
+            receipt = self.store.list_stages(round_id)[-1]
+            if receipt["stage"] != "rerun" or receipt.get("source_stage") not in {
+                "prescreen", "screen", "final",
+            }:
+                raise ValueError("replay rerun has no frozen source stage")
+            source_stage = receipt["source_stage"]
+        result = self.inputs.bronze(round_id, source_stage, paper_id)
         if (result.get("paper_id") != paper_id
             or result.get("source_sha256") != sample[0]["source_sha256"]
             or not isinstance(result.get("artifact"), dict)

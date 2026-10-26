@@ -128,3 +128,76 @@ def test_replay_tick_scores_completed_papers_and_waits_for_independent_final_rev
     assert result["scored_papers_this_tick"] == 1
     final = tick_replay("round-2", **inputs)
     assert final["status"] == "waiting_for_scores" and final["expected"] == 3
+
+
+def test_replay_starts_reference_rerun_from_its_own_failed_incumbent(tmp_path):
+    snapshot, plan = _screen_inputs()
+    snapshot["reference_package_sha256"] = "a" * 64
+    store = ReplayStore(tmp_path / "replay.sqlite")
+    store.initialize(snapshot, plan)
+    for _ in plan.jobs:
+        job = store.claim_job("round-2", worker_id="replay", lease_seconds=60)
+        status = "invalid_output" if job["hotkey"] == "incumbent" else "completed"
+        store.complete_job(
+            job["job_id"], worker_id="replay", lease_token=job["lease_token"],
+            result={"status": status,
+                    "artifact": {"paper": {"paper_id": "screen-paper"}} if status == "completed" else None,
+                    "inference_cost_usd": 0.1, "prompt_and_completion_tokens": 100},
+            log_object_key="logs/replay",
+        )
+    reference = {"hotkey": "reference", "package_sha256": "a" * 64,
+                 "team_id": "team-reference"}
+    result = tick_replay(
+        "round-2", backend=store,
+        bronze_for_paper=lambda stage, paper_id: {"paper": {"paper_id": paper_id}},
+        evaluate_for_stage=lambda stage: _evaluation,
+        reference_for_round=lambda round_id: reference,
+    )
+    assert result["status"] == "reference_rerun_started"
+    assert result["source_stage"] == "screen"
+    assert [row["stage"] for row in store.list_stages("round-2")] == ["screen", "rerun"]
+    assert [(row["stage"], row["paper_id"], row["judge_id"])
+            for row in store.list_sample("round-2") if row["stage"] == "rerun"] == [
+                ("rerun", "screen-paper", "J1"),
+            ]
+    restarted = ReplayStore(store.path)
+    restarted.initialize(snapshot, plan)
+    job = restarted.claim_job("round-2", worker_id="replay", lease_seconds=60)
+    assert job["stage"] == "rerun" and job["hotkey"] == "reference"
+    for index in range(len(plan.entries)):
+        if index:
+            job = restarted.claim_job("round-2", worker_id="replay", lease_seconds=60)
+            assert job is not None
+        restarted.complete_job(
+            job["job_id"], worker_id="replay", lease_token=job["lease_token"],
+            result={"status": "completed", "artifact": {"paper": {"paper_id": "screen-paper"}},
+                    "inference_cost_usd": 0.1, "prompt_and_completion_tokens": 100},
+            log_object_key="logs/rerun",
+        )
+
+    def evaluate_reference(**kwargs):
+        assert kwargs["stage"] == "screen"
+        baseline_hotkey = kwargs["baseline_hotkey"]
+        return SimpleNamespace(
+            pair_rows=tuple({
+                "paper_id": "screen-paper", "challenger_hotkey": hotkey,
+                "baseline_hotkey": baseline_hotkey,
+                "challenger_score": 0.7, "baseline_score": 0.5,
+                "infrastructure_fault": False, "details_public": {},
+            } for hotkey in kwargs["challenger_hotkeys"]),
+            pipeline=SimpleNamespace(
+                scores=[SimpleNamespace(miner_id=hotkey, score=0.7)
+                        for hotkey in kwargs["challenger_hotkeys"]]
+                       + [SimpleNamespace(miner_id=baseline_hotkey, score=0.5)],
+                silver_record=SimpleNamespace(model_dump=lambda **_: {"id": "silver-rerun"}),
+                diff_cases=[], adjudication_consensus=[],
+            ),
+        )
+
+    advanced = tick_replay(
+        "round-2", backend=restarted,
+        bronze_for_paper=lambda stage, paper_id: {"paper": {"paper_id": paper_id}},
+        evaluate_for_stage=lambda stage: evaluate_reference,
+    )
+    assert advanced["status"] == "started" and advanced["stage"] == "final"
+    assert restarted.list_stages("round-2")[-1]["entries"][0]["hotkey"] == "reference"

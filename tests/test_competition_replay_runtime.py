@@ -59,3 +59,44 @@ def test_replay_runtime_rejects_changed_local_configuration(tmp_path):
         ReplayRuntimeBackend(
             store, reader, changed, (PaperRecord("paper-1", "e" * 64),),
         )
+
+
+def test_local_reference_rerun_reads_original_stage_bronze():
+    snapshot, _ = _inputs()
+    snapshot["sample"][0]["stage"] = "screen"
+    requests = []
+
+    def respond(request, *, timeout):
+        requests.append(request.full_url)
+        assert timeout == 30
+        return io.BytesIO(json.dumps({
+            "paper_id": "paper-1", "source_sha256": "e" * 64,
+            "source_url": "https://papers.example/paper-1.pdf",
+            "artifact": {"paper": {"paper_id": "paper-1"}},
+        }).encode())
+
+    class LocalStore:
+        def get_round(self, round_id):
+            return {"configuration_sha256": snapshot["configuration_sha256"],
+                    "network": snapshot["network"]}
+
+        def list_sample(self, round_id):
+            return [*snapshot["sample"],
+                    {**snapshot["sample"][0], "stage": "rerun"}]
+
+        def list_stages(self, round_id):
+            return [{"stage": "screen"},
+                    {"stage": "rerun", "source_stage": "screen"}]
+
+    backend = ReplayRuntimeBackend(
+        LocalStore(),
+        CompetitionReplayInputs("https://backend.example", "replay-only", open_request=respond),
+        snapshot, (PaperRecord("paper-1", "e" * 64),),
+    )
+    assert backend.get_bronze_source(
+        "round-1", stage="rerun", paper_id="paper-1",
+        reference_release_id="release-1",
+    )["source_sha256"] == "e" * 64
+    assert requests == [
+        "https://backend.example/internal/competition/replay/rounds/round-1/bronze/screen/paper-1",
+    ]

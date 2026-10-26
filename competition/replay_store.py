@@ -15,8 +15,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
+from .failure_policy import incumbent_failure_summary
 from .jobs import build_jobs
 from .publication import canonical_sha256
+from .reference_rerun import reference_rerun_plan
 from .replay_plan import ReplayInitialPlan
 
 
@@ -130,7 +132,8 @@ class ReplayStore:
                     or existing["input_sha256"] != digest
                     or existing["configuration_sha256"] != snapshot["configuration_sha256"]
                     or existing["network"] != snapshot["network"]
-                    or json.loads(existing["sample_json"]) != sample
+                    or [row for row in json.loads(existing["sample_json"])
+                        if row["stage"] != "rerun"] != sample
                     or json.loads(existing["stage_json"]) != stage):
                     raise ValueError("replay store is already bound to different inputs")
                 # Databases created before the multi-stage ledger already have
@@ -213,7 +216,8 @@ class ReplayStore:
                 raise ValueError("replay stage was already frozen differently")
             return existing
         prior = ledger[-1]
-        if ((prior["stage"], stage) not in {("prescreen", "screen"), ("screen", "final")}
+        source_stage = prior.get("source_stage") if prior["stage"] == "rerun" else prior["stage"]
+        if ((source_stage, stage) not in {("prescreen", "screen"), ("screen", "final")}
             or stage not in {row["stage"] for row in self.list_sample(round_id)}):
             raise ValueError("replay stage is not next in the released sample")
         previous = prior["entries"]
@@ -250,6 +254,81 @@ class ReplayStore:
                 (round_id, len(ledger), stage, _json(receipt)),
             )
         return receipt
+
+    def start_reference_rerun(
+        self, round_id: str, reference: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Freeze a local reference comparison after the replay's own failure audit."""
+        round_record = self.get_round(round_id)
+        ledger = self.list_stages(round_id)
+        if not ledger:
+            raise ValueError("replay reference rerun has no source stage")
+        prior = ledger[-1]
+        if prior["stage"] == "rerun":
+            baseline = prior["entries"][0]
+            if any(baseline[key] != reference.get(key)
+                   for key in ("hotkey", "package_sha256", "team_id")):
+                raise ValueError("replay reference rerun already differs")
+            return {"stage": "rerun", "source_stage": prior["source_stage"]}
+        stage = prior["stage"]
+        if stage not in {"prescreen", "screen", "final"}:
+            raise ValueError("replay reference rerun has no incumbent source stage")
+        papers = [row for row in self.list_sample(round_id) if row["stage"] == stage]
+        baseline = [row for row in prior["entries"] if row["role"] == "incumbent"]
+        if len(baseline) != 1:
+            raise ValueError("replay reference rerun has no unique incumbent")
+        pairs = self.list_stage_pairs(round_id, stage)
+        excluded = {row["paper_id"] for row in pairs if row["infrastructure_fault"]}
+        failure = incumbent_failure_summary(
+            round_id, stage=stage, paper_ids=[row["paper_id"] for row in papers],
+            excluded_infrastructure_papers=excluded,
+            incumbent_hotkey=baseline[0]["hotkey"], backend=self,
+        )
+        plan = reference_rerun_plan(
+            failure=failure, round_record=round_record, source_receipt=prior,
+            sample=self.list_sample(round_id), reference=reference,
+        )
+        expected_jobs = len(papers) * len(prior["entries"])
+        expected_pairs = len(papers) * (len(prior["entries"]) - 1)
+        receipt = {"stage": "rerun", "source_stage": stage,
+                   "entries": list(plan.entries)}
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            latest = conn.execute(
+                "SELECT stage FROM replay_stages WHERE round_id=? ORDER BY ordinal DESC LIMIT 1",
+                (round_id,),
+            ).fetchone()
+            jobs = conn.execute(
+                "SELECT COUNT(*) AS n, SUM(status='completed') AS complete FROM replay_jobs "
+                "WHERE round_id=? AND stage=?", (round_id, stage),
+            ).fetchone()
+            scores = conn.execute(
+                "SELECT COUNT(*) AS n FROM replay_scores WHERE job_id IN "
+                "(SELECT job_id FROM replay_jobs WHERE round_id=? AND stage=?)",
+                (round_id, stage),
+            ).fetchone()["n"]
+            pair_count = conn.execute(
+                "SELECT COUNT(*) AS n FROM replay_pairs WHERE round_id=? AND stage=?",
+                (round_id, stage),
+            ).fetchone()["n"]
+            if (latest is None or latest["stage"] != stage
+                or jobs["n"] != expected_jobs or jobs["complete"] != expected_jobs
+                or scores != expected_jobs or pair_count != expected_pairs):
+                raise ValueError("replay failed incumbent stage is not fully scored")
+            original = json.loads(conn.execute(
+                "SELECT sample_json FROM replay_round WHERE round_id=?", (round_id,),
+            ).fetchone()["sample_json"])
+            if any(row["stage"] == "rerun" for row in original):
+                raise ValueError("replay already has a reference rerun sample")
+            conn.execute(
+                "UPDATE replay_round SET sample_json=? WHERE round_id=?",
+                (_json(original + list(plan.papers)), round_id),
+            )
+            conn.execute(
+                "INSERT INTO replay_stages VALUES (?,?,?,?)",
+                (round_id, len(ledger), "rerun", _json(receipt)),
+            )
+        return {"stage": "rerun", "source_stage": stage}
 
     def enqueue_jobs(self, round_id: str, jobs: list[dict[str, Any]]) -> dict[str, Any]:
         ledger = self.list_stages(round_id)
