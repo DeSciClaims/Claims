@@ -81,14 +81,15 @@ def contested_claims_for_paper(
             if len(covered_by) != 1:
                 continue
             tiebreak = "challenger" if challenger_hotkey in covered_by else "incumbent"
-            for adjudication_case_id in sorted(set(unit.adjudication_case_ids) & splits.keys()):
-                diff = diff_by_id.get(adjudication_case_id)
+            relevant_cases = []
+            for case_id in sorted(set(unit.adjudication_case_ids) & splits.keys()):
+                diff = diff_by_id.get(case_id)
                 if diff is None:
                     raise ValueError("split Silver unit has no diff case")
-                # A Bronze dispute raised by an unrelated finalist is not a
-                # dispute between this pair, even if canonical units merged.
-                if diff.miner_id not in {challenger_hotkey, incumbent["hotkey"]}:
-                    continue
+                if diff.miner_id in {challenger_hotkey, incumbent["hotkey"]}:
+                    relevant_cases.append(case_id)
+            for adjudication_case_id in relevant_cases[:1]:
+                diff = diff_by_id[adjudication_case_id]
                 digest = hashlib.sha256(
                     "\0".join((round_id, paper_id, challenger_hotkey,
                                adjudication_case_id, unit.silver_unit_id)).encode()
