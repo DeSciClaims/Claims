@@ -84,6 +84,22 @@ class CompetitionBackend:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/sample"
         return self._request("GET", path)
 
+    def list_paper_pool(self, round_id: str, *, reference_release_id: str) -> list[dict[str, Any]]:
+        path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/paper-pool?reference_release_id="
+                + urllib.parse.quote(reference_release_id, safe=""))
+        return self._request("GET", path)
+
+    def get_bronze_source(
+        self, round_id: str, *, stage: str, paper_id: str,
+        reference_release_id: str,
+    ) -> dict[str, Any]:
+        path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/bronze/" + urllib.parse.quote(stage, safe="")
+                + "/" + urllib.parse.quote(paper_id, safe="")
+                + "?reference_release_id=" + urllib.parse.quote(reference_release_id, safe=""))
+        return self._request("GET", path)
+
     def mark_duplicates(self, round_id: str, verdicts: list[dict[str, Any]]) -> dict[str, Any]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/duplicates"
         return self._request("POST", path, {"verdicts": verdicts})
