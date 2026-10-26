@@ -225,8 +225,9 @@ For an independent replay, configure a distinct
 `CLAIMS_COMPETITION_REPLAY_TOKEN` on the backend. A second validator can read
 `GET /internal/competition/replay/rounds/{round_id}/snapshot` only after the
 sample release, plus `/bronze/{stage}/{paper_id}` for the same pinned Bronze
-artifact and PDF URL. The snapshot contains the selected sealed-upload object
-keys but no private Gold seed or answers. The replay principal cannot call
+artifact and PDF URL. The snapshot contains every qualified locked upload,
+including duplicate exclusions, with commitment metadata and sealed object
+keys, but no private Gold seed or answers. The replay principal cannot call
 primary-round mutation routes and needs separate read-only Hippius access to
 fetch package and PDF bytes. `CompetitionReplayInputs` validates the public
 rules hash and challenger package links before use. Independent execution,

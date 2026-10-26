@@ -55,6 +55,10 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
             or not row["hotkey"] or not isinstance(row.get("package_object_key"), str)
             or not row["package_object_key"]
             or not _SHA256.fullmatch(str(row.get("package_sha256", "")))
+            or not _SHA256.fullmatch(str(row.get("salt_hex", "")))
+            or not _SHA256.fullmatch(str(row.get("commitment", "")))
+            or type(row.get("commit_block")) is not int or row["commit_block"] < 0
+            or row.get("status") not in {"accepted", "duplicate", "evaluating", "finished"}
             or not isinstance(row.get("manifest"), dict)
             or type(row.get("package_size_bytes")) is not int
             or row["package_size_bytes"] < 1):
@@ -74,6 +78,9 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
             if (entry["role"] == "challenger"
                 and (entry.get("hotkey"), entry.get("package_sha256")) not in packages):
                 raise ValueError("replay challenger lacks a selected sealed package")
+            if (entry["role"] == "challenger"
+                and packages[(entry["hotkey"], entry["package_sha256"])]["status"] == "duplicate"):
+                raise ValueError("replay stage includes an excluded duplicate")
     return snapshot
 
 

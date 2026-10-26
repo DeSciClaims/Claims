@@ -25,7 +25,9 @@ def _snapshot():
         ]}],
         "uploads": [{"hotkey": "miner-1", "package_sha256": "c" * 64,
                      "package_object_key": "sealed/miner-1", "package_size_bytes": 100,
-                     "manifest": {"entrypoint": "miner:main"}}],
+                     "manifest": {"entrypoint": "miner:main"},
+                     "salt_hex": "e" * 64, "commitment": "f" * 64,
+                     "commit_block": 123, "status": "accepted"}],
     }
 
 
@@ -58,6 +60,10 @@ def test_replay_snapshot_rejects_changed_rule_and_missing_package():
     snapshot = _snapshot()
     snapshot["sample"].append(dict(snapshot["sample"][0]))
     with pytest.raises(ValueError, match="repeats a paper"):
+        validate_replay_snapshot(snapshot, "week-1")
+    snapshot = _snapshot()
+    snapshot["uploads"][0]["status"] = "duplicate"
+    with pytest.raises(ValueError, match="excluded duplicate"):
         validate_replay_snapshot(snapshot, "week-1")
 
 
