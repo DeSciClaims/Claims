@@ -36,6 +36,10 @@ class Backend:
     def list_submissions(self, _round_id):
         return [{"hotkey": "challenger", "status": "accepted", "commit_block": 120}]
 
+    def list_paper_jobs(self, _round_id, _stage, _paper_id):
+        return [{"hotkey": "incumbent", "status": "completed",
+                 "result_private": {"status": "completed"}}]
+
     def list_gold_cases(self, _round_id, *, include_answers=False):
         return []
 
@@ -107,3 +111,21 @@ def test_closed_escalation_scores_feed_crown_selection(monkeypatch):
     assert selected.production_hotkey == "incumbent"
     assert selected.verdicts[0].mean_gain < 0
     assert selected.final_pair_rows[0]["challenger_score"] == 0.0
+
+
+def test_final_controller_requires_reference_if_incumbent_fails_over_one_fifth():
+    from competition.failure_policy import ReferenceFallbackRequired
+
+    backend = Backend()
+
+    def jobs(_round_id, _stage, paper_id):
+        status = "package_failed" if paper_id in {"paper-0", "paper-1"} else "completed"
+        return [{"hotkey": "incumbent", "status": "completed",
+                 "result_private": {"status": status}}]
+
+    backend.list_paper_jobs = jobs
+    with pytest.raises(ReferenceFallbackRequired) as exc:
+        select_ready_final("week2", backend=backend,
+                           code_passed_by_hotkey={"challenger": True},
+                           copy_by_hotkey={"challenger": False}, gold_by_hotkey={})
+    assert (exc.value.summary.failed_papers, exc.value.summary.eligible_papers) == (2, 5)

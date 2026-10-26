@@ -66,8 +66,11 @@ def test_tick_scores_only_ready_final_papers_then_opens_gold(monkeypatch):
             return self.pairs
 
         def list_paper_jobs(self, _, stage, paper_id):
-            status = "completed" if paper_id == "paper-1" else "leased"
-            return [{"hotkey": hotkey, "status": status}
+            status = "completed" if (paper_id == "paper-1" or any(
+                row["paper_id"] == paper_id for row in self.pairs
+            )) else "leased"
+            return [{"hotkey": hotkey, "status": status,
+                     "result_private": {"status": "completed"}}
                     for hotkey in ("incumbent", "challenger")]
 
         def list_gold_known_answer_candidates(self, _):
@@ -91,7 +94,8 @@ def test_tick_scores_only_ready_final_papers_then_opens_gold(monkeypatch):
 
     def score(_, stage, paper_id, **kwargs):
         assert (stage, paper_id) == ("final", "paper-1")
-        backend.pairs.append({"paper_id": paper_id, "challenger_hotkey": "challenger"})
+        backend.pairs.append({"paper_id": paper_id, "challenger_hotkey": "challenger",
+                              "infrastructure_fault": False})
 
     monkeypatch.setattr("competition.weekly_automation.score_ready_paper", score)
     opened = []
@@ -104,7 +108,8 @@ def test_tick_scores_only_ready_final_papers_then_opens_gold(monkeypatch):
     assert result["status"] == "waiting_for_final_scores"
     assert result["scored_papers_this_tick"] == 1
     assert opened == []
-    backend.pairs.append({"paper_id": "paper-2", "challenger_hotkey": "challenger"})
+    backend.pairs.append({"paper_id": "paper-2", "challenger_hotkey": "challenger",
+                          "infrastructure_fault": False})
     assert tick_round("week", backend=backend, inputs=Inputs(),
                       now=DEADLINE + timedelta(days=2))["status"] == "gold_open"
     assert opened == [True]

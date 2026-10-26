@@ -38,6 +38,10 @@ class Backend:
     def list_submissions(self, round_id):
         return self.submissions
 
+    def list_paper_jobs(self, round_id, stage, paper_id):
+        return [{"hotkey": "incumbent", "status": "completed",
+                 "result_private": {"status": "completed"}}]
+
     def start_stage(self, round_id, stage, entries):
         self.ledger.append({"stage": stage, "entries": entries})
 

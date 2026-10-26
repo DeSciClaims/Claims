@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from .intake_lock import CompetitionBackend
+from .failure_policy import ReferenceFallbackRequired, incumbent_failure_summary
 from .jobs import build_jobs
 from .policy import PaperPairScore, paired_result
 from .stages import StageCandidate, advance, stage_plan
@@ -109,6 +110,14 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend) -> dict[s
         paper_id for paper_id in paper_ids
         if any(grid[(paper_id, row["hotkey"])]["infrastructure_fault"] for row in challengers)
     }
+    if baseline[0]["role"] == "incumbent":
+        failure = incumbent_failure_summary(
+            round_id, stage=stage, paper_ids=paper_ids,
+            excluded_infrastructure_papers=infrastructure_faults,
+            incumbent_hotkey=baseline[0]["hotkey"], backend=backend,
+        )
+        if failure.reference_required:
+            raise ReferenceFallbackRequired(failure)
     commits = {
         row["hotkey"]: int(row["commit_block"])
         for row in backend.list_submissions(round_id)

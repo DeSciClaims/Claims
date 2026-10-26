@@ -13,6 +13,7 @@ from typing import Any, Callable, Mapping, Protocol
 
 from .copy_audit import audit_final_output_copies
 from .drand import BlockClock
+from .failure_policy import ReferenceFallbackRequired, incumbent_failure_summary
 from .final_controller import select_ready_final
 from .gold_challenges import build_known_answer_challenges
 from .gold_controller import (
@@ -117,6 +118,19 @@ def _score_active_stage(
         return {"status": "waiting_for_final_scores", "stage": stage,
                 "scored_pairs": len(final_grid), "expected_pairs": len(expected),
                 "scored_papers_this_tick": attempted}
+    baseline = [row for row in ledger[-1]["entries"] if row["role"] in {"incumbent", "reference"}]
+    if len(baseline) != 1:
+        raise ValueError("final stage has no unique baseline")
+    if baseline[0]["role"] == "incumbent":
+        final_pairs = backend.list_stage_pairs(round_id, stage)
+        excluded = {row["paper_id"] for row in final_pairs if row["infrastructure_fault"]}
+        failure = incumbent_failure_summary(
+            round_id, stage=stage, paper_ids=[row["paper_id"] for row in papers],
+            excluded_infrastructure_papers=excluded,
+            incumbent_hotkey=baseline[0]["hotkey"], backend=backend,
+        )
+        if failure.reference_required:
+            raise ReferenceFallbackRequired(failure)
     if now >= gold_close:
         return {"status": "missed_gold_window", "stage": stage}
     round_record = backend.get_round(round_id)
@@ -175,9 +189,15 @@ def tick_round(
             linked_pairs=inputs.linked_pairs_for_round(round_id),
         )
     if status in {"screening", "final"}:
-        return _score_active_stage(
-            round_id, backend=backend, inputs=inputs, now=now, gold_close=gold_close,
-        )
+        try:
+            return _score_active_stage(
+                round_id, backend=backend, inputs=inputs, now=now, gold_close=gold_close,
+            )
+        except ReferenceFallbackRequired as exc:
+            return {"status": "reference_fallback_required",
+                    "stage": exc.summary.stage,
+                    "failed_papers": exc.summary.failed_papers,
+                    "eligible_papers": exc.summary.eligible_papers}
     if status == "gold":
         if now < gold_close:
             return {"status": "waiting_for_gold_close", "close_at": gold_close.isoformat()}
@@ -198,13 +218,19 @@ def tick_round(
                             if row["role"] in {"incumbent", "reference"}]
         if len(baseline_hotkeys) != 1 or not security_audit[baseline_hotkeys[0]]["passed"]:
             raise ValueError("final baseline attempted denied egress; crown requires review")
-        selection = select_ready_final(
-            round_id, backend=backend,
-            code_passed_by_hotkey={hotkey: passed and security_audit[hotkey]["passed"]
-                                   for hotkey, passed in audit.code_passed_by_hotkey.items()},
-            copy_by_hotkey={hotkey: row["is_copy"] for hotkey, row in copy_audit.items()},
-            gold_by_hotkey=gold,
-        )
+        try:
+            selection = select_ready_final(
+                round_id, backend=backend,
+                code_passed_by_hotkey={hotkey: passed and security_audit[hotkey]["passed"]
+                                       for hotkey, passed in audit.code_passed_by_hotkey.items()},
+                copy_by_hotkey={hotkey: row["is_copy"] for hotkey, row in copy_audit.items()},
+                gold_by_hotkey=gold,
+            )
+        except ReferenceFallbackRequired as exc:
+            return {"status": "reference_fallback_required",
+                    "stage": exc.summary.stage,
+                    "failed_papers": exc.summary.failed_papers,
+                    "eligible_papers": exc.summary.eligible_papers}
         receipt = publish_selected_round(
             round_id, backend=backend, signer=inputs.signer, selection=selection,
             operator_hotkey=inputs.operator_hotkey,

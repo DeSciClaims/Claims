@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import Any, Mapping, Protocol
 
 from .final_selection import FinalSelection, Finalist, select_final_production
+from .failure_policy import ReferenceFallbackRequired, incumbent_failure_summary
 from .gold import GoldResult
 from .gold_controller import closed_gold_decisions
 from .gold_override import rescore_final_paper_from_escalations
@@ -22,6 +23,7 @@ class FinalBackend(Protocol):
     def list_gold_voters(self, round_id: str) -> list[dict[str, Any]]: ...
     def list_gold_votes(self, round_id: str) -> list[dict[str, Any]]: ...
     def get_paper_evaluation(self, round_id: str, stage: str, paper_id: str) -> dict[str, Any] | None: ...
+    def list_paper_jobs(self, round_id: str, stage: str, paper_id: str) -> list[dict[str, Any]]: ...
 
 
 def select_ready_final(
@@ -97,6 +99,14 @@ def select_ready_final(
                                  "baseline_score": adjusted["baseline_score"]}
     faults = {paper_id: any(grid[(paper_id, row["hotkey"])]["infrastructure_fault"]
                             for row in challengers) for paper_id in paper_ids}
+    if stage == "final":
+        failure = incumbent_failure_summary(
+            round_id, stage=stage, paper_ids=paper_ids,
+            excluded_infrastructure_papers={paper_id for paper_id, fault in faults.items() if fault},
+            incumbent_hotkey=baseline[0]["hotkey"], backend=backend,
+        )
+        if failure.reference_required:
+            raise ReferenceFallbackRequired(failure)
     committed = {row["hotkey"]: row["commit_block"] for row in backend.list_submissions(round_id)
                  if row["status"] == "accepted" and row["commit_block"] is not None}
     finalists: list[Finalist] = []
