@@ -127,6 +127,15 @@ class CompetitionBackend:
             + urllib.parse.quote(job_id, safe="") + "/result?" + query,
         )
 
+    def production_graph(self, *, network: str, job_id: str) -> dict[str, Any]:
+        if network not in {"mainnet", "testnet"}:
+            raise ValueError("unknown competition network")
+        query = urllib.parse.urlencode({"network": network})
+        return self._request(
+            "GET", "/internal/competition/production/jobs/"
+            + urllib.parse.quote(job_id, safe="") + "/graph?" + query,
+        )
+
     def production_health(self, *, network: str, receipt_sha256: str) -> dict[str, Any]:
         if network not in {"mainnet", "testnet"}:
             raise ValueError("unknown competition network")
