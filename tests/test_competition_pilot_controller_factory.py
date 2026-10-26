@@ -7,6 +7,7 @@ import pytest
 from competition.pilot_controller_factory import (
     _final_audit, _voters, create_controller_inputs,
 )
+from competition.controller_inputs import build_provisional_evaluation_policy
 from competition.publication import canonical_sha256
 
 
@@ -117,3 +118,58 @@ def test_controller_factory_rejects_runtime_that_differs_from_frozen_rules(monke
     document["configuration"] = {**configuration, "weekly_budget_usd": "1"}
     with pytest.raises(ValueError, match="frozen hash"):
         create_controller_inputs(row, object())
+
+
+def test_controller_factory_reconstructs_real_provisional_judges(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "pilot-test-key")
+    worker_policy = {
+        "allowed_models": ["qwen/qwen3-32b"],
+        "published_token_ceiling": 100_000,
+        "dollar_limit_usd": "1",
+        "max_inference_output_tokens": 8192,
+        "lease_seconds": 3600,
+        "inference_base_url": "https://gateway.example/v1",
+    }
+    policy = build_provisional_evaluation_policy(
+        paper_inputs=SimpleNamespace(round_id="week1", source_context_for_paper=lambda _: {}),
+        decision_api_key="pilot-decision-key", weekly_budget_usd=750,
+        worker_policy=worker_policy,
+    )
+    document = {"round_id": "week1", "configuration_sha256": policy.configuration_sha256,
+                "configuration": policy.configuration,
+                "baseline_upload": {"hotkey": "claims-reference",
+                                    "package_sha256": "a" * 64}, "linked_pairs": []}
+    (tmp_path / "week1.json").write_text(json.dumps(document))
+    monkeypatch.setenv("CLAIMS_COMPETITION_ROUNDS_DIR", str(tmp_path))
+    monkeypatch.setenv("CLAIMS_COMPETITION_DECISION_API_KEY", "pilot-decision-key")
+    for key, value in {
+        "CLAIMS_ARCHIVE_SUBTENSOR_NETWORK": "archive",
+        "CLAIMS_COMPETITION_WALLET_NAME": "wallet",
+        "CLAIMS_COMPETITION_WALLET_HOTKEY": "hotkey",
+        "CLAIMS_COMPETITION_WALLET_PATH": str(tmp_path),
+        "CLAIMS_COMPETITION_PUBLISHER_HOTKEY": "publisher",
+        "CLAIMS_COMPETITION_OPERATOR_HOTKEY": "operator",
+        "CLAIMS_COMPETITION_OWNER_HOTKEY": "owner",
+        "CLAIMS_COMPETITION_NETUID": "111",
+        "CLAIMS_HIPPIUS_ENDPOINT": "https://s3.hippius.com",
+        "CLAIMS_HIPPIUS_ACCESS_KEY_ID": "id",
+        "CLAIMS_HIPPIUS_SECRET_ACCESS_KEY": "secret",
+        "CLAIMS_HIPPIUS_PACKAGE_BUCKET": "packages",
+        "CLAIMS_HIPPIUS_LOG_BUCKET": "logs",
+    }.items():
+        monkeypatch.setenv(key, value)
+    fake_bt = ModuleType("bittensor")
+    fake_bt.Subtensor = lambda network: SimpleNamespace(network=network)
+    fake_bt.Wallet = lambda **kwargs: SimpleNamespace(
+        hotkey=SimpleNamespace(ss58_address="publisher"),
+    )
+    monkeypatch.setitem(sys.modules, "bittensor", fake_bt)
+    monkeypatch.setattr("competition.pilot_controller_factory.hippius_s3_client",
+                        lambda **kwargs: object())
+    row = {"round_id": "week1", "network": "testnet",
+           "configuration_sha256": policy.configuration_sha256,
+           "baseline_package_sha256": "a" * 64,
+           "reference_release_id": "bronze-1", "incumbent_hotkey": None}
+    inputs = create_controller_inputs(row, object())
+    assert inputs.evaluation.configuration_sha256 == policy.configuration_sha256
+    assert inputs.evaluation.public_judge_config() == policy.public_judge_config()
