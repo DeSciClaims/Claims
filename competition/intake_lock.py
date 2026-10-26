@@ -99,6 +99,10 @@ class CompetitionBackend:
         path = "/internal/competition/jobs/" + urllib.parse.quote(job_id, safe="") + "/score"
         return self._request("POST", path, score)
 
+    def publish_round(self, round_id: str, signed_receipt: dict[str, Any]) -> dict[str, Any]:
+        path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/publish"
+        return self._request("POST", path, signed_receipt)
+
 
 def read_sealed_package(
     s3_client: Any, *, bucket: str, upload: Mapping[str, Any],
