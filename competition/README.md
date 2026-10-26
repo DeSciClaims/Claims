@@ -250,9 +250,24 @@ advancement. `tick_replay` is a restartable controller step that scores ready
 local papers, advances the stage, handles an incumbent failure by rerunning
 the same papers against the frozen reference, and stops at a complete final
 score grid. Rerun Bronze reads use the original stage even when the primary
-validator did not rerun it. A running replay service, Gold and code
-checks, and its own signed vector still need implementation; the current
+validator did not rerun it. Gold and code checks, and its own signed vector
+still need implementation; the current
 components alone are not an independent validation.
+`python -m neurons.competition_replay_service --role controller --round-id ID
+--backend-url URL --db-path PATH` runs the replay scoring step repeatedly;
+`--role worker --worker-id ID` runs one local paper job per poll. `--once`
+performs one step. The dedicated `replay_pilot_factory` bootstraps both roles
+from a separately verified archive and drand beacon, the read-only replay API,
+and a private 0600 `<round_id>.json` file under
+`CLAIMS_COMPETITION_REPLAY_ROUNDS_DIR` containing `round_id`,
+`baseline_upload`, and optional `reference_upload`. It needs
+`CLAIMS_COMPETITION_REPLAY_TOKEN`, `CLAIMS_COMPETITION_NETUID`, the archive,
+Hippius, Bifrost, Targon, worker SSH, PDF allowlist, and provisional judge
+settings used by the corresponding pilot factories. Set
+`CLAIMS_HIPPIUS_REPLAY_LOG_BUCKET` to a separate bucket: replay job IDs can
+match primary job IDs, so their private logs must not share an object keyspace.
+This process stops at `ready_for_independent_final_review`; it does not yet
+publish a second vector.
 Pilot judge providers are set with CLAIMS_JUDGE_J1_A_PROVIDER,
 CLAIMS_JUDGE_J1_B_PROVIDER, CLAIMS_JUDGE_J2_A_PROVIDER,
 CLAIMS_JUDGE_J2_B_PROVIDER, and CLAIMS_JUDGE_TIEBREAK_PROVIDER. Round setup
