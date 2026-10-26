@@ -97,6 +97,12 @@ opening or closing, or signed Thursday publication. A process scheduler must
 call it repeatedly and provide archive, paper-pool, Bronze, judge, audit, and
 signer adapters. It reports `missed_gold_window` if final scores arrive after
 Thursday 12:00 UTC; it will not publish a crown without the Gold vote.
+`service_loops.run_controller_cycle` and `run_worker_cycle` read every
+unpublished round through the controller-authenticated backend API. The
+controller advances each once per cycle; a worker claims at most one job per
+active round. They return redacted status records and let another round
+continue after one fails. A live process timer and credentialed adapter
+factories still need deployment wiring.
 For the final stage, it now recomputes each finalist's output-copy verdict
 from the frozen private Silver receipt and paired score grid. The 85% accepted
 unit overlap and two-standard-error gain rule is applied against the baseline,

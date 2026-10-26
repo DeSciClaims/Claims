@@ -60,6 +60,11 @@ class CompetitionBackend:
     def get_round(self, round_id: str) -> dict[str, Any]:
         return self._request("GET", "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe=""))
 
+    def list_pending_rounds(self, network: str) -> list[dict[str, Any]]:
+        if network not in {"mainnet", "testnet"}:
+            raise ValueError("unknown competition network")
+        return self._request("GET", "/internal/competition/rounds?network=" + network)
+
     def list_submissions(self, round_id: str) -> list[dict[str, Any]]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/submissions"
         return self._request("GET", path)
