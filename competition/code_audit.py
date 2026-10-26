@@ -85,7 +85,14 @@ def collect_final_code_evidence(
         })
         if not isinstance(package, bytes) or hashlib.sha256(package).hexdigest() != package_hash:
             raise ValueError("code audit package differs from frozen final")
-        fingerprint = python_source_fingerprint(package, max_source_bytes=100_000_000)
+        try:
+            fingerprint = python_source_fingerprint(package, max_source_bytes=100_000_000)
+            source_scan_error = None
+        except ValueError as exc:
+            # A malformed finalist archive must fail that finalist's build
+            # check, not prevent every other finalist from being audited.
+            fingerprint = None
+            source_scan_error = str(exc)
         statuses: Counter[str] = Counter()
         claims: list[int] = []
         statements: Counter[str] = Counter()
@@ -118,6 +125,7 @@ def collect_final_code_evidence(
             "hotkey": hotkey,
             "package_sha256": package_hash,
             "source_fingerprint": fingerprint,
+            "source_scan_error": source_scan_error,
             "final_job_count": len(jobs_by_hotkey[hotkey]),
             "status_counts": dict(sorted(statuses.items())),
             "build_passed": bool(fingerprint and claims and not statuses["build_failed"]),

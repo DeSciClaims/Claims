@@ -140,6 +140,32 @@ def test_review_cannot_skip_or_invent_a_check():
         })
 
 
+def test_malformed_finalist_archive_fails_its_build_check_without_blocking_audit():
+    package = b"not a wheel or source archive"
+    package_hash = hashlib.sha256(package).hexdigest()
+    backend = Backend(package_hash)
+    backend.build_failure = True
+    evidence = collect_final_code_evidence(
+        "week1", backend=backend, fetch_package=lambda job: package,
+    )
+    row = evidence["packages"][0]
+    assert row["package_sha256"] == package_hash
+    assert row["source_fingerprint"] is None
+    assert row["source_scan_error"] == "invalid package archive"
+    assert row["build_passed"] is False
+    review = {
+        "round_id": "week1", "evidence_sha256": canonical_sha256(evidence),
+        "reviewer": "claims-reviewer", "packages": [{
+            "hotkey": "miner", "package_sha256": package_hash,
+            "checks": {name: True for name in (
+                "hardcoded_output", "evaluation_context", "cap_evasion", "fragmentation",
+            )},
+        }],
+    }
+    receipt = finalize_code_audit(evidence, review)
+    assert verify_code_audit_receipt(receipt, evidence) == {"miner": False}
+
+
 def test_audit_setup_writes_private_review_bound_receipt(tmp_path):
     package = _wheel()
     package_hash = hashlib.sha256(package).hexdigest()
