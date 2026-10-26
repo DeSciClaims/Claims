@@ -2,6 +2,7 @@ import hashlib
 
 import pytest
 
+from competition.drand import DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY, VerifiedBeacon
 from competition.sample_release import PaperRecord, frozen_pool_hash, sample_receipt
 
 
@@ -12,10 +13,15 @@ def papers(count):
     ]
 
 
+def beacon(value: bytes = b"a" * 96) -> VerifiedBeacon:
+    return VerifiedBeacon(123, hashlib.sha256(value).digest(), value.hex(),
+                          DEFAULT_CHAIN_HASH, DEFAULT_PUBLIC_KEY, 1_800_000_000)
+
+
 def test_post_deadline_sample_receipt_is_order_independent_and_disjoint():
     pool = papers(30)
     parameters = {
-        "drand_round": 123, "seed": bytes.fromhex("a1" * 32),
+        "beacon": beacon(),
         "prescreen_count": 3, "screen_count": 5, "final_count": 8,
     }
     first = sample_receipt(papers=pool, **parameters)
@@ -25,12 +31,12 @@ def test_post_deadline_sample_receipt_is_order_independent_and_disjoint():
     assert len(first["papers"]) == 16
     assert len({row["paper_id"] for row in first["papers"]}) == 16
     assert {row["judge_id"] for row in first["papers"] if row["stage"] == "final"} == {"J1", "J2"}
-    assert sample_receipt(papers=pool, **{**parameters, "seed": bytes.fromhex("b2" * 32)}) != first
+    assert sample_receipt(papers=pool, **{**parameters, "beacon": beacon(b"b" * 96)}) != first
 
 
 def test_week_one_single_stage_and_duplicate_pool_rejected():
     receipt = sample_receipt(
-        papers=papers(10), drand_round=123, seed=bytes.fromhex("a1" * 32),
+        papers=papers(10), beacon=beacon(),
         prescreen_count=0, screen_count=0, final_count=8, week_one=True,
     )
     assert {row["stage"] for row in receipt["papers"]} == {"week_one"}
@@ -38,6 +44,6 @@ def test_week_one_single_stage_and_duplicate_pool_rejected():
         frozen_pool_hash([papers(1)[0], papers(1)[0]])
     with pytest.raises(ValueError, match="single"):
         sample_receipt(
-            papers=papers(10), drand_round=123, seed=bytes.fromhex("a1" * 32),
+            papers=papers(10), beacon=beacon(),
             prescreen_count=1, screen_count=0, final_count=8, week_one=True,
         )

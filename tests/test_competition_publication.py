@@ -8,6 +8,8 @@ def test_publication_hash_and_hotkey_signature_are_reproducible():
         "round_id": "week-1", "network": "testnet",
         "archive_block_hash": "0x" + "a" * 64,
         "drand_round": 10, "drand_seed": "b" * 64,
+        "drand_chain_hash": "f" * 64, "drand_public_key": "a" * 96,
+        "drand_signature": "b" * 192, "drand_scheduled_at": 1_800_000_000,
         "paper_pool_sha256": "c" * 64, "rules_sha256": "d" * 64,
         "configuration_sha256": "e" * 64,
     }

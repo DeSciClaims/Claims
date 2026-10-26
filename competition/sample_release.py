@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from .drand import VerifiedBeacon
 from .policy import draw_papers
 
 
@@ -28,19 +29,21 @@ def frozen_pool_hash(papers: Iterable[PaperRecord]) -> str:
 
 
 def sample_receipt(
-    *, papers: list[PaperRecord], drand_round: int, seed: bytes,
+    *, papers: list[PaperRecord], beacon: VerifiedBeacon,
     prescreen_count: int, screen_count: int, final_count: int,
     week_one: bool = False,
 ) -> dict[str, Any]:
     """Use only a verified drand seed obtained after the deadline reveal block."""
-    if drand_round < 1 or len(seed) != 32:
-        raise ValueError("drand round and 32-byte seed are required")
+    if beacon.round < 1 or len(beacon.seed) != 32:
+        raise ValueError("verified drand round and 32-byte seed are required")
+    if hashlib.sha256(bytes.fromhex(beacon.signature_hex)).digest() != beacon.seed:
+        raise ValueError("drand seed differs from verified signature")
     paper_map = {paper.paper_id: paper for paper in papers}
     pool_sha256 = frozen_pool_hash(papers)
     if week_one and (prescreen_count or screen_count):
         raise ValueError("week one is a single full-pipeline stage")
     draw = draw_papers(
-        list(paper_map), seed=seed,
+        list(paper_map), seed=beacon.seed,
         prescreen_count=prescreen_count,
         screen_count=screen_count,
         final_count=final_count,
@@ -59,8 +62,12 @@ def sample_receipt(
             "judge_id": judge_id, "source_sha256": paper_map[paper_id].source_sha256,
         })
     return {
-        "drand_round": drand_round,
-        "drand_seed": seed.hex(),
+        "drand_round": beacon.round,
+        "drand_seed": beacon.seed.hex(),
+        "drand_chain_hash": beacon.chain_hash,
+        "drand_public_key": beacon.public_key,
+        "drand_signature": beacon.signature_hex,
+        "drand_scheduled_at": beacon.scheduled_at,
         "paper_pool_sha256": pool_sha256,
         "papers": rows,
     }
