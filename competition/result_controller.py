@@ -26,6 +26,7 @@ def publish_selected_round(
     uid_by_hotkey: Mapping[str, int], qualified_by_hotkey: Mapping[str, bool],
     production_team_id: str | None,
     gold_by_hotkey: Mapping[str, GoldResult],
+    copy_audit: Mapping[str, Mapping[str, Any]],
     gold_check: Mapping[str, Any] | None = None,
     known_answer_audit: Mapping[str, Any] | None = None,
     burn_uid: int = 0,
@@ -35,6 +36,9 @@ def publish_selected_round(
     if round_record["status"] not in {"final", "gold_closed"}:
         raise ValueError("round is not ready for final publication")
     finalist_hotkeys = {row.hotkey for row in selection.verdicts}
+    if (set(copy_audit) != finalist_hotkeys
+        or any(not isinstance(row.get("is_copy"), bool) for row in copy_audit.values())):
+        raise ValueError("finalist output-copy evidence is incomplete")
     if not finalist_hotkeys <= set(qualified_by_hotkey):
         raise ValueError("finalist qualification snapshot is incomplete")
     stages = backend.list_stages(round_id)
@@ -97,6 +101,7 @@ def publish_selected_round(
         "known_answer_audit": dict(known_answer_audit) if known_answer_audit else None,
         "final_pair_scores": list(selection.final_pair_rows),
         "judge_diagnostics": judge_diagnostics,
+        "copy_audit": {hotkey: dict(row) for hotkey, row in sorted(copy_audit.items())},
         "worker_inference_cost": backend.worker_inference_cost_summary(round_id),
     }
     weights = {

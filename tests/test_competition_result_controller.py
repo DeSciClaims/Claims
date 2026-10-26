@@ -69,6 +69,12 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
             "winner": GoldResult(60, 60, 10, 1 / 6, False),
             "runner": GoldResult(60, 60, 20, 1 / 3, False),
         },
+        copy_audit={
+            "winner": {"common_papers": 500, "jaccard": 0.4, "mean_gain": 0.04,
+                       "standard_error": 0.005, "is_copy": False},
+            "runner": {"common_papers": 500, "jaccard": 0.9, "mean_gain": 0.02,
+                       "standard_error": 0.005, "is_copy": False},
+        },
         gold_check={"seed": "c" * 64, "candidate_ids": [], "case_ids": []},
     )
     assert backend.published == ("week2", receipt)
@@ -82,6 +88,7 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
     assert len(bundle["results"]["final_pair_scores"]) == 4
     assert bundle["results"]["judge_diagnostics"]["winner"]["J1"]["paper_count"] == 1
     assert bundle["results"]["worker_inference_cost"]["total_usd"] == "1.20000000"
+    assert bundle["results"]["copy_audit"]["winner"]["jaccard"] == 0.4
     assert {row["uid"]: row["weight"] for row in bundle["weights"]["vector"]} == {
         0: 0.01, 1: 0.07, 2: 0.02, 9: 0.90,
     }

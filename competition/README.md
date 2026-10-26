@@ -79,6 +79,11 @@ opening or closing, or signed Thursday publication. A process scheduler must
 call it repeatedly and provide archive, paper-pool, Bronze, judge, audit, and
 signer adapters. It reports `missed_gold_window` if final scores arrive after
 Thursday 12:00 UTC; it will not publish a crown without the Gold vote.
+For the final stage, it now recomputes each finalist's output-copy verdict
+from the frozen private Silver receipt and paired score grid. The 85% accepted
+unit overlap and two-standard-error gain rule is applied against the baseline,
+and the evidence is included in the signed public result. The remaining
+automated code-integrity checks still need a concrete audit adapter.
 
 ## Early-stage Decision API pilot
 

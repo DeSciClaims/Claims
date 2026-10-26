@@ -136,8 +136,8 @@ def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
                     "model_runtime_id": "model", "adjudication_profile_id": "profile"}
 
         def final_audit(self, _):
-            return FinalAudit({"challenger": True}, {"challenger": False},
-                              {"challenger": True}, {"challenger": 1}, "team-i")
+            return FinalAudit({"challenger": True}, {"challenger": True},
+                              {"challenger": 1}, "team-i")
 
     backend, inputs = Backend(), Inputs()
     assert tick_round("week", backend=backend, inputs=inputs,
@@ -158,6 +158,8 @@ def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
                                           "tiebreak_total": 0, "voters": {}})
     monkeypatch.setattr("competition.weekly_automation.select_ready_final",
                         lambda *_, **__: calls.append("select") or object())
+    monkeypatch.setattr("competition.weekly_automation.audit_final_output_copies",
+                        lambda *_, **__: {"challenger": {"is_copy": False}})
     monkeypatch.setattr("competition.weekly_automation.publish_selected_round",
                         lambda *_, **__: calls.append("publish") or {"bundle_sha256": "a" * 64})
     result = tick_round("week", backend=backend, inputs=inputs,

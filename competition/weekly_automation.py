@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Mapping, Protocol
 
+from .copy_audit import audit_final_output_copies
 from .drand import BlockClock
 from .final_controller import select_ready_final
 from .gold_challenges import build_known_answer_challenges
@@ -29,7 +30,6 @@ from .stage_controller import advance_ready_stage
 @dataclass(frozen=True)
 class FinalAudit:
     code_passed_by_hotkey: Mapping[str, bool]
-    copy_by_hotkey: Mapping[str, bool]
     qualified_by_hotkey: Mapping[str, bool]
     uid_by_hotkey: Mapping[str, int]
     production_team_id: str | None
@@ -191,10 +191,12 @@ def tick_round(
             if "check" in row["answer_private"].get("review_purposes", [])
         )
         audit = inputs.final_audit(round_id)
+        copy_audit = audit_final_output_copies(round_id, backend=backend)
         selection = select_ready_final(
             round_id, backend=backend,
             code_passed_by_hotkey=audit.code_passed_by_hotkey,
-            copy_by_hotkey=audit.copy_by_hotkey, gold_by_hotkey=gold,
+            copy_by_hotkey={hotkey: row["is_copy"] for hotkey, row in copy_audit.items()},
+            gold_by_hotkey=gold,
         )
         receipt = publish_selected_round(
             round_id, backend=backend, signer=inputs.signer, selection=selection,
@@ -203,6 +205,7 @@ def tick_round(
             qualified_by_hotkey=audit.qualified_by_hotkey,
             production_team_id=audit.production_team_id,
             gold_by_hotkey=gold,
+            copy_audit=copy_audit,
             gold_check={
                 "seed": round_record["gold_check_seed_private"],
                 "commitment": round_record["gold_check_commitment"],
