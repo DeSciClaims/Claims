@@ -119,6 +119,8 @@ finalist package hash and the following Monday 09:00 UTC gate. The trusted
 `FilesystemProductionReleaseStore` can atomically store the sealed package and
 switch a private `active.json` pointer; it records the previous release and
 can restore it after a breach without replaying the breached result. The
+trusted `activate_published_round` coordinator resolves the unique winning
+sealed upload through the existing backend and Hippius adapters. The
 production service still needs a reader that notices the pointer, starts the
 selected package in its isolated runtime, and reports health before launch.
 

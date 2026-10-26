@@ -8,6 +8,7 @@ from bittensor_wallet import Keypair
 from competition.production_handoff import (
     FilesystemProductionReleaseStore, activate_verified_handoff, planned_production_handoff,
 )
+from competition.handoff_controller import activate_published_round
 from competition.publication import publication_bundle, sign_publication
 
 
@@ -142,3 +143,45 @@ def test_first_release_cannot_roll_back_without_previous_package(tmp_path):
     with pytest.raises(ValueError, match="no previous release"):
         store.rollback(expected_receipt_sha256=receipt["bundle_sha256"],
                        reason="breach", now=now + timedelta(hours=1))
+
+
+def test_handoff_controller_resolves_only_winning_sealed_upload(tmp_path):
+    signer, round_record, stage, receipt = _fixture()
+
+    class Backend:
+        def get_round(self, _):
+            return round_record
+
+        def list_stages(self, _):
+            return [stage]
+
+        def list_submissions(self, _):
+            return [
+                {"hotkey": "runner", "package_sha256": "b" * 64, "status": "accepted"},
+                {"hotkey": "winner", "package_sha256": PACKAGE_SHA,
+                 "status": "accepted", "package_object_key": "sealed/winner.zip"},
+            ]
+
+    class Storage:
+        seen = None
+
+        def package_for_submission(self, upload):
+            self.seen = upload["package_object_key"]
+            return PACKAGE
+
+    storage = Storage()
+    store = FilesystemProductionReleaseStore(tmp_path / "production")
+    kwargs = {
+        "backend": Backend(), "publication_for_round": lambda _: receipt,
+        "sealed_packages": storage, "releases": store,
+        "expected_signer_hotkey": signer.ss58_address, "network": "testnet",
+    }
+    assert activate_published_round(
+        "week2", **kwargs, now=datetime(2026, 11, 2, 8, 59, tzinfo=UTC),
+    ) is None
+    assert storage.seen is None
+    active = activate_published_round(
+        "week2", **kwargs, now=datetime(2026, 11, 2, 9, 0, tzinfo=UTC),
+    )
+    assert active["package_sha256"] == PACKAGE_SHA
+    assert storage.seen == "sealed/winner.zip"
