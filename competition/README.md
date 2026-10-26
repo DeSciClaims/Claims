@@ -281,7 +281,10 @@ source round, before using the verdicts.
 explicit Gold policy/evidence, qualification evidence, and resulting vector.
 `sign_replay_publication` signs its canonical hash, and `ReplayStore` accepts
 only one valid receipt from the configured second-validator hotkey. Public
-delivery and an automatic signing step still need the Gold policy.
+delivery uses `ReplayPublicationClient` after the primary round is published;
+the backend accepts one receipt signed by its distinct configured replay
+publisher hotkey, and the dashboard shows its vector and evidence hashes.
+An automatic signing step still needs the Gold policy.
 `python -m neurons.competition_replay_service --role controller --round-id ID
 --backend-url URL --db-path PATH` runs the replay scoring step repeatedly;
 `--role worker --worker-id ID` runs one local paper job per poll. `--once`
