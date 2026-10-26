@@ -313,6 +313,9 @@ verified drand seed, requires certified known-answer cases, and stores the
 private draw immutably. It gives cases a replay-specific ID so signed votes
 cannot be mistaken for primary votes. Miner delivery, separate signed voting,
 closure, Gold tally, and automatic vector publication remain to be wired.
+The read-only replay API supplies the certified challenge bank once the
+primary final stage exists. The pilot controller chooses exact-PDF challenges
+for its own finalists and freezes its Gold review when at least 40 qualify.
 Pilot judge providers are set with CLAIMS_JUDGE_J1_A_PROVIDER,
 CLAIMS_JUDGE_J1_B_PROVIDER, CLAIMS_JUDGE_J2_A_PROVIDER,
 CLAIMS_JUDGE_J2_B_PROVIDER, and CLAIMS_JUDGE_TIEBREAK_PROVIDER. Round setup

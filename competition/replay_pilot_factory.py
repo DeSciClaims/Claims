@@ -10,7 +10,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlsplit
 
 from .bifrost import BifrostClient
@@ -24,6 +24,7 @@ from .pilot_worker_factory import _csv, _required
 from .provisional_judges import require_provisional_provider_pins
 from .replay_controller import tick_replay
 from .replay_final_audit import audit_replay_final
+from .replay_gold_review import prepare_replay_gold_review, replay_known_answer_challenges
 from .replay_inputs import CompetitionReplayInputs
 from .replay_runtime import (
     ReplayRuntimeBackend, create_replay_worker_coordinator,
@@ -101,6 +102,7 @@ class ReplayController:
     reference_upload: dict[str, Any]
     packages: CompetitionPackageResolver
     code_policy: dict[str, Any] | None
+    certified_gold_source: Callable[[str], list[dict[str, Any]]] | None = None
 
     def run_once(self) -> dict[str, Any]:
         round_id = self.backend.snapshot["round_id"]
@@ -122,8 +124,23 @@ class ReplayController:
                 round_id, backend=self.backend, fetch_package=self.packages,
                 code_policy=self.code_policy,
             )
-        return {"status": "final_audit_complete", "stage": result["stage"],
-                "audit_sha256": canonical_sha256(frozen)}
+        if self.certified_gold_source is None:
+            return {"status": "final_audit_complete", "stage": result["stage"],
+                    "audit_sha256": canonical_sha256(frozen)}
+        review = self.backend.get_gold_review(round_id)
+        if review is None:
+            known = replay_known_answer_challenges(
+                round_id, backend=self.backend,
+                certified=self.certified_gold_source(round_id),
+            )
+            if len(known) < 40:
+                return {"status": "waiting_for_known_answers", "stage": result["stage"],
+                        "available": len(known), "required": 40}
+            review = prepare_replay_gold_review(
+                round_id, backend=self.backend, known_answers=known,
+            )
+        return {"status": "gold_review_frozen", "stage": result["stage"],
+                "review_sha256": canonical_sha256(review)}
 
 
 def create_replay_controller(
@@ -156,7 +173,7 @@ def create_replay_controller(
         raise ValueError("replay code audit policy is malformed")
     packages = CompetitionPackageResolver(backend, storage, baseline, reference)
     return ReplayController(backend, papers, evaluation, reference or baseline,
-                            packages, policy)
+                            packages, policy, backend.inputs.certified_gold_challenges)
 
 
 def create_replay_worker(

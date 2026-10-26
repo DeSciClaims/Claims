@@ -154,6 +154,27 @@ def test_replay_client_checks_qualification_source_rounds_against_deadline():
         )
 
 
+def test_replay_client_reads_certified_bank_without_primary_write_token():
+    body = {"round_id": "week-1", "certified": [{"challenge_id": "case-1"}]}
+    requests = []
+
+    def respond(request, *, timeout):
+        requests.append(request)
+        assert timeout == 30 and request.get_method() == "GET"
+        return io.BytesIO(json.dumps(body).encode())
+
+    client = CompetitionReplayInputs(
+        "https://backend.example", "replay-only", open_request=respond,
+    )
+    assert client.certified_gold_challenges("week-1") == body["certified"]
+    assert requests[0].full_url.endswith(
+        "/replay/rounds/week-1/certified-gold-challenges",
+    )
+    body["round_id"] = "another"
+    with pytest.raises(ValueError, match="malformed"):
+        client.certified_gold_challenges("week-1")
+
+
 def test_replay_client_verifies_closed_gold_votes_and_exclusions():
     message = _gold_vote_message("week-1", "case-1", "voter-1", "challenger")
     body = {

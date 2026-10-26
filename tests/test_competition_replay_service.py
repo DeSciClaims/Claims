@@ -217,3 +217,39 @@ def test_replay_controller_runs_final_audit_once_after_local_grid(monkeypatch):
     assert controller.run_once()["status"] == "final_audit_complete"
     assert controller.run_once()["status"] == "final_audit_complete"
     assert state["calls"] == 1
+
+
+def test_replay_controller_opens_own_gold_only_with_certified_bank(monkeypatch):
+    state = {"review": None, "fetches": 0}
+    backend = SimpleNamespace(
+        snapshot={"round_id": "week-1", "network": "testnet"},
+        get_final_audit=lambda _: {"input_sha256": "a" * 64},
+        get_gold_review=lambda _: state["review"],
+    )
+    monkeypatch.setattr(replay_pilot_factory, "tick_replay", lambda *_, **__: {
+        "status": "ready_for_independent_final_review", "stage": "final",
+    })
+    monkeypatch.setattr(replay_pilot_factory, "replay_known_answer_challenges",
+                        lambda *_, certified, **__: certified)
+
+    def freeze(*_, **__):
+        state["review"] = {"round_id": "week-1", "case_count": 40}
+        return state["review"]
+
+    monkeypatch.setattr(replay_pilot_factory, "prepare_replay_gold_review", freeze)
+
+    def bank(_):
+        state["fetches"] += 1
+        return [dict(case_id=index) for index in range(40)]
+
+    controller = replay_pilot_factory.ReplayController(
+        backend=backend, paper_inputs=SimpleNamespace(bronze_for_paper=lambda *_: {}),
+        evaluation=SimpleNamespace(evaluate_for_stage=lambda _: None),
+        reference_upload={}, packages=SimpleNamespace(), code_policy={},
+        certified_gold_source=bank,
+    )
+    first = controller.run_once()
+    second = controller.run_once()
+    assert first == second
+    assert first["status"] == "gold_review_frozen"
+    assert state["fetches"] == 1

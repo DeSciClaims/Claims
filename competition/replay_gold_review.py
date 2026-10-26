@@ -7,6 +7,7 @@ from typing import Any, Sequence
 
 from .final_stage import effective_final_stage
 from .gold import draw_gold_cases
+from .gold_challenges import build_known_answer_challenges
 from .gold_controller import ContestedClaim, frozen_gold_candidates
 from .publication import canonical_sha256
 
@@ -23,6 +24,31 @@ def _identity(row: ContestedClaim) -> dict[str, Any]:
         "case_public": dict(row.case_public),
         "answer_private": dict(row.answer_private),
     }
+
+
+def replay_known_answer_challenges(
+    round_id: str, *, backend: Any, certified: list[dict[str, Any]],
+    limit: int = 40,
+) -> list[ContestedClaim]:
+    """Select exact-PDF certified cases with this validator's own draw domain."""
+    stage = effective_final_stage(backend.list_stages(round_id))
+    seed_hex = backend.snapshot.get("drand_seed")
+    if backend.snapshot.get("round_id") != round_id or not isinstance(seed_hex, str):
+        raise ValueError("replay Gold round or seed is invalid")
+    try:
+        seed = bytes.fromhex(seed_hex)
+    except ValueError as exc:
+        raise ValueError("replay Gold seed is malformed") from exc
+    if len(seed) != 32:
+        raise ValueError("replay Gold seed is malformed")
+    return build_known_answer_challenges(
+        round_id, certified=certified,
+        final_sample=[row for row in backend.list_sample(round_id)
+                      if row["stage"] == stage],
+        final_entries=backend.list_stages(round_id)[-1]["entries"],
+        seed=hashlib.sha256(b"claims-replay-gold-known-v1\0" + seed).digest(),
+        limit=limit,
+    )
 
 
 def prepare_replay_gold_review(

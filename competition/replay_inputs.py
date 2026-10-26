@@ -364,6 +364,18 @@ class CompetitionReplayInputs:
                 raise ValueError("replay Gold vote signature differs from signed choice")
         return body
 
+    def certified_gold_challenges(self, round_id: str) -> list[dict[str, Any]]:
+        """Read a certified bank for a separate local Gold draw."""
+        path = ("/internal/competition/replay/rounds/"
+                + urllib.parse.quote(round_id, safe="") + "/certified-gold-challenges")
+        body = self._get(path)
+        if (set(body) != {"round_id", "certified"}
+            or body["round_id"] != round_id
+            or not isinstance(body["certified"], list)
+            or any(not isinstance(row, dict) for row in body["certified"])):
+            raise ValueError("replay certified Gold bank is malformed")
+        return body["certified"]
+
     def closed_gold_tally(
         self, round_id: str, *, finalist_hotkeys: list[str],
         verify_signature: Callable[[str, bytes, bytes], bool] = _verify_gold_signature,
