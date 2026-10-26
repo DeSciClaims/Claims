@@ -136,6 +136,23 @@ def test_replay_signed_publication_is_immutable_across_restart(tmp_path):
         )
 
 
+def test_replay_gold_review_is_immutable_across_restart(tmp_path):
+    snapshot, plan = _inputs()
+    path = tmp_path / "replay.sqlite"
+    store = ReplayStore(path)
+    store.initialize(snapshot, plan)
+    review = {"schema_version": "claims_replay_gold_review_v1",
+              "round_id": "round-1", "cases": [{"case_id": "replay_gold_1"}]}
+    assert store.freeze_gold_review("round-1", review) == review
+    restarted = ReplayStore(path)
+    restarted.initialize(snapshot, plan)
+    assert restarted.get_gold_review("round-1") == review
+    with pytest.raises(ValueError, match="already frozen differently"):
+        restarted.freeze_gold_review(
+            "round-1", {**review, "cases": [{"case_id": "replay_gold_2"}]},
+        )
+
+
 def test_replay_store_leases_baseline_first_and_freezes_scores_across_restart(tmp_path):
     snapshot, plan = _inputs()
     now = [NOW]

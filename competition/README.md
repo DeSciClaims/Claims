@@ -307,8 +307,12 @@ frozen automatic code thresholds, output-copy check, and denied-egress audit
 to its own job and Silver receipts and freezes a private final audit. A
 testnet round without a code policy stops at
 `ready_for_independent_final_review`; a round with one reports
-`final_audit_complete`. Gold review and a second signed vector remain to be
-built.
+`final_audit_complete`. `prepare_replay_gold_review` derives a separate Gold
+case draw from the replay's frozen Silver receipts using a domain-separated
+verified drand seed, requires certified known-answer cases, and stores the
+private draw immutably. It gives cases a replay-specific ID so signed votes
+cannot be mistaken for primary votes. Miner delivery, separate signed voting,
+closure, Gold tally, and automatic vector publication remain to be wired.
 Pilot judge providers are set with CLAIMS_JUDGE_J1_A_PROVIDER,
 CLAIMS_JUDGE_J1_B_PROVIDER, CLAIMS_JUDGE_J2_A_PROVIDER,
 CLAIMS_JUDGE_J2_B_PROVIDER, and CLAIMS_JUDGE_TIEBREAK_PROVIDER. Round setup

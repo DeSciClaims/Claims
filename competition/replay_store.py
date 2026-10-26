@@ -87,6 +87,10 @@ class ReplayStore:
                   round_id TEXT PRIMARY KEY, input_sha256 TEXT NOT NULL,
                   result_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS replay_gold_review (
+                  round_id TEXT PRIMARY KEY, review_sha256 TEXT NOT NULL,
+                  review_json TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS replay_publication (
                   round_id TEXT PRIMARY KEY, bundle_sha256 TEXT NOT NULL,
                   receipt_json TEXT NOT NULL
@@ -598,6 +602,40 @@ class ReplayStore:
                 (round_id,),
             ).fetchone()
         return json.loads(row["receipt_json"]) if row else None
+
+    def get_gold_review(self, round_id: str) -> dict[str, Any] | None:
+        self._round(round_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT review_json FROM replay_gold_review WHERE round_id=?",
+                (round_id,),
+            ).fetchone()
+        return json.loads(row["review_json"]) if row else None
+
+    def freeze_gold_review(self, round_id: str, review: dict[str, Any]) -> dict[str, Any]:
+        """Keep this validator's private case draw immutable across restarts."""
+        self._round(round_id)
+        if (not isinstance(review, dict)
+            or review.get("schema_version") != "claims_replay_gold_review_v1"
+            or review.get("round_id") != round_id
+            or not isinstance(review.get("cases"), list)):
+            raise ValueError("replay Gold review receipt is malformed")
+        digest = canonical_sha256(review)
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT review_sha256,review_json FROM replay_gold_review WHERE round_id=?",
+                (round_id,),
+            ).fetchone()
+            if row is None:
+                conn.execute(
+                    "INSERT INTO replay_gold_review VALUES (?,?,?)",
+                    (round_id, digest, _json(review)),
+                )
+            elif (row["review_sha256"] != digest
+                  or json.loads(row["review_json"]) != review):
+                raise ValueError("replay Gold review was already frozen differently")
+        return review
 
     def freeze_replay_publication(
         self, round_id: str, receipt: dict[str, Any], *,
