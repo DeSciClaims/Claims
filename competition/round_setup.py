@@ -110,6 +110,9 @@ def prepare_round(
     public_policy = draft.get("policy_public", {})
     if not isinstance(public_policy, dict):
         raise ValueError("public weekly policy is malformed")
+    reference_lock = public_policy.get("reference_lock_sha256")
+    if not isinstance(reference_lock, str) or not re.fullmatch(r"[0-9a-f]{64}", reference_lock):
+        raise ValueError("public weekly policy needs the frozen Bronze reference lock SHA-256")
     dispute_window = public_policy.get("duplicate_dispute_window")
     if dispute_window is None:
         raise ValueError("public duplicate dispute window is required")

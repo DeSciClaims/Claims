@@ -191,6 +191,9 @@ backend round with the exact rules body and its hash. The backend serves
 `GET /public/competition/rounds/{round_id}/rules` before the submission
 deadline; the dashboard links to it. A different rules body cannot replace
 an opened round.
+The draft's public policy must include `reference_lock_sha256`, the hash
+recorded in Bronze manifests for the chosen reference release. Intake selects
+only Bronze records with that hash, and the private paper read checks it again.
 The frozen configuration also hashes the competition policy, stage, Gold,
 copy, weight, and worker source modules. The controller checks that fingerprint
 before scoring; the worker checks it before leasing a job. A midweek code

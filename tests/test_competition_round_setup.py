@@ -26,6 +26,7 @@ def _draft():
         "configuration": {"pilot": True},
         "policy_public": {
             "min_final_papers": 500,
+            "reference_lock_sha256": "f" * 64,
             "duplicate_verdict_public_at": "2026-11-10T09:00:00+00:00",
             "duplicate_dispute_window": {
                 "opens_at": "2026-11-10T09:00:00+00:00",
@@ -104,6 +105,10 @@ def test_prepare_round_freezes_review_only_dispute_window(tmp_path):
     draft = _draft()
     draft["policy_public"]["duplicate_verdict_public_at"] = "2026-11-10T10:00:00+00:00"
     with pytest.raises(ValueError, match="Tuesday 09:00"):
+        prepare_round(draft, backend=Backend(), directory=tmp_path)
+    draft = _draft()
+    draft["policy_public"].pop("reference_lock_sha256")
+    with pytest.raises(ValueError, match="Bronze reference lock"):
         prepare_round(draft, backend=Backend(), directory=tmp_path)
 
 
