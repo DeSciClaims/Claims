@@ -33,6 +33,7 @@ def test_prepare_round_writes_private_and_public_artifacts_before_intake(tmp_pat
         def create_round(self, payload):
             assert (tmp_path / "week1.json").is_file()
             assert (tmp_path / "week1.rules.json").is_file()
+            assert payload["rules_public"] == json.loads((tmp_path / "week1.rules.json").read_text())
             return {**payload, "status": "open"}
 
     draft = _draft()
@@ -44,6 +45,12 @@ def test_prepare_round_writes_private_and_public_artifacts_before_intake(tmp_pat
     assert result["rules_sha256"] == canonical_sha256(rules)
     assert (tmp_path / "week1.json").stat().st_mode & 0o777 == 0o600
     assert prepare_round(draft, backend=Backend(), directory=tmp_path) == result
+    class TamperingBackend:
+        def create_round(self, payload):
+            return {**payload, "rules_public": {**payload["rules_public"], "policy": {}}}
+
+    with pytest.raises(ValueError, match="did not preserve"):
+        prepare_round(draft, backend=TamperingBackend(), directory=tmp_path)
     draft["configuration"]["pilot"] = False
     with pytest.raises(ValueError, match="already differs"):
         prepare_round(draft, backend=Backend(), directory=tmp_path)

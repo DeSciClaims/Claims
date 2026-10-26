@@ -140,9 +140,11 @@ def prepare_round(
         "incumbent_hotkey", "baseline_package_sha256", "reference_package_sha256",
     )}
     payload["rules_sha256"] = rules_hash
+    payload["rules_public"] = rules
     stored = backend.create_round(payload)
     if (stored.get("round_id") != round_id or stored.get("rules_sha256") != rules_hash
-        or stored.get("configuration_sha256") != config_hash):
+        or stored.get("configuration_sha256") != config_hash
+        or stored.get("rules_public") != rules):
         raise ValueError("backend did not preserve frozen round setup")
     return {"round_id": round_id, "rules_sha256": rules_hash,
             "configuration_sha256": config_hash}

@@ -129,9 +129,11 @@ live archive and signer compatibility remain integration work.
 The competition_round_setup CLI opens intake from an operator draft. It
 reconstructs the provisional judge runtime, verifies sealed baseline and
 fallback package bytes through Hippius, checks the Monday 12:00 UTC / D+600
-calendar, writes matching private and publishable rules JSON, then creates
-the backend round with those hashes. The public rules artifact still needs
-hosting before miners submit.
+calendar, writes matching private and public rules JSON, then creates the
+backend round with the exact rules body and its hash. The backend serves
+`GET /public/competition/rounds/{round_id}/rules` before the submission
+deadline; the dashboard links to it. A different rules body cannot replace
+an opened round.
 The frozen configuration also hashes the competition policy, stage, Gold,
 copy, weight, and worker source modules. The controller checks that fingerprint
 before scoring; the worker checks it before leasing a job. A midweek code
