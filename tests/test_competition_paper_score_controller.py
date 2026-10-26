@@ -21,7 +21,8 @@ class Backend:
             "job_id": hotkey + "-job", "hotkey": hotkey,
             "package_sha256": digest, "configuration_sha256": "b" * 64,
             "stage": "week_one", "paper_id": "paper-1", "status": status,
-            "result_private": {"status": "completed", "artifact": {"paper": {"paper_id": "paper-1"}}},
+            "result_private": {"status": "completed", "artifact": {"paper": {"paper_id": "paper-1"}},
+                               "inference_cost_usd": 0.12},
         }
 
     def get_round(self, _):
@@ -91,9 +92,10 @@ def test_paper_waits_for_complete_grid_then_replays_frozen_adjudication():
     assert call(_evaluation) == {"status": "scored", "paper_id": "paper-1",
                                   "score_count": 2, "pair_count": 1}
     assert backend.scores["challenger-job"]["score"] == 0.7
+    assert backend.scores["challenger-job"]["details_public"]["inference_cost_usd"] == 0.12
     assert backend.pairs["challenger"]["baseline_score"] == 0.6
     assert call(lambda **_: pytest.fail("adjudication must not rerun"))["status"] == "scored"
-    backend.jobs[1]["result_private"] = {"status": "invalid_output"}
+    backend.jobs[1]["result_private"] = {"status": "invalid_output", "inference_cost_usd": 0.12}
     with pytest.raises(ValueError, match="inputs changed"):
         call(_evaluation)
 
@@ -102,7 +104,7 @@ def test_infrastructure_fault_skips_adjudication_and_scores_everyone_zero():
     backend = Backend()
     for job in backend.jobs:
         job["status"] = "completed"
-    backend.jobs[1]["result_private"] = {"status": "infrastructure_fault"}
+    backend.jobs[1]["result_private"] = {"status": "infrastructure_fault", "inference_cost_usd": 0.03}
     result = score_ready_paper(
         "round-1", "week_one", "paper-1", backend=backend,
         bronze_artifact={}, evaluate=lambda **_: pytest.fail("must not adjudicate"),

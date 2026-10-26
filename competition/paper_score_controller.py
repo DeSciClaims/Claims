@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Callable, Mapping, Protocol
 
 from .gold_controller import contested_claims_for_paper
@@ -75,8 +76,13 @@ def score_ready_paper(
     if complete_count != len(jobs):
         return {"status": "waiting_for_jobs", "complete": complete_count, "expected": len(jobs)}
     for job in jobs:
-        if not isinstance(job.get("result_private"), dict):
+        result_private = job.get("result_private")
+        if not isinstance(result_private, dict):
             raise ValueError("completed paper job has no private result")
+        cost = result_private.get("inference_cost_usd")
+        if (isinstance(cost, bool) or not isinstance(cost, int | float)
+            or not math.isfinite(cost) or cost < 0):
+            raise ValueError("completed paper job has no valid gateway cost")
     input_sha256 = canonical_sha256({
         "round_id": round_id, "stage": stage, "paper_id": paper_id,
         "configuration_sha256": round_record["configuration_sha256"],
@@ -167,6 +173,7 @@ def score_ready_paper(
                 "details_public": {
                     "worker_status": outcomes[hotkey]["status"],
                     "total_tokens": outcomes[hotkey].get("prompt_and_completion_tokens"),
+                    "inference_cost_usd": outcomes[hotkey].get("inference_cost_usd"),
                 },
             }})
         result = {"scores": scores, "pairs": pairs, "silver": silver}

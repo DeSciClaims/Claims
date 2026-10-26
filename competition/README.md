@@ -114,6 +114,16 @@ allowlisted model-backed panels with one common tiebreak through the existing
 Silver judge factory. Select and cost the concrete models, then pin a deploy
 artifact before a paid round.
 
+For each paper key, the controller reads Bifrost's final token and dollar
+usage before revoking it. The private completed-job receipt includes
+`inference_cost_usd`; the paper score stores the same measured value in its
+public-detail field, which the public score API does not currently expose.
+Publication signs a backend-recomputed sum by stage and for the round.
+The sum covers completed worker job receipts only. It excludes judge and
+Decision API calls, VM time, storage, and spend on expired attempts. A live
+Bifrost quota-shape and billing reconciliation test is required before treating
+this as an operational cost ledger.
+
 `planned_production_handoff` verifies the signed Thursday result, the frozen
 finalist package hash and the following Monday 09:00 UTC gate. The trusted
 `FilesystemProductionReleaseStore` can atomically store the sealed package and

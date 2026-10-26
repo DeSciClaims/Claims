@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Protocol
 
-from .bifrost import PaperKey
+from .bifrost import PaperKey, PaperUsage
 from .worker_contract import build_worker_contract
 from miner.agent_v1.artifact_models import Artifact
 from miner.agent_v1.artifact_validator import validate_agent_artifact
@@ -29,7 +30,7 @@ class InferenceKeys(Protocol):
         allowed_models: tuple[str, ...], token_limit: int,
         dollar_limit: float, expires_at: datetime,
     ) -> PaperKey: ...
-    def check_budget(self, key: PaperKey) -> tuple[int, bool]: ...
+    def check_budget(self, key: PaperKey) -> PaperUsage: ...
     def revoke(self, key: PaperKey) -> None: ...
 
 
@@ -156,12 +157,12 @@ def run_claimed_job(
         except Exception as exc:
             output = ExecutionOutput("infrastructure_fault", None,
                                      f"worker transport failed: {type(exc).__name__}".encode())
-        used, over_cap = keys.check_budget(key)
+        usage = keys.check_budget(key)
     finally:
         keys.revoke(key)
-    if used < 0:
-        raise ValueError("gateway returned negative token usage")
-    status = "cap_exceeded" if over_cap else output.status
+    if usage.tokens < 0 or not math.isfinite(usage.dollar_cost_usd) or usage.dollar_cost_usd < 0:
+        raise ValueError("gateway returned invalid usage")
+    status = "cap_exceeded" if usage.over_cap else output.status
     if status not in {"completed", "build_failed", "package_failed", "invalid_output",
                       "timeout", "cap_exceeded", "infrastructure_fault"}:
         raise ValueError("worker returned an unknown status")
@@ -191,7 +192,8 @@ def run_claimed_job(
     result = {
         "status": status,
         "artifact": output.artifact if status == "completed" else None,
-        "prompt_and_completion_tokens": used,
+        "prompt_and_completion_tokens": usage.tokens,
+        "inference_cost_usd": usage.dollar_cost_usd,
         "token_limit": token_limit,
         "cap_source": cap_source,
         "detail": validation_error or output.detail,

@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from bittensor_wallet import Keypair
 
-from competition.bifrost import PaperKey
+from competition.bifrost import PaperKey, PaperUsage
 from competition.worker_controller import (
     ExecutionOutput,
     paper_token_cap,
@@ -42,11 +42,12 @@ class Keys:
         self.created = True
         assert kwargs["token_limit"] == self.expected_cap
         assert kwargs["allowed_models"] == ("example/model",)
-        return PaperKey("key-1", "sk-bf-short-lived", datetime.now(UTC) + timedelta(minutes=10), self.expected_cap)
+        return PaperKey("key-1", "sk-bf-short-lived", datetime.now(UTC) + timedelta(minutes=10),
+                        self.expected_cap, kwargs["dollar_limit"])
 
     def check_budget(self, key):
         assert key.value == "sk-bf-short-lived"
-        return (1200 if self.over else 350, self.over)
+        return PaperUsage(1200 if self.over else 350, 0.12, self.over)
 
     def revoke(self, key):
         assert key.value == "sk-bf-short-lived"
@@ -130,6 +131,7 @@ def test_worker_controller_revokes_key_before_private_log_and_completion():
     result, keys, logs, backend, job = run()
     assert result["status"] == "completed"
     assert result["prompt_and_completion_tokens"] == 350
+    assert result["inference_cost_usd"] == 0.12
     assert keys.revoked
     assert logs.key.startswith(f"logs/testnet/week2/{job['hotkey']}/")
     assert b"sk-bf-short-lived" not in logs.content

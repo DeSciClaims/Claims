@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
@@ -23,9 +24,17 @@ class BifrostError(RuntimeError):
 @dataclass(frozen=True)
 class PaperKey:
     key_id: str
-    value: str
+    value: str = field(repr=False)
     expires_at: datetime
     token_limit: int
+    dollar_limit: float
+
+
+@dataclass(frozen=True)
+class PaperUsage:
+    tokens: int
+    dollar_cost_usd: float
+    over_cap: bool
 
 
 class BifrostClient:
@@ -113,7 +122,7 @@ class BifrostClient:
         key_id, value = item.get("id"), item.get("value")
         if not isinstance(key_id, str) or not isinstance(value, str) or not value.startswith("sk-bf-"):
             raise BifrostError("Bifrost did not return a usable virtual key")
-        return PaperKey(key_id, value, expires_at, token_limit)
+        return PaperKey(key_id, value, expires_at, token_limit, dollar_limit)
 
     def token_usage(self, key: PaperKey) -> int:
         # Self-service quota is scoped to this virtual key, including streams.
@@ -130,6 +139,29 @@ class BifrostClient:
         key_id = urllib.parse.quote(key.key_id, safe="")
         self._request("DELETE", f"/api/governance/virtual-keys/{key_id}")
 
-    def check_budget(self, key: PaperKey) -> tuple[int, bool]:
-        used = self.token_usage(key)
-        return used, used > key.token_limit
+    def check_budget(self, key: PaperKey) -> PaperUsage:
+        response = self._request(
+            "GET", "/api/governance/virtual-keys/quota", virtual_key=key.value,
+        )
+        rate_limit = response.get("rate_limit") or {}
+        tokens = rate_limit.get("token_current_usage")
+        if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0:
+            raise BifrostError("Bifrost quota response lacks token usage")
+        budgets = response.get("budgets")
+        if budgets is None:
+            budgets = (response.get("virtual_key") or {}).get("budgets")
+        if not isinstance(budgets, list):
+            raise BifrostError("Bifrost quota response lacks paper budget usage")
+        matched = [row for row in budgets if isinstance(row, dict)
+                   and row.get("reset_duration") == "1h"
+                   and isinstance(row.get("max_limit"), int | float)
+                   and not isinstance(row["max_limit"], bool)
+                   and math.isclose(row["max_limit"], key.dollar_limit, abs_tol=1e-9)]
+        if len(matched) != 1:
+            raise BifrostError("Bifrost quota response has no unique paper budget")
+        cost = matched[0].get("current_usage")
+        if (isinstance(cost, bool) or not isinstance(cost, int | float)
+            or not math.isfinite(cost) or cost < 0):
+            raise BifrostError("Bifrost paper budget lacks dollar usage")
+        return PaperUsage(tokens, float(cost),
+                          tokens > key.token_limit or cost > key.dollar_limit)

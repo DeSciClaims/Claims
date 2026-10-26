@@ -36,6 +36,11 @@ class Backend:
             {"stage": "final", "paper_id": "paper-2", "judge_id": "J2"},
         ]
 
+    def worker_inference_cost_summary(self, round_id):
+        return {"round_id": round_id, "scope": "completed_worker_inference",
+                "by_stage": [{"stage": "final", "job_count": 6, "usd": "1.20000000"}],
+                "total_jobs": 6, "total_usd": "1.20000000"}
+
     def publish_round(self, round_id, receipt):
         self.published = (round_id, receipt)
         return {"status": "published"}
@@ -76,6 +81,7 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
     assert bundle["results"]["gold_check"]["seed"] == "c" * 64
     assert len(bundle["results"]["final_pair_scores"]) == 4
     assert bundle["results"]["judge_diagnostics"]["winner"]["J1"]["paper_count"] == 1
+    assert bundle["results"]["worker_inference_cost"]["total_usd"] == "1.20000000"
     assert {row["uid"]: row["weight"] for row in bundle["weights"]["vector"]} == {
         0: 0.01, 1: 0.07, 2: 0.02, 9: 0.90,
     }
