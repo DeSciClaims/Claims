@@ -18,7 +18,9 @@ def test_pilot_models_are_distinct_and_frozen_without_credential(monkeypatch):
     assert j1.max_tokens == j2.max_tokens == 8192
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "pilot-secret")
-    panels, tie = build_provisional_judges()
+    usage_events = []
+    sink = usage_events.append
+    panels, tie = build_provisional_judges(usage_sink=sink)
     frozen = judge_runtime_config(panels, tie)
     assert [row["model"] for row in frozen["judge_panels"]["J1"]] == list(
         PROVISIONAL_JUDGE_MODELS["J1"]
@@ -27,4 +29,7 @@ def test_pilot_models_are_distinct_and_frozen_without_credential(monkeypatch):
         PROVISIONAL_JUDGE_MODELS["J2"]
     )
     assert frozen["tiebreak_pass"]["model"] == PROVISIONAL_TIEBREAK_MODEL
+    assert all(adjudication_pass.usage_sink is sink
+               for passes in panels.values() for adjudication_pass in passes)
+    assert tie.usage_sink is sink
     assert "pilot-secret" not in repr(frozen)

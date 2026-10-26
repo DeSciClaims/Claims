@@ -10,6 +10,7 @@ from dataclasses import replace
 
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig
 from validator.agent_v1.adjudication_runner import AdjudicationPass
+from validator.agent_v1.model_usage import UsageSink
 
 from .judges import build_weekly_judges
 
@@ -43,9 +44,11 @@ def provisional_judge_configs() -> tuple[SilverAdjudicationConfig, SilverAdjudic
 
 
 def build_provisional_judges(
+    *, usage_sink: UsageSink | None = None,
 ) -> tuple[dict[str, tuple[AdjudicationPass, AdjudicationPass]], AdjudicationPass]:
     """Build the pilot panels in the trusted controller's credential context."""
     j1, j2 = provisional_judge_configs()
     return build_weekly_judges(
         j1=j1, j2=j2, allowed_models=set(PROVISIONAL_MODEL_ALLOWLIST),
+        usage_sink=usage_sink,
     )

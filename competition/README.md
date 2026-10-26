@@ -140,6 +140,7 @@ chat-completions endpoint, temperature 1, and 8192 maximum output tokens.
 `build_provisional_judges()` is opt-in; it reads the controller's
 `OPENROUTER_API_KEY` but never puts it in the frozen configuration. Measure
 quality, cost, provider behavior, and context truncation before a paid round.
+The factory accepts a trusted usage sink for recording judge model calls.
 OpenRouter may route one model ID to multiple providers, so model-ID hashing
 alone does not freeze the actual serving endpoint. Pin a tested provider and
 deploy artifact before intake.

@@ -6,13 +6,14 @@ from validator.agent_v1.adjudication_config import (
     SilverAdjudicationConfig, build_silver_adjudication_passes,
 )
 from validator.agent_v1.adjudication_runner import AdjudicationPass
+from validator.agent_v1.model_usage import UsageSink
 
 from .evaluation_policy import judge_runtime_config
 
 
 def build_weekly_judges(
     *, j1: SilverAdjudicationConfig, j2: SilverAdjudicationConfig,
-    allowed_models: set[str],
+    allowed_models: set[str], usage_sink: UsageSink | None = None,
 ) -> tuple[dict[str, tuple[AdjudicationPass, AdjudicationPass]], AdjudicationPass]:
     """Resolve J1/J2 and one common tiebreak without exposing provider keys.
 
@@ -36,7 +37,9 @@ def build_weekly_judges(
     panels: dict[str, tuple[AdjudicationPass, AdjudicationPass]] = {}
     tiebreaks: dict[str, AdjudicationPass] = {}
     for judge_id, config in configurations.items():
-        passes, tiebreak = build_silver_adjudication_passes(config)
+        passes, tiebreak = build_silver_adjudication_passes(
+            config, usage_sink=usage_sink,
+        )
         if len(passes) != 2 or tiebreak is None:
             raise ValueError(f"{judge_id} did not build two passes and a tiebreak")
         panels[judge_id] = (passes[0], passes[1])
