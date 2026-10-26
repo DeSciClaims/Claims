@@ -12,10 +12,12 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import asdict
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from .drand import VerifiedBeacon
+from .gold import GoldCase, GoldVote, decide_gold_case, gold_result
 from .publication import canonical_sha256
 from .sample_release import PaperRecord, frozen_pool_hash, sample_receipt
 
@@ -294,6 +296,46 @@ class CompetitionReplayInputs:
                 or not verify_signature(hotkey, message, signature)):
                 raise ValueError("replay Gold vote signature differs from signed choice")
         return body
+
+    def closed_gold_tally(
+        self, round_id: str, *, finalist_hotkeys: list[str],
+        verify_signature: Callable[[str, bytes, bytes], bool] = _verify_gold_signature,
+    ) -> dict[str, Any]:
+        """Independently tally the primary closed case set from signed votes."""
+        if (not finalist_hotkeys or len(set(finalist_hotkeys)) != len(finalist_hotkeys)
+            or any(not isinstance(hotkey, str) or not hotkey for hotkey in finalist_hotkeys)):
+            raise ValueError("replay Gold tally needs distinct finalists")
+        review = self.closed_gold_review(round_id, verify_signature=verify_signature)
+        teams = {row["voter_hotkey"]: row["team_id"] for row in review["voters"]}
+        by_case: dict[str, list[GoldVote]] = {
+            row["case_id"]: [] for row in review["cases"]
+        }
+        for vote in review["votes"]:
+            by_case[vote["case_id"]].append(GoldVote(
+                vote["voter_hotkey"], vote["choice"],
+            ))
+        decisions = {}
+        checks: dict[str, list[Any]] = {hotkey: [] for hotkey in finalist_hotkeys}
+        for row in review["cases"]:
+            case = GoldCase(
+                row["case_id"], row["paper_id"],
+                row["challenger_hotkey"], row["incumbent_hotkey"],
+                frozenset(row["excluded_team_ids"]),
+            )
+            decision = decide_gold_case(
+                case, by_case[case.case_id], qualified_team_by_hotkey=teams,
+            )
+            decisions[case.case_id] = asdict(decision)
+            if "check" in row["review_purposes"]:
+                if case.challenger_hotkey not in checks:
+                    raise ValueError("replay Gold check is outside frozen finalists")
+                checks[case.challenger_hotkey].append(decision)
+        return {
+            "round_id": round_id,
+            "case_decisions": decisions,
+            "gold_by_hotkey": {hotkey: asdict(gold_result(rows))
+                               for hotkey, rows in sorted(checks.items())},
+        }
 
     def bronze(self, round_id: str, stage: str, paper_id: str) -> dict[str, Any]:
         path = ("/internal/competition/replay/rounds/"

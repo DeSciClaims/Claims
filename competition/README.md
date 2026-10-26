@@ -246,8 +246,9 @@ after primary execution without changing its locked package identities.
 After Gold voting closes, `/gold-review` serves public case prompts, the
 voter roster, and signed votes, but no private answers or check seed. The
 replay client verifies every vote signature, case, team, and exclusion before
-returning the closed record. Applying those votes to an independently
-generated Silver case set remains a separate policy step.
+returning the closed record. It can independently tally the primary check
+cases, including a zero-case finalist. Applying those votes to an
+independently generated Silver case set remains a separate policy step.
 `ReplayStore` persists that grid, leases baseline jobs before challengers,
 records worker results, and freezes independent per-paper adjudications and
 pair scores. `ReplayRuntimeBackend` combines only those local writes with

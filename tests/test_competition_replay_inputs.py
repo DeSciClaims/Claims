@@ -146,6 +146,43 @@ def test_replay_client_verifies_closed_gold_votes_and_exclusions():
         client.closed_gold_review("week-1", verify_signature=verify)
 
 
+def test_replay_client_tallies_verified_gold_choices_with_zero_case_finalist():
+    cases = [{
+        "case_id": "case-1", "paper_id": "paper-1",
+        "challenger_hotkey": "miner-1", "incumbent_hotkey": "reference",
+        "excluded_team_ids": ["team-miner-1"],
+        "case_public": {"statement": "Claim"}, "review_purposes": ["check"],
+    }]
+    voters = [{"voter_hotkey": f"voter-{i}", "team_id": f"team-voter-{i}"}
+              for i in range(11)]
+    votes = []
+    for voter in voters:
+        hotkey = voter["voter_hotkey"]
+        message = _gold_vote_message("week-1", "case-1", hotkey, "challenger")
+        votes.append({
+            "case_id": "case-1", "voter_hotkey": hotkey,
+            "voter_team_id": voter["team_id"], "choice": "challenger",
+            "signed_payload_sha256": hashlib.sha256(message).hexdigest(),
+            "signature_hex": "a" * 128,
+        })
+    body = {"round_id": "week-1", "cases": cases, "voters": voters, "votes": votes}
+
+    def respond(request, *, timeout):
+        return io.BytesIO(json.dumps(body).encode())
+
+    client = CompetitionReplayInputs(
+        "https://backend.example", "replay-only", open_request=respond,
+    )
+    tally = client.closed_gold_tally(
+        "week-1", finalist_hotkeys=["miner-1", "miner-2"],
+        verify_signature=lambda *_: True,
+    )
+    assert tally["case_decisions"]["case-1"]["choice"] == "challenger"
+    assert tally["gold_by_hotkey"]["miner-1"]["sampled_cases"] == 1
+    assert tally["gold_by_hotkey"]["miner-2"]["sampled_cases"] == 0
+    assert tally["gold_by_hotkey"]["miner-2"]["refusal"] is False
+
+
 def test_replay_snapshot_rejects_changed_rule_and_missing_package():
     snapshot = _snapshot()
     snapshot["rules_public"]["configuration"]["worker_policy"]["allowed_models"] = ["changed"]
