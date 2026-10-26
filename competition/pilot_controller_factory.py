@@ -19,6 +19,7 @@ from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
 from .pilot_worker_factory import FrozenWorkerRules, _required, _round_file
 from .provisional_judges import require_provisional_provider_pins
+from .publication import canonical_sha256
 from .weekly_automation import FinalAudit
 
 
@@ -102,7 +103,14 @@ def _final_audit(
     uid_by_hotkey = {hotkey: uid for uid, hotkey in enumerate(hotkeys)}
     production_team_id = (baselines[0]["team_id"]
                           if baselines[0]["role"] == "incumbent" else None)
-    return FinalAudit(code_passed, qualified, uid_by_hotkey, production_team_id)
+    failure_counts = {
+        item["hotkey"]: sum(not value for value in item["checks"].values())
+        for item in record["packages"]
+    }
+    return FinalAudit(
+        code_passed, qualified, uid_by_hotkey, production_team_id,
+        failure_counts, canonical_sha256(evidence),
+    )
 
 
 def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> CompetitionControllerInputs:

@@ -54,7 +54,7 @@ def _inputs(*, incumbent=True):
         packages=packages, evaluation=evaluation,
         weekly_budget_usd=750.0, linked_pairs=(),
         qualified_voters=lambda _: [{"hotkey": "voter"}],
-        audited_finalists=lambda _: FinalAudit({}, {}, {}, None),
+        audited_finalists=lambda _: FinalAudit({}, {}, {}, None, {}, "a" * 64),
     )
     return inputs, backend, package
 

@@ -149,7 +149,7 @@ def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
 
         def final_audit(self, _):
             return FinalAudit({"challenger": True}, {"challenger": True},
-                              {"challenger": 1}, "team-i")
+                              {"challenger": 1}, "team-i", {"challenger": 0}, "a" * 64)
 
     backend, inputs = Backend(), Inputs()
     assert tick_round("week", backend=backend, inputs=inputs,

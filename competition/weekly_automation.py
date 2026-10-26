@@ -36,6 +36,8 @@ class FinalAudit:
     qualified_by_hotkey: Mapping[str, bool]
     uid_by_hotkey: Mapping[str, int]
     production_team_id: str | None
+    code_failure_counts_by_hotkey: Mapping[str, int]
+    code_evidence_sha256: str
 
 
 class TrustedRoundInputs(Protocol):
@@ -243,6 +245,10 @@ def tick_round(
             gold_by_hotkey=gold,
             copy_audit=copy_audit,
             worker_security_audit=security_audit,
+            code_audit={
+                "evidence_sha256": audit.code_evidence_sha256,
+                "failed_checks": dict(audit.code_failure_counts_by_hotkey),
+            },
             gold_check={
                 "seed": round_record["gold_check_seed_private"],
                 "commitment": round_record["gold_check_commitment"],

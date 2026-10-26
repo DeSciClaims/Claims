@@ -85,6 +85,8 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
             "runner": {"paper_count": 500, "denied_papers": 0,
                        "denied_packets": 0, "passed": True},
         },
+        code_audit={"evidence_sha256": "a" * 64,
+                    "failed_checks": {"winner": 0, "runner": 0}},
         gold_check={"seed": "c" * 64, "candidate_ids": [], "case_ids": []},
     )
     assert backend.published == ("week2", receipt)
@@ -100,6 +102,7 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
     assert bundle["results"]["worker_inference_cost"]["total_usd"] == "1.20000000"
     assert bundle["results"]["copy_audit"]["winner"]["jaccard"] == 0.4
     assert bundle["results"]["worker_security_audit"]["winner"]["passed"] is True
+    assert bundle["results"]["code_audit"]["failed_checks"] == {"winner": 0, "runner": 0}
     assert {row["uid"]: row["weight"] for row in bundle["weights"]["vector"]} == {
         0: 0.01, 1: 0.07, 2: 0.02, 9: 0.90,
     }
@@ -146,6 +149,8 @@ def test_signed_reference_fallback_burns_all_miner_shares():
         worker_security_audit={
             "reference": {"passed": True}, "near": {"passed": True},
         },
+        code_audit={"evidence_sha256": "a" * 64,
+                    "failed_checks": {"near": 0}},
         gold_check={"seed": "c" * 64, "candidate_ids": [], "case_ids": []},
     )
     bundle = receipt["bundle"]

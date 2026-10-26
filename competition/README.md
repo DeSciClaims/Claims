@@ -133,6 +133,8 @@ The `build` result is derived from trusted jobs and cannot be overridden.
 The controller recomputes the evidence and rejects a stale or altered review;
 absent or mismatched files stop the transition. These source-behavior checks
 still need reviewer judgment until calibrated automatic detectors are added.
+The signed weekly result publishes the evidence SHA-256 and each finalist's
+number of failed checks, while package bytes and detailed findings stay private.
 The controller checks voter
 qualification against backend consensus records and payout UIDs against the
 current metagraph. Automating reviewer judgments and checking live archive

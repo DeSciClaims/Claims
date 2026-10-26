@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import re
 from typing import Any, Mapping, Protocol
 
 from .final_selection import FinalSelection
@@ -29,6 +30,7 @@ def publish_selected_round(
     gold_by_hotkey: Mapping[str, GoldResult],
     copy_audit: Mapping[str, Mapping[str, Any]],
     worker_security_audit: Mapping[str, Mapping[str, Any]],
+    code_audit: Mapping[str, Any],
     gold_check: Mapping[str, Any] | None = None,
     known_answer_audit: Mapping[str, Any] | None = None,
     burn_uid: int = 0,
@@ -47,6 +49,17 @@ def publish_selected_round(
         raise ValueError("final worker security audit is incomplete")
     if not finalist_hotkeys <= set(qualified_by_hotkey):
         raise ValueError("finalist qualification snapshot is incomplete")
+    failed_checks = code_audit.get("failed_checks")
+    digest = code_audit.get("evidence_sha256")
+    if (not isinstance(failed_checks, dict) or set(failed_checks) != finalist_hotkeys
+        or any(type(value) is not int or not 0 <= value <= 5
+               for value in failed_checks.values())
+        or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
+        or any((row.reason == "code_failed") != (
+            failed_checks[row.hotkey] > 0
+            or not worker_security_audit[row.hotkey]["passed"]
+        ) for row in selection.verdicts)):
+        raise ValueError("final code audit counts differ from finalist verdicts")
     stages = backend.list_stages(round_id)
     effective_final_stage(stages)
     if {row["hotkey"] for row in stages[-1]["entries"] if row["role"] == "challenger"} != finalist_hotkeys:
@@ -120,6 +133,8 @@ def publish_selected_round(
         "final_pair_scores": list(selection.final_pair_rows),
         "judge_diagnostics": judge_diagnostics,
         "copy_audit": {hotkey: dict(row) for hotkey, row in sorted(copy_audit.items())},
+        "code_audit": {"evidence_sha256": digest,
+                       "failed_checks": dict(sorted(failed_checks.items()))},
         "worker_security_audit": {hotkey: dict(row) for hotkey, row in sorted(worker_security_audit.items())},
         "worker_inference_cost": backend.worker_inference_cost_summary(round_id),
     }

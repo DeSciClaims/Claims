@@ -67,6 +67,8 @@ def test_late_voter_and_code_audit_receipts_are_package_bound(tmp_path, monkeypa
         fetch_package=lambda job: b"package",
     )
     assert audit.code_passed_by_hotkey == {"miner-a": True}
+    assert audit.code_failure_counts_by_hotkey == {"miner-a": 0}
+    assert audit.code_evidence_sha256 == canonical_sha256(evidence)
     assert audit.qualified_by_hotkey == {"incumbent": True, "miner-a": True}
     assert audit.uid_by_hotkey["miner-a"] == 2
     assert audit.production_team_id == "king"
