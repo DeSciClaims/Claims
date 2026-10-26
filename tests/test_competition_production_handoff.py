@@ -27,6 +27,7 @@ def _fixture(decision="new_crown"):
         "drand_scheduled_at": 1_800_000_000, "paper_pool_sha256": "f" * 64,
         "rules_sha256": "1" * 64, "configuration_sha256": "2" * 64,
         "baseline_package_sha256": "3" * 64,
+        "reference_package_sha256": "4" * 64,
     }
     stage = {"stage": "final", "entries": [
         {"hotkey": "winner", "role": "challenger", "team_id": "new-team",

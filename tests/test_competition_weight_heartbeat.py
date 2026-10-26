@@ -26,6 +26,7 @@ def receipt():
         "drand_scheduled_at": 1_800_000_000, "paper_pool_sha256": "f" * 64,
         "rules_sha256": "1" * 64, "configuration_sha256": "2" * 64,
         "baseline_package_sha256": "3" * 64,
+        "reference_package_sha256": "4" * 64,
     }
     bundle = publication_bundle(round_record, results={"decision": "new_crown"}, weights={
         "vector": [{"uid": 0, "weight": 0.01}, {"uid": 1, "weight": 0.07},

@@ -16,7 +16,8 @@ def test_package_resolver_binds_baseline_and_accepted_challenger():
 
     class Backend:
         def get_round(self, _):
-            return {"baseline_package_sha256": "a" * 64, "incumbent_hotkey": None}
+            return {"baseline_package_sha256": "a" * 64,
+                    "reference_package_sha256": "a" * 64, "incumbent_hotkey": None}
 
         def list_stages(self, _):
             return [{"stage": "week_one", "entries": [
@@ -30,6 +31,7 @@ def test_package_resolver_binds_baseline_and_accepted_challenger():
     storage = SimpleNamespace(package_for_submission=lambda upload: upload["package_object_key"].encode())
     resolver = CompetitionPackageResolver(Backend(), storage, baseline)
     assert resolver({"round_id": "week-1", "stage": "week_one", **baseline}) == b"sealed/baseline"
+    assert resolver.reference_package_for_round("week-1") == b"sealed/baseline"
     assert resolver({"round_id": "week-1", "stage": "week_one", **challenger}) == b"sealed/challenger"
     assert resolver.manifest_for_job({"round_id": "week-1", "stage": "week_one", **challenger}) == {
         "entrypoint": "challenger.cli:main",
@@ -42,7 +44,8 @@ def test_package_resolver_rejects_a_changed_stage_or_ambiguous_receipt():
 
     class Backend:
         def get_round(self, _):
-            return {"baseline_package_sha256": "a" * 64, "incumbent_hotkey": None}
+            return {"baseline_package_sha256": "a" * 64,
+                    "reference_package_sha256": "a" * 64, "incumbent_hotkey": None}
 
         def list_stages(self, _):
             return [{"stage": "week_one", "entries": [{**upload, "role": "challenger"}]}]
@@ -59,3 +62,24 @@ def test_package_resolver_rejects_a_changed_stage_or_ambiguous_receipt():
     with pytest.raises(ValueError, match="selected stage entry"):
         resolver({"round_id": "week-1", "stage": "week_one",
                   "hotkey": "challenger", "package_sha256": "c" * 64})
+
+
+def test_incumbent_week_resolves_only_the_reference_frozen_before_scoring():
+    class Backend:
+        def get_round(self, _):
+            return {"incumbent_hotkey": "king", "baseline_package_sha256": "a" * 64,
+                    "reference_package_sha256": "b" * 64}
+
+    storage = SimpleNamespace(package_for_submission=lambda upload: upload["package_object_key"].encode())
+    incumbent = {"hotkey": "king", "package_sha256": "a" * 64,
+                 "package_object_key": "sealed/king"}
+    reference = {"hotkey": "reference", "package_sha256": "b" * 64,
+                 "package_object_key": "sealed/reference",
+                 "manifest": {"entrypoint": "reference.cli:main"}}
+    resolver = CompetitionPackageResolver(Backend(), storage, incumbent, reference)
+    assert resolver.reference_package_for_round("week-2") == b"sealed/reference"
+    assert resolver.reference_manifest_for_round("week-2") == {"entrypoint": "reference.cli:main"}
+    with pytest.raises(ValueError, match="reference upload differs"):
+        CompetitionPackageResolver(Backend(), storage, incumbent, {
+            **reference, "package_sha256": "c" * 64,
+        }).reference_package_for_round("week-2")

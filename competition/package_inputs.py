@@ -21,6 +21,31 @@ class CompetitionPackageResolver:
     backend: PackageBackend
     storage: SealedStorage
     baseline_upload: Mapping[str, Any]
+    reference_upload: Mapping[str, Any] | None = None
+
+    def _reference_upload_for_round(self, round_id: str) -> Mapping[str, Any]:
+        round_record = self.backend.get_round(round_id)
+        if not round_record:
+            raise ValueError("reference round does not exist")
+        upload = (self.baseline_upload if round_record.get("incumbent_hotkey") is None
+                  else self.reference_upload)
+        if (upload is None
+            or upload.get("package_sha256") != round_record.get("reference_package_sha256")
+            or not upload.get("package_object_key")):
+            raise ValueError("reference upload differs from frozen round")
+        return upload
+
+    def reference_manifest_for_round(self, round_id: str) -> dict[str, Any]:
+        manifest = self._reference_upload_for_round(round_id).get("manifest")
+        if not isinstance(manifest, dict):
+            raise ValueError("reference package has no valid manifest")
+        return dict(manifest)
+
+    def reference_package_for_round(self, round_id: str) -> bytes:
+        package = self.storage.package_for_submission(self._reference_upload_for_round(round_id))
+        if not isinstance(package, bytes):
+            raise ValueError("sealed reference read did not return bytes")
+        return package
 
     def _upload_for_job(self, job: Mapping[str, Any]) -> Mapping[str, Any]:
         round_id = str(job["round_id"])

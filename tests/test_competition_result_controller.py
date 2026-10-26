@@ -20,6 +20,7 @@ class Backend:
             "paper_pool_sha256": "c" * 64, "rules_sha256": "d" * 64,
             "configuration_sha256": "e" * 64,
             "baseline_package_sha256": "1" * 64,
+            "reference_package_sha256": "2" * 64,
             "incumbent_hotkey": "incumbent",
         }
 
