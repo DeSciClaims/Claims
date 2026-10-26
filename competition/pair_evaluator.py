@@ -20,6 +20,7 @@ from .scoring import score_pairwise_paper
 class WeeklyPaperEvaluation:
     pipeline: PaperSilverPipelineResult
     pair_rows: tuple[dict[str, Any], ...]
+    judge_usage_events: tuple[dict[str, Any], ...] | None = None
 
 
 def evaluate_weekly_paper(

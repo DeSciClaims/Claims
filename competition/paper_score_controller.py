@@ -180,7 +180,10 @@ def score_ready_paper(
                     "inference_cost_usd": outcomes[hotkey].get("inference_cost_usd"),
                 },
             }})
-        result = {"scores": scores, "pairs": pairs, "silver": silver}
+        result = {"scores": scores, "pairs": pairs, "silver": silver,
+                  "judge_usage": (list(getattr(evaluation, "judge_usage_events", None))
+                                  if not infrastructure_fault
+                                  and getattr(evaluation, "judge_usage_events", None) is not None else None)}
         frozen = backend.freeze_paper_evaluation(
             round_id, stage, paper_id, input_sha256=input_sha256, result_private=result,
         )

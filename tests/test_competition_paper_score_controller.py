@@ -65,6 +65,9 @@ def _evaluation(**kwargs):
     assert kwargs["paper_id"] == "paper-1"
     assert kwargs["judge_id"] == "J1"
     return SimpleNamespace(
+        judge_usage_events=({"model": "example/judge", "pass_id": "J1-first",
+                             "status": "success", "cost_kind": "actual",
+                             "cost_usd": 0.02},),
         pair_rows=({
             "paper_id": "paper-1", "challenger_hotkey": "challenger",
             "baseline_hotkey": "reference", "challenger_score": 0.7,
@@ -94,6 +97,7 @@ def test_paper_waits_for_complete_grid_then_replays_frozen_adjudication():
     assert backend.scores["challenger-job"]["score"] == 0.7
     assert backend.scores["challenger-job"]["details_public"]["inference_cost_usd"] == 0.12
     assert backend.pairs["challenger"]["baseline_score"] == 0.6
+    assert backend.frozen["result_private"]["judge_usage"][0]["cost_usd"] == 0.02
     assert call(lambda **_: pytest.fail("adjudication must not rerun"))["status"] == "scored"
     backend.jobs[1]["result_private"] = {"status": "invalid_output", "inference_cost_usd": 0.12}
     with pytest.raises(ValueError, match="inputs changed"):

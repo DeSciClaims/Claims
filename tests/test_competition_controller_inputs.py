@@ -7,6 +7,8 @@ import pytest
 from competition.controller_inputs import (
     CompetitionControllerInputs, build_provisional_evaluation_policy,
 )
+from competition.judge_usage import JudgeUsageCapture
+from competition.pair_evaluator import WeeklyPaperEvaluation
 from competition.weekly_automation import FinalAudit
 
 
@@ -83,6 +85,29 @@ def test_controller_rejects_budget_outside_frozen_configuration():
     inputs, _, _ = _inputs()
     with pytest.raises(ValueError, match="mismatched"):
         replace(inputs, weekly_budget_usd=460.0)
+
+
+def test_controller_attaches_scoped_judge_usage_to_paper_evaluation():
+    inputs, _, _ = _inputs()
+    capture = JudgeUsageCapture()
+
+    def evaluate_for_stage(_stage):
+        def evaluate(**kwargs):
+            capture.record({"paper_id": kwargs["paper_id"], "model": "open-weight/judge",
+                            "usage": {"cost_kind": "actual", "cost_usd": 0.02}})
+            return WeeklyPaperEvaluation(SimpleNamespace(), ())
+        return evaluate
+
+    evaluation = SimpleNamespace(
+        round_id="week2", configuration_sha256="a" * 64,
+        configuration={"weekly_budget_usd": "750.00"},
+        evaluate_for_stage=evaluate_for_stage,
+    )
+    scoped = replace(inputs, evaluation=evaluation, judge_usage_capture=capture)
+    first = scoped.evaluate_for_stage("final")(paper_id="paper-1")
+    second = scoped.evaluate_for_stage("final")(paper_id="paper-2")
+    assert first.judge_usage_events[0]["cost_usd"] == 0.02
+    assert len(first.judge_usage_events) == len(second.judge_usage_events) == 1
 
 
 def test_week_one_uses_its_reference_as_baseline():

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
@@ -12,6 +12,7 @@ from validator.agent_v1.model_usage import UsageSink
 
 from .decision_router import PROMPT_SHA256
 from .evaluation_policy import FrozenEvaluationPolicy, judge_runtime_config
+from .judge_usage import JudgeUsageCapture
 from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
 from .policy_runtime import policy_runtime_config
@@ -112,6 +113,7 @@ class CompetitionControllerInputs:
     linked_pairs: tuple[tuple[str, str, str], ...]
     qualified_voters: Callable[[str], list[dict[str, str]]]
     audited_finalists: Callable[[str], FinalAudit]
+    judge_usage_capture: JudgeUsageCapture | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -185,7 +187,19 @@ class CompetitionControllerInputs:
 
     def evaluate_for_stage(self, stage: str) -> Callable[..., Any]:
         self._round(self.evaluation.round_id)
-        return self.evaluation.evaluate_for_stage(stage)
+        evaluate = self.evaluation.evaluate_for_stage(stage)
+        if self.judge_usage_capture is None:
+            return evaluate
+
+        def capture(**kwargs):
+            paper_id = kwargs.get("paper_id")
+            if not isinstance(paper_id, str) or not paper_id:
+                raise ValueError("judge usage needs a paper ID")
+            with self.judge_usage_capture.collect(paper_id) as events:
+                result = evaluate(**kwargs)
+            return replace(result, judge_usage_events=tuple(events))
+
+        return capture
 
     def voters_for_round(self, round_id: str) -> list[dict[str, str]]:
         self._round(round_id)

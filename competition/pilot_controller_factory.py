@@ -15,6 +15,7 @@ from .chain_archive import BittensorArchive
 from .code_audit import collect_final_code_evidence, verify_code_audit_receipt
 from .controller_inputs import CompetitionControllerInputs, build_provisional_evaluation_policy
 from .hippius import HippiusPrivateStorage, hippius_s3_client
+from .judge_usage import JudgeUsageCapture
 from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
 from .pilot_worker_factory import FrozenWorkerRules, _required, _round_file
@@ -169,6 +170,7 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
     routing = configuration.get("decision_routing")
     if not isinstance(routing, dict):
         raise ValueError("pilot Decisions routing is missing from frozen rules")
+    judge_usage_capture = JudgeUsageCapture()
     policy = build_provisional_evaluation_policy(
         paper_inputs=papers,
         decision_api_key=_required("CLAIMS_COMPETITION_DECISION_API_KEY"),
@@ -177,6 +179,7 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         prescreen_threshold=float(routing["prescreen_confidence_threshold"]),
         screen_threshold=float(routing["screen_confidence_threshold"]),
         decision_api_base=str(routing["api_base"]),
+        judge_usage_sink=judge_usage_capture.record,
     )
     if policy.configuration_sha256 != rules.configuration_sha256 or policy.configuration != configuration:
         raise ValueError("controller model runtime differs from frozen round")
@@ -185,6 +188,7 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         archive=chain, chain=chain, netuid=netuid, signer=signer,
         operator_hotkey=operator, paper_inputs=papers, packages=packages,
         evaluation=policy, weekly_budget_usd=float(configuration["weekly_budget_usd"]),
+        judge_usage_capture=judge_usage_capture,
         linked_pairs=tuple(tuple(pair) for pair in links),
         qualified_voters=lambda rid: _voters(backend, rid),
         audited_finalists=lambda rid: _final_audit(
