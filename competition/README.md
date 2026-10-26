@@ -106,9 +106,13 @@ prompt/scorer source files and the embedding model, endpoint and thresholds.
 Neither descriptor contains a credential value. `FrozenEvaluationPolicy`
 checks both before each paper and Gold known-answer audit, and fails closed if
 embeddings are enabled without a trusted controller credential. The embedding
-provider remains shared across J1/J2; different providers by judge would need
-a separate scoring-path change. Live judge panels and a frozen deploy artifact
-still need to be selected for a paid round.
+credential can be a scoped gateway key; the controller does not need the
+upstream OpenRouter key. The embedding provider remains shared across J1/J2;
+different providers by judge would need a separate scoring-path change.
+`build_weekly_judges` assembles two explicit
+allowlisted model-backed panels with one common tiebreak through the existing
+Silver judge factory. Select and cost the concrete models, then pin a deploy
+artifact before a paid round.
 
 The final paper scorer freezes contested claim cases, including primary judge
 splits with pairwise credit effects. The backend commits to a private Gold

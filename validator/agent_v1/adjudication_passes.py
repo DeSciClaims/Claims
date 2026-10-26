@@ -95,7 +95,7 @@ class OpenAICompatibleAdjudicationPass:
     adjudication_profile_id: str
     model_runtime_id: str
     model: str
-    api_key: str
+    api_key: str = field(repr=False)
     api_base: str = "https://api.openai.com/v1"
     temperature: float = 0.0
     max_tokens: int = 8192
@@ -728,7 +728,7 @@ class DSPyAdjudicationPass:
     adjudication_profile_id: str
     model_runtime_id: str
     model: str
-    api_key: str
+    api_key: str = field(repr=False)
     api_base: str = "https://openrouter.ai/api/v1"
     temperature: float = 0.0
     max_tokens: int = 8192

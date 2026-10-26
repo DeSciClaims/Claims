@@ -19,7 +19,8 @@ from .silver_runtime import silver_runtime_config
 def _pass_descriptor(adjudication_pass: AdjudicationPass) -> dict[str, Any]:
     """Public, credential-free identity of the configured judge runtime."""
     fields = ("pass_id", "adjudication_profile_id", "model_runtime_id", "model",
-              "api_base", "temperature", "max_tokens")
+              "api_base", "temperature", "max_tokens", "timeout_seconds",
+              "num_retries", "prompt_mode")
     descriptor = {
         "implementation": (type(adjudication_pass).__module__ + "."
                            + type(adjudication_pass).__qualname__),
@@ -56,10 +57,10 @@ class FrozenEvaluationPolicy:
     round_id: str
     configuration_sha256: str
     configuration: Mapping[str, Any]
-    adjudication_passes_by_judge: Mapping[str, tuple[AdjudicationPass, AdjudicationPass]]
+    adjudication_passes_by_judge: Mapping[str, tuple[AdjudicationPass, AdjudicationPass]] = field(repr=False)
     source_context_for_paper: Callable[[str], Mapping[str, str]]
     decision_api_key: str = field(repr=False)
-    tiebreak_pass: AdjudicationPass | None = None
+    tiebreak_pass: AdjudicationPass | None = field(default=None, repr=False)
     prescreen_threshold: float = 0.8
     screen_threshold: float = 0.9
     decision_api_base: str = "https://api.openai.com/v1"
