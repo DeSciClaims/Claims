@@ -110,7 +110,7 @@ class PinnedSshWorkerTransport:
             raise RuntimeError(f"worker SSH operation failed with exit {result.returncode}")
         return result.stdout
 
-    def _check_egress(self, vm: WorkerVm) -> None:
+    def _check_egress(self, vm: WorkerVm) -> int:
         """Fail closed unless the miner UID has precisely the expected rules."""
         uid_text = self._ssh(vm, f"id -u {shlex.quote(self.guest_user)}").decode().strip()
         if not re.fullmatch(r"[1-9][0-9]*", uid_text):
@@ -121,11 +121,12 @@ class PinnedSshWorkerTransport:
         body = [line for line in lines
                 if line and line not in {"table inet claims_worker {", "chain output {", "}"}
                 and not line.startswith("type filter hook output priority ")]
-        expected = [
-            f"meta skuid {uid_text} ip daddr {self.gateway_ip} tcp dport {self.gateway_port} accept",
-            f"meta skuid {uid_text} reject",
-        ]
-        if body != expected or not any("policy accept;" in line for line in lines):
+        allowed = (rf"meta skuid {uid_text} ip daddr {re.escape(self.gateway_ip)} "
+                   rf"tcp dport {self.gateway_port} counter packets ([0-9]+) bytes ([0-9]+) accept")
+        denied = rf"meta skuid {uid_text} counter packets ([0-9]+) bytes ([0-9]+) reject"
+        allow_match = re.fullmatch(allowed, body[0]) if len(body) == 2 else None
+        deny_match = re.fullmatch(denied, body[1]) if len(body) == 2 else None
+        if not allow_match or not deny_match or not any("policy accept;" in line for line in lines):
             raise ValueError("worker egress policy differs from the reviewed allowlist")
         hostname = urllib.parse.urlsplit(self.inference_base_url).hostname
         if hostname is None:
@@ -140,6 +141,7 @@ class PinnedSshWorkerTransport:
         else:
             if str(resolved_ip) != self.gateway_ip:
                 raise ValueError("worker inference URL differs from its allowed IP")
+        return int(deny_match.group(1))
 
     def run(
         self, vm: WorkerVm, *, job: dict[str, Any], package: bytes, pdf: bytes,
@@ -148,7 +150,8 @@ class PinnedSshWorkerTransport:
         if inference_base_url != self.inference_base_url or not paper_key:
             raise ValueError("worker gateway URL or scoped key differs from transport policy")
         bundle = build_worker_bundle(job=job, package=package, pdf=pdf)
-        self._check_egress(vm)
+        if self._check_egress(vm):
+            raise ValueError("worker VM has prior denied miner egress")
         job_id = str(job["job_id"])
         lease_token = str(job.get("lease_token", ""))
         if not lease_token:
@@ -193,7 +196,27 @@ class PinnedSshWorkerTransport:
                 "--inference-base-url", inference_base_url,
                 "--paper-key-file", key_path,
             ])
-            self._ssh(vm, command, timeout=self.command_timeout_seconds)
+            try:
+                self._ssh(vm, command, timeout=self.command_timeout_seconds)
+            except (RuntimeError, TimeoutError):
+                denied_packets = self._check_egress(vm)
+                if denied_packets:
+                    try:
+                        log = self._ssh(
+                            vm, f"sudo -n head -c {self.max_log_bytes + 1} "
+                                + shlex.quote(results + "/worker.log"),
+                        )
+                    except (RuntimeError, TimeoutError):
+                        log = b""
+                    if len(log) > self.max_log_bytes:
+                        log = log[:self.max_log_bytes] + b"\n[trusted-transport] log truncated\n"
+                    return ExecutionOutput(
+                        status="security_violation", artifact=None,
+                        log_bytes=log + f"\n[trusted-transport] {denied_packets} blocked egress packets\n".encode(),
+                        detail=f"{denied_packets} blocked egress packets",
+                        denied_egress_packets=denied_packets,
+                    )
+                raise
             summary_bytes = self._ssh(
                 vm, f"sudo -n head -c {self.max_result_bytes + 1} {shlex.quote(results + '/result.json')}",
             )
@@ -211,6 +234,14 @@ class PinnedSshWorkerTransport:
             )
             if len(log) > self.max_log_bytes:
                 log = log[:self.max_log_bytes] + b"\n[trusted-transport] log truncated\n"
+            denied_packets = self._check_egress(vm)
+            if denied_packets:
+                return ExecutionOutput(
+                    status="security_violation", artifact=None,
+                    log_bytes=log + f"\n[trusted-transport] {denied_packets} blocked egress packets\n".encode(),
+                    detail=f"{denied_packets} blocked egress packets",
+                    denied_egress_packets=denied_packets,
+                )
             return ExecutionOutput(
                 status=summary["status"], artifact=summary.get("artifact"),
                 log_bytes=log, detail=str(summary.get("detail") or ""),

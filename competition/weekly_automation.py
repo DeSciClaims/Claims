@@ -25,6 +25,7 @@ from .result_controller import publish_selected_round
 from .round_controller import lock_ready_round, reveal_selected_sample, start_revealed_round
 from .sample_release import PaperRecord
 from .stage_controller import advance_ready_stage
+from .worker_security_audit import audit_final_worker_security
 
 
 @dataclass(frozen=True)
@@ -192,9 +193,15 @@ def tick_round(
         )
         audit = inputs.final_audit(round_id)
         copy_audit = audit_final_output_copies(round_id, backend=backend)
+        security_audit = audit_final_worker_security(round_id, backend=backend)
+        baseline_hotkeys = [row["hotkey"] for row in backend.list_stages(round_id)[-1]["entries"]
+                            if row["role"] in {"incumbent", "reference"}]
+        if len(baseline_hotkeys) != 1 or not security_audit[baseline_hotkeys[0]]["passed"]:
+            raise ValueError("final baseline attempted denied egress; crown requires review")
         selection = select_ready_final(
             round_id, backend=backend,
-            code_passed_by_hotkey=audit.code_passed_by_hotkey,
+            code_passed_by_hotkey={hotkey: passed and security_audit[hotkey]["passed"]
+                                   for hotkey, passed in audit.code_passed_by_hotkey.items()},
             copy_by_hotkey={hotkey: row["is_copy"] for hotkey, row in copy_audit.items()},
             gold_by_hotkey=gold,
         )
@@ -206,6 +213,7 @@ def tick_round(
             production_team_id=audit.production_team_id,
             gold_by_hotkey=gold,
             copy_audit=copy_audit,
+            worker_security_audit=security_audit,
             gold_check={
                 "seed": round_record["gold_check_seed_private"],
                 "commitment": round_record["gold_check_commitment"],

@@ -30,7 +30,8 @@ def _job(package, pdf):
     return data
 
 
-def test_pinned_ssh_transport_keeps_key_out_of_bundle_and_deletes_job_dir(tmp_path):
+@pytest.mark.parametrize("denied_packets", [0, 2])
+def test_pinned_ssh_transport_keeps_key_out_of_bundle_and_deletes_job_dir(tmp_path, denied_packets):
     identity, known_hosts = tmp_path / "id", tmp_path / "known_hosts"
     identity.write_text("test key", encoding="utf-8")
     known_hosts.write_text("[192.0.2.1]:20005 ssh-ed25519 AAAATEST\n", encoding="utf-8")
@@ -38,8 +39,10 @@ def test_pinned_ssh_transport_keeps_key_out_of_bundle_and_deletes_job_dir(tmp_pa
     job = _job(package, pdf)
     commands = []
     staged = []
+    nft_reads = 0
 
     def invoke(argv, **kwargs):
+        nonlocal nft_reads
         command = argv[-1]
         commands.append((argv, command, kwargs["input"]))
         assert "StrictHostKeyChecking=yes" in argv
@@ -48,12 +51,14 @@ def test_pinned_ssh_transport_keeps_key_out_of_bundle_and_deletes_job_dir(tmp_pa
         if command == "id -u claims-miner":
             return subprocess.CompletedProcess(argv, 0, b"995\n", b"")
         if command == "sudo -n nft list chain inet claims_worker output":
+            nft_reads += 1
+            blocked = denied_packets if nft_reads == 2 else 0
             return subprocess.CompletedProcess(argv, 0, (
                 "table inet claims_worker {\n"
                 "  chain output {\n"
                 "    type filter hook output priority filter; policy accept;\n"
-                "    meta skuid 995 ip daddr 192.0.2.20 tcp dport 443 accept\n"
-                "    meta skuid 995 reject\n"
+                "    meta skuid 995 ip daddr 192.0.2.20 tcp dport 443 counter packets 0 bytes 0 accept\n"
+                f"    meta skuid 995 counter packets {blocked} bytes {blocked * 80} reject\n"
                 "  }\n}\n"
             ).encode(), b"")
         if command == "getent ahostsv4 gateway.example":
@@ -82,7 +87,13 @@ def test_pinned_ssh_transport_keeps_key_out_of_bundle_and_deletes_job_dir(tmp_pa
         job=job, package=package, pdf=pdf,
         inference_base_url="https://gateway.example/v1", paper_key="scoped-key",
     )
-    assert result.status == "completed" and result.log_bytes == b"installed and executed"
+    assert result.status == ("security_violation" if denied_packets else "completed")
+    assert result.log_bytes.startswith(b"installed and executed")
+    if denied_packets:
+        assert b"2 blocked egress packets" in result.log_bytes
+        assert result.artifact is None
+    assert result.denied_egress_packets == denied_packets
+    assert nft_reads == 2
     assert sorted(staged) == ["input.json", "miner.whl", "paper.pdf", "request.json"]
     assert any(data == b"scoped-key" for _, _, data in commands)
     service = next(command for _, command, _ in commands if "competition.worker_guest" in command)
@@ -93,25 +104,30 @@ def test_pinned_ssh_transport_keeps_key_out_of_bundle_and_deletes_job_dir(tmp_pa
     assert commands[-1][1].startswith("sudo -n rm -rf -- ")
 
 
-def test_ssh_transport_cleans_up_after_guest_failure(tmp_path):
+@pytest.mark.parametrize("denied_packets", [0, 3])
+def test_ssh_transport_cleans_up_after_guest_failure(tmp_path, denied_packets):
     identity, known_hosts = tmp_path / "id", tmp_path / "known_hosts"
     identity.write_text("test key", encoding="utf-8")
     known_hosts.write_text("pinned host", encoding="utf-8")
     package, pdf = b"package", b"%PDF"
     commands = []
+    nft_reads = 0
 
     def invoke(argv, **kwargs):
+        nonlocal nft_reads
         command = argv[-1]
         commands.append(command)
         if command == "id -u claims-miner":
             return subprocess.CompletedProcess(argv, 0, b"995\n", b"")
         if command == "sudo -n nft list chain inet claims_worker output":
+            nft_reads += 1
+            blocked = denied_packets if nft_reads == 2 else 0
             return subprocess.CompletedProcess(argv, 0, (
                 "table inet claims_worker {\n"
                 "  chain output {\n"
                 "    type filter hook output priority filter; policy accept;\n"
-                "    meta skuid 995 ip daddr 192.0.2.20 tcp dport 443 accept\n"
-                "    meta skuid 995 reject\n"
+                "    meta skuid 995 ip daddr 192.0.2.20 tcp dport 443 counter packets 0 bytes 0 accept\n"
+                f"    meta skuid 995 counter packets {blocked} bytes {blocked * 80} reject\n"
                 "  }\n}\n"
             ).encode(), b"")
         if command == "getent ahostsv4 gateway.example":
@@ -123,12 +139,16 @@ def test_ssh_transport_cleans_up_after_guest_failure(tmp_path):
         identity, known_hosts, "https://gateway.example/v1", "192.0.2.20", 443,
         invoke=invoke,
     )
-    with pytest.raises(RuntimeError, match="exit 1"):
-        transport.run(
-            WorkerVm("wrk-example", "192.0.2.1", 20005, 1.0),
-            job=_job(package, pdf), package=package, pdf=pdf,
-            inference_base_url="https://gateway.example/v1", paper_key="scoped-key",
-        )
+    args = (WorkerVm("wrk-example", "192.0.2.1", 20005, 1.0),)
+    kwargs = {"job": _job(package, pdf), "package": package, "pdf": pdf,
+              "inference_base_url": "https://gateway.example/v1", "paper_key": "scoped-key"}
+    if denied_packets:
+        result = transport.run(*args, **kwargs)
+        assert result.status == "security_violation"
+        assert result.denied_egress_packets == denied_packets
+    else:
+        with pytest.raises(RuntimeError, match="exit 1"):
+            transport.run(*args, **kwargs)
     assert commands[-1].startswith("sudo -n rm -rf -- ")
 
 

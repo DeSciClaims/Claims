@@ -22,6 +22,7 @@ class ExecutionOutput:
     artifact: dict[str, Any] | None
     log_bytes: bytes
     detail: str = ""
+    denied_egress_packets: int = 0
 
 
 class InferenceKeys(Protocol):
@@ -162,9 +163,15 @@ def run_claimed_job(
         keys.revoke(key)
     if usage.tokens < 0 or not math.isfinite(usage.dollar_cost_usd) or usage.dollar_cost_usd < 0:
         raise ValueError("gateway returned invalid usage")
-    status = "cap_exceeded" if usage.over_cap else output.status
+    if (isinstance(output.denied_egress_packets, bool)
+        or not isinstance(output.denied_egress_packets, int)
+        or output.denied_egress_packets < 0
+        or (output.status == "security_violation") != bool(output.denied_egress_packets)):
+        raise ValueError("worker returned an invalid denied-egress counter")
+    status = ("security_violation" if output.denied_egress_packets
+              else "cap_exceeded" if usage.over_cap else output.status)
     if status not in {"completed", "build_failed", "package_failed", "invalid_output",
-                      "timeout", "cap_exceeded", "infrastructure_fault"}:
+                      "timeout", "cap_exceeded", "infrastructure_fault", "security_violation"}:
         raise ValueError("worker returned an unknown status")
     validation_error = ""
     if status == "completed":
@@ -194,6 +201,7 @@ def run_claimed_job(
         "artifact": output.artifact if status == "completed" else None,
         "prompt_and_completion_tokens": usage.tokens,
         "inference_cost_usd": usage.dollar_cost_usd,
+        "denied_egress_packets": output.denied_egress_packets,
         "token_limit": token_limit,
         "cap_source": cap_source,
         "detail": validation_error or output.detail,

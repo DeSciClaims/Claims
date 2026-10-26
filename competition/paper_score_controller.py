@@ -31,7 +31,8 @@ def _status_fault(status: str) -> str:
         return "infrastructure"
     if status == "cap_exceeded":
         return "cap"
-    if status in {"build_failed", "package_failed", "invalid_output", "timeout"}:
+    if status in {"build_failed", "package_failed", "invalid_output", "timeout",
+                  "security_violation"}:
         return "package"
     raise ValueError("paper job has an unknown worker status")
 

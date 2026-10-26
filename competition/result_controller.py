@@ -27,6 +27,7 @@ def publish_selected_round(
     production_team_id: str | None,
     gold_by_hotkey: Mapping[str, GoldResult],
     copy_audit: Mapping[str, Mapping[str, Any]],
+    worker_security_audit: Mapping[str, Mapping[str, Any]],
     gold_check: Mapping[str, Any] | None = None,
     known_answer_audit: Mapping[str, Any] | None = None,
     burn_uid: int = 0,
@@ -39,6 +40,10 @@ def publish_selected_round(
     if (set(copy_audit) != finalist_hotkeys
         or any(not isinstance(row.get("is_copy"), bool) for row in copy_audit.values())):
         raise ValueError("finalist output-copy evidence is incomplete")
+    if (not finalist_hotkeys <= set(worker_security_audit)
+        or any(not isinstance(row.get("passed"), bool)
+               for row in worker_security_audit.values())):
+        raise ValueError("final worker security audit is incomplete")
     if not finalist_hotkeys <= set(qualified_by_hotkey):
         raise ValueError("finalist qualification snapshot is incomplete")
     stages = backend.list_stages(round_id)
@@ -102,6 +107,7 @@ def publish_selected_round(
         "final_pair_scores": list(selection.final_pair_rows),
         "judge_diagnostics": judge_diagnostics,
         "copy_audit": {hotkey: dict(row) for hotkey, row in sorted(copy_audit.items())},
+        "worker_security_audit": {hotkey: dict(row) for hotkey, row in sorted(worker_security_audit.items())},
         "worker_inference_cost": backend.worker_inference_cost_summary(round_id),
     }
     weights = {

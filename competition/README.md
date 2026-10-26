@@ -82,8 +82,16 @@ Thursday 12:00 UTC; it will not publish a crown without the Gold vote.
 For the final stage, it now recomputes each finalist's output-copy verdict
 from the frozen private Silver receipt and paired score grid. The 85% accepted
 unit overlap and two-standard-error gain rule is applied against the baseline,
-and the evidence is included in the signed public result. The remaining
-automated code-integrity checks still need a concrete audit adapter.
+and the evidence is included in the signed public result. Other automated
+code-integrity checks still need concrete audit adapters.
+The disposable worker firewall also counts denied packets for the miner UID.
+The trusted SSH transport checks the reviewed two-rule policy before and after
+each run, records blocked attempts even when the guest exits unsuccessfully,
+and treats any denied egress as a package fault. The final controller recomputes
+per-hotkey counts from private worker receipts and blocks a finalist with any
+denied egress; it stops publication for a baseline violation. This is one
+observable code-integrity check, not a substitute for package and behavioral
+audits.
 
 ## Early-stage Decision API pilot
 

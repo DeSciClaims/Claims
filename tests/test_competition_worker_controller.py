@@ -5,6 +5,7 @@ import pytest
 from bittensor_wallet import Keypair
 
 from competition.bifrost import PaperKey, PaperUsage
+from competition.paper_score_controller import _status_fault
 from competition.worker_controller import (
     ExecutionOutput,
     paper_token_cap,
@@ -101,7 +102,7 @@ class Backend:
         return {"status": "completed"}
 
 
-def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False):
+def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False, execution=None):
     signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
     job = {
         "job_id": "a" * 64, "round_id": "week2", "hotkey": signer.ss58_address,
@@ -120,7 +121,7 @@ def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False):
         job, backend=backend, worker_id="worker-1", network="testnet",
         fetch_package=lambda _job: package, fetch_pdf=lambda _job: pdf,
         expected_pdf_sha256=hashlib.sha256(pdf).hexdigest(),
-        keys=keys, execution=Executor(), logs=logs,
+        keys=keys, execution=execution or Executor(), logs=logs,
         inference_base_url="http://gateway.internal:8080/v1",
         allowed_models=("example/model",), published_token_ceiling=1000, dollar_limit=1.0,
     )
@@ -145,6 +146,22 @@ def test_over_cap_output_is_not_scored_as_a_success():
     assert keys.revoked
     assert result["status"] == "cap_exceeded"
     assert backend.receipt[1]["result"]["artifact"] is None
+
+
+def test_denied_network_attempt_is_a_package_fault_with_no_artifact():
+    class Denied:
+        def run(self, **_):
+            return ExecutionOutput("security_violation", None, b"blocked egress",
+                                   denied_egress_packets=2)
+
+    result, keys, logs, backend, _job = run(execution=Denied())
+    assert result["status"] == "security_violation"
+    assert result["artifact"] is None
+    assert result["denied_egress_packets"] == 2
+    assert keys.revoked
+    assert logs.content == b"blocked egress"
+    assert backend.receipt[1]["result"]["status"] == "security_violation"
+    assert _status_fault(result["status"]) == "package"
 
 
 def test_challenger_receives_same_paper_baseline_cap():
