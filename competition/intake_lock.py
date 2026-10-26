@@ -154,8 +154,10 @@ class CompetitionBackend:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/cases"
         return self._request("POST", path, {"cases": cases})
 
-    def list_gold_cases(self, round_id: str) -> list[dict[str, Any]]:
+    def list_gold_cases(self, round_id: str, *, include_answers: bool = False) -> list[dict[str, Any]]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/cases"
+        if include_answers:
+            path += "?include_answers=true"
         return self._request("GET", path)
 
     def list_gold_voters(self, round_id: str) -> list[dict[str, Any]]:
