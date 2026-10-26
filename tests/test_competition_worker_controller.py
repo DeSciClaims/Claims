@@ -5,7 +5,12 @@ import pytest
 from bittensor_wallet import Keypair
 
 from competition.bifrost import PaperKey
-from competition.worker_controller import ExecutionOutput, paper_token_cap, run_claimed_job
+from competition.worker_controller import (
+    ExecutionOutput,
+    paper_token_cap,
+    run_claimed_job,
+    run_next_claimed_job,
+)
 
 
 def artifact():
@@ -164,3 +169,42 @@ def test_package_hash_mismatch_stops_before_key_creation():
             published_token_ceiling=1000, dollar_limit=1.0,
         )
     assert not keys.created
+
+
+def test_claimed_job_uses_locked_pdf_source_before_worker_execution():
+    package, pdf = b"package", b"%PDF sample"
+    signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
+    job = {
+        "job_id": "a" * 64, "round_id": "week2", "hotkey": signer.ss58_address,
+        "package_sha256": hashlib.sha256(package).hexdigest(),
+        "stage": "week_one", "paper_id": "paper-1", "lease_token": "lease-token",
+        "status": "leased",
+    }
+
+    class LeasedBackend(Backend):
+        def claim_job(self, round_id, *, worker_id, lease_seconds):
+            assert (round_id, worker_id, lease_seconds) == ("week2", "worker-1", 3600)
+            return job
+
+    class PaperSources:
+        def pdf_source_for_paper(self, stage, paper_id):
+            assert (stage, paper_id) == ("week_one", "paper-1")
+            return "s3://claims-papers/locked.pdf", hashlib.sha256(pdf).hexdigest()
+
+    class PdfFetcher:
+        def fetch(self, url, digest):
+            assert url == "s3://claims-papers/locked.pdf"
+            assert digest == hashlib.sha256(pdf).hexdigest()
+            return pdf
+
+    backend = LeasedBackend(job)
+    result = run_next_claimed_job(
+        "week2", backend=backend, worker_id="worker-1", network="testnet",
+        paper_sources=PaperSources(), pdf_fetcher=PdfFetcher(),
+        fetch_package=lambda _: package, keys=Keys(), execution=Executor(),
+        logs=Logs(), inference_base_url="http://gateway.internal:8080/v1",
+        allowed_models=("example/model",), published_token_ceiling=1000,
+        dollar_limit=1.0,
+    )
+    assert result["status"] == "completed"
+    assert backend.receipt[0] == job["job_id"]

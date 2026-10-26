@@ -16,6 +16,12 @@ intake lock. The backend excludes papers without a matching complete Bronze
 source, pins each Bronze and full-source ID, and rejects a reveal outside the
 locked pool or with a different pool hash. The controller can obtain the pinned
 PDF URL and SHA-256, Bronze artifact, and source-span context for scoring.
+`CompetitionPackageResolver` checks a leased job against its frozen stage
+entry and the selected upload receipt. `TrustedPdfFetcher` reads a pinned PDF
+through an allowlisted HTTPS host or a private Hippius S3 client, bounds its
+size, checks its SHA-256, and gives only the bytes to the disposable worker.
+`run_next_claimed_job` joins these inputs to the existing per-paper Bifrost
+key, execution, log, and completion lifecycle.
 
 After the deadline lock, `reveal_selected_sample` verifies the D+600 drand
 beacon, uses its seed for the duplicate lottery, and publishes exactly the

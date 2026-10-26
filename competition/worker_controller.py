@@ -44,6 +44,9 @@ class PrivateLogs(Protocol):
 
 
 class JobBackend(Protocol):
+    def claim_job(
+        self, round_id: str, *, worker_id: str, lease_seconds: int,
+    ) -> dict[str, Any] | None: ...
     def list_stages(self, round_id: str) -> list[dict[str, Any]]: ...
     def list_paper_jobs(self, round_id: str, stage: str, paper_id: str) -> list[dict[str, Any]]: ...
     def complete_job(
@@ -190,3 +193,42 @@ def run_claimed_job(
         result=result, log_object_key=log_key,
     )
     return result
+
+
+class PaperSources(Protocol):
+    def pdf_source_for_paper(self, stage: str, paper_id: str) -> tuple[str, str]: ...
+
+
+class PdfFetcher(Protocol):
+    def fetch(self, url: str, expected_sha256: str) -> bytes: ...
+
+
+def run_next_claimed_job(
+    round_id: str, *, backend: JobBackend, worker_id: str,
+    network: str, paper_sources: PaperSources, pdf_fetcher: PdfFetcher,
+    fetch_package: Callable[[dict[str, Any]], bytes],
+    keys: InferenceKeys, execution: DisposableExecution, logs: PrivateLogs,
+    inference_base_url: str, allowed_models: tuple[str, ...],
+    published_token_ceiling: int, dollar_limit: float,
+    lease_seconds: int = 3600,
+) -> dict[str, Any] | None:
+    """Lease one job and stage only its frozen PDF bytes on the worker."""
+    job = backend.claim_job(round_id, worker_id=worker_id, lease_seconds=lease_seconds)
+    if job is None:
+        return None
+    if job.get("round_id") != round_id or job.get("status") != "leased":
+        raise ValueError("backend returned a job outside the requested lease")
+    source_url, source_sha256 = paper_sources.pdf_source_for_paper(
+        str(job["stage"]), str(job["paper_id"]),
+    )
+    return run_claimed_job(
+        job, backend=backend, worker_id=worker_id, network=network,
+        fetch_package=fetch_package,
+        fetch_pdf=lambda _: pdf_fetcher.fetch(source_url, source_sha256),
+        expected_pdf_sha256=source_sha256,
+        keys=keys, execution=execution, logs=logs,
+        inference_base_url=inference_base_url,
+        allowed_models=allowed_models,
+        published_token_ceiling=published_token_ceiling,
+        dollar_limit=dollar_limit,
+    )
