@@ -102,12 +102,14 @@ class Backend:
         return {"status": "completed"}
 
 
-def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False, execution=None):
+def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False, execution=None,
+        attempt=1):
     signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
     job = {
         "job_id": "a" * 64, "round_id": "week2", "hotkey": signer.ss58_address,
         "package_sha256": hashlib.sha256(package).hexdigest(),
         "stage": "week_one", "paper_id": "paper-1", "lease_token": "lease-token",
+        "attempts": attempt,
         "paper": {"paper_id": "paper-1", "title": "Paper"},
         "manifest": {
             "schema_version": "claims_competition_manifest_v1", "language": "python",
@@ -135,10 +137,18 @@ def test_worker_controller_revokes_key_before_private_log_and_completion():
     assert result["inference_cost_usd"] == 0.12
     assert keys.revoked
     assert logs.key.startswith(f"logs/testnet/week2/{job['hotkey']}/")
+    assert logs.key.endswith("-attempt-1.txt")
     assert b"sk-bf-short-lived" not in logs.content
     assert b"[REDACTED_PAPER_KEY]" in logs.content
     assert backend.receipt[0] == job["job_id"]
     assert backend.receipt[1]["result"]["artifact"]["paper"]["paper_id"] == "paper-1"
+
+
+def test_retry_writes_a_distinct_log_object():
+    _, _, first_logs, _, _ = run(attempt=1)
+    _, _, second_logs, _, _ = run(attempt=2)
+    assert first_logs.key != second_logs.key
+    assert second_logs.key.endswith("-attempt-2.txt")
 
 
 def test_over_cap_output_is_not_scored_as_a_success():

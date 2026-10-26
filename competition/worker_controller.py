@@ -125,6 +125,9 @@ def run_claimed_job(
         raise ValueError("claimed job hash or storage path component is invalid")
     if network not in {"testnet", "mainnet"} or not worker_id:
         raise ValueError("worker identity or network is invalid")
+    attempt = job.get("attempts", 1)
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt not in {1, 2}:
+        raise ValueError("worker lease attempt must be one or two")
     if (not 1 <= key_lifetime_seconds <= 7200 or published_token_ceiling < 1
         or dollar_limit <= 0 or max_output_bytes < 1):
         raise ValueError("paper key budget or lifetime is invalid")
@@ -189,7 +192,8 @@ def run_claimed_job(
             validation_error = str(exc)
     log_key = (
         f"logs/{network}/{job['round_id']}/{job['hotkey']}/"
-        f"{hashlib.sha256(job['paper_id'].encode()).hexdigest()}/{job['job_id']}.txt"
+        f"{hashlib.sha256(job['paper_id'].encode()).hexdigest()}/"
+        f"{job['job_id']}-attempt-{attempt}.txt"
     )
     # The worker can print its scoped key; remove it before logs become visible.
     safe_log = output.log_bytes.replace(key.value.encode(), b"[REDACTED_PAPER_KEY]")

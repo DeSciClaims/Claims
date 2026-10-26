@@ -71,9 +71,10 @@ from the frozen weekly dollar budget and the number of distinct challengers
 after the duplicate draw, using the proposal's pre-screen, screen, and final
 cost formula. A budget that cannot fund 500 final papers fails before release.
 With one or two challengers, the single stage is capped at 1,000 papers.
-Each job lease has one retry after expiration. If that second lease also
-expires, the backend records a terminal infrastructure fault; scoring drops
-the affected paper for every package. A stale worker cannot complete it.
+Each paper job has one retry after an expired lease or a reported
+infrastructure fault. A second failure is terminal; scoring drops the affected
+paper for every package. A stale worker cannot complete it, and each attempt
+has a distinct private log object.
 Before advancing a staged screen or opening Gold, the controller counts
 incumbent package failures on papers without a global infrastructure fault.
 The final selector repeats the check. A strict rate above 20% starts a durable
