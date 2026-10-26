@@ -7,7 +7,7 @@ import pytest
 from competition.pilot_controller_factory import (
     _duplicate_links, _final_audit, _voters, create_controller_inputs,
 )
-from competition.duplicate_review import make_duplicate_review
+from competition.duplicate_review import accepted_snapshot, make_duplicate_review
 from competition.controller_inputs import build_provisional_evaluation_policy
 from competition.code_audit import finalize_code_audit
 from competition.publication import canonical_sha256
@@ -37,6 +37,7 @@ def test_factory_reads_post_lock_duplicate_review_and_checks_reveal(tmp_path, mo
         record = {"round_id": "week1", "status": "locked",
                   "archive_block_hash": "0x" + "a" * 64,
                   "baseline_package_sha256": "9" * 64,
+                  "configuration_sha256": "c" * 64,
                   "incumbent_hotkey": None}
         submissions = [{"hotkey": key, "team_id": key,
                         "package_sha256": digest * 64, "status": "accepted",
@@ -50,9 +51,28 @@ def test_factory_reads_post_lock_duplicate_review_and_checks_reveal(tmp_path, mo
             return self.submissions
 
     backend = ReviewBackend()
+    _, accepted_hash = accepted_snapshot(backend.submissions)
+    candidate = {
+        "schema_version": "claims_duplicate_candidates_v1",
+        "round_id": "week1", "archive_block_hash": backend.record["archive_block_hash"],
+        "baseline_package_sha256": backend.record["baseline_package_sha256"],
+        "configuration_sha256": backend.record["configuration_sha256"],
+        "accepted_submissions_sha256": accepted_hash,
+        "incumbent_package_sha256": None,
+        "public_base_package_sha256": [], "scan_errors": {},
+        "comparisons": [{
+            "left": "a", "right": "b", "left_package_sha256": "1" * 64,
+            "right_package_sha256": "2" * 64,
+            "structural_similarity": 0.5, "normalized_diff_fraction": 0.5,
+            "shared_structural_nodes": 1, "total_structural_nodes": 2,
+            "identical_nonbase_source_files": 0, "shared_resource_hashes": 0,
+            "left_public_base_files_removed": 0, "right_public_base_files_removed": 0,
+        }],
+    }
+    (tmp_path / "week1.duplicate-candidates.json").write_text(json.dumps(candidate))
     review = make_duplicate_review(
         "week1", round_record=backend.record, submissions=backend.submissions,
-        linked_pairs=[("a", "b", "reviewed match")],
+        linked_pairs=[("a", "b", "reviewed match")], candidate_report=candidate,
     )
     (tmp_path / "week1.duplicates.json").write_text(json.dumps(review))
     assert _duplicate_links(backend, "week1") == [("a", "b", "reviewed match")]

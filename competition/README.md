@@ -64,11 +64,21 @@ papers required by the surviving entrant count. `start_revealed_round` replays
 that draw, checks any previously stored duplicate verdicts, writes missing
 verdicts, and starts the first stage. It is safe to retry after a crash between
 those writes. Both steps require the same frozen package bytes and reviewed
-duplicate-link evidence. After intake locks, create `<round_id>.duplicates.json`
+duplicate-link evidence. After intake locks, first create the private
+`<round_id>.duplicate-candidates.json` review queue with
+`python -m neurons.competition_duplicate_candidates --round-id ID --rounds-dir DIR --backend-url URL`.
+Pass each approved public starting package with `--public-base-archive PATH`.
+The bounded scanner reads sealed archives without installing them, records
+renamed-code structure and shared prompts/resources, subtracts identical public
+base files, and compares every qualified package with every other one and the
+incumbent. Scan errors are recorded per package. Similarity is review evidence,
+not an automatic exclusion threshold; approve links only after human review.
+Then create `<round_id>.duplicates.json`
 with `python -m neurons.competition_duplicate_review --round-id ID --rounds-dir DIR --backend-url URL --links-file LINKS.json`.
 The input file is `{"links":[{"left":"hotkey-a","right":"hotkey-b","reason":"reviewed match"}]}`;
 use an empty list when no additional links were found. The receipt binds the
-review to the locked archive block, baseline package, and qualified package hashes. Reviewed
+review to the locked archive block, baseline package, qualified package hashes,
+and complete candidate report. Reviewed
 links may point to the frozen incumbent hotkey. A new version from the incumbent's
 team must use a separate qualified hotkey because stage jobs are keyed by hotkey. The backend
 freezes its private link list and publishes the hash with the sample. A restarted controller

@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
+from .duplicate_candidate_setup import load_candidate_report
 from .duplicate_review import make_duplicate_review
 from .round_setup import _canonical_bytes, _write_once
 
@@ -25,6 +26,8 @@ def prepare_duplicate_review(
     review = make_duplicate_review(
         round_id, round_record=backend.get_round(round_id),
         submissions=backend.list_submissions(round_id), linked_pairs=pairs,
+        candidate_report=load_candidate_report(
+            directory / f"{round_id}.duplicate-candidates.json"),
     )
     _write_once(directory / f"{round_id}.duplicates.json", _canonical_bytes(review), 0o600)
     return {"round_id": round_id, "links_sha256": review["links_sha256"],

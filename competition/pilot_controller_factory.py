@@ -14,6 +14,7 @@ from typing import Any, Mapping
 from .chain_archive import BittensorArchive
 from .code_audit import collect_final_code_evidence, verify_code_audit_receipt
 from .controller_inputs import CompetitionControllerInputs, build_provisional_evaluation_policy
+from .duplicate_candidate_setup import load_candidate_report
 from .duplicate_review import verify_duplicate_review
 from .hippius import HippiusPrivateStorage, hippius_s3_client
 from .judge_usage import JudgeUsageCapture
@@ -76,10 +77,13 @@ def _voters(backend: Any, round_id: str) -> list[dict[str, str]]:
 
 
 def _duplicate_links(backend: Any, round_id: str) -> list[tuple[str, str, str]]:
+    root = Path(_required("CLAIMS_COMPETITION_ROUNDS_DIR"))
     return verify_duplicate_review(
         _late_receipt(round_id, "duplicates"), round_id=round_id,
         round_record=backend.get_round(round_id),
         submissions=backend.list_submissions(round_id),
+        candidate_report=load_candidate_report(
+            root / f"{round_id}.duplicate-candidates.json"),
     )
 
 
