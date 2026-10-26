@@ -1,3 +1,6 @@
+import pytest
+
+from competition.failure_policy import ReferenceFallbackRequired
 from competition.stage_controller import advance_ready_stage, start_initial_stage
 
 
@@ -95,3 +98,28 @@ def test_stage_controller_waits_for_full_grid_and_advances_one_per_team():
     ]
     assert backend.ledger[1]["entries"][1]["paired_gain"] == 0.4
     assert {job["paper_id"] for job in backend.enqueued[-4:]} == {"paper-3"}
+
+
+def test_screen_does_not_advance_against_failed_incumbent():
+    backend = Backend()
+    backend.ledger = [{"stage": "screen", "entries": [
+        {"hotkey": "incumbent", "package_sha256": "a" * 64,
+         "team_id": "king-team", "role": "incumbent", "position": 0},
+        {"hotkey": "miner-a", "package_sha256": "b" * 64,
+         "team_id": "one-team", "role": "challenger", "position": 1},
+    ]}]
+    backend.pairs = [{
+        "stage": "screen", "paper_id": paper_id,
+        "challenger_hotkey": "miner-a", "challenger_package_sha256": "b" * 64,
+        "baseline_hotkey": "incumbent", "baseline_package_sha256": "a" * 64,
+        "challenger_score": 0.5, "baseline_score": 0.0,
+        "infrastructure_fault": False,
+    } for paper_id in ("paper-1", "paper-2")]
+    backend.list_paper_jobs = lambda _round_id, _stage, paper_id: [{
+        "hotkey": "incumbent", "status": "completed",
+        "result_private": {"status": "package_failed" if paper_id == "paper-1" else "completed"},
+    }]
+    with pytest.raises(ReferenceFallbackRequired) as exc:
+        advance_ready_stage("week2", backend=backend)
+    assert (exc.value.summary.failed_papers, exc.value.summary.eligible_papers) == (1, 2)
+    assert len(backend.ledger) == 1
