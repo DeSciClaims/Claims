@@ -5,6 +5,10 @@ They lock submissions, release the sample, run and score paper jobs, tally Gold,
 and sign the weekly publication. See the Team vault engineering plan for the
 round schedule and repository ownership.
 
+`BittensorArchive` supplies historical block hashes, raw commitment metadata,
+and block timestamps from the archive-node Subtensor SDK. The SDK's decoded
+commitment string is unsuitable for the two-field package commitment.
+
 After the deadline lock, `reveal_selected_sample` verifies the D+600 drand
 beacon, uses its seed for the duplicate lottery, and publishes exactly the
 papers required by the surviving entrant count. `start_revealed_round` replays
