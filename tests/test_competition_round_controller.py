@@ -238,9 +238,10 @@ def test_sample_release_uses_seeded_distinct_entrant_count(monkeypatch):
         baseline={"hotkey": "incumbent", "team_id": "incumbent-team",
                   "package_sha256": "b" * 64},
         package_for_submission=lambda row: packages[row["hotkey"]],
-        final_count=500,
+        weekly_budget_usd=295,
     )
     assert result["selected_count"] == 3
+    assert result["final_paper_count"] == 500
     assert result["stages"] == ["final"]
     assert {row["stage"] for row in backend.receipt["papers"]} == {"final"}
 
@@ -275,8 +276,7 @@ def test_week_one_release_uses_proposal_320_paper_launch_sample(monkeypatch):
               "baseline": {"hotkey": "reference", "team_id": "claims",
                            "package_sha256": "b" * 64},
               "package_for_submission": lambda _: package}
-    result = reveal_selected_sample("week1", final_count=320, **kwargs)
+    result = reveal_selected_sample("week1", weekly_budget_usd=445, **kwargs)
     assert result["stages"] == ["week_one"]
+    assert result["final_paper_count"] == 320
     assert len(backend.receipt["papers"]) == 320
-    with pytest.raises(ValueError, match="320"):
-        reveal_selected_sample("week1", final_count=319, **kwargs)

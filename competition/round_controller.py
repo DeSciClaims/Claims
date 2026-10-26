@@ -7,9 +7,11 @@ chain adapters; none of their credentials enter a miner worker.
 from __future__ import annotations
 
 from collections.abc import Callable
+from decimal import Decimal
 from typing import Any, Mapping
 
 from .drand import BlockClock, beacon_for_round
+from .budget import final_paper_count
 from .duplicates import duplicate_verdicts, select_distinct_submissions
 from .intake_lock import ArchiveReader, CompetitionBackend, snapshot_round
 from .sample_release import PaperRecord, sample_receipt
@@ -64,7 +66,7 @@ def reveal_selected_sample(
     round_id: str, *, backend: CompetitionBackend, chain: BlockClock,
     papers: list[PaperRecord], baseline: Mapping[str, Any],
     package_for_submission: Callable[[Mapping[str, Any]], bytes],
-    final_count: int, incumbent_package: bytes | None = None,
+    weekly_budget_usd: Decimal | int | float, incumbent_package: bytes | None = None,
     linked_pairs: list[tuple[str, str, str]] | None = None,
 ) -> dict[str, Any]:
     """Draw distinct entrants and release exactly their required stage papers.
@@ -77,10 +79,6 @@ def reveal_selected_sample(
     if round_record["status"] != "locked":
         raise ValueError("round must be locked before sample release")
     week_one = round_record["incumbent_hotkey"] is None
-    if week_one and final_count != 320:
-        raise ValueError("week-one launch sample must contain 320 papers")
-    if not week_one and final_count < 500:
-        raise ValueError("staged final sample must contain at least 500 papers")
     if baseline["package_sha256"] != round_record["baseline_package_sha256"]:
         raise ValueError("baseline differs from frozen round")
     if round_record["incumbent_hotkey"] is not None and baseline["hotkey"] != round_record["incumbent_hotkey"]:
@@ -101,6 +99,10 @@ def reveal_selected_sample(
     )
     if not stages:
         return {"status": "waiting_for_entrants"}
+    final_count = final_paper_count(
+        weekly_budget_usd=weekly_budget_usd,
+        distinct_challengers=len(selection.selected_hotkeys), week_one=week_one,
+    )
     receipt = sample_receipt(
         papers=papers, beacon=beacon,
         prescreen_count=20 if "prescreen" in stages else 0,
@@ -110,7 +112,7 @@ def reveal_selected_sample(
     )
     result = backend.reveal_sample(round_id, receipt)
     return {**result, "selected_count": len(selection.selected_hotkeys),
-            "stages": list(stages)}
+            "final_paper_count": final_count, "stages": list(stages)}
 
 
 def start_revealed_round(
