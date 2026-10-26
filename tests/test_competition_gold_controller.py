@@ -147,6 +147,41 @@ def test_gold_candidates_only_include_split_cases_with_pairwise_credit_effect():
     assert len(contested_claims_for_paper("round-1", evaluation, reference_entries)) == 2
 
 
+def test_rejected_claim_is_contested_and_can_enter_escalation():
+    invalid = SimpleNamespace(candidate_id="miner:challenger:c1", miner_id="challenger",
+                              adjudication_case_id="split-invalid")
+    candidate = SimpleNamespace(
+        candidate_id=invalid.candidate_id, miner_id="challenger",
+        statement="A claimed benefit.", source_quotes=["The reported result."],
+        source_span_ids=["span-1"],
+    )
+    pipeline = SimpleNamespace(
+        paper_id="paper-1",
+        miner_submissions=[SimpleNamespace(candidates=[candidate])],
+        adjudication_consensus=[SimpleNamespace(
+            case_id="split-invalid", votes=[
+                SimpleNamespace(disposition="accepted_improvement"),
+                SimpleNamespace(disposition="miner_error"),
+            ],
+        )],
+        diff_cases=[SimpleNamespace(case_id="split-invalid", miner_id="challenger",
+                                    question="Which version is supported?")],
+        silver_record=SimpleNamespace(silver_units=[], invalid_miner_candidates=[invalid]),
+    )
+    evaluation = SimpleNamespace(
+        pipeline=pipeline, pair_rows=({"challenger_hotkey": "challenger",
+                                       "baseline_hotkey": "incumbent"},),
+    )
+    entries = [{"hotkey": "incumbent", "team_id": "team-i", "role": "incumbent"},
+               {"hotkey": "challenger", "team_id": "team-c", "role": "challenger"}]
+    claims = contested_claims_for_paper("round-1", evaluation, entries)
+    assert len(claims) == 1
+    assert claims[0].case_public["statement"] == candidate.statement
+    assert claims[0].answer_private["kind"] == "invalid_candidate"
+    assert claims[0].answer_private["tiebreak"] == "incumbent"
+    assert claims[0].answer_private["primary_split"] is True
+
+
 def test_gold_candidates_replay_from_frozen_final_receipts():
     class FrozenBackend:
         def list_sample(self, _):

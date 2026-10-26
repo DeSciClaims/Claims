@@ -105,10 +105,41 @@ def contested_claims_for_paper(
                      "source_span_ids": unit.source_span_ids,
                      "challenger_hotkey": challenger_hotkey,
                      "incumbent_hotkey": incumbent["hotkey"]},
-                    {"tiebreak": tiebreak, "adjudication_case_id": adjudication_case_id,
+                    {"kind": "silver_unit", "tiebreak": tiebreak,
+                     "adjudication_case_id": adjudication_case_id,
                      "silver_unit_id": unit.silver_unit_id,
                      "primary_split": adjudication_case_id in splits},
                 ))
+        for invalid in getattr(pipeline.silver_record, "invalid_miner_candidates", []):
+            if invalid.miner_id not in {challenger_hotkey, incumbent["hotkey"]}:
+                continue
+            candidate = candidates.get(invalid.candidate_id)
+            case_id = invalid.adjudication_case_id
+            diff = diff_by_id.get(case_id)
+            if (candidate is None or candidate.miner_id != invalid.miner_id
+                or not case_id or diff is None):
+                raise ValueError("invalid Silver candidate has no frozen diff case")
+            digest = hashlib.sha256(
+                "\0".join((round_id, paper_id, challenger_hotkey,
+                           "invalid", case_id, invalid.candidate_id)).encode()
+            ).hexdigest()[:24]
+            case = GoldCase(
+                f"gold_{digest}", paper_id, challenger_hotkey, incumbent["hotkey"],
+                frozenset({by_hotkey[challenger_hotkey]["team_id"], incumbent["team_id"]}),
+            )
+            claims.append(ContestedClaim(
+                case,
+                {"question": diff.question, "statement": candidate.statement,
+                 "source_quotes": candidate.source_quotes,
+                 "source_span_ids": candidate.source_span_ids,
+                 "challenger_hotkey": challenger_hotkey,
+                 "incumbent_hotkey": incumbent["hotkey"]},
+                {"kind": "invalid_candidate",
+                 "tiebreak": ("incumbent" if invalid.miner_id == challenger_hotkey else "challenger"),
+                 "adjudication_case_id": case_id,
+                 "invalid_candidate_id": invalid.candidate_id,
+                 "primary_split": case_id in splits},
+            ))
     return claims
 
 

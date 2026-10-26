@@ -41,7 +41,8 @@ preparation independently draws the check from contested claims and caps the
 split-case escalation pool using the public sample seed. After voting closes,
 the signed result reveals the Gold seed and candidate IDs; the backend verifies
 the draw against frozen paper receipts. Decided escalation votes rescore final
-pairs, while check cases alone supply the crown veto. Hidden known-answer
+pairs, including accepted units and rejected miner claims whose votes reverse
+the tiebreak. Check cases alone supply the crown veto. Hidden known-answer
 cases and live end-to-end execution remain.
 
 ## Weight heartbeat
