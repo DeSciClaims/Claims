@@ -147,6 +147,16 @@ def test_replay_gold_review_is_immutable_across_restart(tmp_path):
     restarted = ReplayStore(path)
     restarted.initialize(snapshot, plan)
     assert restarted.get_gold_review("round-1") == review
+    evidence = {"round_id": "round-1", "review_sha256": canonical_sha256(review),
+                "case_decisions": {"replay_gold_1": {"choice": None}}}
+    tally = {**evidence, "evidence_sha256": canonical_sha256(evidence)}
+    assert restarted.freeze_gold_tally("round-1", tally) == tally
+    assert ReplayStore(path).get_gold_tally("round-1") == tally
+    with pytest.raises(ValueError, match="already frozen differently"):
+        changed = {**evidence, "case_decisions": {"replay_gold_1": {"choice": "challenger"}}}
+        restarted.freeze_gold_tally("round-1", {
+            **changed, "evidence_sha256": canonical_sha256(changed),
+        })
     with pytest.raises(ValueError, match="already frozen differently"):
         restarted.freeze_gold_review(
             "round-1", {**review, "cases": [{"case_id": "replay_gold_2"}]},

@@ -91,6 +91,10 @@ class ReplayStore:
                   round_id TEXT PRIMARY KEY, review_sha256 TEXT NOT NULL,
                   review_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS replay_gold_tally (
+                  round_id TEXT PRIMARY KEY, evidence_sha256 TEXT NOT NULL,
+                  tally_json TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS replay_publication (
                   round_id TEXT PRIMARY KEY, bundle_sha256 TEXT NOT NULL,
                   receipt_json TEXT NOT NULL
@@ -636,6 +640,41 @@ class ReplayStore:
                   or json.loads(row["review_json"]) != review):
                 raise ValueError("replay Gold review was already frozen differently")
         return review
+
+    def get_gold_tally(self, round_id: str) -> dict[str, Any] | None:
+        self._round(round_id)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT tally_json FROM replay_gold_tally WHERE round_id=?",
+                (round_id,),
+            ).fetchone()
+        return json.loads(row["tally_json"]) if row else None
+
+    def freeze_gold_tally(self, round_id: str, tally: dict[str, Any]) -> dict[str, Any]:
+        self._round(round_id)
+        review = self.get_gold_review(round_id)
+        if (review is None or not isinstance(tally, dict)
+            or tally.get("round_id") != round_id
+            or tally.get("review_sha256") != canonical_sha256(review)):
+            raise ValueError("replay Gold tally lacks its frozen local review")
+        digest = tally.get("evidence_sha256")
+        evidence = {key: value for key, value in tally.items() if key != "evidence_sha256"}
+        if digest != canonical_sha256(evidence):
+            raise ValueError("replay Gold tally evidence differs from its digest")
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT evidence_sha256,tally_json FROM replay_gold_tally WHERE round_id=?",
+                (round_id,),
+            ).fetchone()
+            if row is None:
+                conn.execute(
+                    "INSERT INTO replay_gold_tally VALUES (?,?,?)",
+                    (round_id, digest, _json(tally)),
+                )
+            elif row["evidence_sha256"] != digest or json.loads(row["tally_json"]) != tally:
+                raise ValueError("replay Gold tally was already frozen differently")
+        return tally
 
     def freeze_replay_publication(
         self, round_id: str, receipt: dict[str, Any], *,

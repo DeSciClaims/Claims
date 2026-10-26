@@ -175,6 +175,25 @@ def test_replay_client_reads_certified_bank_without_primary_write_token():
         client.certified_gold_challenges("week-1")
 
 
+def test_replay_client_reads_frozen_gold_voters():
+    body = {"round_id": "week-1", "voters": [
+        {"voter_hotkey": "miner-1", "team_id": "team-1"},
+    ]}
+
+    def respond(request, *, timeout):
+        assert timeout == 30 and request.get_method() == "GET"
+        assert request.full_url.endswith("/replay/rounds/week-1/gold-voters")
+        return io.BytesIO(json.dumps(body).encode())
+
+    client = CompetitionReplayInputs(
+        "https://backend.example", "replay-only", open_request=respond,
+    )
+    assert client.gold_voters("week-1") == body["voters"]
+    body["voters"].append({"voter_hotkey": "miner-2", "team_id": ""})
+    with pytest.raises(ValueError, match="malformed"):
+        client.gold_voters("week-1")
+
+
 def test_replay_client_verifies_closed_gold_votes_and_exclusions():
     message = _gold_vote_message("week-1", "case-1", "voter-1", "challenger")
     body = {

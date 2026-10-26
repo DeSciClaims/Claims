@@ -31,8 +31,10 @@ def _backend():
     backend = SimpleNamespace(
         snapshot={"round_id": "week-1", "drand_seed": "ab" * 32},
         list_stages=lambda _: [{"stage": "week_one", "entries": [
-            {"hotkey": "reference", "role": "reference"},
-            {"hotkey": "challenger", "role": "challenger"},
+            {"hotkey": "reference", "role": "reference", "team_id": "reference-team",
+             "package_sha256": "a" * 64},
+            {"hotkey": "challenger", "role": "challenger", "team_id": "challenger-team",
+             "package_sha256": "b" * 64},
         ]}],
         list_sample=lambda _: [{"stage": "week_one", "paper_id": "paper-1"}],
         get_paper_evaluation=lambda *_: {"result_private": {

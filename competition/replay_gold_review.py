@@ -93,6 +93,12 @@ def prepare_replay_gold_review(
         or any(row.case.challenger_hotkey not in finalists
                or row.case.incumbent_hotkey not in baselines for row in candidates)):
         raise ValueError("replay Gold cases differ from local finalists")
+    baseline = next(row for row in final_entries
+                    if row["role"] in {"incumbent", "reference"})
+    if (not isinstance(baseline.get("team_id"), str) or not baseline["team_id"]
+        or not isinstance(baseline.get("package_sha256"), str)
+        or len(baseline["package_sha256"]) != 64):
+        raise ValueError("replay Gold baseline receipt is malformed")
     for row in known:
         answer = row.answer_private
         if (row.case.challenger_hotkey not in finalists
@@ -149,6 +155,9 @@ def prepare_replay_gold_review(
         "round_id": round_id, "stage": stage,
         "drand_seed": seed_hex,
         "local_candidate_sha256": canonical_sha256(candidate_identity),
+        "baseline": {key: baseline[key] for key in (
+            "hotkey", "team_id", "role", "package_sha256",
+        )},
         "finalist_hotkeys": sorted(finalists),
         "known_answer_sha256": canonical_sha256([_identity(row) for row in known]),
         "check_count": len(check), "escalation_count": len(escalations),

@@ -376,6 +376,26 @@ class CompetitionReplayInputs:
             raise ValueError("replay certified Gold bank is malformed")
         return body["certified"]
 
+    def gold_voters(self, round_id: str) -> list[dict[str, str]]:
+        """Read the frozen qualified voter snapshot before opening local Gold."""
+        path = ("/internal/competition/replay/rounds/"
+                + urllib.parse.quote(round_id, safe="") + "/gold-voters")
+        try:
+            body = self._get(path)
+        except RuntimeError as exc:
+            if isinstance(exc.__cause__, urllib.error.HTTPError) and exc.__cause__.code == 404:
+                return []
+            raise
+        if (set(body) != {"round_id", "voters"}
+            or body["round_id"] != round_id
+            or not isinstance(body["voters"], list)
+            or any(not isinstance(row, dict)
+                   or set(row) != {"voter_hotkey", "team_id"}
+                   or any(not isinstance(value, str) or not value
+                          for value in row.values()) for row in body["voters"])):
+            raise ValueError("replay Gold voter snapshot is malformed")
+        return body["voters"]
+
     def closed_gold_tally(
         self, round_id: str, *, finalist_hotkeys: list[str],
         verify_signature: Callable[[str, bytes, bytes], bool] = _verify_gold_signature,

@@ -318,8 +318,12 @@ primary final stage exists. The pilot controller chooses exact-PDF challenges
 for its own finalists and freezes its Gold review when at least 40 qualify.
 `tally_replay_gold_review` verifies votes over a replay-specific signed
 message, excludes the competing teams, applies quorum and agreement rules,
-and reports check outcomes and known-answer accuracy. The backend still needs
-the separate case/voter/vote ledger and miner routes that provide these votes.
+and reports check outcomes and known-answer accuracy. The backend stores the
+separate signed review and vote ledger.
+The pilot controller now signs the local review with its own replay wallet,
+opens a backend voting window of at least 24 hours, and freezes the closed
+vote tally locally. The upload service exposes separate hotkey-signed case
+and vote routes. The final vector still needs automatic selection and signing.
 Pilot judge providers are set with CLAIMS_JUDGE_J1_A_PROVIDER,
 CLAIMS_JUDGE_J1_B_PROVIDER, CLAIMS_JUDGE_J2_A_PROVIDER,
 CLAIMS_JUDGE_J2_B_PROVIDER, and CLAIMS_JUDGE_TIEBREAK_PROVIDER. Round setup

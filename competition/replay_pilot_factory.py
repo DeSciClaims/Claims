@@ -25,6 +25,7 @@ from .provisional_judges import require_provisional_provider_pins
 from .replay_controller import tick_replay
 from .replay_final_audit import audit_replay_final
 from .replay_gold_review import prepare_replay_gold_review, replay_known_answer_challenges
+from .replay_gold_client import ReplayGoldClient
 from .replay_inputs import CompetitionReplayInputs
 from .replay_runtime import (
     ReplayRuntimeBackend, create_replay_worker_coordinator,
@@ -103,6 +104,7 @@ class ReplayController:
     packages: CompetitionPackageResolver
     code_policy: dict[str, Any] | None
     certified_gold_source: Callable[[str], list[dict[str, Any]]] | None = None
+    gold_client_factory: Callable[[], ReplayGoldClient] | None = None
 
     def run_once(self) -> dict[str, Any]:
         round_id = self.backend.snapshot["round_id"]
@@ -139,8 +141,45 @@ class ReplayController:
             review = prepare_replay_gold_review(
                 round_id, backend=self.backend, known_answers=known,
             )
-        return {"status": "gold_review_frozen", "stage": result["stage"],
-                "review_sha256": canonical_sha256(review)}
+        review_sha256 = canonical_sha256(review)
+        if self.gold_client_factory is None:
+            return {"status": "gold_review_frozen", "stage": result["stage"],
+                    "review_sha256": review_sha256}
+        prior_tally = self.backend.get_gold_tally(round_id)
+        if prior_tally is not None:
+            if prior_tally.get("review_sha256") != review_sha256:
+                raise ValueError("replay Gold tally differs from frozen local review")
+            return {"status": "gold_tally_complete", "stage": result["stage"],
+                    "evidence_sha256": prior_tally["evidence_sha256"]}
+        voters = self.backend.inputs.gold_voters(round_id)
+        if not voters:
+            return {"status": "waiting_for_gold_voters", "stage": result["stage"]}
+        client = self.gold_client_factory()
+        opening = client.open(round_id, review=review, voters=voters)
+        client.close_when_due(round_id, closes_at=opening["closes_at"])
+        closed = client.closed(round_id, expected_review_sha256=opening["review_sha256"])
+        if closed is None:
+            return {"status": "gold_voting_open", "stage": result["stage"],
+                    "closes_at": opening["closes_at"]}
+        tally = self.backend.freeze_gold_tally(round_id, closed["tally"])
+        return {"status": "gold_tally_complete", "stage": result["stage"],
+                "evidence_sha256": tally["evidence_sha256"]}
+
+
+def _gold_client(backend_url: str) -> ReplayGoldClient:
+    import bittensor as bt
+
+    wallet = bt.Wallet(
+        name=_required("CLAIMS_COMPETITION_REPLAY_WALLET_NAME"),
+        hotkey=_required("CLAIMS_COMPETITION_REPLAY_WALLET_HOTKEY"),
+        path=_required("CLAIMS_COMPETITION_REPLAY_WALLET_PATH"),
+    )
+    signer = wallet.hotkey
+    if signer.ss58_address != _required("CLAIMS_COMPETITION_REPLAY_PUBLISHER_HOTKEY"):
+        raise ValueError("replay wallet differs from configured publisher hotkey")
+    return ReplayGoldClient(
+        backend_url, _required("CLAIMS_COMPETITION_REPLAY_TOKEN"), signer,
+    )
 
 
 def create_replay_controller(
@@ -173,7 +212,8 @@ def create_replay_controller(
         raise ValueError("replay code audit policy is malformed")
     packages = CompetitionPackageResolver(backend, storage, baseline, reference)
     return ReplayController(backend, papers, evaluation, reference or baseline,
-                            packages, policy, backend.inputs.certified_gold_challenges)
+                            packages, policy, backend.inputs.certified_gold_challenges,
+                            lambda: _gold_client(backend_url))
 
 
 def create_replay_worker(

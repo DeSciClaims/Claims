@@ -253,3 +253,41 @@ def test_replay_controller_opens_own_gold_only_with_certified_bank(monkeypatch):
     assert first == second
     assert first["status"] == "gold_review_frozen"
     assert state["fetches"] == 1
+
+
+def test_replay_controller_freezes_closed_separate_gold_tally(monkeypatch):
+    review = {"round_id": "week-1", "cases": [], "schema_version": "claims_replay_gold_review_v1"}
+    tally = {"round_id": "week-1", "evidence_sha256": "a" * 64}
+    state = {"tally": None, "opens": 0}
+    backend = SimpleNamespace(
+        snapshot={"round_id": "week-1", "network": "testnet"},
+        get_final_audit=lambda _: {"input_sha256": "b" * 64},
+        get_gold_review=lambda _: review,
+        get_gold_tally=lambda _: state["tally"],
+        inputs=SimpleNamespace(gold_voters=lambda _: [{
+            "voter_hotkey": "voter-1", "team_id": "team-1",
+        }]),
+        freeze_gold_tally=lambda _, result: state.update(tally=result) or result,
+    )
+    monkeypatch.setattr(replay_pilot_factory, "tick_replay", lambda *_, **__: {
+        "status": "ready_for_independent_final_review", "stage": "final",
+    })
+
+    def open_review(*_, **__):
+        state["opens"] += 1
+        return {"closes_at": "2026-11-03T12:00:00+00:00",
+                "review_sha256": "c" * 64}
+
+    client = SimpleNamespace(
+        open=open_review, close_when_due=lambda *_, **__: False,
+        closed=lambda *_, **__: {"tally": tally},
+    )
+    controller = replay_pilot_factory.ReplayController(
+        backend=backend, paper_inputs=SimpleNamespace(bronze_for_paper=lambda *_: {}),
+        evaluation=SimpleNamespace(evaluate_for_stage=lambda _: None),
+        reference_upload={}, packages=SimpleNamespace(), code_policy={},
+        certified_gold_source=lambda _: [], gold_client_factory=lambda: client,
+    )
+    assert controller.run_once() == {"status": "gold_tally_complete", "stage": "final",
+                                     "evidence_sha256": "a" * 64}
+    assert state["tally"] == tally and state["opens"] == 1
