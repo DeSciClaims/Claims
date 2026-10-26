@@ -251,3 +251,63 @@ def test_failed_incumbent_hands_production_to_unpaid_reference(tmp_path):
     )
     assert active["hotkey"] == "team-reference"
     assert active["package_sha256"] == reference_hash
+
+
+def test_week_one_no_crown_activates_reference_package(tmp_path):
+    signer, round_record, _, _ = _fixture()
+    reference_bytes = b"first-week-reference"
+    reference_hash = hashlib.sha256(reference_bytes).hexdigest()
+    round_record.update({"incumbent_hotkey": None,
+                         "baseline_package_sha256": reference_hash,
+                         "reference_package_sha256": reference_hash})
+    stage = {"stage": "week_one", "entries": [
+        {"hotkey": "reference", "role": "reference", "team_id": "claims",
+         "package_sha256": reference_hash},
+        {"hotkey": "miner", "role": "challenger", "team_id": "other",
+         "package_sha256": PACKAGE_SHA},
+    ]}
+    receipt = sign_publication(publication_bundle(round_record, results={
+        "decision": "no_crown", "production_hotkey": None,
+        "worker_security_audit": {"reference": {"passed": True}},
+        "final_pair_scores": [{
+            "stage": "week_one", "paper_id": "paper-1",
+            "baseline_hotkey": "reference",
+            "baseline_package_sha256": reference_hash,
+            "challenger_hotkey": "miner", "challenger_package_sha256": PACKAGE_SHA,
+        }],
+    }, weights={"vector": [{"uid": 0, "weight": 0.10},
+                           {"uid": 9, "weight": 0.90}],
+                "roles": [
+                    {"hotkey": "operator", "role": "operator", "share": 0.90},
+                    {"hotkey": "", "role": "production_burned", "share": 0.07},
+                    {"hotkey": "", "role": "runner_up_1_burned", "share": 0.02},
+                    {"hotkey": "", "role": "runner_up_2_burned", "share": 0.01},
+                ]}
+    ), signer)
+    now = datetime(2026, 11, 2, 9, tzinfo=UTC)
+    plan = _plan(signer, round_record, stage, receipt, now)
+    assert (plan.hotkey, plan.package_sha256) == ("reference", reference_hash)
+
+    class Backend:
+        def get_round(self, _):
+            return round_record
+
+        def list_stages(self, _):
+            return [stage]
+
+        def list_submissions(self, _):
+            return []
+
+    class Storage:
+        def package_for_submission(self, upload):
+            assert upload["package_sha256"] == reference_hash
+            return reference_bytes
+
+    active = activate_published_round(
+        "week2", backend=Backend(), publication_for_round=lambda _: receipt,
+        sealed_packages=Storage(),
+        releases=FilesystemProductionReleaseStore(tmp_path / "production"),
+        expected_signer_hotkey=signer.ss58_address, network="testnet", now=now,
+        reference_upload={"hotkey": "reference", "package_sha256": reference_hash},
+    )
+    assert active["hotkey"] == "reference"

@@ -58,7 +58,8 @@ def activate_published_round(
     receipt = publication_for_round(round_id)
 
     def fetch_package(plan: ProductionHandoffPlan) -> bytes:
-        if (receipt.get("bundle", {}).get("results", {}).get("decision") == "reference_fallback"
+        if (receipt.get("bundle", {}).get("results", {}).get("decision")
+            in {"reference_fallback", "no_crown"}
             and reference_upload is not None
             and plan.hotkey == reference_upload.get("hotkey")
             and plan.package_sha256 == round_record.get("reference_package_sha256")):

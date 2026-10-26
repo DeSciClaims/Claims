@@ -32,6 +32,8 @@ def test_reader_tracks_atomic_activation_and_rejects_corruption(tmp_path):
     store.rollback(expected_receipt_sha256="b" * 64,
                    reason="breach", now=later + timedelta(minutes=1))
     assert reader.read_active().receipt_sha256 == "a" * 64
+    assert reader.read_active().latest_activation_at == later
+    assert reader.read_active().rolled_back_from == "b" * 64
     with pytest.raises(ValueError, match="oversized"):
         ProductionReleaseReader(root, max_package_bytes=4).read_active()
     (root / f"{digest}.zip").write_bytes(b"corrupt")

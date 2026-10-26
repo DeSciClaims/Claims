@@ -203,24 +203,27 @@ def planned_production_handoff(
         return None
     results = bundle["results"]
     decision = results.get("decision")
-    if decision in {"incumbent_continues", "no_crown"}:
-        expected_hotkey = round_record.get("incumbent_hotkey") if decision == "incumbent_continues" else None
-        if (decision == "incumbent_continues" and not expected_hotkey
-            or results.get("production_hotkey") != expected_hotkey):
+    if decision == "incumbent_continues":
+        expected_hotkey = round_record.get("incumbent_hotkey")
+        if (not expected_hotkey or results.get("production_hotkey") != expected_hotkey):
             raise ValueError("no-change decision names another production hotkey")
         return None
-    if decision == "reference_fallback":
+    if decision in {"reference_fallback", "no_crown"}:
         baseline = [row for row in final_stage.get("entries", [])
                     if row.get("role") == "reference"]
-        hotkey = results.get("fallback_reference_hotkey")
+        hotkey = (results.get("fallback_reference_hotkey")
+                  if decision == "reference_fallback" else baseline[0].get("hotkey")
+                  if len(baseline) == 1 else None)
         roles = bundle["weights"].get("roles", [])
         pairs = results.get("final_pair_scores")
         security = results.get("worker_security_audit", {})
-        if (round_record.get("incumbent_hotkey") is None
+        if ((decision == "reference_fallback") != bool(round_record.get("incumbent_hotkey"))
             or results.get("production_hotkey") is not None
             or len(baseline) != 1 or hotkey != baseline[0].get("hotkey")
             or baseline[0].get("package_sha256") != bundle["reference_package_sha256"]
-            or final_stage.get("stage") not in {"final", "rerun"}
+            or (decision == "no_crown" and final_stage.get("stage") != "week_one")
+            or (decision == "reference_fallback"
+                and final_stage.get("stage") not in {"final", "rerun"})
             or (final_stage.get("stage") == "rerun"
                 and final_stage.get("source_stage") != "final")
             or not isinstance(roles, list)
@@ -233,7 +236,7 @@ def planned_production_handoff(
                    or row.get("baseline_hotkey") != hotkey
                    or row.get("baseline_package_sha256") != bundle["reference_package_sha256"]
                    for row in pairs)):
-            raise ValueError("reference fallback differs from signed final evidence")
+            raise ValueError("reference production differs from signed final evidence")
         return ProductionHandoffPlan(
             round_id=bundle["round_id"], receipt_sha256=receipt["bundle_sha256"],
             hotkey=hotkey, package_sha256=bundle["reference_package_sha256"],

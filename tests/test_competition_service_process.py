@@ -42,3 +42,18 @@ def test_worker_cli_requires_identity_and_trusted_factory(monkeypatch):
         "--backend-url", "https://backend.example",
         "--factory-module", "untrusted.miner", "--worker-id", "worker-a", "--once",
     ]) == 1
+
+
+def test_handoff_cli_uses_separate_factory_entrypoint(monkeypatch, capsys):
+    module = ModuleType("competition.fake_handoff_factory")
+    module.create_handoff_service = lambda backend, url, network: SimpleNamespace(
+        run_once=lambda: [{"round_id": "week1", "status": "activated"}],
+    )
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setenv("CLAIMS_COMPETITION_CONTROLLER_TOKEN", "private-token")
+    assert competition_service.main([
+        "--role", "handoff", "--network", "testnet",
+        "--backend-url", "https://backend.example",
+        "--factory-module", module.__name__, "--once",
+    ]) == 0
+    assert '"status": "activated"' in capsys.readouterr().out

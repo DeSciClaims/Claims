@@ -19,6 +19,8 @@ class ActiveProductionPackage:
     hotkey: str
     package_sha256: str
     activate_at: datetime
+    latest_activation_at: datetime
+    rolled_back_from: str | None
     package: bytes
 
 
@@ -76,13 +78,20 @@ class ProductionReleaseReader:
                 round_id = active["round_id"]
                 hotkey = active["hotkey"]
                 activate_at = datetime.fromisoformat(active["activate_at"])
+                latest_activation_at = datetime.fromisoformat(
+                    active.get("latest_activation_at", active["activate_at"]),
+                )
+                rolled_back_from = active.get("rolled_back_from")
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError("production active pointer is malformed") from exc
             if (not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
                 or not isinstance(receipt, str) or not re.fullmatch(r"[0-9a-f]{64}", receipt)
                 or not isinstance(round_id, str) or not round_id
                 or not isinstance(hotkey, str) or not hotkey
-                or activate_at.tzinfo is None):
+                or activate_at.tzinfo is None or latest_activation_at.tzinfo is None
+                or latest_activation_at < activate_at
+                or (rolled_back_from is not None and (not isinstance(rolled_back_from, str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", rolled_back_from)))):
                 raise ValueError("production active pointer identity is invalid")
             package = self._read_private_file(
                 root_fd, f"{digest}.zip", self.max_package_bytes,
@@ -90,7 +99,8 @@ class ProductionReleaseReader:
             if hashlib.sha256(package).hexdigest() != digest:
                 raise ValueError("production package differs from active pointer")
             return ActiveProductionPackage(
-                round_id, receipt, hotkey, digest, activate_at, package,
+                round_id, receipt, hotkey, digest, activate_at,
+                latest_activation_at, rolled_back_from, package,
             )
         finally:
             os.close(root_fd)

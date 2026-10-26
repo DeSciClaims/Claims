@@ -27,7 +27,7 @@ def _factory(module_name: str) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--role", choices=("controller", "worker"), required=True)
+    parser.add_argument("--role", choices=("controller", "worker", "handoff"), required=True)
     parser.add_argument("--network", choices=("mainnet", "testnet"), required=True)
     parser.add_argument("--backend-url", required=True)
     parser.add_argument("--factory-module", required=True)
@@ -39,19 +39,21 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--poll-seconds must be between 1 and 600")
     if args.role == "worker" and not args.worker_id:
         parser.error("worker mode needs --worker-id")
-    if args.role == "controller" and args.worker_id:
-        parser.error("controller mode cannot have a worker ID")
+    if args.role != "worker" and args.worker_id:
+        parser.error("only worker mode accepts a worker ID")
     token = os.environ.get("CLAIMS_COMPETITION_CONTROLLER_TOKEN", "")
     if not token:
         parser.error("CLAIMS_COMPETITION_CONTROLLER_TOKEN is required")
     try:
         backend = CompetitionBackend(base_url=args.backend_url, controller_token=token)
         factory = _factory(args.factory_module)
-        callback_name = ("create_controller_inputs" if args.role == "controller"
-                         else "create_worker_coordinator")
+        callback_name = {"controller": "create_controller_inputs",
+                         "worker": "create_worker_coordinator",
+                         "handoff": "create_handoff_service"}[args.role]
         callback = getattr(factory, callback_name)
         if not callable(callback):
             raise ValueError("trusted adapter factory has no callable entrypoint")
+        handoff = callback(backend, args.backend_url, args.network) if args.role == "handoff" else None
     except (ImportError, AttributeError, ValueError) as exc:
         print(json.dumps({"status": "startup_error", "error_type": type(exc).__name__}),
               file=sys.stderr, flush=True)
@@ -63,11 +65,13 @@ def main(argv: list[str] | None = None) -> int:
                     backend=backend, network=args.network,
                     inputs_for_round=lambda row: callback(row, backend),
                 )
-            else:
+            elif args.role == "worker":
                 results = run_worker_cycle(
                     backend=backend, network=args.network,
                     coordinator_for_round=lambda row: callback(row, backend, args.worker_id),
                 )
+            else:
+                results = handoff.run_once()
             for result in results:
                 print(json.dumps(result, sort_keys=True), flush=True)
             failed = any(row["status"] == "error" for row in results)

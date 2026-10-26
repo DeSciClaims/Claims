@@ -65,6 +65,11 @@ class CompetitionBackend:
             raise ValueError("unknown competition network")
         return self._request("GET", "/internal/competition/rounds?network=" + network)
 
+    def list_published_rounds(self, network: str) -> list[dict[str, Any]]:
+        if network not in {"mainnet", "testnet"}:
+            raise ValueError("unknown competition network")
+        return self._request("GET", "/internal/competition/rounds/published?network=" + network)
+
     def create_round(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/internal/competition/rounds", payload)
 
