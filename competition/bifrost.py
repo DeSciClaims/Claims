@@ -150,7 +150,9 @@ class BifrostClient:
                 or not isinstance(providers[0].get("allowed_models"), list)
                 or (len(providers[0]["allowed_models"]) != len(allowed_models)
                     or set(providers[0]["allowed_models"]) != set(allowed_models))
-                or providers[0].get("key_ids") != ["*"]
+                or not (providers[0].get("key_ids") == ["*"]
+                        or (providers[0].get("allow_all_keys") is True
+                            and providers[0].get("keys") in (None, [])))
                 or not isinstance(rate, dict)
                 or isinstance(rate.get("token_max_limit"), bool)
                 or rate.get("token_max_limit") != token_limit

@@ -7,7 +7,7 @@ from competition.failure_policy import IncumbentFailureSummary, ReferenceFallbac
 from competition.weekly_automation import FinalAudit, tick_round
 
 
-DEADLINE = datetime(2026, 10, 30, 12, tzinfo=UTC)
+DEADLINE = datetime(2026, 10, 26, 12, tzinfo=UTC)
 
 
 def _round(status):
@@ -155,10 +155,10 @@ def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
     assert tick_round("week", backend=backend, inputs=inputs,
                       now=DEADLINE + timedelta(days=2))["status"] == "waiting_for_gold_close"
     assert tick_round("week", backend=backend, inputs=inputs,
-                      now=DEADLINE + timedelta(days=6))["status"] == "gold_closed"
+                      now=DEADLINE + timedelta(days=3))["status"] == "gold_closed"
     assert backend.closed == 1
     assert tick_round("week", backend=backend, inputs=inputs,
-                      now=DEADLINE + timedelta(days=6, hours=5))["status"] == "waiting_for_publication"
+                      now=DEADLINE + timedelta(days=3, hours=5))["status"] == "waiting_for_publication"
     calls = []
     monkeypatch.setattr("competition.weekly_automation.tally_closed_gold_review",
                         lambda *_, **__: calls.append("tally") or {"challenger": object()})
@@ -179,19 +179,44 @@ def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
     monkeypatch.setattr("competition.weekly_automation.publish_selected_round",
                         lambda *_, **__: calls.append("publish") or {"bundle_sha256": "a" * 64})
     result = tick_round("week", backend=backend, inputs=inputs,
-                        now=DEADLINE + timedelta(days=6, hours=6))
+                        now=DEADLINE + timedelta(days=3, hours=6))
     assert result == {"status": "published", "bundle_sha256": "a" * 64}
     assert calls == ["tally", "select", "publish"]
 
 
-def test_tick_rejects_non_friday_deadline():
+def test_tick_rejects_non_monday_deadline():
     class Backend:
         def get_round(self, _):
             return {"status": "published", "deadline_at":
                     (DEADLINE + timedelta(days=1)).isoformat()}
 
-    with pytest.raises(ValueError, match="Friday"):
+    with pytest.raises(ValueError, match="Monday"):
         tick_round("week", backend=Backend(), inputs=object(), now=DEADLINE)
+
+
+def test_accelerated_testnet_gold_closes_on_frozen_gate():
+    class Backend:
+        record = {
+            **_round("gold"), "network": "testnet",
+            "rules_public": {"policy": {"schedule": {
+                "mode": "custom", "reveal_delay_blocks": 5,
+                "gold_close_at": (DEADLINE + timedelta(hours=1)).isoformat(),
+                "publish_at": (DEADLINE + timedelta(hours=2)).isoformat(),
+                "production_activate_at": (DEADLINE + timedelta(hours=3)).isoformat(),
+            }}},
+        }
+
+        def get_round(self, _):
+            return self.record
+
+        def close_gold_voting(self, _):
+            return {"status": "gold_closed"}
+
+    backend = Backend()
+    assert tick_round("week", backend=backend, inputs=object(),
+                      now=DEADLINE + timedelta(minutes=59))["status"] == "waiting_for_gold_close"
+    assert tick_round("week", backend=backend, inputs=object(),
+                      now=DEADLINE + timedelta(hours=1))["status"] == "gold_closed"
 
 
 def test_tick_starts_frozen_reference_rerun_after_incumbent_failure(monkeypatch):

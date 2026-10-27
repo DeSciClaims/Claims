@@ -19,7 +19,7 @@ PDF URL and SHA-256, Bronze artifact, and source-span context for scoring.
 `CompetitionPackageResolver` checks a leased job against its frozen stage
 entry and the selected upload receipt. `TrustedPdfFetcher` reads a pinned PDF
 through an allowlisted HTTPS host or a private Hippius S3 client, bounds its
-size, checks its SHA-256, and gives only the bytes to the disposable worker.
+size, checks its SHA-256, and gives only the bytes to the worker.
 `run_next_claimed_job` joins these inputs to the existing per-paper Bifrost
 key, execution, log, and completion lifecycle.
 It now reads the selected upload's manifest and the pinned Bronze paper
@@ -35,7 +35,8 @@ separately and never enters the durable bundle.
 `RestrictedSshWorkerTransport` is the default prepared-VM transport. It
 requires a preverified SSH host key and sends one tar stream to the VM's
 root-owned `claims-worker-control run` command. The dedicated `claims-control`
-SSH account has only that sudo permission. The helper checks the exact
+SSH account has only that sudo permission. The helper serializes jobs on a
+reused VM, refuses residual job files, and checks the exact
 `nftables` allowlist and pinned gateway address, stages read-only bundle files,
 and passes the scoped key to an unprivileged `claims-miner` systemd unit with
 resource limits. It rejects miner-created symlink outputs, returns bounded
@@ -156,8 +157,10 @@ settings and a round JSON file under `CLAIMS_COMPETITION_ROUNDS_DIR`. The file
 contains `round_id`, the full public `configuration`, its SHA-256, and sealed
 `baseline_upload` / optional `reference_upload` receipts; it contains no
 credentials. The factory checks its configuration hash against the backend
-before it creates privileged adapters. Fresh Targon VMs still need an
-authenticated SSH host-key source for this factory to execute a job.
+before it creates privileged adapters. Set `CLAIMS_WORKER_VM_MODE=persistent`
+with the fixed VM UID, public SSH IP and port, and hourly price to reuse the
+prepared worker without Targon lifecycle calls. The dedicated SSH host key
+must be pinned. A disposable mode remains available for future workers.
 `pilot_controller_factory` is the matching trusted controller adapter module.
 It reconstructs the provisional Decisions and J1/J2 runtime from the round
 file, checks its hash, and binds the archive node, validator signer, paper
@@ -208,12 +211,19 @@ current metagraph. Calibrating thresholds and checking live archive and signer
 compatibility remain integration work.
 The competition_round_setup CLI opens intake from an operator draft. It
 reconstructs the provisional judge runtime, verifies sealed baseline and
-fallback package bytes through Hippius, checks the Friday 12:00 UTC / D+600
-calendar, writes matching private and public rules JSON, then creates the
+fallback package bytes through Hippius, checks the Monday 12:00 UTC / D+600
+default calendar (or an explicit custom schedule), writes matching private and public rules JSON, then creates the
 backend round with the exact rules body and its hash. The backend serves
 `GET /public/competition/rounds/{round_id}/rules` before the submission
 deadline; the dashboard links to it. A different rules body cannot replace
 an opened round.
+A custom round draft freezes `policy_public.schedule` with
+`mode: custom`, a 1–600 block reveal delay, and UTC Gold close,
+publication, and activation times. An optional `replay_gold_window_seconds`
+shortens the independent replay's separate 24-hour voting window. It also freezes an earlier duplicate verdict
+and dispute window. Both networks accept this mode. The gates are included in
+the rules SHA-256 at intake; the later signed result includes that hash. The
+rules themselves are not yet signed at intake.
 The draft's public policy must include `reference_lock_sha256`, the hash
 recorded in Bronze manifests for the chosen reference release. Intake selects
 only Bronze records with that hash, and the private paper read checks it again.
@@ -390,7 +400,7 @@ Bronze source provider, the weekly dollar budget, and the worker model/token/
 lease limits into one configuration hash. `CompetitionControllerInputs` checks
 that hash against the backend round before every source, package, judge, or
 audit read. `CompetitionWorkerCoordinator` uses the same frozen worker policy
-when it leases and runs a paper through the disposable VM adapter. The
+when it leases and runs a paper through the configured VM adapter. The
 remaining voter and code-audit providers must be supplied by trusted services.
 OpenRouter may route one model ID to multiple providers, so model-ID hashing
 alone does not freeze the actual serving endpoint. Pin a tested provider and

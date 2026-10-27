@@ -19,11 +19,11 @@ MANIFEST = {"schema_version": "claims_competition_manifest_v1",
             "package_filename": "claims_sample_miner-0.1.0-py3-none-any.whl"}
 
 
-def _fixture(decision="new_crown"):
+def _fixture(decision="new_crown", *, accelerated=False):
     signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
     round_record = {
         "round_id": "week2", "network": "testnet", "status": "published",
-        "deadline_at": "2026-10-30T12:00:00+00:00", "incumbent_hotkey": "incumbent",
+        "deadline_at": "2026-11-02T12:00:00+00:00", "incumbent_hotkey": "incumbent",
         "archive_block_hash": "0x" + "a" * 64, "drand_round": 10,
         "drand_seed": "b" * 64, "drand_chain_hash": "c" * 64,
         "drand_public_key": "d" * 96, "drand_signature": "e" * 192,
@@ -35,6 +35,13 @@ def _fixture(decision="new_crown"):
     }
     rules = {"round_id": "week2", "network": "testnet",
              "deadline_at": round_record["deadline_at"]}
+    if accelerated:
+        rules["policy"] = {"schedule": {
+            "mode": "custom", "reveal_delay_blocks": 5,
+            "gold_close_at": "2026-11-02T13:00:00+00:00",
+            "publish_at": "2026-11-02T14:00:00+00:00",
+            "production_activate_at": "2026-11-02T15:00:00+00:00",
+        }}
     round_record["rules_public"] = rules
     round_record["rules_sha256"] = canonical_sha256(rules)
     stage = {"stage": "final", "entries": [
@@ -84,6 +91,15 @@ def test_new_crown_waits_until_monday_and_binds_exact_package():
     assert plan.receipt_sha256 == receipt["bundle_sha256"]
 
 
+def test_accelerated_testnet_handoff_uses_frozen_activation_time():
+    signer, round_record, stage, receipt = _fixture(accelerated=True)
+    assert _plan(signer, round_record, stage, receipt,
+                 datetime(2026, 11, 2, 14, 59, tzinfo=UTC)) is None
+    plan = _plan(signer, round_record, stage, receipt,
+                 datetime(2026, 11, 2, 15, tzinfo=UTC))
+    assert plan.activate_at == datetime(2026, 11, 2, 15, tzinfo=UTC)
+
+
 def test_continuing_incumbent_has_no_handoff():
     signer, round_record, stage, receipt = _fixture("incumbent_continues")
     assert _plan(signer, round_record, stage, receipt,
@@ -104,7 +120,7 @@ def test_rejects_package_or_frozen_round_change():
 
 def test_handoff_gate_cannot_move_after_rules_are_signed():
     signer, round_record, stage, receipt = _fixture()
-    round_record["deadline_at"] = "2026-11-02T12:00:00+00:00"
+    round_record["deadline_at"] = "2026-10-30T12:00:00+00:00"
     with pytest.raises(ValueError, match="signed rules"):
         _plan(signer, round_record, stage, receipt,
               datetime(2026, 11, 9, 9, tzinfo=UTC))

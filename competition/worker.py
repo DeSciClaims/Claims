@@ -96,6 +96,10 @@ def run_one_paper(
         "PIP_DISABLE_PIP_VERSION_CHECK": "1",
         "PYTHONNOUSERSITE": "1",
     }
+    ca_bundle = os.environ.get("SSL_CERT_FILE")
+    if ca_bundle and Path(ca_bundle).is_file():
+        environment["SSL_CERT_FILE"] = ca_bundle
+        environment["REQUESTS_CA_BUNDLE"] = ca_bundle
     venv_dir = work_dir / "venv"
     started = time.monotonic()
     install_deadline = started + install_timeout_seconds

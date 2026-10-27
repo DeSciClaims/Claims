@@ -2,7 +2,7 @@
 
 The round file contains public configuration and private storage receipts, but
 no credentials. This module runs only in the trusted worker coordinator, never
-inside the disposable miner VM. The VM SSH host key must be pinned separately.
+inside the miner VM. The VM SSH host key must be pinned separately.
 """
 
 from __future__ import annotations
@@ -22,7 +22,9 @@ from .paper_inputs import CompetitionPaperInputs
 from .pdf_fetch import TrustedPdfFetcher
 from .publication import canonical_sha256
 from .ssh_worker import RestrictedSshWorkerTransport
-from .targon_vms import DisposableVmExecution, TargonVmLifecycle
+from .targon_vms import (
+    DisposableVmExecution, PersistentVmExecution, TargonVmLifecycle, WorkerVm,
+)
 from .worker_service import CompetitionWorkerCoordinator
 
 
@@ -47,6 +49,51 @@ def _required(name: str) -> str:
 
 def _csv(name: str) -> tuple[str, ...]:
     return tuple(part.strip() for part in os.environ.get(name, "").split(",") if part.strip())
+
+
+def _bifrost_admin_client() -> BifrostClient:
+    """Use the configured management credential without exposing it to guests."""
+    bearer = os.environ.get("CLAIMS_BIFROST_ADMIN_BEARER")
+    username = os.environ.get("CLAIMS_BIFROST_ADMIN_USERNAME")
+    password = os.environ.get("CLAIMS_BIFROST_ADMIN_PASSWORD")
+    if bearer:
+        if username or password:
+            raise ValueError("set one Bifrost admin authentication method")
+        return BifrostClient(
+            management_url=_required("CLAIMS_BIFROST_MANAGEMENT_URL"),
+            admin_bearer=bearer,
+        )
+    if not username or not password:
+        raise ValueError("Bifrost admin credentials are required")
+    return BifrostClient(
+        management_url=_required("CLAIMS_BIFROST_MANAGEMENT_URL"),
+        admin_username=username, admin_password=password,
+    )
+
+
+def _worker_execution(transport: RestrictedSshWorkerTransport):
+    mode = os.environ.get("CLAIMS_WORKER_VM_MODE", "disposable")
+    if mode == "persistent":
+        return PersistentVmExecution(
+            WorkerVm(
+                uid=_required("CLAIMS_WORKER_VM_UID"),
+                public_ip=_required("CLAIMS_WORKER_PUBLIC_IP"),
+                ssh_port=int(_required("CLAIMS_WORKER_SSH_PORT")),
+                hourly_cost_usd=float(_required("CLAIMS_WORKER_HOURLY_USD")),
+            ),
+            transport,
+        )
+    if mode != "disposable":
+        raise ValueError("unsupported worker VM mode")
+    lifecycle = TargonVmLifecycle(
+        org_slug=_required("CLAIMS_TARGON_ORG_SLUG"),
+        api_token=_required("CLAIMS_TARGON_API_TOKEN"),
+        image=_required("CLAIMS_TARGON_WORKER_IMAGE"),
+        resource_name=_required("CLAIMS_TARGON_RESOURCE_NAME"),
+        ssh_key_uid=_required("CLAIMS_TARGON_SSH_KEY_UID"),
+        max_hourly_cost_usd=float(_required("CLAIMS_TARGON_MAX_HOURLY_USD")),
+    )
+    return DisposableVmExecution(lifecycle, transport)
 
 
 def _round_file(round_id: str) -> dict[str, Any]:
@@ -105,18 +152,7 @@ def create_worker_coordinator(
         allowed_s3_buckets=_csv("CLAIMS_COMPETITION_PDF_S3_BUCKETS"),
         s3_client=client, hippius_endpoint=_required("CLAIMS_HIPPIUS_ENDPOINT"),
     )
-    keys = BifrostClient(
-        management_url=_required("CLAIMS_BIFROST_MANAGEMENT_URL"),
-        admin_bearer=_required("CLAIMS_BIFROST_ADMIN_BEARER"),
-    )
-    lifecycle = TargonVmLifecycle(
-        org_slug=_required("CLAIMS_TARGON_ORG_SLUG"),
-        api_token=_required("CLAIMS_TARGON_API_TOKEN"),
-        image=_required("CLAIMS_TARGON_WORKER_IMAGE"),
-        resource_name=_required("CLAIMS_TARGON_RESOURCE_NAME"),
-        ssh_key_uid=_required("CLAIMS_TARGON_SSH_KEY_UID"),
-        max_hourly_cost_usd=float(_required("CLAIMS_TARGON_MAX_HOURLY_USD")),
-    )
+    keys = _bifrost_admin_client()
     transport = RestrictedSshWorkerTransport(
         identity_file=Path(_required("CLAIMS_WORKER_SSH_IDENTITY")),
         known_hosts_file=Path(_required("CLAIMS_WORKER_SSH_KNOWN_HOSTS")),
@@ -128,5 +164,5 @@ def create_worker_coordinator(
         round_id=round_id, network=str(row["network"]), worker_id=worker_id,
         backend=backend, paper_inputs=papers, packages=packages, evaluation=rules,
         pdf_fetcher=fetcher, keys=keys,
-        execution=DisposableVmExecution(lifecycle, transport), logs=storage,
+        execution=_worker_execution(transport), logs=storage,
     )

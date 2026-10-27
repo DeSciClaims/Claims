@@ -14,11 +14,21 @@ from competition.ssh_worker import RestrictedSshWorkerTransport, _tar_bytes
 from competition.targon_vms import WorkerVm
 from competition.worker_contract import build_worker_contract
 from competition.worker_control import (
-    _firewall_counters, _limited_read, _read_bundle, _stop_unit, load_config,
+    _exclusive_job, _firewall_counters, _limited_read, _read_bundle, _stop_unit, load_config,
 )
 
 
 PACKAGE_NAME = "claims_sample_miner-0.1.0-py3-none-any.whl"
+
+
+def test_persistent_worker_refuses_overlapping_jobs(tmp_path):
+    lock_dir = tmp_path / "worker-lock"
+    with _exclusive_job(lock_dir, require_root_owned=False):
+        with pytest.raises(RuntimeError, match="already processing"):
+            with _exclusive_job(lock_dir, require_root_owned=False):
+                pass
+    with _exclusive_job(lock_dir, require_root_owned=False):
+        pass
 
 
 def _job(package, pdf):

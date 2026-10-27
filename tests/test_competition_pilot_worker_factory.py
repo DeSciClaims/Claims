@@ -2,10 +2,11 @@ import json
 
 import pytest
 
-from competition.pilot_worker_factory import create_worker_coordinator
+from competition.pilot_worker_factory import _bifrost_admin_client, create_worker_coordinator
 from competition.publication import canonical_sha256
 from competition.policy_runtime import policy_runtime_config
 from competition.ssh_worker import RestrictedSshWorkerTransport
+from competition.targon_vms import PersistentVmExecution
 
 
 def test_pilot_worker_factory_binds_all_adapters_to_frozen_rules(tmp_path, monkeypatch):
@@ -65,7 +66,34 @@ def test_pilot_worker_factory_binds_all_adapters_to_frozen_rules(tmp_path, monke
     assert worker.execution.transport.gateway_port == 443
     assert worker.packages.baseline_upload == document["baseline_upload"]
 
+    monkeypatch.setenv("CLAIMS_WORKER_VM_MODE", "persistent")
+    monkeypatch.setenv("CLAIMS_WORKER_VM_UID", "miner-workers")
+    monkeypatch.setenv("CLAIMS_WORKER_PUBLIC_IP", "203.0.113.1")
+    monkeypatch.setenv("CLAIMS_WORKER_SSH_PORT", "20003")
+    monkeypatch.setenv("CLAIMS_WORKER_HOURLY_USD", "1")
+    for name in settings:
+        if name.startswith("CLAIMS_TARGON_"):
+            monkeypatch.delenv(name)
+    persistent = create_worker_coordinator(row, backend, "worker-1")
+    assert isinstance(persistent.execution, PersistentVmExecution)
+    assert persistent.execution.vm.uid == "miner-workers"
+    assert persistent.execution.vm.ssh_port == 20003
+
     document["configuration"]["worker_policy"]["published_token_ceiling"] = 1
     (tmp_path / "week1.json").write_text(json.dumps(document))
     with pytest.raises(ValueError, match="frozen hash"):
         create_worker_coordinator(row, backend, "worker-1")
+
+
+def test_pilot_worker_factory_accepts_live_bifrost_basic_admin(monkeypatch):
+    monkeypatch.setenv("CLAIMS_BIFROST_MANAGEMENT_URL", "http://127.0.0.1:8080")
+    monkeypatch.delenv("CLAIMS_BIFROST_ADMIN_BEARER", raising=False)
+    monkeypatch.setenv("CLAIMS_BIFROST_ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("CLAIMS_BIFROST_ADMIN_PASSWORD", "secret")
+    client = _bifrost_admin_client()
+    assert client.admin_username == "admin"
+    assert client.admin_password == "secret"
+    assert client.admin_bearer is None
+    monkeypatch.setenv("CLAIMS_BIFROST_ADMIN_BEARER", "other")
+    with pytest.raises(ValueError, match="one Bifrost"):
+        _bifrost_admin_client()

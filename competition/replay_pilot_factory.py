@@ -13,14 +13,13 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
-from .bifrost import BifrostClient
 from .chain_archive import BittensorArchive
 from .controller_inputs import build_provisional_evaluation_policy
 from .hippius import HippiusPrivateStorage, hippius_s3_client
 from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
 from .pdf_fetch import TrustedPdfFetcher
-from .pilot_worker_factory import _csv, _required
+from .pilot_worker_factory import _bifrost_admin_client, _csv, _required, _worker_execution
 from .provisional_judges import require_provisional_provider_pins
 from .replay_controller import tick_replay
 from .replay_final_audit import audit_replay_final
@@ -36,7 +35,6 @@ from .replay_runtime import (
 from .replay_store import ReplayStore
 from .publication import canonical_sha256
 from .ssh_worker import RestrictedSshWorkerTransport
-from .targon_vms import DisposableVmExecution, TargonVmLifecycle
 from .worker_service import CompetitionWorkerCoordinator
 
 
@@ -266,18 +264,7 @@ def create_replay_worker(
         s3_client=storage.s3_client,
         hippius_endpoint=_required("CLAIMS_HIPPIUS_ENDPOINT"),
     )
-    keys = BifrostClient(
-        management_url=_required("CLAIMS_BIFROST_MANAGEMENT_URL"),
-        admin_bearer=_required("CLAIMS_BIFROST_ADMIN_BEARER"),
-    )
-    lifecycle = TargonVmLifecycle(
-        org_slug=_required("CLAIMS_TARGON_ORG_SLUG"),
-        api_token=_required("CLAIMS_TARGON_API_TOKEN"),
-        image=_required("CLAIMS_TARGON_WORKER_IMAGE"),
-        resource_name=_required("CLAIMS_TARGON_RESOURCE_NAME"),
-        ssh_key_uid=_required("CLAIMS_TARGON_SSH_KEY_UID"),
-        max_hourly_cost_usd=float(_required("CLAIMS_TARGON_MAX_HOURLY_USD")),
-    )
+    keys = _bifrost_admin_client()
     transport = RestrictedSshWorkerTransport(
         identity_file=Path(_required("CLAIMS_WORKER_SSH_IDENTITY")),
         known_hosts_file=Path(_required("CLAIMS_WORKER_SSH_KNOWN_HOSTS")),
@@ -289,5 +276,5 @@ def create_replay_worker(
         backend=backend, worker_id=worker_id, storage=storage,
         baseline_upload=baseline, reference_upload=reference,
         pdf_fetcher=fetcher, keys=keys,
-        execution=DisposableVmExecution(lifecycle, transport), logs=storage,
+        execution=_worker_execution(transport), logs=storage,
     )

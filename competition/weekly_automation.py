@@ -9,7 +9,7 @@ holds its own inference credential outside miner execution.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, Callable, Mapping, Protocol
 
 from .copy_audit import audit_final_output_copies
@@ -25,6 +25,7 @@ from .intake_lock import ArchiveReader, CompetitionBackend
 from .paper_score_controller import score_ready_paper
 from .result_controller import publish_selected_round
 from .round_controller import lock_ready_round, reveal_selected_sample, start_revealed_round
+from .round_schedule import schedule_for_round
 from .sample_release import PaperRecord
 from .stage_controller import advance_ready_stage, start_failed_incumbent_reference_rerun
 from .worker_security_audit import audit_final_worker_security
@@ -62,15 +63,8 @@ class TrustedRoundInputs(Protocol):
 
 
 def _deadline_and_gates(round_record: Mapping[str, Any]) -> tuple[datetime, datetime, datetime]:
-    deadline = datetime.fromisoformat(str(round_record["deadline_at"]))
-    if deadline.tzinfo is None:
-        raise ValueError("competition deadline must have a timezone")
-    deadline = deadline.astimezone(UTC)
-    if (deadline.weekday(), deadline.hour, deadline.minute, deadline.second,
-        deadline.microsecond) != (4, 12, 0, 0, 0):
-        raise ValueError("competition deadline must be Friday 12:00 UTC")
-    close = deadline + timedelta(days=6)
-    return deadline, close, close + timedelta(hours=6)
+    schedule = schedule_for_round(round_record)
+    return schedule.deadline, schedule.gold_close, schedule.publish_at
 
 
 def _score_active_stage(

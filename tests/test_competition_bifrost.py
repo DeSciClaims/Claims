@@ -138,6 +138,34 @@ def test_oss_management_uses_basic_auth_while_worker_key_remains_separate():
     assert requests[1].get_header("Authorization") is None
 
 
+def test_live_oss_quota_represents_all_provider_keys_with_allow_all_keys():
+    requests = []
+
+    def open_request(request, timeout):
+        requests.append(request)
+        if request.method == "POST":
+            return Response({"virtual_key": {
+                "id": "key-live", "value": "sk-bf-paper",
+                "expires_at": json.loads(request.data)["expires_at"],
+            }})
+        persisted = quota(token_limit=300, dollar_limit=0.01,
+                          models=["qwen/qwen3-32b"])
+        persisted["provider_configs"][0].pop("key_ids")
+        persisted["provider_configs"][0].update(allow_all_keys=True, keys=None)
+        return Response(persisted)
+
+    client = BifrostClient(management_url="http://127.0.0.1:8080",
+                           admin_username="claims-admin", admin_password="secret")
+    with patch("competition.bifrost.urllib.request.urlopen", side_effect=open_request):
+        key = client.create_paper_key(
+            round_id="pilot", paper_id="paper1", hotkey="miner",
+            allowed_models=("qwen/qwen3-32b",), token_limit=300,
+            dollar_limit=0.01, expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        )
+    assert key.token_limit == 300
+    assert len(requests) == 2
+
+
 @pytest.mark.parametrize("tamper", [
     lambda item, data: item.update(expires_at=""),
     lambda item, data: data["provider_configs"][0].update(allowed_models=["*"]),

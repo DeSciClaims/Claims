@@ -62,6 +62,40 @@ class DisposableVmExecution:
                        vm_cost_estimate_usd=vm.hourly_cost_usd * elapsed / 3600)
 
 
+@dataclass(frozen=True)
+class PersistentVmExecution:
+    """Run sequential jobs on one prepared, pinned worker VM."""
+
+    vm: WorkerVm
+    transport: WorkerTransport
+    clock: Callable[[], float] = field(default=time.monotonic, repr=False)
+
+    def __post_init__(self) -> None:
+        if (not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", self.vm.uid)
+            or not 1 <= self.vm.ssh_port <= 65535
+            or not isinstance(self.vm.hourly_cost_usd, int | float)
+            or isinstance(self.vm.hourly_cost_usd, bool)
+            or not 0 <= self.vm.hourly_cost_usd < float("inf")):
+            raise ValueError("persistent worker VM settings are invalid")
+        try:
+            ipaddress.ip_address(self.vm.public_ip)
+        except ValueError as exc:
+            raise ValueError("persistent worker SSH address is invalid") from exc
+
+    def run(
+        self, *, job: dict[str, Any], package: bytes, pdf: bytes,
+        inference_base_url: str, paper_key: str,
+    ) -> ExecutionOutput:
+        started = self.clock()
+        output = self.transport.run(
+            self.vm, job=job, package=package, pdf=pdf,
+            inference_base_url=inference_base_url, paper_key=paper_key,
+        )
+        elapsed = max(0.0, self.clock() - started)
+        return replace(output, vm_elapsed_seconds=elapsed,
+                       vm_cost_estimate_usd=self.vm.hourly_cost_usd * elapsed / 3600)
+
+
 class TargonVmLifecycle:
     """Register, deploy, observe, and remove one Targon VM per worker lease."""
 

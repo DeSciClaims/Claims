@@ -66,7 +66,7 @@ def reveal_ready_sample(
     papers: list[PaperRecord], prescreen_count: int, screen_count: int,
     final_count: int, week_one: bool = False,
 ) -> dict[str, Any]:
-    """Publish a reproducible sample after the D+600 block exists."""
+    """Publish a reproducible sample after the frozen reveal block exists."""
     round_record = backend.get_round(round_id)
     if round_record["status"] != "locked":
         raise ValueError("round must be locked before sample release")

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, Callable, Mapping
 
 from .handoff_controller import activate_published_round
 from .production_handoff import FilesystemProductionReleaseStore
 from .production_reader import ProductionReleaseReader
 from .publication import canonical_sha256
+from .round_schedule import schedule_for_round
 from .weight_heartbeat import verify_weekly_receipt
 
 
@@ -71,10 +72,7 @@ class ProductionHandoffService:
             utc_deadline = deadline.astimezone(UTC)
             if utc_deadline != rule_deadline.astimezone(UTC):
                 raise ValueError("published round deadline differs from signed rules")
-            if (utc_deadline.weekday(), utc_deadline.hour, utc_deadline.minute,
-                utc_deadline.second, utc_deadline.microsecond) != (4, 12, 0, 0, 0):
-                raise ValueError("published round has no Friday noon deadline")
-            gate = utc_deadline + timedelta(days=10, hours=-3)
+            gate = schedule_for_round(row).activate_at
             if cached is not None and cached[1] != gate:
                 raise ValueError("published round gate changed after verification")
             self._verified_gates[row["round_id"]] = (rules_sha256, gate)

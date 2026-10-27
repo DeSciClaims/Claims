@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Callable, Mapping, Protocol
 
+from .round_schedule import schedule_for_round
+
 
 DEFAULT_CHAIN_HASH = "8990e7a9aaed2ffed73dbd7092123d6f289930540d7651336225dc172e51b2ce"
 DEFAULT_PUBLIC_KEY = "868f005eb8e6e4ca0a47c8a77ceaa5309a47978a7c71bc5cce96366b5d7a569937c529eeda66c7293784a9402801af31"
@@ -59,7 +61,7 @@ def fetch_verified_beacon(
     executable: str = "drand-cli",
     run_cli: Callable[[list[str]], dict[str, Any]] = _run_cli,
 ) -> VerifiedBeacon:
-    """Fetch the first BLS-verified beacon strictly after block D+600."""
+    """Fetch the first BLS-verified beacon strictly after the frozen reveal block."""
     if not relay_url.startswith("https://") or not chain_hash or not public_key:
         raise ValueError("drand chain identity and HTTPS relay are required")
     url = relay_url.rstrip("/") + "/" + chain_hash
@@ -96,11 +98,13 @@ def beacon_for_round(
     round_record: Mapping[str, Any], *, chain: BlockClock,
     fetch: Callable[..., VerifiedBeacon] = fetch_verified_beacon,
 ) -> VerifiedBeacon:
-    """Wait until D+600 exists, then use that block's chain timestamp."""
+    """Wait for the frozen reveal block, then use its chain timestamp."""
     deadline = int(round_record["deadline_block"])
     reveal = int(round_record["reveal_block"])
-    if reveal < deadline + 600:
-        raise ValueError("round reveal block must be at least D+600")
+    delay = (schedule_for_round(round_record).reveal_delay_blocks
+             if "deadline_at" in round_record else 600)
+    if reveal < deadline + delay:
+        raise ValueError(f"round reveal block must be at least D+{delay}")
     if chain.get_current_block() < reveal:
         raise RuntimeError("post-deadline reveal block is not available yet")
     timestamp = chain.get_timestamp(reveal)

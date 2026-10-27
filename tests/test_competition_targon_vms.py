@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from competition.targon_vms import DisposableVmExecution, TargonVmLifecycle, WorkerVm
+from competition.targon_vms import DisposableVmExecution, PersistentVmExecution, TargonVmLifecycle, WorkerVm
 from competition.worker_controller import ExecutionOutput
 
 
@@ -113,3 +113,25 @@ def test_execution_always_disposes_vm(fail):
         assert output.vm_elapsed_seconds == 36.0
         assert output.vm_cost_estimate_usd == 0.01
     assert events == [("create", JOB_ID), ("run", UID), ("delete", UID)]
+
+
+def test_persistent_execution_uses_existing_vm_without_lifecycle_calls():
+    calls = []
+
+    class Transport:
+        def run(self, vm, **kwargs):
+            calls.append((vm.uid, kwargs["job"]["job_id"]))
+            return ExecutionOutput("completed", {}, b"log")
+
+    times = iter((0.0, 36.0))
+    executor = PersistentVmExecution(
+        WorkerVm("miner-workers", "192.0.2.1", 20003, 1.0),
+        Transport(), clock=lambda: next(times),
+    )
+    output = executor.run(
+        job={"job_id": JOB_ID}, package=b"pkg", pdf=b"pdf",
+        inference_base_url="https://gateway.example/v1", paper_key="scoped",
+    )
+    assert calls == [("miner-workers", JOB_ID)]
+    assert output.vm_elapsed_seconds == 36.0
+    assert output.vm_cost_estimate_usd == 0.01

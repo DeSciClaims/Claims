@@ -10,11 +10,12 @@ import os
 import stat
 import tempfile
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from .publication import FROZEN_FIELDS, canonical_sha256
+from .round_schedule import schedule_for_round
 from .weight_heartbeat import verify_weekly_receipt
 
 
@@ -73,7 +74,7 @@ class FilesystemProductionReleaseStore:
         manifest: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         if now.tzinfo is None or now.astimezone(UTC) < plan.activate_at:
-            raise ValueError("production activation is before the verified Monday gate")
+            raise ValueError("production activation is before the verified gate")
         if (hashlib.sha256(package).hexdigest() != plan.package_sha256
             or not re.fullmatch(r"[0-9a-f]{64}", plan.receipt_sha256)
             or not re.fullmatch(r"[0-9a-f]{64}", plan.package_sha256)):
@@ -228,10 +229,7 @@ def planned_production_handoff(
     deadline = deadline.astimezone(UTC)
     if deadline != stored_deadline.astimezone(UTC):
         raise ValueError("handoff deadline differs from signed rules")
-    if (deadline.weekday(), deadline.hour, deadline.minute, deadline.second,
-        deadline.microsecond) != (4, 12, 0, 0, 0):
-        raise ValueError("handoff round has no Friday 12:00 UTC deadline")
-    activate_at = deadline + timedelta(days=10, hours=-3)
+    activate_at = schedule_for_round(round_record).activate_at
     if now.astimezone(UTC) < activate_at:
         return None
     results = bundle["results"]

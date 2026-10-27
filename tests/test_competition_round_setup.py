@@ -13,7 +13,7 @@ from competition.round_setup import prepare_pilot_round, prepare_round
 def _draft():
     return {
         "round_id": "week1", "network": "testnet", "week_start": "2026-11-02",
-        "deadline_at": datetime(2026, 11, 6, 12, tzinfo=UTC).isoformat(),
+        "deadline_at": datetime(2026, 11, 2, 12, tzinfo=UTC).isoformat(),
         "deadline_block": 100, "reveal_block": 700,
         "reference_release_id": "bronze-1", "incumbent_hotkey": None,
         "baseline_upload": {
@@ -27,10 +27,10 @@ def _draft():
         "policy_public": {
             "min_final_papers": 500,
             "reference_lock_sha256": "f" * 64,
-            "duplicate_verdict_public_at": "2026-11-10T09:00:00+00:00",
+            "duplicate_verdict_public_at": "2026-11-03T09:00:00+00:00",
             "duplicate_dispute_window": {
-                "opens_at": "2026-11-10T09:00:00+00:00",
-                "closes_at": "2026-11-10T15:00:00+00:00",
+                "opens_at": "2026-11-03T09:00:00+00:00",
+                "closes_at": "2026-11-03T15:00:00+00:00",
             },
         },
     }
@@ -66,8 +66,8 @@ def test_prepare_round_writes_private_and_public_artifacts_before_intake(tmp_pat
 
 def test_prepare_round_rejects_invalid_calendar_before_writing(tmp_path):
     draft = _draft()
-    draft["deadline_at"] = datetime(2026, 11, 9, 12, tzinfo=UTC).isoformat()
-    with pytest.raises(ValueError, match="Friday 12:00"):
+    draft["deadline_at"] = datetime(2026, 11, 6, 12, tzinfo=UTC).isoformat()
+    with pytest.raises(ValueError, match="Monday 12:00"):
         prepare_round(draft, backend=object(), directory=tmp_path)
     draft = _draft()
     draft["week_start"] = "2026-11-06"
@@ -94,7 +94,7 @@ def test_prepare_round_freezes_review_only_dispute_window(tmp_path):
     prepare_round(draft, backend=Backend(), directory=tmp_path)
     rules = json.loads((tmp_path / "week1.rules.json").read_text())
     assert rules["policy"]["duplicate_dispute_window"] == draft["policy_public"]["duplicate_dispute_window"]
-    assert rules["policy"]["duplicate_verdict_public_at"] == "2026-11-10T09:00:00+00:00"
+    assert rules["policy"]["duplicate_verdict_public_at"] == "2026-11-03T09:00:00+00:00"
     draft["policy_public"]["duplicate_dispute_window"]["opens_at"] = "2026-11-09T10:00:00+00:00"
     with pytest.raises(ValueError, match="Tuesday 09:00"):
         prepare_round(draft, backend=Backend(), directory=tmp_path)
@@ -129,6 +129,42 @@ def test_mainnet_round_requires_published_automatic_audit_thresholds(tmp_path):
     prepare_round(draft, backend=Backend(), directory=tmp_path)
     rules = json.loads((tmp_path / "week1.rules.json").read_text())
     assert rules["policy"]["code_audit"] == draft["policy_public"]["code_audit"]
+
+
+def test_prepare_round_accepts_accelerated_testnet_schedule(tmp_path):
+    draft = _draft()
+    draft["deadline_at"] = "2026-11-04T10:00:00+00:00"
+    draft["reveal_block"] = 105
+    draft["policy_public"].update({
+        "schedule": {
+            "mode": "custom", "reveal_delay_blocks": 5,
+            "gold_close_at": "2026-11-04T11:00:00+00:00",
+            "publish_at": "2026-11-04T11:15:00+00:00",
+            "production_activate_at": "2026-11-04T11:30:00+00:00",
+        },
+        "duplicate_verdict_public_at": "2026-11-04T10:10:00+00:00",
+        "duplicate_dispute_window": {
+            "opens_at": "2026-11-04T10:10:00+00:00",
+            "closes_at": "2026-11-04T10:20:00+00:00",
+        },
+    })
+
+    class Backend:
+        def create_round(self, payload):
+            return payload
+
+    prepare_round(draft, backend=Backend(), directory=tmp_path)
+    rules = json.loads((tmp_path / "week1.rules.json").read_text())
+    assert rules["policy"]["schedule"]["reveal_delay_blocks"] == 5
+    draft["network"] = "mainnet"
+    draft["policy_public"]["code_audit"] = {
+        "min_completed_papers": 2, "max_repeated_output_fraction": 0.2,
+        "max_cap_trip_fraction": 0.01, "max_claim_count_ratio": 4.0,
+    }
+    mainnet_dir = tmp_path / "mainnet"
+    mainnet_dir.mkdir()
+    prepare_round(draft, backend=Backend(), directory=mainnet_dir)
+    assert json.loads((mainnet_dir / "week1.rules.json").read_text())["network"] == "mainnet"
 
 
 def test_pilot_setup_checks_real_judges_and_sealed_baseline_before_intake(

@@ -8,6 +8,7 @@ key. This helper has no backend, storage, provider, or Targon credentials.
 from __future__ import annotations
 
 import base64
+import fcntl
 import ipaddress
 import json
 import os
@@ -21,6 +22,7 @@ import sys
 import tarfile
 import tempfile
 import urllib.parse
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -33,6 +35,7 @@ RESPONSE_SCHEMA = "claims_worker_control_response_v1"
 MAX_BUNDLE_BYTES = 210_000_000
 MAX_RESULT_BYTES = 10_000_000
 MAX_LOG_BYTES = 10_000_000
+LOCK_DIR = Path("/run/claims-worker")
 
 
 def load_config(path: Path = CONFIG_PATH, *, require_root_owned: bool = True) -> dict[str, Any]:
@@ -194,7 +197,33 @@ def _stop_unit(unit: str) -> None:
         raise RuntimeError("worker control guest unit is not confirmed stopped")
 
 
-def run_once(stream: BinaryIO, config: dict[str, Any]) -> dict[str, Any]:
+@contextmanager
+def _exclusive_job(lock_dir: Path = LOCK_DIR, *, require_root_owned: bool = True):
+    """Keep one miner UID from reading another job's files on a reused VM."""
+    lock_dir.mkdir(mode=0o700, exist_ok=True)
+    directory_stat = lock_dir.stat(follow_symlinks=False)
+    if (lock_dir.is_symlink() or not stat.S_ISDIR(directory_stat.st_mode)
+        or (require_root_owned and directory_stat.st_uid != 0)
+        or directory_stat.st_mode & 0o077):
+        raise ValueError("worker lock directory is not protected")
+    descriptor = os.open(lock_dir / "active.lock",
+                         os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    try:
+        lock_stat = os.fstat(descriptor)
+        if (not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_nlink != 1
+            or (require_root_owned and lock_stat.st_uid != 0)
+            or lock_stat.st_mode & 0o077):
+            raise ValueError("worker job lock is not protected")
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise RuntimeError("worker is already processing a job") from exc
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def _run_once_locked(stream: BinaryIO, config: dict[str, Any]) -> dict[str, Any]:
     """Run one sealed bundle and return bounded result bytes over SSH stdout."""
     if os.geteuid() != 0:
         raise PermissionError("worker control must run as root")
@@ -208,6 +237,8 @@ def run_once(stream: BinaryIO, config: dict[str, Any]) -> dict[str, Any]:
     if (not jobs_dir.is_dir() or jobs_dir.is_symlink()
         or jobs_dir.stat().st_uid != 0 or jobs_dir.stat().st_mode & 0o022):
         raise ValueError("worker control jobs directory is not root-owned")
+    if any(jobs_dir.iterdir()):
+        raise RuntimeError("worker has uncleared files from a previous job")
     root = Path(tempfile.mkdtemp(prefix=job_id[:16] + "-", dir=jobs_dir))
     try:
         inputs, results, key_file = _write_input(root, files, miner_uid, miner_gid)
@@ -217,10 +248,14 @@ def run_once(stream: BinaryIO, config: dict[str, Any]) -> dict[str, Any]:
             "--uid=claims-miner", "--property=KillMode=control-group",
             "--property=RuntimeMaxSec=2570", "--property=MemoryMax=17179869184",
             "--property=TasksMax=128", "--property=NoNewPrivileges=yes",
-            "--property=PrivateTmp=yes", "--property=ProtectSystem=strict",
+            "--property=PrivateTmp=yes", "--property=PrivateIPC=yes",
+            "--property=ProtectHome=yes", "--property=ProtectSystem=strict",
+            "--property=TemporaryFileSystem=/dev/shm:rw,nosuid,nodev,size=64M",
             "--property=CapabilityBoundingSet=", "--property=RestrictSUIDSGID=yes",
             f"--property=ReadWritePaths={results}",
-            "env", "-i", "PATH=/usr/bin:/bin", "HOME=/home/claims-miner", "LANG=C.UTF-8",
+            "env", "-i", "PATH=/usr/bin:/bin", f"HOME={results}", "LANG=C.UTF-8",
+            "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
+            "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt",
             "/opt/claims-worker/venv/bin/python", "-m", "competition.worker_guest",
             "--input-dir", str(inputs), "--result-dir", str(results),
             "--wheelhouse", "/opt/claims-worker/wheelhouse",
@@ -260,6 +295,14 @@ def run_once(stream: BinaryIO, config: dict[str, Any]) -> dict[str, Any]:
         }
     finally:
         shutil.rmtree(root)
+
+
+def run_once(stream: BinaryIO, config: dict[str, Any]) -> dict[str, Any]:
+    """Serialize package runs because all jobs use the same miner UID."""
+    if os.geteuid() != 0:
+        raise PermissionError("worker control must run as root")
+    with _exclusive_job():
+        return _run_once_locked(stream, config)
 
 
 def main() -> None:

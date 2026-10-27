@@ -21,6 +21,7 @@ from .drand import VerifiedBeacon
 from .gold import GoldCase, GoldVote, decide_gold_case, gold_result
 from .publication import canonical_sha256
 from .sample_release import PaperRecord, frozen_pool_hash, sample_receipt
+from .round_schedule import schedule_for_round
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -62,7 +63,8 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
     if rules.get("schema_version") != "claims_competition_rules_v1":
         raise ValueError("replay rules use an unknown schema")
     pinned = (
-        "round_id", "network", "deadline_block", "reveal_block",
+        "round_id", "network", "week_start", "deadline_at",
+        "deadline_block", "reveal_block",
         "configuration_sha256", "reference_release_id", "incumbent_hotkey",
         "baseline_package_sha256", "reference_package_sha256",
     )
@@ -125,10 +127,12 @@ def verify_replay_sample(
     verified_beacon: VerifiedBeacon,
 ) -> None:
     """Redraw the sample from the public frozen pool and a separately verified beacon."""
+    delay = (schedule_for_round(snapshot).reveal_delay_blocks
+             if "deadline_at" in snapshot else 600)
     if (frozen_pool_hash(paper_pool) != snapshot.get("paper_pool_sha256")
         or type(snapshot.get("deadline_block")) is not int
         or type(snapshot.get("reveal_block")) is not int
-        or snapshot["reveal_block"] < snapshot["deadline_block"] + 600):
+        or snapshot["reveal_block"] < snapshot["deadline_block"] + delay):
         raise ValueError("replay paper pool or reveal block differs from frozen round")
     fields = {
         "drand_round": verified_beacon.round,

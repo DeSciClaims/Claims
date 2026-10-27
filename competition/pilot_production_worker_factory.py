@@ -6,15 +6,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from .bifrost import BifrostClient
 from .hippius import HippiusPrivateStorage, hippius_s3_client
 from .pdf_fetch import TrustedPdfFetcher
-from .pilot_worker_factory import _csv, _required, _round_file
+from .pilot_worker_factory import _bifrost_admin_client, _csv, _required, _round_file, _worker_execution
 from .production_reader import ActiveProductionPackage, ProductionReleaseReader
 from .production_worker_service import ProductionWorkerCoordinator
 from .publication import canonical_sha256
 from .ssh_worker import RestrictedSshWorkerTransport
-from .targon_vms import DisposableVmExecution, TargonVmLifecycle
 
 
 def create_production_worker(
@@ -41,18 +39,7 @@ def create_production_worker(
         allowed_s3_buckets=_csv("CLAIMS_COMPETITION_PDF_S3_BUCKETS"),
         s3_client=client, hippius_endpoint=_required("CLAIMS_HIPPIUS_ENDPOINT"),
     )
-    keys = BifrostClient(
-        management_url=_required("CLAIMS_BIFROST_MANAGEMENT_URL"),
-        admin_bearer=_required("CLAIMS_BIFROST_ADMIN_BEARER"),
-    )
-    lifecycle = TargonVmLifecycle(
-        org_slug=_required("CLAIMS_TARGON_ORG_SLUG"),
-        api_token=_required("CLAIMS_TARGON_API_TOKEN"),
-        image=_required("CLAIMS_TARGON_WORKER_IMAGE"),
-        resource_name=_required("CLAIMS_TARGON_RESOURCE_NAME"),
-        ssh_key_uid=_required("CLAIMS_TARGON_SSH_KEY_UID"),
-        max_hourly_cost_usd=float(_required("CLAIMS_TARGON_MAX_HOURLY_USD")),
-    )
+    keys = _bifrost_admin_client()
     transport = RestrictedSshWorkerTransport(
         identity_file=Path(_required("CLAIMS_WORKER_SSH_IDENTITY")),
         known_hosts_file=Path(_required("CLAIMS_WORKER_SSH_KNOWN_HOSTS")),
@@ -83,5 +70,5 @@ def create_production_worker(
         reader=ProductionReleaseReader(root),
         rules_for_release=rules_for_release,
         pdf_fetcher=fetcher, keys=keys,
-        execution=DisposableVmExecution(lifecycle, transport), logs=logs,
+        execution=_worker_execution(transport), logs=logs,
     )

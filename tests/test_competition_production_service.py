@@ -10,20 +10,20 @@ from competition.production_reader import ProductionReleaseReader
 from competition.production_service import ProductionHandoffService
 
 
-def _round(round_id, friday):
+def _round(round_id, monday):
     rules = {"round_id": round_id, "network": "testnet",
-             "deadline_at": friday.isoformat()}
+             "deadline_at": monday.isoformat()}
     return {"round_id": round_id, "network": "testnet", "status": "published",
-            "deadline_at": friday.isoformat(), "rules_public": rules,
+            "deadline_at": monday.isoformat(), "rules_public": rules,
             "rules_sha256": canonical_sha256(rules)}
 
 
 def test_handoff_scheduler_catches_up_and_preserves_rollback(tmp_path, monkeypatch):
-    friday = datetime(2026, 10, 30, 12, tzinfo=UTC)
-    now = friday + timedelta(days=21)
-    gates = {"week1": friday + timedelta(days=10, hours=-3),
-             "week2": friday + timedelta(days=17, hours=-3)}
-    rows = [_round("week2", friday + timedelta(days=7)), _round("week1", friday)]
+    monday = datetime(2026, 10, 26, 12, tzinfo=UTC)
+    now = monday + timedelta(days=21)
+    gates = {"week1": monday + timedelta(days=7, hours=-3),
+             "week2": monday + timedelta(days=14, hours=-3)}
+    rows = [_round("week2", monday + timedelta(days=7)), _round("week1", monday)]
 
     class Backend:
         def list_published_rounds(self, network):
@@ -70,12 +70,12 @@ def test_handoff_scheduler_catches_up_and_preserves_rollback(tmp_path, monkeypat
 
 
 def test_handoff_scheduler_stops_on_first_error(tmp_path, monkeypatch):
-    friday = datetime(2026, 10, 30, 12, tzinfo=UTC)
+    monday = datetime(2026, 10, 26, 12, tzinfo=UTC)
 
     class Backend:
         def list_published_rounds(self, _):
-            return [_round("week1", friday),
-                    _round("week2", friday + timedelta(days=7))]
+            return [_round("week1", monday),
+                    _round("week2", monday + timedelta(days=7))]
 
     calls = []
 
@@ -94,23 +94,23 @@ def test_handoff_scheduler_stops_on_first_error(tmp_path, monkeypatch):
         publication_for_round=lambda rid: {"bundle": {
             "round_id": rid, "rules_sha256": canonical_sha256({
                 "round_id": rid, "network": "testnet",
-                "deadline_at": (friday if rid == "week1" else
-                                friday + timedelta(days=7)).isoformat(),
+                "deadline_at": (monday if rid == "week1" else
+                                monday + timedelta(days=7)).isoformat(),
             }),
         }}, reference_upload_for_round=lambda _: None,
     )
-    assert service.run_once(now=friday + timedelta(days=14)) == [
+    assert service.run_once(now=monday + timedelta(days=14)) == [
         {"round_id": "week1", "status": "error", "error_type": "ValueError"},
     ]
     assert calls == ["week1"]
 
 
 def test_no_change_needs_an_existing_active_release(tmp_path, monkeypatch):
-    friday = datetime(2026, 10, 30, 12, tzinfo=UTC)
+    monday = datetime(2026, 10, 26, 12, tzinfo=UTC)
 
     class Backend:
         def list_published_rounds(self, _):
-            return [_round("week1", friday)]
+            return [_round("week1", monday)]
 
     monkeypatch.setattr("competition.production_service.activate_published_round",
                         lambda *args, **kwargs: None)
@@ -122,17 +122,17 @@ def test_no_change_needs_an_existing_active_release(tmp_path, monkeypatch):
         sealed_packages=object(), releases=FilesystemProductionReleaseStore(root),
         reader=ProductionReleaseReader(root),
         publication_for_round=lambda rid: {"bundle": {
-            "round_id": rid, "rules_sha256": _round(rid, friday)["rules_sha256"],
+            "round_id": rid, "rules_sha256": _round(rid, monday)["rules_sha256"],
         }}, reference_upload_for_round=lambda _: None,
     )
-    assert service.run_once(now=friday + timedelta(days=10)) == [
+    assert service.run_once(now=monday + timedelta(days=10)) == [
         {"round_id": "week1", "status": "error", "error_type": "ValueError"},
     ]
 
 
 def test_scheduler_verifies_signature_before_using_activation_gate(tmp_path):
-    friday = datetime(2026, 10, 30, 12, tzinfo=UTC)
-    row = _round("week1", friday)
+    monday = datetime(2026, 10, 26, 12, tzinfo=UTC)
+    row = _round("week1", monday)
     row.update({
         "archive_block_hash": "0x" + "a" * 64,
         "drand_round": 1, "drand_seed": "b" * 64,
@@ -171,10 +171,10 @@ def test_scheduler_verifies_signature_before_using_activation_gate(tmp_path):
         publication_for_round=lambda _: receipt,
         reference_upload_for_round=lambda _: None,
     )
-    assert service.run_once(now=friday) == []
-    assert service._verified_gates["week1"][1] == friday + timedelta(days=10, hours=-3)
+    assert service.run_once(now=monday) == []
+    assert service._verified_gates["week1"][1] == monday + timedelta(days=7, hours=-3)
     bad = {**receipt, "signature_hex": "0" * 128}
     service.publication_for_round = lambda _: bad
     service._verified_gates.clear()
     with pytest.raises(ValueError, match="signature"):
-        service.run_once(now=friday)
+        service.run_once(now=monday)

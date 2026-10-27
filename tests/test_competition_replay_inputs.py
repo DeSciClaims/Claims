@@ -20,6 +20,7 @@ def _snapshot():
     snapshot = {
         "schema_version": "claims_competition_replay_snapshot_v1",
         "round_id": "week-1", "network": "testnet",
+        "week_start": "2026-10-26", "deadline_at": "2026-10-26T12:00:00+00:00",
         "configuration_sha256": canonical_sha256(configuration),
         "deadline_block": 100, "reveal_block": 700,
         "reference_release_id": "bronze-release-1",
@@ -45,7 +46,8 @@ def _snapshot():
         "schema_version": "claims_competition_rules_v1",
         "configuration": configuration,
         **{key: snapshot[key] for key in (
-            "round_id", "network", "deadline_block", "reveal_block",
+            "round_id", "network", "week_start", "deadline_at",
+            "deadline_block", "reveal_block",
             "configuration_sha256", "reference_release_id", "incumbent_hotkey",
             "baseline_package_sha256", "reference_package_sha256",
         )},

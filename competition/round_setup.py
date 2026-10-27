@@ -15,6 +15,7 @@ from .controller_inputs import build_provisional_evaluation_policy
 from .code_audit import validated_audit_policy
 from .provisional_judges import require_provisional_provider_pins
 from .publication import canonical_sha256
+from .round_schedule import schedule_for_round, validate_dispute_window
 
 
 RULES_SCHEMA = "claims_competition_rules_v1"
@@ -65,17 +66,20 @@ def prepare_round(
     if deadline.tzinfo is None:
         raise ValueError("weekly deadline needs a timezone")
     deadline = deadline.astimezone(UTC)
-    if (deadline.weekday(), deadline.hour, deadline.minute, deadline.second,
-        deadline.microsecond) != (4, 12, 0, 0, 0):
-        raise ValueError("weekly deadline must be Friday 12:00 UTC")
-    week_start = (deadline - timedelta(days=4)).date().isoformat()
+    public_policy = draft.get("policy_public", {})
+    if not isinstance(public_policy, dict):
+        raise ValueError("public weekly policy is malformed")
+    schedule_record = {"network": network, "deadline_at": deadline.isoformat(),
+                       "rules_public": {"policy": public_policy}}
+    schedule = schedule_for_round(schedule_record)
+    week_start = (deadline - timedelta(days=deadline.weekday())).date().isoformat()
     if str(draft.get("week_start")) != week_start:
         raise ValueError("week start differs from deadline week Monday")
     block = draft.get("deadline_block")
     reveal = draft.get("reveal_block")
     if (type(block) is not int or block < 0 or type(reveal) is not int
-        or reveal < block + 600):
-        raise ValueError("weekly reveal must be at least block D+600")
+        or reveal < block + schedule.reveal_delay_blocks):
+        raise ValueError(f"weekly reveal must be at least block D+{schedule.reveal_delay_blocks}")
     incumbent = draft.get("incumbent_hotkey")
     if incumbent is not None and (not isinstance(incumbent, str) or not incumbent):
         raise ValueError("incumbent hotkey is invalid")
@@ -108,9 +112,6 @@ def prepare_round(
         raise ValueError("reviewed duplicate links are malformed")
     if links:
         raise ValueError("duplicate links must be reviewed after the intake lock")
-    public_policy = draft.get("policy_public", {})
-    if not isinstance(public_policy, dict):
-        raise ValueError("public weekly policy is malformed")
     reference_lock = public_policy.get("reference_lock_sha256")
     if not isinstance(reference_lock, str) or not re.fullmatch(r"[0-9a-f]{64}", reference_lock):
         raise ValueError("public weekly policy needs the frozen Bronze reference lock SHA-256")
@@ -119,23 +120,7 @@ def prepare_round(
         raise ValueError("mainnet round needs automatic code audit thresholds")
     if audit_policy is not None:
         validated_audit_policy(audit_policy)
-    dispute_window = public_policy.get("duplicate_dispute_window")
-    if dispute_window is None:
-        raise ValueError("public duplicate dispute window is required")
-    try:
-        opened = datetime.fromisoformat(dispute_window["opens_at"])
-        closed = datetime.fromisoformat(dispute_window["closes_at"])
-        verdict_public_at = datetime.fromisoformat(public_policy["duplicate_verdict_public_at"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("duplicate verdict release or dispute window is malformed") from exc
-    if (not isinstance(dispute_window, dict)
-        or set(dispute_window) != {"opens_at", "closes_at"}
-        or opened.tzinfo is None or closed.tzinfo is None
-        or verdict_public_at.tzinfo is None
-        or verdict_public_at.astimezone(UTC) != deadline + timedelta(days=4, hours=-3)
-        or opened.astimezone(UTC) != verdict_public_at.astimezone(UTC)
-        or closed.astimezone(UTC) != deadline + timedelta(days=4, hours=3)):
-        raise ValueError("duplicate verdict and dispute window must be Tuesday 09:00–15:00 UTC")
+    validate_dispute_window(schedule_record, schedule)
     config_hash = canonical_sha256(configuration)
     rules = {
         "schema_version": RULES_SCHEMA,
