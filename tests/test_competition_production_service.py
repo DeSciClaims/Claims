@@ -105,6 +105,45 @@ def test_handoff_scheduler_stops_on_first_error(tmp_path, monkeypatch):
     assert calls == ["week1"]
 
 
+def test_older_smoke_round_cannot_replace_newer_active_release(tmp_path, monkeypatch):
+    monday = datetime(2026, 10, 26, 12, tzinfo=UTC)
+    rows = [_round("older", monday), _round("newer", monday + timedelta(hours=1))]
+    root = tmp_path / "production"
+    store = FilesystemProductionReleaseStore(root)
+    package = b"verified-package"
+    store.activate(ProductionHandoffPlan(
+        "newer", "b" * 64, "miner", sha256(package).hexdigest(),
+        monday + timedelta(hours=3),
+    ), package, now=monday + timedelta(hours=4))
+
+    class Backend:
+        def list_published_rounds(self, _):
+            return rows
+
+    calls = []
+    monkeypatch.setattr("competition.production_service.activate_published_round",
+                        lambda round_id, **_: calls.append(round_id))
+    monkeypatch.setattr("competition.production_service.verify_weekly_receipt",
+                        lambda receipt, **_: receipt["bundle"])
+    monkeypatch.setattr("competition.production_service.schedule_for_round",
+                        lambda row: type("Schedule", (), {"activate_at": (
+                            monday + timedelta(hours=5) if row["round_id"] == "older"
+                            else monday + timedelta(hours=3))})())
+    service = ProductionHandoffService(
+        backend=Backend(), network="testnet", expected_signer_hotkey="signer",
+        sealed_packages=object(), releases=store, reader=ProductionReleaseReader(root),
+        publication_for_round=lambda rid: {"bundle": {
+            "round_id": rid,
+            "rules_sha256": next(row["rules_sha256"] for row in rows
+                                 if row["round_id"] == rid),
+        }}, reference_upload_for_round=lambda _: None,
+    )
+
+    assert service.run_once(now=monday + timedelta(hours=6)) == []
+    assert calls == []
+    assert ProductionReleaseReader(root).read_active().round_id == "newer"
+
+
 def test_no_change_needs_an_existing_active_release(tmp_path, monkeypatch):
     monday = datetime(2026, 10, 26, 12, tzinfo=UTC)
 

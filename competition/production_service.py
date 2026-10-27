@@ -36,6 +36,7 @@ class ProductionHandoffService:
         if not isinstance(rows, list):
             raise ValueError("backend returned invalid published rounds")
         due: list[tuple[datetime, str]] = []
+        deadlines: dict[str, datetime] = {}
         seen: set[str] = set()
         for row in rows:
             if (not isinstance(row, dict) or row.get("network") != self.network
@@ -72,6 +73,7 @@ class ProductionHandoffService:
             utc_deadline = deadline.astimezone(UTC)
             if utc_deadline != rule_deadline.astimezone(UTC):
                 raise ValueError("published round deadline differs from signed rules")
+            deadlines[row["round_id"]] = utc_deadline
             gate = schedule_for_round(row).activate_at
             if cached is not None and cached[1] != gate:
                 raise ValueError("published round gate changed after verification")
@@ -80,9 +82,14 @@ class ProductionHandoffService:
         due.sort()
         active = self.reader.read_active()
         latest = active.latest_activation_at if active else None
+        if active is not None and active.round_id not in deadlines:
+            raise ValueError("active production round is absent from published rounds")
+        latest_deadline = deadlines[active.round_id] if active else None
         results: list[dict[str, Any]] = []
         for gate, round_id in due:
             if clock.astimezone(UTC) < gate:
+                continue
+            if latest_deadline is not None and deadlines[round_id] <= latest_deadline:
                 continue
             if latest is not None and gate <= latest:
                 continue
@@ -101,6 +108,7 @@ class ProductionHandoffService:
                     if active is None:
                         raise ValueError("continuing production has no active release")
                     self._handled_without_change.add(round_id)
+                    latest_deadline = deadlines[round_id]
                     results.append({"round_id": round_id, "status": "no_package_change",
                                     "active_release_present": active is not None})
                     continue
@@ -110,6 +118,7 @@ class ProductionHandoffService:
                     or active.latest_activation_at != gate):
                     raise ValueError("handoff release pointer differs from activated package")
                 latest = active.latest_activation_at
+                latest_deadline = deadlines[round_id]
                 results.append({"round_id": round_id, "status": "activated",
                                 "receipt_sha256": active.receipt_sha256,
                                 "package_sha256": active.package_sha256})
