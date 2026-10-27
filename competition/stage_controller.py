@@ -65,7 +65,7 @@ def start_initial_stage(
     receipt = {"stage": stage, "entries": entries}
     _enqueue_current_stage(round_id, backend=backend, round_record=round_record,
                            receipt=receipt, sample=sample)
-    return receipt
+    return {"status": "started", **receipt}
 
 
 def start_failed_incumbent_reference_rerun(

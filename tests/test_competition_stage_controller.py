@@ -54,7 +54,7 @@ class Backend:
 
 def test_stage_controller_waits_for_full_grid_and_advances_one_per_team():
     backend = Backend()
-    start_initial_stage(
+    result = start_initial_stage(
         "week2", backend=backend,
         baseline={"hotkey": "incumbent", "package_sha256": "a" * 64, "team_id": "king-team"},
         challengers=[
@@ -69,6 +69,7 @@ def test_stage_controller_waits_for_full_grid_and_advances_one_per_team():
         ],
     )
     assert backend.ledger[0]["stage"] == "screen"
+    assert result["status"] == "started"
     assert [row["hotkey"] for row in backend.ledger[0]["entries"]] == [
         "incumbent", "miner-d", "miner-c", "miner-a", "miner-b",
     ]
