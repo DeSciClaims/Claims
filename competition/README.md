@@ -224,6 +224,13 @@ shortens the independent replay's separate 24-hour voting window. It also freeze
 and dispute window. Both networks accept this mode. The gates are included in
 the rules SHA-256 at intake; the later signed result includes that hash. The
 rules themselves are not yet signed at intake.
+For an accelerated week-one integration rehearsal, set
+`policy_public.test_profile` to `testnet_smoke_v1` with a custom schedule. This
+public, immutable profile draws exactly two distinct papers and requires one
+certified known-answer Gold case. The backend rejects it on mainnet and rejects
+a sample of any other size. Qualification, on-chain commitments, signed uploads,
+Gold voting rules, worker isolation, and publication checks still apply. It
+tests the flow, not the statistical power of the 320-paper launch round.
 The draft's public policy must include `reference_lock_sha256`, the hash
 recorded in Bronze manifests for the chosen reference release. Intake selects
 only Bronze records with that hash, and the private paper read checks it again.

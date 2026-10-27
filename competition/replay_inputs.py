@@ -22,6 +22,7 @@ from .gold import GoldCase, GoldVote, decide_gold_case, gold_result
 from .publication import canonical_sha256
 from .sample_release import PaperRecord, frozen_pool_hash, sample_receipt
 from .round_schedule import schedule_for_round
+from .smoke_profile import smoke_profile
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -60,6 +61,7 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
             != snapshot.get("duplicate_review_sha256")):
         raise ValueError("replay snapshot differs from frozen round rules")
     rules = snapshot["rules_public"]
+    profile = smoke_profile(snapshot)
     if rules.get("schema_version") != "claims_competition_rules_v1":
         raise ValueError("replay rules use an unknown schema")
     pinned = (
@@ -76,6 +78,11 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
     if (not isinstance(sample, list) or not sample
         or not isinstance(stages, list) or not isinstance(uploads, list)):
         raise ValueError("replay snapshot has no released inputs")
+    if profile is not None and (snapshot.get("incumbent_hotkey") is not None
+        or len(sample) != profile.paper_count
+        or any(not isinstance(row, dict) or row.get("stage") != "week_one"
+               for row in sample)):
+        raise ValueError("replay test profile has a different sample")
     paper_versions = set()
     for row in sample:
         if (not isinstance(row, dict) or row.get("stage") not in {

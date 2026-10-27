@@ -16,6 +16,7 @@ from .code_audit import validated_audit_policy
 from .provisional_judges import require_provisional_provider_pins
 from .publication import canonical_sha256
 from .round_schedule import schedule_for_round, validate_dispute_window
+from .smoke_profile import smoke_profile
 
 
 RULES_SCHEMA = "claims_competition_rules_v1"
@@ -72,6 +73,7 @@ def prepare_round(
     schedule_record = {"network": network, "deadline_at": deadline.isoformat(),
                        "rules_public": {"policy": public_policy}}
     schedule = schedule_for_round(schedule_record)
+    smoke_profile({**schedule_record, "incumbent_hotkey": draft.get("incumbent_hotkey")})
     week_start = (deadline - timedelta(days=deadline.weekday())).date().isoformat()
     if str(draft.get("week_start")) != week_start:
         raise ValueError("week start differs from deadline week Monday")

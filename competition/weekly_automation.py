@@ -26,6 +26,7 @@ from .paper_score_controller import score_ready_paper
 from .result_controller import publish_selected_round
 from .round_controller import lock_ready_round, reveal_selected_sample, start_revealed_round
 from .round_schedule import schedule_for_round
+from .smoke_profile import smoke_profile
 from .sample_release import PaperRecord
 from .stage_controller import advance_ready_stage, start_failed_incumbent_reference_rerun
 from .worker_security_audit import audit_final_worker_security
@@ -134,15 +135,18 @@ def _score_active_stage(
     if now >= gold_close:
         return {"status": "missed_gold_window", "stage": stage}
     round_record = backend.get_round(round_id)
+    profile = smoke_profile(round_record)
+    known_answer_count = profile.known_answer_count if profile is not None else 40
     known_answers = build_known_answer_challenges(
         round_id,
         certified=backend.list_gold_known_answer_candidates(round_id),
         final_sample=papers, final_entries=ledger[-1]["entries"],
         seed=bytes.fromhex(round_record["drand_seed"]),
+        limit=known_answer_count,
     )
     result = prepare_frozen_gold_review(
         round_id, backend=backend, voters=inputs.voters_for_round(round_id),
-        known_answers=known_answers, minimum_known_answers=40,
+        known_answers=known_answers, minimum_known_answers=known_answer_count,
     )
     if result.get("status") == "waiting_for_known_answers":
         return result

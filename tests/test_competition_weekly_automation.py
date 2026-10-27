@@ -219,6 +219,55 @@ def test_accelerated_testnet_gold_closes_on_frozen_gate():
                       now=DEADLINE + timedelta(hours=1))["status"] == "gold_closed"
 
 
+def test_testnet_smoke_uses_one_certified_gold_case(monkeypatch):
+    record = {
+        **_round("final"), "network": "testnet", "incumbent_hotkey": None,
+        "rules_public": {"policy": {
+            "test_profile": "testnet_smoke_v1",
+            "schedule": {
+                "mode": "custom", "reveal_delay_blocks": 1,
+                "gold_close_at": (DEADLINE + timedelta(hours=1)).isoformat(),
+                "publish_at": (DEADLINE + timedelta(hours=2)).isoformat(),
+                "production_activate_at": (DEADLINE + timedelta(hours=3)).isoformat(),
+            },
+        }},
+    }
+
+    class Backend:
+        def get_round(self, _):
+            return record
+
+        def list_stages(self, _):
+            return [{"stage": "week_one", "entries": [
+                {"hotkey": "reference", "role": "reference"},
+                {"hotkey": "miner", "role": "challenger"},
+            ]}]
+
+        def list_sample(self, _):
+            return [{"stage": "week_one", "paper_id": "paper-1"},
+                    {"stage": "week_one", "paper_id": "paper-2"}]
+
+        def list_stage_pairs(self, _, _stage):
+            return [{"paper_id": paper_id, "challenger_hotkey": "miner",
+                     "infrastructure_fault": False} for paper_id in ("paper-1", "paper-2")]
+
+        def list_gold_known_answer_candidates(self, _):
+            return [{"certified": True}]
+
+    limits = []
+    monkeypatch.setattr("competition.weekly_automation.advance_ready_stage",
+                        lambda *_, **__: {"status": "final_running"})
+    monkeypatch.setattr("competition.weekly_automation.build_known_answer_challenges",
+                        lambda *_, **kwargs: limits.append(kwargs["limit"]) or [object()])
+    monkeypatch.setattr("competition.weekly_automation.prepare_frozen_gold_review",
+                        lambda *_, **kwargs: limits.append(kwargs["minimum_known_answers"])
+                        or {"case_count": 1})
+    inputs = SimpleNamespace(voters_for_round=lambda _: [])
+    assert tick_round("smoke", backend=Backend(), inputs=inputs,
+                      now=DEADLINE + timedelta(minutes=30))["status"] == "gold_open"
+    assert limits == [1, 1]
+
+
 def test_tick_starts_frozen_reference_rerun_after_incumbent_failure(monkeypatch):
     class Backend:
         def get_round(self, _):

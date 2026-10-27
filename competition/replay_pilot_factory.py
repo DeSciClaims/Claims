@@ -35,6 +35,7 @@ from .replay_runtime import (
 from .replay_store import ReplayStore
 from .publication import canonical_sha256
 from .ssh_worker import RestrictedSshWorkerTransport
+from .smoke_profile import smoke_profile
 from .worker_service import CompetitionWorkerCoordinator
 
 
@@ -139,15 +140,19 @@ class ReplayController:
                     "audit_sha256": canonical_sha256(frozen)}
         review = self.backend.get_gold_review(round_id)
         if review is None:
+            profile = smoke_profile(self.backend.snapshot)
+            known_answer_count = profile.known_answer_count if profile is not None else 40
             known = replay_known_answer_challenges(
                 round_id, backend=self.backend,
                 certified=self.certified_gold_source(round_id),
+                limit=known_answer_count,
             )
-            if len(known) < 40:
+            if len(known) < known_answer_count:
                 return {"status": "waiting_for_known_answers", "stage": result["stage"],
-                        "available": len(known), "required": 40}
+                        "available": len(known), "required": known_answer_count}
             review = prepare_replay_gold_review(
                 round_id, backend=self.backend, known_answers=known,
+                minimum_known_answers=known_answer_count,
             )
         review_sha256 = canonical_sha256(review)
         if self.gold_client_factory is None:

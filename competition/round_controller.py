@@ -18,6 +18,7 @@ from .sample_release import PaperRecord, sample_receipt
 from .publication import canonical_sha256
 from .stage_controller import start_initial_stage
 from .stages import stage_plan
+from .smoke_profile import smoke_profile
 
 
 def _review_links(linked_pairs: list[tuple[str, str, str]] | None) -> list[dict[str, str]]:
@@ -117,10 +118,13 @@ def reveal_selected_sample(
     )
     if not stages:
         return {"status": "waiting_for_entrants"}
-    final_count = final_paper_count(
+    profile = smoke_profile(round_record)
+    if profile is not None and not week_one:
+        raise ValueError("test profile is only available for a week-one rehearsal")
+    final_count = (profile.paper_count if profile is not None else final_paper_count(
         weekly_budget_usd=weekly_budget_usd,
         distinct_challengers=len(selection.selected_hotkeys), week_one=week_one,
-    )
+    ))
     receipt = sample_receipt(
         papers=papers, beacon=beacon,
         prescreen_count=20 if "prescreen" in stages else 0,
