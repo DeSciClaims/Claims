@@ -64,9 +64,9 @@ def fetch_verified_beacon(
     """Fetch the first BLS-verified beacon strictly after the frozen reveal block."""
     if not relay_url.startswith("https://") or not chain_hash or not public_key:
         raise ValueError("drand chain identity and HTTPS relay are required")
-    url = relay_url.rstrip("/") + "/" + chain_hash
     prefix = [executable, "get"]
-    info = run_cli(prefix + ["chain-info", "--url", url, "--insecure"])
+    pinned = ["--url", relay_url.rstrip("/"), "--hash-list", chain_hash, "--json"]
+    info = run_cli(prefix + ["chain-info", *pinned])
     if str(info.get("hash") or "").lower() != chain_hash or str(info.get("public_key") or "").lower() != public_key:
         raise RuntimeError("drand relay chain identity differs from pinned rules")
     try:
@@ -75,7 +75,7 @@ def fetch_verified_beacon(
     except (KeyError, TypeError, ValueError) as exc:
         raise RuntimeError("drand chain timing is malformed") from exc
     target_round = first_round_after(block_timestamp, genesis_time=genesis, period_seconds=period)
-    response = run_cli(prefix + ["public", "--url", url, "--insecure", str(target_round)])
+    response = run_cli(prefix + ["public", *pinned, str(target_round)])
     try:
         signature_hex = str(response["signature"]).lower()
         signature = bytes.fromhex(signature_hex)

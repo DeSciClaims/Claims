@@ -29,6 +29,9 @@ def test_drand_cli_beacon_is_pinned_and_hash_checked():
     assert result.round == 3 and result.scheduled_at == 160
     assert result.seed == hashlib.sha256(signature).digest()
     assert calls[1][-1] == "3"
+    assert calls[0][-5:] == ["--url", "https://api.drand.sh", "--hash-list",
+                            DEFAULT_CHAIN_HASH, "--json"]
+    assert calls[1][-6:-1] == calls[0][-5:]
 
     def wrong_identity(command):
         return {"hash": "0" * 64, "public_key": DEFAULT_PUBLIC_KEY,
