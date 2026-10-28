@@ -36,6 +36,7 @@ from .replay_store import ReplayStore
 from .publication import canonical_sha256
 from .ssh_worker import RestrictedSshWorkerTransport
 from .smoke_profile import smoke_profile
+from .round_evaluation import round_evaluation
 from .worker_service import CompetitionWorkerCoordinator
 
 
@@ -141,7 +142,9 @@ class ReplayController:
         review = self.backend.get_gold_review(round_id)
         if review is None:
             profile = smoke_profile(self.backend.snapshot)
-            known_answer_count = profile.known_answer_count if profile is not None else 40
+            evaluation = round_evaluation(self.backend.snapshot)
+            known_answer_count = (evaluation.gold_known_answers if evaluation is not None
+                                  else profile.known_answer_count if profile is not None else 40)
             known = replay_known_answer_challenges(
                 round_id, backend=self.backend,
                 certified=self.certified_gold_source(round_id),
@@ -230,12 +233,17 @@ def create_replay_controller(
         raise ValueError("replay Decisions routing is missing from frozen rules")
     evaluation = build_provisional_evaluation_policy(
         paper_inputs=papers,
-        decision_api_key=_required("CLAIMS_COMPETITION_DECISION_API_KEY"),
+        decision_api_key=_required(
+            "JEV_API_KEY" if routing.get("provider") == "jev"
+            else "CLAIMS_COMPETITION_DECISION_API_KEY"),
         weekly_budget_usd=float(configuration["weekly_budget_usd"]),
         worker_policy=configuration["worker_policy"],
         prescreen_threshold=float(routing["prescreen_confidence_threshold"]),
         screen_threshold=float(routing["screen_confidence_threshold"]),
         decision_api_base=str(routing["api_base"]),
+        decision_provider=str(routing.get("provider", "openai")),
+        decision_model=str(routing.get("model", "gpt-6-luna")),
+        judge_specs=configuration.get("judge_specs"),
     )
     if (evaluation.configuration_sha256 != backend.snapshot["configuration_sha256"]
         or evaluation.configuration != configuration):

@@ -17,8 +17,8 @@ from .intake_lock import ArchiveReader, CompetitionBackend, snapshot_round
 from .sample_release import PaperRecord, sample_receipt
 from .publication import canonical_sha256
 from .stage_controller import start_initial_stage
-from .stages import stage_plan
 from .smoke_profile import smoke_profile
+from .round_evaluation import round_evaluation, stages_for_round
 
 
 def _review_links(linked_pairs: list[tuple[str, str, str]] | None) -> list[dict[str, str]]:
@@ -112,25 +112,43 @@ def reveal_selected_sample(
         incumbent_package=incumbent_package,
         linked_pairs=linked_pairs,
     )
-    stages = stage_plan(
-        challenger_count=len(selection.selected_hotkeys),
-        week_one=round_record["incumbent_hotkey"] is None,
-    )
+    stages = stages_for_round(round_record, len(selection.selected_hotkeys))
     if not stages:
         return {"status": "waiting_for_entrants"}
     profile = smoke_profile(round_record)
+    evaluation = round_evaluation(round_record)
     if profile is not None and not week_one:
         raise ValueError("test profile is only available for a week-one rehearsal")
-    final_count = (profile.paper_count if profile is not None else final_paper_count(
-        weekly_budget_usd=weekly_budget_usd,
-        distinct_challengers=len(selection.selected_hotkeys), week_one=week_one,
-    ))
+    if evaluation is not None:
+        final_count = evaluation.stage("week_one" if week_one else "final").papers
+        if (round_record.get("rules_public", {}).get("policy", {}).get("evaluation", {})
+                .get("mode") == "production" and not week_one):
+            affordable = final_paper_count(
+                weekly_budget_usd=weekly_budget_usd,
+                distinct_challengers=len(selection.selected_hotkeys),
+                week_one=False,
+            )
+            if final_count > affordable:
+                raise ValueError("frozen final sample exceeds the weekly budget")
+        prescreen_count = (evaluation.stage("prescreen").papers
+                           if "prescreen" in stages else 0)
+        screen_count = (evaluation.stage("screen").papers
+                        if "screen" in stages else 0)
+    else:
+        final_count = (profile.paper_count if profile is not None
+                       else final_paper_count(
+                           weekly_budget_usd=weekly_budget_usd,
+                           distinct_challengers=len(selection.selected_hotkeys),
+                           week_one=week_one,
+                       ))
+        prescreen_count = 20 if "prescreen" in stages else 0
+        screen_count = 120 if "screen" in stages else 0
     receipt = sample_receipt(
         papers=papers, beacon=beacon,
-        prescreen_count=20 if "prescreen" in stages else 0,
-        screen_count=120 if "screen" in stages else 0,
+        prescreen_count=prescreen_count, screen_count=screen_count,
         final_count=final_count,
         week_one="week_one" in stages,
+        prescreen_judges=evaluation is not None,
     )
     receipt["duplicate_review_links"] = _review_links(linked_pairs)
     result = backend.reveal_sample(round_id, receipt)
@@ -200,10 +218,7 @@ def start_revealed_round(
     challengers = [row for row in submissions if row["hotkey"] in selected]
     if not challengers:
         return {"status": "waiting_for_entrants"}
-    expected_stages = set(stage_plan(
-        challenger_count=len(challengers),
-        week_one=round_record["incumbent_hotkey"] is None,
-    ))
+    expected_stages = set(stages_for_round(round_record, len(challengers)))
     released_stages = {row["stage"] for row in backend.list_sample(round_id)}
     if released_stages != expected_stages:
         raise ValueError("released sample stages differ from seeded entrant count")

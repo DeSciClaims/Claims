@@ -37,6 +37,10 @@ pip-wheel-metadata/
 .miner.*.env
 .validator.*.env
 .runtime-wallets/
+.ssh/
+*.pem
+*.key
+known_hosts
 
 # Editor and OS files
 .DS_Store

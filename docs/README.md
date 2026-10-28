@@ -3,6 +3,9 @@
 ## Table of Contents
 
 - [Docs Overview](./README.md)
+- [Extraction and neuron documentation](./extraction.md)
+- [Package submission and commitment](./submission.md)
+- [Competition worker and gateway configuration](./competition-infrastructure.md)
 - [Miner Task](./0001-miner-task.md)
 - [Validator Scoring](./0002-validator-scoring.md)
 - [Schema](./0003-schema.md)

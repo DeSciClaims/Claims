@@ -41,6 +41,13 @@ class ReplayRuntimeBackend:
         # Local mutation methods only; CompetitionReplayInputs has GET methods.
         return getattr(self.store, name)
 
+    def get_round(self, round_id: str) -> dict[str, Any]:
+        if round_id != self.snapshot["round_id"]:
+            raise ValueError("replay round differs from frozen snapshot")
+        return {**self.store.get_round(round_id),
+                **{key: self.snapshot[key] for key in ("deadline_at", "rules_public")
+                   if key in self.snapshot}}
+
     def list_paper_pool(self, round_id: str, *, reference_release_id: str) -> list[dict[str, str]]:
         if (round_id != self.snapshot["round_id"]
             or reference_release_id != self.snapshot["reference_release_id"]):

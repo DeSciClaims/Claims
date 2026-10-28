@@ -1,0 +1,89 @@
+{
+  "round_id": "testnet_staged_smoke_example",
+  "network": "testnet",
+  "week_start": "2026-10-26",
+  "deadline_at": "2026-10-29T12:00:00+00:00",
+  "deadline_block": 100,
+  "reveal_block": 101,
+  "reference_release_id": "REPLACE_REFERENCE_RELEASE_ID",
+  "incumbent_hotkey": "REPLACE_INCUMBENT_HOTKEY",
+  "baseline_upload": {
+    "hotkey": "REPLACE_INCUMBENT_HOTKEY",
+    "team_id": "REPLACE_INCUMBENT_TEAM",
+    "package_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "package_object_key": "sealed/REPLACE_INCUMBENT_PACKAGE.whl",
+    "package_size_bytes": 1,
+    "manifest": {}
+  },
+  "reference_upload": {
+    "hotkey": "REPLACE_REFERENCE_HOTKEY",
+    "team_id": "claims-reference",
+    "package_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "package_object_key": "sealed/REPLACE_REFERENCE_PACKAGE.whl",
+    "package_size_bytes": 1,
+    "manifest": {}
+  },
+  "policy_public": {
+    "reference_lock_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "schedule": {
+      "mode": "custom",
+      "reveal_delay_blocks": 1,
+      "gold_close_at": "2026-10-29T13:00:00+00:00",
+      "publish_at": "2026-10-29T13:05:00+00:00",
+      "production_activate_at": "2026-10-29T13:10:00+00:00",
+      "replay_gold_window_seconds": 60
+    },
+    "duplicate_verdict_public_at": "2026-10-29T12:05:00+00:00",
+    "duplicate_dispute_window": {
+      "opens_at": "2026-10-29T12:05:00+00:00",
+      "closes_at": "2026-10-29T12:10:00+00:00"
+    },
+    "evaluation": {
+      "schema_version": "claims_competition_evaluation_v1",
+      "mode": "testnet_smoke",
+      "required_challengers": 5,
+      "stages": [
+        {"name": "prescreen", "papers": 2, "advance_top": 3, "max_per_team": 1},
+        {"name": "final", "papers": 5}
+      ],
+      "gold_known_answers": 1
+    }
+  },
+  "configuration_spec": {
+    "weekly_budget_usd": 10,
+    "decision_routing": {
+      "provider": "jev",
+      "model": "jev-latest",
+      "api_base": "https://api.typesafe.ai/v1",
+      "prescreen_confidence_threshold": 0.8,
+      "screen_confidence_threshold": 0.9
+    },
+    "judge_specs": {
+      "api_base": "https://openrouter.ai/api/v1",
+      "temperature": 1.0,
+      "max_tokens": 8192,
+      "timeout_seconds": 180,
+      "max_in_flight": 16,
+      "J1": [
+        {"model": "qwen/qwen3-32b", "provider_slug": "REPLACE_PROVIDER_A"},
+        {"model": "openai/gpt-oss-120b", "provider_slug": "REPLACE_PROVIDER_B"}
+      ],
+      "J2": [
+        {"model": "deepseek/deepseek-v3.2", "provider_slug": "REPLACE_PROVIDER_C"},
+        {"model": "meta-llama/llama-4-maverick", "provider_slug": "REPLACE_PROVIDER_D"}
+      ],
+      "tiebreak": {
+        "model": "qwen/qwen3-235b-a22b-2507",
+        "provider_slug": "REPLACE_PROVIDER_TIEBREAK"
+      }
+    },
+    "worker_policy": {
+      "allowed_models": ["qwen/qwen3-32b"],
+      "published_token_ceiling": 100000,
+      "dollar_limit_usd": "1",
+      "max_inference_output_tokens": 8192,
+      "lease_seconds": 3600,
+      "inference_base_url": "https://REPLACE_GATEWAY_HOST/v1"
+    }
+  }
+}

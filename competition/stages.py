@@ -34,13 +34,17 @@ def stage_plan(*, challenger_count: int, week_one: bool = False) -> tuple[Stage,
 
 def advance(
     candidates: list[StageCandidate], *, stage: Literal["prescreen", "screen"],
+    limit: int | None = None, per_team: int | None = None,
 ) -> tuple[StageCandidate, ...]:
     """Rank paired gain and apply the proposal's per-team stage caps.
 
     Unresolved infrastructure faults must be removed from the stage before
     calling this function; package faults have already scored zero per paper.
     """
-    limit, per_team = (12, 2) if stage == "prescreen" else (3, 1) if stage == "screen" else (0, 0)
+    default_limit, default_per_team = ((12, 2) if stage == "prescreen"
+                                      else (3, 1) if stage == "screen" else (0, 0))
+    limit = default_limit if limit is None else limit
+    per_team = default_per_team if per_team is None else per_team
     if not limit:
         raise ValueError("advancement is only defined for prescreen or screen")
     seen: set[str] = set()

@@ -28,6 +28,8 @@ def build_provisional_evaluation_policy(
     judge_usage_sink: UsageSink | None = None,
     prescreen_threshold: float = 0.8, screen_threshold: float = 0.9,
     decision_api_base: str = "https://api.openai.com/v1",
+    decision_provider: str = "openai", decision_model: str = "gpt-6-luna",
+    judge_specs: Mapping[str, Any] | None = None,
 ) -> FrozenEvaluationPolicy:
     """Bind the pilot judges, Bronze source, and budget into one rules hash."""
     if not decision_api_key:
@@ -65,21 +67,38 @@ def build_provisional_evaluation_policy(
                      "allowed_models": sorted(models),
                      "dollar_limit_usd": format(dollar_limit.normalize(), "f"),
                      "inference_base_url": gateway.geturl().rstrip("/")}
-    panels, tie = build_provisional_judges(usage_sink=judge_usage_sink)
+    panels, tie = build_provisional_judges(usage_sink=judge_usage_sink,
+                                           specs=judge_specs)
+    approved_decision_bases = {
+        "openai": "https://api.openai.com/v1",
+        "jev": "https://api.typesafe.ai/v1",
+    }
+    if (decision_provider not in approved_decision_bases or not decision_model
+        or decision_api_base.rstrip("/") != approved_decision_bases[decision_provider]):
+        raise ValueError("pilot Decision provider or model is invalid")
+    if judge_specs is None:
+        allowed_judges = sorted(PROVISIONAL_MODEL_ALLOWLIST)
+    else:
+        models = {judge_specs["tiebreak"]["model"]}
+        for name in ("J1", "J2"):
+            models.update(item["model"] for item in judge_specs[name])
+        allowed_judges = sorted(models)
     configuration = {
         "decision_routing": {
-            "provider": "openai", "model": "gpt-6-luna",
+            "provider": decision_provider, "model": decision_model,
             "api_base": decision_api_base, "prompt_sha256": PROMPT_SHA256,
             "prescreen_confidence_threshold": prescreen_threshold,
             "screen_confidence_threshold": screen_threshold,
         },
         "silver_runtime": silver_runtime_config(),
         "competition_policy_runtime": policy_runtime_config(),
-        "judge_model_allowlist": sorted(PROVISIONAL_MODEL_ALLOWLIST),
+        "judge_model_allowlist": allowed_judges,
         "weekly_budget_usd": format(budget.normalize(), "f"),
         "worker_policy": frozen_worker,
         **judge_runtime_config(panels, tie),
     }
+    if judge_specs is not None:
+        configuration["judge_specs"] = dict(judge_specs)
     return FrozenEvaluationPolicy(
         round_id=paper_inputs.round_id,
         configuration_sha256=canonical_sha256(configuration),
@@ -90,6 +109,7 @@ def build_provisional_evaluation_policy(
         decision_api_key=decision_api_key,
         prescreen_threshold=prescreen_threshold, screen_threshold=screen_threshold,
         decision_api_base=decision_api_base,
+        decision_provider=decision_provider, decision_model=decision_model,
     )
 
 

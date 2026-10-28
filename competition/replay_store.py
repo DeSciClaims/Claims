@@ -242,8 +242,10 @@ class ReplayStore:
             return existing
         prior = ledger[-1]
         source_stage = prior.get("source_stage") if prior["stage"] == "rerun" else prior["stage"]
-        if ((source_stage, stage) not in {("prescreen", "screen"), ("screen", "final")}
-            or stage not in {row["stage"] for row in self.list_sample(round_id)}):
+        sampled = {row["stage"] for row in self.list_sample(round_id)}
+        sequence = [name for name in ("prescreen", "screen", "final") if name in sampled]
+        if (source_stage not in sequence or sequence.index(source_stage) + 1 >= len(sequence)
+            or stage != sequence[sequence.index(source_stage) + 1]):
             raise ValueError("replay stage is not next in the released sample")
         previous = prior["entries"]
         baseline = [row for row in previous if row["role"] in {"reference", "incumbent"}]

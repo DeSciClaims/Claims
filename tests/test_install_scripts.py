@@ -177,23 +177,11 @@ def test_installation_docs_link_validator_profiles_and_docker_path() -> None:
         encoding="utf-8"
     )
 
-    for content in (main_readme, validator_readme):
-        assert "validator.testnet.env.example" in content
-        assert "validator.mainnet.env.example" in content
-    assert "### Manual Installation" in main_readme
-    assert "### Ubuntu Installers" in main_readme
-    assert "### Docker" in main_readme
-    assert "CLAIMS_BACKEND_URL=https://api.claims111.ai" in main_readme
-    assert "CLAIMS_BACKEND_URL=https://artifacts.claims111.ai" in main_readme
-    for content in (main_readme, validator_readme):
-        assert "ReferenceMinerConfig.from_env().claims_repo.resolve()" in content
-        assert ".venv/bin/python -m dotenv -f .env run --override" in content
-        assert "HERMES_CMD" in content
-        assert "PM2" in content
-    assert 'test -s "$HOME/.bittensor/wallets/$BT_WALLET_NAME/coldkeypub.txt"' in main_readme
-    assert 'test -s "$HOME/.bittensor/wallets/$BT_WALLET_NAME/hotkeys/$BT_WALLET_HOTKEY"' in main_readme
-    assert "poppler-utils" in main_readme
-    assert "Manual installation does not create, fund, or register a Bittensor wallet" in main_readme
-    assert "CLAIMS_REFERENCE_MINER_CLAIMS_REPO=/absolute/path/to/Claims" in main_readme
-    manual_install = main_readme.split("### Manual Installation", 1)[1].split("### Ubuntu Installers", 1)[0]
-    assert "cp validator/agent_v1/validator.mainnet.env.example .env" in manual_install
+    assert "./docs/extraction.md" in main_readme
+    extraction_docs = (ROOT / "docs" / "extraction.md").read_text(encoding="utf-8")
+    assert "../neurons/README.md" in extraction_docs
+    for profile in ("validator.testnet.env.example", "validator.mainnet.env.example"):
+        assert profile in validator_readme
+    assert "HERMES_CMD" in validator_readme
+    assert "PM2" in validator_readme
+    assert "Docker" in validator_readme

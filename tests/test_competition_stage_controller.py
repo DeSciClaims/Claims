@@ -124,3 +124,58 @@ def test_screen_does_not_advance_against_failed_incumbent():
         advance_ready_stage("week2", backend=backend)
     assert (exc.value.summary.failed_papers, exc.value.summary.eligible_papers) == (1, 2)
     assert len(backend.ledger) == 1
+
+
+def test_versioned_two_stage_smoke_advances_top_three_directly_to_final():
+    backend = Backend()
+    backend.round.update({
+        "network": "testnet", "deadline_at": "2026-11-04T12:00:00+00:00",
+        "rules_public": {"policy": {
+            "schedule": {"mode": "custom", "reveal_delay_blocks": 1,
+                         "gold_close_at": "2026-11-04T13:00:00+00:00",
+                         "publish_at": "2026-11-04T13:05:00+00:00",
+                         "production_activate_at": "2026-11-04T13:10:00+00:00"},
+            "evaluation": {
+                "schema_version": "claims_competition_evaluation_v1",
+                "mode": "testnet_smoke", "required_challengers": 5,
+                "stages": [
+                    {"name": "prescreen", "papers": 2, "advance_top": 3,
+                     "max_per_team": 1},
+                    {"name": "final", "papers": 5},
+                ],
+                "gold_known_answers": 1,
+            },
+        }},
+    })
+    backend.sample = [
+        {"stage": "prescreen", "paper_id": f"early-{i}"} for i in range(2)
+    ] + [{"stage": "final", "paper_id": f"final-{i}"} for i in range(5)]
+    backend.submissions = [
+        {"hotkey": f"miner-{i}", "commit_block": 100 + i, "status": "accepted"}
+        for i in range(5)
+    ]
+    entrants = [
+        {"hotkey": f"miner-{i}", "package_sha256": f"{i + 1:064x}",
+         "team_id": f"team-{i}", "commit_block": 100 + i}
+        for i in range(5)
+    ]
+    result = start_initial_stage(
+        "staged", backend=backend,
+        baseline={"hotkey": "incumbent", "package_sha256": "a" * 64,
+                  "team_id": "king-team"}, challengers=entrants,
+    )
+    assert result["stage"] == "prescreen"
+    assert len(backend.enqueued) == 12
+    backend.pairs = [
+        {"stage": "prescreen", "paper_id": f"early-{paper}",
+         "challenger_hotkey": f"miner-{i}",
+         "challenger_package_sha256": f"{i + 1:064x}",
+         "baseline_hotkey": "incumbent", "baseline_package_sha256": "a" * 64,
+         "challenger_score": i / 10, "baseline_score": 0.0,
+         "infrastructure_fault": False}
+        for paper in range(2) for i in range(5)
+    ]
+    result = advance_ready_stage("staged", backend=backend)
+    assert result["stage"] == "final"
+    assert result["selected_hotkeys"] == ["miner-4", "miner-3", "miner-2"]
+    assert sum(job["stage"] == "final" for job in backend.enqueued) == 20

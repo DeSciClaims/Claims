@@ -1806,9 +1806,10 @@ class ClaimsValidator:
             return False
         if str(getattr(neuron, "hotkey", "")) == self.wallet.hotkey.ss58_address:
             return False
+        config = getattr(self, "config", None)
         if (
-            float(getattr(self.config, "claims_operator_share", 0.0)) > 0.0
-            and str(getattr(neuron, "hotkey", "")) == str(getattr(self.config, "claims_operator_hotkey", ""))
+            float(getattr(config, "claims_operator_share", 0.0)) > 0.0
+            and str(getattr(neuron, "hotkey", "")) == str(getattr(config, "claims_operator_hotkey", ""))
         ):
             return False
         axon = getattr(neuron, "axon_info", None)

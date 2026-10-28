@@ -32,6 +32,7 @@ def sample_receipt(
     *, papers: list[PaperRecord], beacon: VerifiedBeacon,
     prescreen_count: int, screen_count: int, final_count: int,
     week_one: bool = False,
+    prescreen_judges: bool = False,
 ) -> dict[str, Any]:
     """Use only a verified drand seed obtained after the deadline reveal block."""
     if beacon.round < 1 or len(beacon.seed) != 32:
@@ -49,10 +50,13 @@ def sample_receipt(
         final_count=final_count,
     )
     rows: list[dict[str, Any]] = []
+    prescreen_first = hashlib.sha256(b"claims-weekly-prescreen-judge-v1\0" + beacon.seed).digest()[0] & 1
     for position, paper_id in enumerate(draw.prescreen):
         rows.append({
             "stage": "prescreen", "paper_id": paper_id, "position": position,
-            "judge_id": "routing", "source_sha256": paper_map[paper_id].source_sha256,
+            "judge_id": (("J1", "J2")[(prescreen_first + position) % 2]
+                         if prescreen_judges else "routing"),
+            "source_sha256": paper_map[paper_id].source_sha256,
         })
     screen_first = hashlib.sha256(b"claims-weekly-screen-judge-v1\0" + beacon.seed).digest()[0] & 1
     for position, paper_id in enumerate(draw.screen):

@@ -7,7 +7,7 @@ import pytest
 
 from competition.publication import canonical_sha256
 from competition.controller_inputs import build_provisional_evaluation_policy
-from competition.round_setup import prepare_pilot_round, prepare_round
+from competition.round_setup import prepare_pilot_round, prepare_round, round_id_for_draft
 
 
 def _draft():
@@ -34,6 +34,31 @@ def _draft():
             },
         },
     }
+
+
+def test_round_id_defaults_to_utc_deadline_and_network(tmp_path):
+    draft = _draft()
+    draft.pop("round_id")
+    expected = "round_20261102T120000Z_testnet"
+    assert round_id_for_draft(draft) == expected
+    same_instant = {**draft, "deadline_at": "2026-11-02T13:00:00+01:00"}
+    assert round_id_for_draft(same_instant) == expected
+    assert round_id_for_draft({**draft, "network": "mainnet"}).endswith("_mainnet")
+    assert round_id_for_draft({**draft, "round_id": "manual_rehearsal"}) == "manual_rehearsal"
+    with pytest.raises(ValueError, match="round ID"):
+        round_id_for_draft({**draft, "round_id": "bad/id"})
+
+    class Backend:
+        def create_round(self, payload):
+            return payload
+
+    receipt = prepare_round(draft, backend=Backend(), directory=tmp_path)
+    assert receipt["round_id"] == expected
+    assert (tmp_path / f"{expected}.rules.json").is_file()
+    assert prepare_round(same_instant, backend=Backend(), directory=tmp_path) == receipt
+    with pytest.raises(ValueError, match="already differs"):
+        prepare_round({**draft, "configuration": {"changed": True}},
+                      backend=Backend(), directory=tmp_path)
 
 
 def test_prepare_round_writes_private_and_public_artifacts_before_intake(tmp_path):
@@ -131,6 +156,18 @@ def test_mainnet_round_requires_published_automatic_audit_thresholds(tmp_path):
     assert rules["policy"]["code_audit"] == draft["policy_public"]["code_audit"]
 
 
+def test_pilot_setup_refuses_unfilled_round_template(tmp_path):
+    from competition.round_setup import prepare_pilot_round
+
+    draft = _draft()
+    draft["reference_release_id"] = "REPLACE_REFERENCE_RELEASE_ID"
+    with pytest.raises(ValueError, match="template placeholders"):
+        prepare_pilot_round(
+            draft, backend=object(), directory=tmp_path,
+            storage=object(), decision_api_key="test-key",
+        )
+
+
 def test_prepare_round_accepts_accelerated_testnet_schedule(tmp_path):
     draft = _draft()
     draft["deadline_at"] = "2026-11-04T10:00:00+00:00"
@@ -215,3 +252,53 @@ def test_pilot_setup_checks_real_judges_and_sealed_baseline_before_intake(
             draft, backend=Backend(), directory=tmp_path,
             storage=Storage(), decision_api_key="decision-key",
         )
+
+
+def test_pilot_setup_generates_frozen_configuration_from_json_spec(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "pilot-test-key")
+    worker_policy = {
+        "allowed_models": ["qwen/qwen3-32b"],
+        "published_token_ceiling": 100_000,
+        "dollar_limit_usd": "1",
+        "max_inference_output_tokens": 8192,
+        "lease_seconds": 3600,
+        "inference_base_url": "https://gateway.example/v1",
+    }
+    judge_specs = {
+        "api_base": "https://openrouter.ai/api/v1", "temperature": 1.0,
+        "max_tokens": 8192, "timeout_seconds": 180,
+        "max_in_flight": 16,
+        "J1": [{"model": "qwen/qwen3-32b", "provider_slug": "provider-a"},
+               {"model": "openai/gpt-oss-120b", "provider_slug": "provider-b"}],
+        "J2": [{"model": "deepseek/deepseek-v3.2", "provider_slug": "provider-c"},
+               {"model": "meta-llama/llama-4-maverick", "provider_slug": "provider-d"}],
+        "tiebreak": {"model": "qwen/qwen3-235b-a22b-2507",
+                     "provider_slug": "provider-e"},
+    }
+    draft = _draft()
+    draft.pop("round_id")
+    draft.pop("configuration")
+    draft["configuration_spec"] = {
+        "judge_specs": judge_specs,
+        "decision_routing": {
+            "provider": "jev", "model": "jev-latest",
+            "api_base": "https://api.typesafe.ai/v1",
+            "prescreen_confidence_threshold": 0.8,
+            "screen_confidence_threshold": 0.9,
+        },
+        "worker_policy": worker_policy, "weekly_budget_usd": 10,
+    }
+    class Storage:
+        def package_for_submission(self, _):
+            return b"sealed"
+    class Backend:
+        def create_round(self, payload):
+            return payload
+    prepare_pilot_round(draft, backend=Backend(), directory=tmp_path,
+                        storage=Storage(), decision_api_key="decision-key")
+    rules = json.loads((tmp_path / "round_20261102T120000Z_testnet.rules.json").read_text())
+    assert rules["round_id"] == "round_20261102T120000Z_testnet"
+    assert rules["configuration"]["decision_routing"]["provider"] == "jev"
+    assert rules["configuration"]["judge_specs"] == judge_specs
+    assert rules["configuration"]["judge_panels"]["J1"][0]["model"] == "qwen/qwen3-32b"
+    assert "decision-key" not in (tmp_path / "round_20261102T120000Z_testnet.rules.json").read_text()

@@ -13,7 +13,7 @@ from .jobs import build_jobs
 from .replay_inputs import validate_replay_snapshot, verify_replay_sample
 from .round_controller import _review_links
 from .sample_release import PaperRecord
-from .stages import stage_plan
+from .round_evaluation import stages_for_round
 
 
 class ReplayArchive(Protocol):
@@ -124,9 +124,7 @@ def build_replay_initial_plan(
                if row["hotkey"] in selection.selected_hotkeys)):
         raise ValueError("replay duplicate verdict differs from seeded draw")
     selected = [row for row in uploads if row["hotkey"] in selection.selected_hotkeys]
-    stages = stage_plan(
-        challenger_count=len(selected), week_one=incumbent_hotkey is None,
-    )
+    stages = stages_for_round(snapshot, len(selected))
     if not stages:
         raise ValueError("replay has no distinct challenger")
     sampled_stages = {row["stage"] for row in snapshot["sample"] if row["stage"] != "rerun"}

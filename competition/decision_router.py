@@ -1,4 +1,4 @@
-"""Temporary Decisions API router for single-candidate early-stage cases.
+"""Decisions API router for single-candidate early-stage cases.
 
 The model and threshold belong in the frozen weekly configuration. Pair cases
 and uncertain singleton cases continue through the full adjudication judges.
@@ -27,19 +27,23 @@ PROMPT_SHA256 = hashlib.sha256(QUESTION.encode()).hexdigest()
 
 
 @dataclass(frozen=True)
-class OpenAIDecisionsRouter:
+class DecisionsRouter:
     api_key: str = field(repr=False)
     threshold: float
     model: str = "gpt-6-luna"
     api_base: str = "https://api.openai.com/v1"
+    transport: str = "openai"
     timeout_seconds: float = 120.0
     http_post: Callable[..., Any] = requests.post
 
     def __post_init__(self) -> None:
         if not self.api_key or not 0.5 <= self.threshold <= 1:
             raise ValueError("Decisions router needs a key and a threshold in [0.5, 1]")
-        if self.model != "gpt-6-luna":
-            raise ValueError("OpenAI Decisions currently requires the frozen gpt-6-luna model")
+        approved_bases = {"openai": "https://api.openai.com/v1",
+                          "jev": "https://api.typesafe.ai/v1"}
+        if (self.transport not in approved_bases or not self.model
+            or self.api_base.rstrip("/") != approved_bases[self.transport]):
+            raise ValueError("Decisions transport or frozen model is invalid")
 
     def __call__(self, context: AdjudicationContextBundle) -> AdjudicationConsensus | None:
         case = context.case
@@ -71,15 +75,33 @@ class OpenAIDecisionsRouter:
                 ],
             }],
         }
+        request_payload = payload
+        if self.transport == "jev":
+            request_payload = {
+                "model": self.model,
+                "state": json.loads(payload["input"]),
+                "questions": {"supported_candidate": {
+                    "type": "choice", "instructions": QUESTION,
+                    "criteria": {item["value"]: item["description"]
+                                 for item in payload["questions"][0]["choices"]},
+                }},
+            }
         response = self.http_post(
-            f"{self.api_base.rstrip('/')}/decisions",
+            f"{self.api_base.rstrip('/')}/{'systemone' if self.transport == 'jev' else 'decisions'}",
             headers={"Authorization": f"Bearer {self.api_key}",
                      "Content-Type": "application/json"},
-            json=payload, timeout=self.timeout_seconds,
+            json=request_payload, timeout=self.timeout_seconds,
         )
         response.raise_for_status()
         body = response.json()
         answers = body.get("answers") if isinstance(body, dict) else None
+        if self.transport == "jev" and isinstance(answers, dict):
+            answers = [{"name": name, **answer,
+                        "probabilities": [
+                            {"value": value, "probability": probability}
+                            for value, probability in answer.get("probabilities", {}).items()
+                        ] if isinstance(answer.get("probabilities"), dict) else []}
+                       for name, answer in answers.items() if isinstance(answer, dict)]
         if not isinstance(answers, list) or len(answers) != 1:
             raise ValueError("Decisions response has no unique answer")
         answer = answers[0]
@@ -107,7 +129,7 @@ class OpenAIDecisionsRouter:
         else:
             disposition = "accepted_improvement" if choice == candidate.candidate_id else "miner_error"
         vote = AdjudicationVote(
-            case_id=case.case_id, pass_id="openai-decisions", adjudication_profile_id=PROMPT_SHA256,
+            case_id=case.case_id, pass_id=f"{self.transport}-decisions", adjudication_profile_id=PROMPT_SHA256,
             model_runtime_id=self.model, candidate_order=[candidate.candidate_id],
             disposition=disposition, confidence=float(confidence),
             rationale="High-confidence direct choice from frozen Decisions configuration.",
@@ -117,3 +139,7 @@ class OpenAIDecisionsRouter:
             final_confidence=float(confidence), agreement_rate=1.0, route="decision_model",
             rationale=vote.rationale,
         )
+
+
+# Preserve the name used by already-frozen pilot code and tests.
+OpenAIDecisionsRouter = DecisionsRouter

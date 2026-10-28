@@ -17,9 +17,33 @@ from .provisional_judges import require_provisional_provider_pins
 from .publication import canonical_sha256
 from .round_schedule import schedule_for_round, validate_dispute_window
 from .smoke_profile import smoke_profile
+from .round_evaluation import round_evaluation
 
 
 RULES_SCHEMA = "claims_competition_rules_v1"
+
+
+def round_id_for_draft(draft: Mapping[str, Any]) -> str:
+    """Derive a stable ID from the UTC deadline, unless one was supplied."""
+    network = draft.get("network")
+    if network not in {"mainnet", "testnet"}:
+        raise ValueError("round network is invalid")
+    try:
+        deadline = datetime.fromisoformat(str(draft["deadline_at"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("round deadline is invalid") from exc
+    if deadline.tzinfo is None:
+        raise ValueError("round deadline needs a timezone")
+    supplied = draft.get("round_id")
+    if supplied is not None:
+        if not isinstance(supplied, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", supplied):
+            raise ValueError("round ID is invalid")
+        return supplied
+    utc_deadline = deadline.astimezone(UTC)
+    timestamp = utc_deadline.strftime("%Y%m%dT%H%M%S")
+    if utc_deadline.microsecond:
+        timestamp += f"{utc_deadline.microsecond:06d}"
+    return f"round_{timestamp}Z_{network}"
 
 
 def _canonical_bytes(value: Mapping[str, Any]) -> bytes:
@@ -52,13 +76,13 @@ def prepare_round(
     draft: Mapping[str, Any], *, backend: Any, directory: Path,
 ) -> dict[str, str]:
     """Freeze artifacts locally, then idempotently open the round in backend."""
-    round_id = draft.get("round_id")
+    round_id = round_id_for_draft(draft)
+    draft = {**draft, "round_id": round_id}
     network = draft.get("network")
     configuration = draft.get("configuration")
     baseline = draft.get("baseline_upload")
     reference = draft.get("reference_upload")
-    if (not isinstance(round_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", round_id)
-        or network not in {"mainnet", "testnet"}
+    if (network not in {"mainnet", "testnet"}
         or not isinstance(configuration, dict)
         or not isinstance(baseline, dict)
         or (reference is not None and not isinstance(reference, dict))):
@@ -74,6 +98,7 @@ def prepare_round(
                        "rules_public": {"policy": public_policy}}
     schedule = schedule_for_round(schedule_record)
     smoke_profile({**schedule_record, "incumbent_hotkey": draft.get("incumbent_hotkey")})
+    round_evaluation({**schedule_record, "incumbent_hotkey": draft.get("incumbent_hotkey")})
     week_start = (deadline - timedelta(days=deadline.weekday())).date().isoformat()
     if str(draft.get("week_start")) != week_start:
         raise ValueError("week start differs from deadline week Monday")
@@ -174,6 +199,51 @@ def prepare_pilot_round(
     storage: Any, decision_api_key: str,
 ) -> dict[str, str]:
     """Verify the actual judge runtime and sealed baselines before opening intake."""
+    def contains_placeholder(value: Any) -> bool:
+        if isinstance(value, str):
+            return "REPLACE" in value
+        if isinstance(value, dict):
+            return any(contains_placeholder(key) or contains_placeholder(item)
+                       for key, item in value.items())
+        if isinstance(value, (list, tuple)):
+            return any(contains_placeholder(item) for item in value)
+        return False
+
+    if contains_placeholder(draft):
+        raise ValueError("round draft still contains template placeholders")
+    draft = {**draft, "round_id": round_id_for_draft(draft)}
+    spec = draft.get("configuration_spec")
+    if draft.get("network") == "mainnet":
+        if spec is None:
+            raise ValueError("mainnet round needs a supplied configuration_spec")
+        if not isinstance(draft.get("policy_public"), dict) or "evaluation" not in draft["policy_public"]:
+            raise ValueError("mainnet round needs a supplied public evaluation plan")
+    if spec is not None:
+        if (draft.get("configuration") is not None or not isinstance(spec, dict)
+            or set(spec) != {"judge_specs", "decision_routing",
+                             "worker_policy", "weekly_budget_usd"}):
+            raise ValueError("round configuration spec is malformed")
+        routing = spec["decision_routing"]
+        if (not isinstance(routing, dict)
+            or set(routing) != {"provider", "model", "api_base",
+                                "prescreen_confidence_threshold",
+                                "screen_confidence_threshold"}):
+            raise ValueError("Decision routing spec is malformed")
+        policy = build_provisional_evaluation_policy(
+            paper_inputs=SimpleNamespace(round_id=draft.get("round_id"),
+                                         source_context_for_paper=lambda _: {}),
+            decision_api_key=decision_api_key,
+            weekly_budget_usd=float(spec["weekly_budget_usd"]),
+            worker_policy=spec["worker_policy"],
+            prescreen_threshold=float(routing["prescreen_confidence_threshold"]),
+            screen_threshold=float(routing["screen_confidence_threshold"]),
+            decision_api_base=str(routing["api_base"]),
+            decision_provider=str(routing["provider"]),
+            decision_model=str(routing["model"]),
+            judge_specs=spec["judge_specs"],
+        )
+        draft = {key: value for key, value in draft.items() if key != "configuration_spec"}
+        draft["configuration"] = policy.configuration
     configuration = draft.get("configuration")
     if not isinstance(configuration, dict):
         raise ValueError("pilot round needs a complete configuration")
@@ -189,6 +259,9 @@ def prepare_pilot_round(
         prescreen_threshold=float(routing["prescreen_confidence_threshold"]),
         screen_threshold=float(routing["screen_confidence_threshold"]),
         decision_api_base=str(routing["api_base"]),
+        decision_provider=str(routing.get("provider", "openai")),
+        decision_model=str(routing.get("model", "gpt-6-luna")),
+        judge_specs=configuration.get("judge_specs"),
     )
     if policy.configuration != configuration:
         raise ValueError("pilot judge runtime differs from proposed frozen rules")

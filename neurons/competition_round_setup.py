@@ -50,7 +50,11 @@ def main(argv: list[str] | None = None) -> int:
         result = prepare_pilot_round(
             draft, backend=backend, directory=args.rounds_dir,
             storage=storage,
-            decision_api_key=_required("CLAIMS_COMPETITION_DECISION_API_KEY"),
+            decision_api_key=_required(
+                "JEV_API_KEY" if (
+                    draft.get("configuration_spec") or draft.get("configuration") or {}
+                ).get("decision_routing", {}).get("provider") == "jev"
+                else "CLAIMS_COMPETITION_DECISION_API_KEY"),
         )
         print(json.dumps(result, sort_keys=True), flush=True)
         return 0

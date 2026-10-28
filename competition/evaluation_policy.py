@@ -9,7 +9,7 @@ from typing import Any, Callable, Mapping
 
 from validator.agent_v1.adjudication_runner import AdjudicationPass
 
-from .decision_router import OpenAIDecisionsRouter, PROMPT_SHA256
+from .decision_router import DecisionsRouter, PROMPT_SHA256
 from .gold_judge import judge_known_answer_case
 from .pair_evaluator import WeeklyPaperEvaluation, evaluate_weekly_paper
 from .publication import canonical_sha256
@@ -65,6 +65,8 @@ class FrozenEvaluationPolicy:
     prescreen_threshold: float = 0.8
     screen_threshold: float = 0.9
     decision_api_base: str = "https://api.openai.com/v1"
+    decision_provider: str = "openai"
+    decision_model: str = "gpt-6-luna"
     decision_http_post: Callable | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
@@ -100,7 +102,8 @@ class FrozenEvaluationPolicy:
     def public_routing_config(self) -> dict[str, object]:
         """Fields to bind into the round's frozen configuration before intake."""
         return {
-            "provider": "openai", "model": "gpt-6-luna", "api_base": self.decision_api_base,
+            "provider": self.decision_provider, "model": self.decision_model,
+            "api_base": self.decision_api_base,
             "prompt_sha256": PROMPT_SHA256,
             "prescreen_confidence_threshold": self.prescreen_threshold,
             "screen_confidence_threshold": self.screen_threshold,
@@ -123,10 +126,11 @@ class FrozenEvaluationPolicy:
             if not self.decision_api_key:
                 raise ValueError("early-stage Decisions API credential is required")
             kwargs = {"http_post": self.decision_http_post} if self.decision_http_post else {}
-            router = OpenAIDecisionsRouter(
+            router = DecisionsRouter(
                 self.decision_api_key,
                 self.prescreen_threshold if stage == "prescreen" else self.screen_threshold,
-                api_base=self.decision_api_base, **kwargs,
+                api_base=self.decision_api_base, transport=self.decision_provider,
+                model=self.decision_model, **kwargs,
             )
 
         def evaluate(**kwargs) -> WeeklyPaperEvaluation:

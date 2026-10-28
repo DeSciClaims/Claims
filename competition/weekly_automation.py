@@ -27,6 +27,7 @@ from .result_controller import publish_selected_round
 from .round_controller import lock_ready_round, reveal_selected_sample, start_revealed_round
 from .round_schedule import schedule_for_round
 from .smoke_profile import smoke_profile
+from .round_evaluation import round_evaluation
 from .sample_release import PaperRecord
 from .stage_controller import advance_ready_stage, start_failed_incumbent_reference_rerun
 from .worker_security_audit import audit_final_worker_security
@@ -136,7 +137,9 @@ def _score_active_stage(
         return {"status": "missed_gold_window", "stage": stage}
     round_record = backend.get_round(round_id)
     profile = smoke_profile(round_record)
-    known_answer_count = profile.known_answer_count if profile is not None else 40
+    evaluation = round_evaluation(round_record)
+    known_answer_count = (evaluation.gold_known_answers if evaluation is not None
+                          else profile.known_answer_count if profile is not None else 40)
     known_answers = build_known_answer_challenges(
         round_id,
         certified=backend.list_gold_known_answer_candidates(round_id),

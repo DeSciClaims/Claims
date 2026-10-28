@@ -103,11 +103,12 @@ the private reason, then `POST
 `{"hotkey":"...","status":"overturned","public_explanation":"..."}`
 (`upheld` is the other status).
 The explanation is public; it must not quote private code.
-The week-one reference launch releases exactly 320 papers; later staged finals
-require at least 500. For later weeks the controller computes the final count
-from the frozen weekly dollar budget and the number of distinct challengers
-after the duplicate draw, using the proposal's pre-screen, screen, and final
-cost formula. A budget that cannot fund 500 final papers fails before release.
+The default week-one reference launch releases 320 papers; later staged finals
+require at least 500. A versioned mainnet JSON plan can declare a larger
+week-one or final count. For later weeks the controller checks that the frozen
+weekly dollar budget can fund the declared final count after the duplicate
+draw, using the proposal's pre-screen, screen, and final cost formula. A budget
+that cannot fund the declared final fails before release.
 With one or two challengers, the single stage is capped at 1,000 papers.
 Each paper job has one retry after an expired lease or a reported
 infrastructure fault. A second failure is terminal; scoring drops the affected
@@ -217,6 +218,10 @@ backend round with the exact rules body and its hash. The backend serves
 `GET /public/competition/rounds/{round_id}/rules` before the submission
 deadline; the dashboard links to it. A different rules body cannot replace
 an opened round.
+If the draft omits `round_id`, setup derives
+`round_<UTC deadline>_<network>` (for example,
+`round_20261109T120000Z_mainnet`). An explicit ID is allowed for a rehearsal;
+the same ID cannot be reused with different frozen rules.
 A custom round draft freezes `policy_public.schedule` with
 `mode: custom`, a 1–600 block reveal delay, and UTC Gold close,
 publication, and activation times. An optional `replay_gold_window_seconds`
@@ -231,6 +236,22 @@ certified known-answer Gold case. The backend rejects it on mainnet and rejects
 a sample of any other size. Qualification, on-chain commitments, signed uploads,
 Gold voting rules, worker isolation, and publication checks still apply. It
 tests the flow, not the statistical power of the 320-paper launch round.
+For a staged testnet rehearsal, use the versioned round config in
+`infra/config/competition/rounds/testnet/`. Mainnet has separate launch and
+subsequent weekly configs in `infra/config/competition/rounds/mainnet/`. Replace every
+`REPLACE_*` value, the package hashes and sizes, reference lock, blocks, and
+schedule before opening intake. `policy_public.evaluation` declares the stage
+sequence, paper counts, advancement, minimum distinct challengers, and Gold
+known-answer count. `configuration_spec` declares both model passes in each
+judge configuration, their pinned providers and inference settings, the shared
+tiebreak model, the selected Jev or OpenAI Decision routing, and worker limits. Setup expands this
+spec into the credential-free public `configuration`, hashes it with the public
+rules, and stores the immutable round receipt. Existing rounds without this
+versioned plan keep their original stage policy. The mainnet setup CLI requires a supplied
+`configuration_spec` and production evaluation plan; its stages are selected
+after the duplicate draw: up to three challengers run final only, four to
+twelve run screen and final, and larger fields run all three stages. The small
+plan remains testnet-only.
 The draft's public policy must include `reference_lock_sha256`, the hash
 recorded in Bronze manifests for the chosen reference release. Intake selects
 only Bronze records with that hash, and the private paper read checks it again.
@@ -366,7 +387,7 @@ audits.
 ## Early-stage Decision API pilot
 
 The Zils checkpoint named in the reward proposal is unavailable. The
-`OpenAIDecisionsRouter` is a temporary trusted-controller adapter for the
+`DecisionsRouter` is a trusted-controller adapter for the
 pre-screen and screen. It submits only single-candidate cases with source
 context to OpenAI Decisions (`gpt-6-luna`); pairs, missing source context, and
 choices below the frozen stage confidence threshold go to the two full judges. The router

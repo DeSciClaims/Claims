@@ -85,6 +85,31 @@ def test_decision_router_sends_refusals_to_full_judges():
     assert router(_context()) is None
 
 
+def test_jev_decisions_transport_uses_systemone_contract():
+    calls = []
+    def post(url, **kwargs):
+        calls.append((url, kwargs["json"]))
+        class Response:
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return {"answers": {"supported_candidate": {
+                    "type": "choice", "choice": "miner:c1", "confidence": 0.94,
+                    "probabilities": {"miner:c1": 0.94, "neither": 0.06},
+                }}}
+        return Response()
+    router = OpenAIDecisionsRouter(
+        "secret", 0.8, model="jev-latest", transport="jev",
+        api_base="https://api.typesafe.ai/v1", http_post=post,
+    )
+    result = router(_context())
+    assert result.final_disposition == "accepted_improvement"
+    assert result.votes[0].pass_id == "jev-decisions"
+    assert calls[0][0] == "https://api.typesafe.ai/v1/systemone"
+    assert calls[0][1]["questions"]["supported_candidate"]["type"] == "choice"
+    assert calls[0][1]["state"]["candidate"]["id"] == "miner:c1"
+
+
 def test_early_stage_routes_singleton_without_invoking_judges():
     def artifact(claims):
         return {"paper": {"paper_id": "paper-1"}, "logic": {"claims": claims}}

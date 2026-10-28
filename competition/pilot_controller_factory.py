@@ -199,12 +199,17 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
     judge_usage_capture = JudgeUsageCapture()
     policy = build_provisional_evaluation_policy(
         paper_inputs=papers,
-        decision_api_key=_required("CLAIMS_COMPETITION_DECISION_API_KEY"),
+        decision_api_key=_required(
+            "JEV_API_KEY" if routing.get("provider") == "jev"
+            else "CLAIMS_COMPETITION_DECISION_API_KEY"),
         weekly_budget_usd=float(configuration["weekly_budget_usd"]),
         worker_policy=configuration["worker_policy"],
         prescreen_threshold=float(routing["prescreen_confidence_threshold"]),
         screen_threshold=float(routing["screen_confidence_threshold"]),
         decision_api_base=str(routing["api_base"]),
+        decision_provider=str(routing.get("provider", "openai")),
+        decision_model=str(routing.get("model", "gpt-6-luna")),
+        judge_specs=configuration.get("judge_specs"),
         judge_usage_sink=judge_usage_capture.record,
     )
     if policy.configuration_sha256 != rules.configuration_sha256 or policy.configuration != configuration:

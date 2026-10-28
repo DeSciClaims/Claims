@@ -11,7 +11,8 @@ from .failure_policy import (
 from .jobs import build_jobs
 from .policy import PaperPairScore, paired_result
 from .reference_rerun import reference_rerun_plan
-from .stages import StageCandidate, advance, stage_plan
+from .stages import StageCandidate, advance
+from .round_evaluation import round_evaluation, stages_for_round
 
 
 def _enqueue_current_stage(
@@ -34,10 +35,7 @@ def start_initial_stage(
     """Start the week-one or first staged run after duplicate selection."""
     round_record = backend.get_round(round_id)
     sample = backend.list_sample(round_id)
-    stages = stage_plan(
-        challenger_count=len(challengers),
-        week_one=round_record["incumbent_hotkey"] is None,
-    )
+    stages = stages_for_round(round_record, len(challengers))
     if not stages:
         raise ValueError("no qualified distinct challenger to evaluate")
     stage = stages[0]
@@ -183,8 +181,17 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend) -> dict[s
         candidates.append(StageCandidate(
             hotkey, entry["team_id"], result.mean_gain, commits[hotkey],
         ))
-    winners = advance(candidates, stage=source_stage)
-    next_stage = "screen" if source_stage == "prescreen" else "final"
+    evaluation = round_evaluation(round_record)
+    if evaluation is None:
+        winners = advance(candidates, stage=source_stage)
+        next_stage = "screen" if source_stage == "prescreen" else "final"
+    else:
+        current_settings = evaluation.stage(source_stage)
+        winners = advance(candidates, stage=source_stage,
+                          limit=current_settings.advance_top,
+                          per_team=current_settings.max_per_team)
+        names = [item.name for item in evaluation.stages]
+        next_stage = names[names.index(source_stage) + 1]
     if next_stage not in {row["stage"] for row in sample}:
         raise ValueError("released sample is missing the next stage")
     by_hotkey = {row["hotkey"]: row for row in entries}

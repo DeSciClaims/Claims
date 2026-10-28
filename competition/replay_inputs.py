@@ -23,6 +23,7 @@ from .publication import canonical_sha256
 from .sample_release import PaperRecord, frozen_pool_hash, sample_receipt
 from .round_schedule import schedule_for_round
 from .smoke_profile import smoke_profile
+from .round_evaluation import round_evaluation
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -62,6 +63,7 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
         raise ValueError("replay snapshot differs from frozen round rules")
     rules = snapshot["rules_public"]
     profile = smoke_profile(snapshot)
+    evaluation = round_evaluation(snapshot)
     if rules.get("schema_version") != "claims_competition_rules_v1":
         raise ValueError("replay rules use an unknown schema")
     pinned = (
@@ -83,6 +85,15 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
         or any(not isinstance(row, dict) or row.get("stage") != "week_one"
                for row in sample)):
         raise ValueError("replay test profile has a different sample")
+    if evaluation is not None and (
+        len(sample) != sum(stage.papers for stage in evaluation.stages)
+        or {name: sum(row.get("stage") == name for row in sample)
+            for name in (stage.name for stage in evaluation.stages)}
+            != {stage.name: stage.papers for stage in evaluation.stages}
+        or {row.get("stage") for row in sample}
+            != {stage.name for stage in evaluation.stages}
+    ):
+        raise ValueError("replay sample differs from frozen evaluation plan")
     paper_versions = set()
     for row in sample:
         if (not isinstance(row, dict) or row.get("stage") not in {
@@ -152,6 +163,7 @@ def verify_replay_sample(
     if any(snapshot.get(key) != value for key, value in fields.items()):
         raise ValueError("replay beacon differs from verified post-deadline beacon")
     sample = snapshot["sample"]
+    evaluation = round_evaluation(snapshot)
     counts = {stage: sum(row["stage"] == stage for row in sample)
               for stage in ("prescreen", "screen", "final", "week_one")}
     if counts["week_one"] and (counts["prescreen"] or counts["screen"] or counts["final"]):
@@ -161,6 +173,7 @@ def verify_replay_sample(
         prescreen_count=counts["prescreen"], screen_count=counts["screen"],
         final_count=counts["week_one"] or counts["final"],
         week_one=bool(counts["week_one"]),
+        prescreen_judges=evaluation is not None,
     )["papers"]
     fields_by_paper = ("stage", "paper_id", "position", "judge_id", "source_sha256")
     actual = [{key: row.get(key) for key in fields_by_paper}
