@@ -14,6 +14,7 @@ from validator.agent_v1.orchestrator import (
 )
 
 from .scoring import score_pairwise_paper
+from .silver_runtime import silver_pipeline_kwargs, silver_runtime_config
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,7 @@ def evaluate_weekly_paper(
     # The pre-screen has no seeded judge assignment. Its uncertain cases use
     # the frozen J1 configuration; screen/final/week-one use their assignment.
     passes = list(adjudication_passes_by_judge["J1" if judge_id == "routing" else judge_id])
+    silver_settings = silver_pipeline_kwargs(silver_runtime_config()["settings"])
     pipeline = run_paper_silver_pipeline(
         paper_id=paper_id, bronze_artifact=bronze_artifact,
         miner_artifacts=[MinerArtifactSubmission(miner_id=hotkey, artifact=artifact)
@@ -70,6 +72,7 @@ def evaluate_weekly_paper(
         tiebreak_pass=tiebreak_pass,
         source_context_by_span_id=source_context_by_span_id,
         decision_router=decision_router,
+        **silver_settings,
     )
     candidates = {row.miner_id: row.candidates for row in pipeline.miner_submissions}
     findings = {row.miner_id: row.normal_findings for row in pipeline.miner_submissions}
@@ -82,6 +85,7 @@ def evaluate_weekly_paper(
             incumbent_candidates=candidates.get(baseline_hotkey, []),
             challenger_findings=findings.get(hotkey),
             incumbent_findings=findings.get(baseline_hotkey),
+            equivalence_shared_coverage=bool(silver_settings["equivalence_shared_coverage"]),
         )
         pairs.append({
             "paper_id": paper_id, "challenger_hotkey": hotkey,

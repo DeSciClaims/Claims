@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from validator.agent_v1.pairing import DEFAULT_EMBEDDING_MODEL
 
@@ -38,7 +38,39 @@ SILVER_ENV_DEFAULTS = {
     "CLAIMS_SILVER_PAIRING_MAX_DENSE_PAIRS": "0",
     "CLAIMS_SILVER_CONSOLIDATION_TOP_K": "4",
     "CLAIMS_SILVER_PAIRING_SPAN_PAGE_PROXIMITY": "1",
+    "CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE": "4",
+    "CLAIMS_SILVER_ADJUDICATION_MAX_WORKERS": "4",
+    "CLAIMS_SILVER_MAX_ELIGIBLE_CLAIMS_PER_MINER": "10",
+    "CLAIMS_SILVER_MAX_ADJUDICATION_CASES_PER_PAPER": "80",
+    "CLAIMS_SILVER_FILTER_BY_ASSESSMENT": "false",
+    "CLAIMS_SILVER_EQUIVALENCE_SHARED_COVERAGE": "true",
 }
+
+
+def silver_pipeline_kwargs(settings: Mapping[str, str]) -> dict[str, int | bool]:
+    """Convert frozen Silver limits into canonical pipeline arguments."""
+    integer_keys = {
+        "CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE": "adjudication_batch_size",
+        "CLAIMS_SILVER_ADJUDICATION_MAX_WORKERS": "adjudication_max_workers",
+        "CLAIMS_SILVER_MAX_ELIGIBLE_CLAIMS_PER_MINER": "max_eligible_claims_per_miner",
+        "CLAIMS_SILVER_MAX_ADJUDICATION_CASES_PER_PAPER": "max_adjudication_cases",
+    }
+    boolean_keys = {
+        "CLAIMS_SILVER_FILTER_BY_ASSESSMENT": "filter_by_assessment",
+        "CLAIMS_SILVER_EQUIVALENCE_SHARED_COVERAGE": "equivalence_shared_coverage",
+    }
+    parsed: dict[str, int | bool] = {}
+    for source, target in integer_keys.items():
+        value = settings[source]
+        if not value.isdecimal() or int(value) < 1:
+            raise ValueError(f"invalid frozen Silver limit: {source}")
+        parsed[target] = int(value)
+    for source, target in boolean_keys.items():
+        value = settings[source].lower()
+        if value not in {"true", "false"}:
+            raise ValueError(f"invalid frozen Silver flag: {source}")
+        parsed[target] = value == "true"
+    return parsed
 
 
 def silver_runtime_config() -> dict[str, Any]:
@@ -55,6 +87,7 @@ def silver_runtime_config() -> dict[str, Any]:
     }
     settings = {name: os.getenv(name, default)
                 for name, default in SILVER_ENV_DEFAULTS.items()}
+    silver_pipeline_kwargs(settings)
     credential_env = os.getenv("CLAIMS_SILVER_PAIRING_EMBEDDING_API_KEY_ENV", "OPENROUTER_API_KEY")
     if not credential_env:
         raise ValueError("embedding credential environment variable is empty")

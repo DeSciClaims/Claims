@@ -24,6 +24,7 @@ def score_pairwise_paper(
     incumbent_candidates: list[ComparisonCandidate],
     challenger_findings: list[AgentV1ValidationFinding] | None = None,
     incumbent_findings: list[AgentV1ValidationFinding] | None = None,
+    equivalence_shared_coverage: bool = True,
 ) -> PairwisePaperResult:
     """Score both outputs against the same accepted units and judge pass.
 
@@ -36,11 +37,13 @@ def score_pairwise_paper(
     challenger = score_miner_against_silver(
         miner_id=challenger_id, miner_candidates=challenger_candidates,
         silver_record=silver_record, normal_findings=challenger_findings,
+        equivalence_shared_coverage=equivalence_shared_coverage,
         credit_miners=participants,
     )
     incumbent = score_miner_against_silver(
         miner_id=incumbent_id, miner_candidates=incumbent_candidates,
         silver_record=silver_record, normal_findings=incumbent_findings,
+        equivalence_shared_coverage=equivalence_shared_coverage,
         credit_miners=participants,
     )
     return PairwisePaperResult(

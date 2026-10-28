@@ -42,11 +42,13 @@ def test_weekly_paper_uses_canonical_silver_and_produces_pair_rows():
 
 
 def test_paper_assignment_selects_only_its_frozen_judge_pair(monkeypatch):
+    monkeypatch.setenv("CLAIMS_SILVER_MAX_ADJUDICATION_CASES_PER_PAPER", "1000")
     seen = []
     original = pair_evaluator.run_paper_silver_pipeline
 
     def capture(**kwargs):
-        seen.append(tuple(p.pass_id for p in kwargs["adjudication_passes"]))
+        seen.append((tuple(p.pass_id for p in kwargs["adjudication_passes"]),
+                     kwargs["max_adjudication_cases"]))
         return original(**kwargs)
 
     monkeypatch.setattr(pair_evaluator, "run_paper_silver_pipeline", capture)
@@ -65,4 +67,4 @@ def test_paper_assignment_selects_only_its_frozen_judge_pair(monkeypatch):
             silver_record_id="silver-paper-1", adjudication_passes_by_judge=panels,
             judge_id=judge, stage="final",
         )
-    assert seen == [("J1-1", "J1-2"), ("J2-1", "J2-2")]
+    assert seen == [(("J1-1", "J1-2"), 1000), (("J2-1", "J2-2"), 1000)]
