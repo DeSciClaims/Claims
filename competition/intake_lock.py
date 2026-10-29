@@ -57,6 +57,10 @@ class CompetitionBackend:
         except (urllib.error.URLError, OSError, TimeoutError) as exc:
             raise RuntimeError("competition backend is unavailable") from exc
 
+    def runtime_request(self, round_id: str, suffix: str, payload: dict | None = None):
+        return self._request("GET" if payload is None else "POST",
+            "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + suffix, payload)
+
     def get_round(self, round_id: str) -> dict[str, Any]:
         return self._request("GET", "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe=""))
 

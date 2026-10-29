@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping, Sequence
 
 from .gold import GoldCase, GoldVote, decide_gold_case, gold_result
 from .publication import canonical_sha256
+from .review_policy import review_policy
 
 
 def replay_gold_vote_message(
@@ -41,6 +42,7 @@ def tally_replay_gold_review(
         or not isinstance(review.get("cases"), list)):
         raise ValueError("replay Gold review is malformed")
     round_id = review["round_id"]
+    policy = review_policy(review)
     declared_finalists = review.get("finalist_hotkeys")
     if (not isinstance(declared_finalists, list) or not declared_finalists
         or any(not isinstance(hotkey, str) or not hotkey
@@ -108,6 +110,7 @@ def tally_replay_gold_review(
         )
         decision = decide_gold_case(
             case, by_case[case_id], qualified_team_by_hotkey=teams,
+            quorum=policy.vote_quorum, agreement_percent=policy.agreement_percent,
         )
         decisions[case_id] = asdict(decision)
         if "check" in row["review_purposes"]:
@@ -132,7 +135,8 @@ def tally_replay_gold_review(
             key=lambda row: (row["case_id"], row["voter_hotkey"]),
         )),
         "case_decisions": decisions,
-        "gold_by_hotkey": {hotkey: asdict(gold_result(rows))
+        "gold_by_hotkey": {hotkey: asdict(gold_result(rows, min_decided=policy.check_min_decided,
+                                                     refusal_percent=policy.check_refusal_percent))
                            for hotkey, rows in sorted(checks.items())},
         "challenge_accuracy": challenge_accuracy,
     }

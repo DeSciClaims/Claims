@@ -7,6 +7,7 @@ from typing import Any, Sequence
 
 from .final_stage import effective_final_stage
 from .gold import draw_gold_cases
+from .review_policy import review_policy
 from .gold_challenges import build_known_answer_challenges
 from .gold_controller import ContestedClaim, frozen_gold_candidates
 from .publication import canonical_sha256
@@ -54,7 +55,7 @@ def replay_known_answer_challenges(
 def prepare_replay_gold_review(
     round_id: str, *, backend: Any,
     known_answers: Sequence[ContestedClaim],
-    check_limit: int = 300, escalation_limit: int = 1700,
+    check_limit: int | None = None, escalation_limit: int | None = None,
     minimum_known_answers: int = 40,
 ) -> dict[str, Any]:
     """Freeze a new review, never transferring primary Gold votes or verdicts.
@@ -64,6 +65,9 @@ def prepare_replay_gold_review(
     unambiguously belong to this validator's review.
     """
     snapshot = backend.snapshot
+    policy = review_policy(snapshot)
+    check_limit = policy.check_sample_size if check_limit is None else check_limit
+    escalation_limit = policy.escalation_limit if escalation_limit is None else escalation_limit
     if snapshot.get("round_id") != round_id:
         raise ValueError("replay Gold round differs from verified snapshot")
     stage = effective_final_stage(backend.list_stages(round_id))
@@ -164,4 +168,6 @@ def prepare_replay_gold_review(
         "known_answer_count": len(known),
         "cases": rows,
     }
+    if "consensus" in ((snapshot.get("rules_public") or {}).get("policy") or {}):
+        review.update(network=snapshot["network"], rules_public=snapshot["rules_public"])
     return backend.freeze_gold_review(round_id, review)

@@ -118,11 +118,15 @@ class LocalCliReferenceMinerClient:
         bronze_root: Path,
         command: list[str],
         claims_repo: Path | None = None,
+        timeout_seconds: int = 3600,
     ) -> None:
         self.local = LocalReferenceMinerClient(bronze_root)
         self.bronze_root = bronze_root
         self.command = command
         self.claims_repo = claims_repo
+        if type(timeout_seconds) is not int or timeout_seconds < 1:
+            raise ValueError("reference timeout must be positive")
+        self.timeout_seconds = timeout_seconds
 
     def get_bronze(self, *, paper_id: str, reference_release_id: str) -> BronzeRecord:
         return self.local.get_bronze(paper_id=paper_id, reference_release_id=reference_release_id)
@@ -154,7 +158,7 @@ class LocalCliReferenceMinerClient:
         logger.info("Running private reference miner command: %s", " ".join(command))
         started = time.time()
         started_at = datetime.now(timezone.utc)
-        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=3600)
+        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=self.timeout_seconds)
         elapsed = round(time.time() - started, 3)
         if completed.stdout.strip():
             logger.info("private reference miner stdout: %s", completed.stdout.strip())

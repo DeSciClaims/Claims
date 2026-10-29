@@ -260,6 +260,8 @@ def test_replay_client_tallies_verified_gold_choices_with_zero_case_finalist():
     body = {"round_id": "week-1", "cases": cases, "voters": voters, "votes": votes}
 
     def respond(request, *, timeout):
+        if request.full_url.endswith("/snapshot"):
+            return io.BytesIO(json.dumps(_snapshot()).encode())
         return io.BytesIO(json.dumps(body).encode())
 
     client = CompetitionReplayInputs(

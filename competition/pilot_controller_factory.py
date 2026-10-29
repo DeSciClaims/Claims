@@ -82,7 +82,8 @@ def _duplicate_links(backend: Any, round_id: str) -> list[tuple[str, str, str]]:
     return verify_duplicate_review(
         _late_receipt(round_id, "duplicates"), round_id=round_id,
         round_record=backend.get_round(round_id),
-        submissions=backend.list_submissions(round_id),
+        submissions=[{**row, "team_id": row.get("declared_team_id", row["team_id"])}
+                     for row in backend.list_submissions(round_id)],
         candidate_report=load_candidate_report(
             root / f"{round_id}.duplicate-candidates.json"),
     )
@@ -215,11 +216,31 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
     if policy.configuration_sha256 != rules.configuration_sha256 or policy.configuration != configuration:
         raise ValueError("controller model runtime differs from frozen round")
     netuid = int(_required("CLAIMS_COMPETITION_NETUID"))
+    from neurons.backend_client import ClaimsBackendClient
+    from .bronze_generation import configured_bronze_preparer
+    from .consensus_runner import CompetitionConsensusRunner
+    validator_client = (ClaimsBackendClient(base_url=backend.base_url, wallet=wallet, network=str(row["network"]))
+        if hasattr(backend, "base_url") else None)
+    public = row.get("rules_public", {}).get("policy", {})
+    consensus = (CompetitionConsensusRunner(backend=backend, validator_client=validator_client,
+        wallet=wallet, chain=chain, netuid=netuid, network=str(row["network"]))
+        if public.get("review_execution") == "controller" else None)
+    def resolve_teams(rid):
+        saved = backend.runtime_request(rid, "/teams")
+        if saved is not None:
+            return saved
+        graph = chain.subtensor.metagraph(netuid=netuid, block=int(backend.get_round(rid)["deadline_block"]))
+        return backend.runtime_request(rid, "/teams", {"netuid": netuid,
+            "members": [{"hotkey": str(n.hotkey), "coldkey": str(n.coldkey)} for n in graph.neurons],
+            "reviewed_code_links": [list(link) for link in _duplicate_links(backend, rid)]})
     return CompetitionControllerInputs(
         archive=chain, chain=chain, netuid=netuid, signer=signer,
         operator_hotkey=operator, paper_inputs=papers, packages=packages,
         evaluation=policy, weekly_budget_usd=float(configuration["weekly_budget_usd"]),
         judge_usage_capture=judge_usage_capture,
+        identity_preparer=resolve_teams, consensus_runner=consensus,
+        bronze_preparer=(configured_bronze_preparer(backend, validator_client, client)
+            if public.get("bronze", {}).get("mode") == "after_reveal" else None),
         linked_pairs=(), duplicate_review_reader=lambda rid: _duplicate_links(backend, rid),
         qualified_voters=lambda rid: _voters(backend, rid),
         audited_finalists=lambda rid: _final_audit(

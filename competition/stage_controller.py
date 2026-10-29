@@ -104,7 +104,7 @@ def start_failed_incumbent_reference_rerun(
             "eligible_papers": failure.eligible_papers}
 
 
-def advance_ready_stage(round_id: str, *, backend: CompetitionBackend) -> dict[str, Any]:
+def advance_ready_stage(round_id: str, *, backend: CompetitionBackend, identity_preparer=None) -> dict[str, Any]:
     """Re-enqueue current jobs, then advance once every paired score exists.
 
     Repeated calls after a crash are safe: stage selection and job identities
@@ -146,6 +146,14 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend) -> dict[s
     if len(grid) != len(expected):
         return {"stage": stage, "status": "waiting_for_scores",
                 "scored": len(grid), "expected": len(expected)}
+    if round_record.get("rules_public", {}).get("policy", {}).get("team_identity") == "linked":
+        if identity_preparer is None:
+            raise ValueError("advancement needs a team identity resolver")
+        identity = identity_preparer(round_id)
+        if identity.get("status") == "waiting_for_team_review":
+            return identity
+        entries = [{**entry, "team_id": identity["team_by_hotkey"].get(entry["hotkey"], entry["team_id"])} for entry in entries]
+        baseline = [row for row in entries if row["role"] in {"incumbent", "reference"}]
     infrastructure_faults = {
         paper_id for paper_id in paper_ids
         if any(grid[(paper_id, row["hotkey"])]["infrastructure_fault"] for row in challengers)

@@ -9,6 +9,7 @@ import pytest
 
 from neurons.consensus_validator import (
     ClaimsConsensusValidator,
+    _validate_response_deadline,
     _confirm_source_failure,
     _preflight_consensus_sources,
     _seconds_until_deadline,
@@ -16,6 +17,14 @@ from neurons.consensus_validator import (
     _subtensor_network_arg,
     _sync_metagraph,
 )
+
+
+def test_short_response_deadlines_only_apply_to_testnet():
+    _validate_response_deadline("testnet", 180)
+    _validate_response_deadline("mainnet", 1800)
+    for network, seconds in (("mainnet", 180), ("testnet", 59), ("unknown", 180)):
+        with pytest.raises(SystemExit):
+            _validate_response_deadline(network, seconds)
 
 
 @pytest.mark.parametrize(

@@ -80,7 +80,8 @@ def _score_active_stage(
     if stage not in {"prescreen", "screen", "final", "week_one", "rerun"}:
         raise ValueError("active evaluation has an unknown stage")
     scoring_stage = ledger[-1].get("source_stage") if stage == "rerun" else stage
-    first = advance_ready_stage(round_id, backend=backend)
+    identity_preparer = getattr(inputs, "prepare_identities", None)
+    first = advance_ready_stage(round_id, backend=backend, identity_preparer=identity_preparer)
     if first["status"] == "started":
         return first
     challengers = {row["hotkey"] for row in ledger[-1]["entries"] if row["role"] == "challenger"}
@@ -110,7 +111,7 @@ def _score_active_stage(
         )
         attempted += 1
     if scoring_stage in {"prescreen", "screen"}:
-        result = advance_ready_stage(round_id, backend=backend)
+        result = advance_ready_stage(round_id, backend=backend, identity_preparer=identity_preparer)
         if result["status"] == "started":
             return result
         return {**result, "scored_papers_this_tick": attempted}
@@ -140,6 +141,11 @@ def _score_active_stage(
     evaluation = round_evaluation(round_record)
     known_answer_count = (evaluation.gold_known_answers if evaluation is not None
                           else profile.known_answer_count if profile is not None else 40)
+    controller_review = round_record.get("rules_public", {}).get("policy", {}).get("review_execution") == "controller"
+    if controller_review:
+        source_status = inputs.prepare_consensus_sources(round_id)
+        if source_status["status"] != "sources_ready":
+            return source_status
     known_answers = build_known_answer_challenges(
         round_id,
         certified=backend.list_gold_known_answer_candidates(round_id),
@@ -148,7 +154,7 @@ def _score_active_stage(
         limit=known_answer_count,
     )
     result = prepare_frozen_gold_review(
-        round_id, backend=backend, voters=inputs.voters_for_round(round_id),
+        round_id, backend=backend, voters=[] if controller_review else inputs.voters_for_round(round_id),
         known_answers=known_answers, minimum_known_answers=known_answer_count,
     )
     if result.get("status") == "waiting_for_known_answers":
@@ -179,6 +185,8 @@ def tick_round(
         if inputs.chain.get_current_block() < int(round_record["reveal_block"]):
             return {"status": "waiting_for_reveal_block",
                     "reveal_block": round_record["reveal_block"]}
+        if round_record.get("rules_public", {}).get("policy", {}).get("team_identity") == "linked":
+            inputs.prepare_identities(round_id)
         return reveal_selected_sample(
             round_id, backend=backend, chain=inputs.chain,
             papers=inputs.papers_for_round(round_id),
@@ -189,6 +197,16 @@ def tick_round(
             weekly_budget_usd=inputs.weekly_budget_for_round(round_id),
         )
     if status == "revealed":
+        if round_record.get("rules_public", {}).get("policy", {}).get("team_identity") == "linked":
+            has_prescreen = any(row["stage"] == "prescreen" for row in backend.list_sample(round_id))
+            if not has_prescreen:
+                identity = inputs.prepare_identities(round_id)
+                if identity.get("status") == "waiting_for_team_review":
+                    return identity
+        if round_record.get("rules_public", {}).get("policy", {}).get("bronze", {}).get("mode") == "after_reveal":
+            bronze = inputs.prepare_bronze(round_id)
+            if bronze["status"] != "bronze_ready":
+                return bronze
         return start_revealed_round(
             round_id, backend=backend, baseline=inputs.baseline_for_round(round_id),
             package_for_submission=inputs.package_for_submission,
@@ -207,6 +225,8 @@ def tick_round(
             )
     if status == "gold":
         if now < gold_close:
+            if round_record.get("rules_public", {}).get("policy", {}).get("review_execution") == "controller":
+                return inputs.run_consensus(round_id)
             return {"status": "waiting_for_gold_close", "close_at": gold_close.isoformat()}
         return backend.close_gold_voting(round_id)
     if status == "gold_closed":

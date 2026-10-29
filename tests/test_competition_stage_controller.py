@@ -179,3 +179,67 @@ def test_versioned_two_stage_smoke_advances_top_three_directly_to_final():
     assert result["stage"] == "final"
     assert result["selected_hotkeys"] == ["miner-4", "miner-3", "miner-2"]
     assert sum(job["stage"] == "final" for job in backend.enqueued) == 20
+
+
+def test_promotion_waits_for_identity_review_and_uses_linked_teams():
+    backend = Backend()
+    start_initial_stage(
+        "round",
+        backend=backend,
+        baseline={
+            "hotkey": "incumbent",
+            "package_sha256": "a" * 64,
+            "team_id": "king-team",
+        },
+        challengers=[
+            {
+                "hotkey": "miner-" + name,
+                "package_sha256": digest * 64,
+                "team_id": "team-" + name,
+                "commit_block": 90 + index,
+            }
+            for index, (name, digest) in enumerate(
+                [("a", "b"), ("b", "c"), ("c", "e"), ("d", "f")]
+            )
+        ],
+    )
+    backend.round["rules_public"] = {"policy": {"team_identity": "linked"}}
+    for pid in ("paper-1", "paper-2"):
+        for index, (name, digest) in enumerate(
+            [("a", "b"), ("b", "c"), ("c", "e"), ("d", "f")]
+        ):
+            backend.pairs.append(
+                {
+                    "stage": "screen",
+                    "paper_id": pid,
+                    "challenger_hotkey": "miner-" + name,
+                    "challenger_package_sha256": digest * 64,
+                    "baseline_hotkey": "incumbent",
+                    "baseline_package_sha256": "a" * 64,
+                    "challenger_score": 0.9 - index * 0.1,
+                    "baseline_score": 0.3,
+                    "infrastructure_fault": False,
+                }
+            )
+    result = advance_ready_stage(
+        "round",
+        backend=backend,
+        identity_preparer=lambda _: {"status": "waiting_for_team_review"},
+    )
+    assert result["status"] == "waiting_for_team_review"
+    assert len(backend.ledger) == 1
+    result = advance_ready_stage(
+        "round",
+        backend=backend,
+        identity_preparer=lambda _: {
+            "team_by_hotkey": {
+                "incumbent": "king-team",
+                "miner-a": "linked-team",
+                "miner-b": "linked-team",
+                "miner-c": "team-c",
+                "miner-d": "team-d",
+            }
+        },
+    )
+    assert result["selected_hotkeys"] == ["miner-a", "miner-c", "miner-d"]
+    assert backend.ledger[-1]["entries"][1]["team_id"] == "linked-team"

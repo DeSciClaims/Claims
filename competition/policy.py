@@ -114,11 +114,14 @@ def paired_result(papers: list[PaperPairScore] | tuple[PaperPairScore, ...]) -> 
     return PairedResult(len(gains), mean(gains), standard_error, tuple(gains))
 
 
-def gold_veto(*, decided_claims: int, incumbent_supported: int, min_decided: int = 60) -> bool:
+def gold_veto(*, decided_claims: int, incumbent_supported: int, min_decided: int = 60,
+              refusal_percent: int = 75) -> bool:
     """A binding Gold check vetoes when >=75% of decided claims support R."""
-    if decided_claims < 0 or incumbent_supported < 0 or incumbent_supported > decided_claims:
+    if (decided_claims < 0 or incumbent_supported < 0 or incumbent_supported > decided_claims
+        or type(min_decided) is not int or min_decided < 1
+        or type(refusal_percent) is not int or not 51 <= refusal_percent <= 100):
         raise ValueError("invalid Gold vote counts")
-    return decided_claims >= min_decided and 4 * incumbent_supported >= 3 * decided_claims
+    return decided_claims >= min_decided and 100 * incumbent_supported >= refusal_percent * decided_claims
 
 
 def crown_eligible(result: PairedResult, *, gold_refused: bool, week_one: bool = False) -> bool:

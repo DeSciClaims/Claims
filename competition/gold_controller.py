@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Protocol
+from .review_policy import review_policy
 
 from .pair_evaluator import WeeklyPaperEvaluation
 
@@ -188,26 +189,34 @@ def frozen_gold_candidates(round_id: str, *, backend: GoldBackend) -> list[Conte
 
 def prepare_frozen_gold_review(
     round_id: str, *, backend: GoldBackend,
-    voters: list[dict[str, str]], limit: int = 300, escalation_limit: int = 1700,
+    voters: list[dict[str, str]], limit: int | None = None, escalation_limit: int | None = None,
     known_answers: list[ContestedClaim] | None = None,
     minimum_known_answers: int = 0,
 ) -> dict[str, Any]:
+    policy = review_policy(backend.get_round(round_id))
     return prepare_gold_review(
         round_id, backend=backend, candidates=frozen_gold_candidates(round_id, backend=backend),
-        voters=voters, limit=limit, escalation_limit=escalation_limit,
+        voters=voters, limit=policy.check_sample_size if limit is None else limit,
+        escalation_limit=policy.escalation_limit if escalation_limit is None else escalation_limit,
         known_answers=known_answers, minimum_known_answers=minimum_known_answers,
     )
 
 
 def prepare_gold_review(
     round_id: str, *, backend: GoldBackend, candidates: list[ContestedClaim],
-    voters: list[dict[str, str]], limit: int = 300,
+    voters: list[dict[str, str]], limit: int | None = None,
     escalation_limit: int | None = None,
     known_answers: list[ContestedClaim] | None = None,
     minimum_known_answers: int = 0,
 ) -> dict[str, Any]:
     """Seal a random Gold check and a separately capped escalation stream."""
     round_record = backend.get_round(round_id)
+    policy = review_policy(round_record)
+    limit = policy.check_sample_size if limit is None else limit
+    if "consensus" in ((round_record.get("rules_public") or {}).get("policy") or {}):
+        escalation_limit = policy.escalation_limit if escalation_limit is None else escalation_limit
+        if limit != policy.check_sample_size or escalation_limit != policy.escalation_limit:
+            raise ValueError("Gold draw limits differ from frozen consensus policy")
     if round_record["status"] not in {"final", "gold"}:
         raise ValueError("final evaluation has not reached Gold review")
     seed = bytes.fromhex(round_record["drand_seed"])
@@ -243,7 +252,7 @@ def prepare_gold_review(
         raise ValueError("round has no valid precommitted Gold check seed")
     gold_seed = hashlib.sha256(b"claims-gold-draw-v1\0" + check_seed).digest()
     check = draw_gold_cases([candidate.case for candidate in candidates], seed=gold_seed, limit=limit)
-    if escalation_limit is None:
+    if escalation_limit is None or escalation_limit == 0:
         escalation = ()
     else:
         escalation_seed = hashlib.sha256(b"claims-escalation-draw-v1\0" + seed).digest()
@@ -293,6 +302,7 @@ def closed_gold_decisions(
     """Return the qualified decision for each sealed case after vote closure."""
     if backend.get_round(round_id)["status"] != "gold_closed":
         raise ValueError("Gold voting must be closed before tally")
+    policy = review_policy(backend.get_round(round_id))
     cases = backend.list_gold_cases(round_id)
     voters = backend.list_gold_voters(round_id)
     votes = backend.list_gold_votes(round_id)
@@ -315,6 +325,7 @@ def closed_gold_decisions(
         )
         decisions[case.case_id] = decide_gold_case(
             case, votes_by_case[case.case_id], qualified_team_by_hotkey=team_by_hotkey,
+            quorum=policy.vote_quorum, agreement_percent=policy.agreement_percent,
         )
     return decisions
 
@@ -339,7 +350,10 @@ def tally_closed_gold_review(
             if row["challenger_hotkey"] not in decisions_by_challenger:
                 raise ValueError("Gold check case is outside frozen finalists")
             decisions_by_challenger[row["challenger_hotkey"]].append(decisions[row["case_id"]])
-    return {hotkey: gold_result(decisions) for hotkey, decisions in decisions_by_challenger.items()}
+    policy = review_policy(backend.get_round(round_id))
+    return {hotkey: gold_result(decisions, min_decided=policy.check_min_decided,
+                                refusal_percent=policy.check_refusal_percent)
+            for hotkey, decisions in decisions_by_challenger.items()}
 
 
 def audit_closed_known_answers(

@@ -85,9 +85,9 @@ def qualified_entries(
         if upload is None:
             raise ValueError("locked package has no sealed upload receipt")
         team_id = str(upload["manifest"].get("team_id") or "")
-        if team_id != upload.get("team_id") or not team_id:
+        if team_id != upload.get("declared_team_id", upload.get("team_id")) or not team_id:
             raise ValueError("declared team differs from sealed upload receipt")
-        selected.append({**item, "team_id": team_id})
+        selected.append({**item, "team_id": upload["team_id"]})
     return selected
 
 

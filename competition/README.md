@@ -11,11 +11,13 @@ commitment string is unsuitable for the two-field package commitment.
 `HippiusPrivateStorage` reads sealed package objects against their receipt
 hashes and writes scoped, checksum-tagged private worker logs. It belongs only
 in trusted controller or coordinator processes.
-`CompetitionPaperInputs` reads the Bronze-backed pool captured atomically at
-intake lock. The backend excludes papers without a matching complete Bronze
-source, pins each Bronze and full-source ID, and rejects a reveal outside the
-locked pool or with a different pool hash. The controller can obtain the pinned
-PDF URL and SHA-256, Bronze artifact, and source-span context for scoring.
+`CompetitionPaperInputs` reads the approved PDF catalog frozen at intake lock.
+With `policy.bronze.mode: after_reveal`, selected PDFs receive Bronze only after
+sample release. Generation uses durable paper leases, a pinned reference release
+lock, and immutable Bronze/full-source bindings. Completed inputs are reused
+across miners and retries. The scoring adapter reads the pinned PDF URL and
+SHA-256, Bronze artifact, and complete source-span context. Historical rules
+without this policy retain their original Bronze-backed catalog.
 `CompetitionPackageResolver` checks a leased job against its frozen stage
 entry and the selected upload receipt. `TrustedPdfFetcher` reads a pinned PDF
 through an allowlisted HTTPS host or a private Hippius S3 client, bounds its
@@ -145,7 +147,8 @@ D+600 release, first-stage start, ready-paper scoring and advancement, Gold
 opening or closing, or signed Thursday publication. A process scheduler must
 call it repeatedly and provide archive, paper-pool, Bronze, judge, audit, and
 signer adapters. It reports `missed_gold_window` if final scores arrive after
-Thursday 12:00 UTC; it will not publish a crown without the Gold vote.
+the frozen review cutoff. Review closes on schedule: insufficient consensus
+retains the LLM tiebreak, and an under-quorum crown check is nonbinding.
 `service_loops.run_controller_cycle` and `run_worker_cycle` read every
 unpublished round through the controller-authenticated backend API. The
 controller advances each once per cycle; a worker claims at most one job per
@@ -168,9 +171,14 @@ must be pinned. A disposable mode remains available for future workers.
 `pilot_controller_factory` is the matching trusted controller adapter module.
 It reconstructs the provisional Decisions and J1/J2 runtime from the round
 file, checks its hash, and binds the archive node, validator signer, paper
-pool, and sealed packages. It loads `<round_id>.voters.json` only when Gold
-opens and `<round_id>.audit.json` only before publication. The voter file
-names qualified hotkeys and team IDs. Run
+pool, and sealed packages. With `policy.review_execution: controller`, it runs
+the shared consensus query/verification machinery itself. Review rounds use the
+ordinary consensus tables and are linked to the competition. Scoped leases
+prevent the standalone daemon from issuing or reclaiming that work. At cutoff,
+stored uploads are verified, outcomes frozen, and eligible votes applied to
+Silver overrides and crown checks. No separate voter receipt is required for
+this mode; historical review modes retain `<round_id>.voters.json`. Code-audit
+receipts remain private. Run
 `python -m neurons.competition_code_audit --round-id ID --rounds-dir DIR --backend-url URL`
 after the final job grid completes. It writes a private
 `<round_id>.audit-evidence.json` containing sealed source fingerprints, build
@@ -256,8 +264,13 @@ after the duplicate draw: up to three challengers run final only, four to
 twelve run screen and final, and larger fields run all three stages. The small
 plan remains testnet-only.
 The draft's public policy must include `reference_lock_sha256`, the hash
-recorded in Bronze manifests for the chosen reference release. Intake selects
-only Bronze records with that hash, and the private paper read checks it again.
+recorded in Bronze manifests for the chosen reference release. The controller
+verifies this hash before binding generated Bronze; private paper reads verify
+it again. `baseline_selection: active_production` resolves and verifies the
+activated winner from its signed originating result. With no activated winner,
+the launch configuration uses the sealed reference package. Effective teams
+combine declarations, coldkeys, funding evidence and reviewed code links;
+unresolved mainnet evidence can wait through prescreen but holds promotion.
 The frozen configuration also hashes the competition policy, stage, Gold,
 copy, weight, and worker source modules. The controller checks that fingerprint
 before scoring; the worker checks it before leasing a job. A midweek code

@@ -63,10 +63,11 @@ def draw_gold_cases(cases: list[GoldCase], *, seed: bytes, limit: int = 300) -> 
 def decide_gold_case(
     case: GoldCase, votes: list[GoldVote], *,
     qualified_team_by_hotkey: Mapping[str, str], quorum: int = 11,
+    agreement_percent: int = 75,
 ) -> VoteDecision:
     """At least 11 eligible voters, with 75% agreement, decide a claim."""
-    if quorum < 1:
-        raise ValueError("Gold quorum must be positive")
+    if type(quorum) is not int or quorum < 1 or type(agreement_percent) is not int or not 51 <= agreement_percent <= 100:
+        raise ValueError("Gold quorum or agreement threshold is invalid")
     if len({vote.voter_hotkey for vote in votes}) != len(votes):
         raise ValueError("one voter cannot vote twice on a Gold case")
     counts: dict[Choice, int] = {"challenger": 0, "incumbent": 0, "neither": 0}
@@ -81,12 +82,15 @@ def decide_gold_case(
         counts[vote.choice] += 1
     leading = max(counts.values())
     decided = None
-    if qualified_count >= quorum and 4 * leading >= 3 * qualified_count:
+    if qualified_count >= quorum and 100 * leading >= agreement_percent * qualified_count:
         decided = next(choice for choice, count in counts.items() if count == leading)
     return VoteDecision(decided, qualified_count, leading)
 
 
-def gold_result(decisions: list[VoteDecision]) -> GoldResult:
+def gold_result(
+    decisions: list[VoteDecision], *, min_decided: int = 60,
+    refusal_percent: int = 75,
+) -> GoldResult:
     contested = [decision.choice for decision in decisions
                  if decision.choice in {"challenger", "incumbent"}]
     incumbent = contested.count("incumbent")
@@ -95,7 +99,8 @@ def gold_result(decisions: list[VoteDecision]) -> GoldResult:
         sampled_cases=len(decisions), decided_contested_claims=total,
         incumbent_supported=incumbent,
         incumbent_share=incumbent / total if total else None,
-        refusal=gold_veto(decided_claims=total, incumbent_supported=incumbent),
+        refusal=gold_veto(decided_claims=total, incumbent_supported=incumbent,
+                          min_decided=min_decided, refusal_percent=refusal_percent),
     )
 
 

@@ -23,6 +23,12 @@ from .tasks import PROTOCOL_VERSION, SCHEMA_VERSION, download_pdf
 CONSENSUS_SOURCE_FAILURE_SCHEMA = "claims_consensus_source_failure_v1"
 
 
+def _validate_response_deadline(network: str, seconds: int) -> None:
+    if (network not in {"mainnet", "testnet"} or type(seconds) is not int
+        or not 60 <= seconds <= 1800 or (network == "mainnet" and seconds != 1800)):
+        raise SystemExit("Consensus deadlines must be 60–1800 seconds on testnet and 1800 on mainnet.")
+
+
 def _require_bittensor() -> tuple[Any, Any, Any, Any, Any]:
     try:
         from bittensor import Config, Dendrite, Subtensor, Wallet
@@ -99,8 +105,7 @@ class ClaimsConsensusValidator:
         config.claims_consensus_worker_id = str(parsed_args.claims_consensus_worker_id or "").strip()
         config.claims_consensus_lease_seconds = max(30, int(parsed_args.claims_consensus_lease_seconds))
         config.claims_consensus_deadline_seconds = int(parsed_args.claims_consensus_deadline_seconds)
-        if config.claims_consensus_deadline_seconds != 1800:
-            raise SystemExit("V1 consensus requires CLAIMS_CONSENSUS_DEADLINE_SECONDS=1800.")
+        _validate_response_deadline(config.claims_network, config.claims_consensus_deadline_seconds)
         if config.claims_consensus_lease_seconds < config.claims_consensus_deadline_seconds + 60:
             raise SystemExit("CLAIMS_CONSENSUS_LEASE_SECONDS must exceed the deadline by at least 60 seconds.")
         config.claims_consensus_query_timeout = max(1.0, float(parsed_args.claims_consensus_query_timeout))

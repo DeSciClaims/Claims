@@ -18,6 +18,7 @@ from .publication import canonical_sha256
 from .round_schedule import schedule_for_round, validate_dispute_window
 from .smoke_profile import smoke_profile
 from .round_evaluation import round_evaluation
+from .review_policy import review_policy
 
 
 RULES_SCHEMA = "claims_competition_rules_v1"
@@ -97,6 +98,7 @@ def prepare_round(
     schedule_record = {"network": network, "deadline_at": deadline.isoformat(),
                        "rules_public": {"policy": public_policy}}
     schedule = schedule_for_round(schedule_record)
+    review_policy(schedule_record)
     smoke_profile({**schedule_record, "incumbent_hotkey": draft.get("incumbent_hotkey")})
     round_evaluation({**schedule_record, "incumbent_hotkey": draft.get("incumbent_hotkey")})
     week_start = (deadline - timedelta(days=deadline.weekday())).date().isoformat()
@@ -163,6 +165,8 @@ def prepare_round(
         "reference_package_sha256": reference_hash,
         "policy": public_policy,
     }
+    if draft.get("baseline_origin") is not None:
+        rules["baseline_origin"] = draft["baseline_origin"]
     rules_hash = canonical_sha256(rules)
     private = {
         "round_id": round_id,
@@ -170,6 +174,8 @@ def prepare_round(
         "configuration": configuration,
         "baseline_upload": baseline,
         "reference_upload": reference,
+        "incumbent_hotkey": incumbent,
+        "baseline_origin": draft.get("baseline_origin"),
         "linked_pairs": links,
     }
     if not isinstance(draft.get("policy_public", {}), dict):
@@ -209,6 +215,26 @@ def prepare_pilot_round(
             return any(contains_placeholder(item) for item in value)
         return False
 
+    if draft.get("baseline_selection") == "active_production":
+        from .incumbent import resolve_baseline
+        from .production_reader import ProductionReleaseReader
+        from .handoff_controller import fetch_round_publication
+        rid = round_id_for_draft(draft)
+        existing = directory / f"{rid}.json"
+        if existing.exists():
+            frozen = json.loads(existing.read_text())
+            draft = {**draft, "baseline_upload": frozen["baseline_upload"],
+                     "reference_upload": frozen.get("reference_upload"),
+                     "incumbent_hotkey": frozen.get("incumbent_hotkey"),
+                     "baseline_origin": frozen.get("baseline_origin")}
+        else:
+            draft = resolve_baseline(
+                draft, backend=backend,
+                reader=ProductionReleaseReader(Path(os.environ["CLAIMS_COMPETITION_PRODUCTION_ROOT"])),
+                publication_for_round=lambda rid: fetch_round_publication(
+                    backend_url=backend.base_url, round_id=rid),
+                expected_signer_hotkey=os.environ["CLAIMS_COMPETITION_PUBLISHER_HOTKEY"],
+            )
     if contains_placeholder(draft):
         raise ValueError("round draft still contains template placeholders")
     draft = {**draft, "round_id": round_id_for_draft(draft)}

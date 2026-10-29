@@ -136,6 +136,28 @@ class CompetitionControllerInputs:
     judge_usage_capture: JudgeUsageCapture | None = None
     duplicate_review_reader: Callable[[str], list[tuple[str, str, str]]] | None = None
 
+    bronze_preparer: Callable[[str], dict] | None = None
+    identity_preparer: Callable[[str], dict] | None = None
+    consensus_runner: Any = None
+
+    def prepare_identities(self, round_id: str) -> dict:
+        if self.identity_preparer is None:
+            raise ValueError("team identity resolver is not configured")
+        return self.identity_preparer(round_id)
+
+    def prepare_bronze(self, round_id: str) -> dict:
+        if self.bronze_preparer is None:
+            raise ValueError("post-reveal Bronze generation is not configured")
+        return self.bronze_preparer(round_id)
+
+    def prepare_consensus_sources(self, round_id: str) -> dict:
+        return self.paper_inputs.backend.runtime_request(round_id, "/consensus/sources", {})
+
+    def run_consensus(self, round_id: str) -> dict:
+        if self.consensus_runner is None:
+            raise ValueError("controller-owned consensus is not configured")
+        return self.consensus_runner.tick(round_id)
+
     def __post_init__(self) -> None:
         try:
             configured_budget = Decimal(str(self.evaluation.configuration["weekly_budget_usd"]))
@@ -173,6 +195,10 @@ class CompetitionControllerInputs:
             or (record.get("incumbent_hotkey") is not None
                 and upload.get("hotkey") != record["incumbent_hotkey"])):
             raise ValueError("baseline upload differs from frozen round")
+        identity = (self.paper_inputs.backend.runtime_request(round_id, "/teams")
+                    if record.get("rules_public", {}).get("policy", {}).get("team_identity") == "linked" else None)
+        if identity:
+            upload = {**upload, "team_id": identity["team_by_hotkey"].get(upload["hotkey"], upload["team_id"])}
         return upload
 
     def reference_for_round(self, round_id: str) -> Mapping[str, Any]:

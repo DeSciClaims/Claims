@@ -24,6 +24,7 @@ from .sample_release import PaperRecord, frozen_pool_hash, sample_receipt
 from .round_schedule import schedule_for_round
 from .smoke_profile import smoke_profile
 from .round_evaluation import round_evaluation
+from .review_policy import review_policy
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -62,6 +63,7 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
             != snapshot.get("duplicate_review_sha256")):
         raise ValueError("replay snapshot differs from frozen round rules")
     rules = snapshot["rules_public"]
+    review_policy(snapshot)
     profile = smoke_profile(snapshot)
     evaluation = round_evaluation(snapshot)
     if rules.get("schema_version") != "claims_competition_rules_v1":
@@ -429,6 +431,7 @@ class CompetitionReplayInputs:
             or any(not isinstance(hotkey, str) or not hotkey for hotkey in finalist_hotkeys)):
             raise ValueError("replay Gold tally needs distinct finalists")
         review = self.closed_gold_review(round_id, verify_signature=verify_signature)
+        policy = review_policy(self.snapshot(round_id))
         teams = {row["voter_hotkey"]: row["team_id"] for row in review["voters"]}
         by_case: dict[str, list[GoldVote]] = {
             row["case_id"]: [] for row in review["cases"]
@@ -447,6 +450,7 @@ class CompetitionReplayInputs:
             )
             decision = decide_gold_case(
                 case, by_case[case.case_id], qualified_team_by_hotkey=teams,
+                quorum=policy.vote_quorum, agreement_percent=policy.agreement_percent,
             )
             decisions[case.case_id] = asdict(decision)
             if "check" in row["review_purposes"]:
@@ -456,7 +460,8 @@ class CompetitionReplayInputs:
         return {
             "round_id": round_id,
             "case_decisions": decisions,
-            "gold_by_hotkey": {hotkey: asdict(gold_result(rows))
+            "gold_by_hotkey": {hotkey: asdict(gold_result(rows, min_decided=policy.check_min_decided,
+                                                         refusal_percent=policy.check_refusal_percent))
                                for hotkey, rows in sorted(checks.items())},
         }
 

@@ -43,10 +43,32 @@
       "mode": "testnet_smoke",
       "required_challengers": 5,
       "stages": [
-        {"name": "prescreen", "papers": 2, "advance_top": 3, "max_per_team": 1},
-        {"name": "final", "papers": 5}
+        {
+          "name": "prescreen",
+          "papers": 2,
+          "advance_top": 3,
+          "max_per_team": 1
+        },
+        {
+          "name": "final",
+          "papers": 5
+        }
       ],
-      "gold_known_answers": 1
+      "gold_known_answers": 2
+    },
+    "consensus": {
+      "schema_version": "claims_competition_consensus_v1",
+      "reviewers_per_round": 4,
+      "vote_quorum": 3,
+      "agreement_percent": 75,
+      "genuine_cases_per_round": 2,
+      "synthetic_cases_per_bucket": 1,
+      "response_deadline_seconds": 180,
+      "check_sample_size": 4,
+      "check_min_decided": 4,
+      "check_refusal_percent": 75,
+      "escalation_limit": 16,
+      "controlled_test_accounts": []
     }
   },
   "configuration_spec": {
@@ -65,12 +87,24 @@
       "timeout_seconds": 180,
       "max_in_flight": 16,
       "J1": [
-        {"model": "qwen/qwen3-32b", "provider_slug": "REPLACE_PROVIDER_A"},
-        {"model": "openai/gpt-oss-120b", "provider_slug": "REPLACE_PROVIDER_B"}
+        {
+          "model": "qwen/qwen3-32b",
+          "provider_slug": "REPLACE_PROVIDER_A"
+        },
+        {
+          "model": "openai/gpt-oss-120b",
+          "provider_slug": "REPLACE_PROVIDER_B"
+        }
       ],
       "J2": [
-        {"model": "deepseek/deepseek-v3.2", "provider_slug": "REPLACE_PROVIDER_C"},
-        {"model": "meta-llama/llama-4-maverick", "provider_slug": "REPLACE_PROVIDER_D"}
+        {
+          "model": "deepseek/deepseek-v3.2",
+          "provider_slug": "REPLACE_PROVIDER_C"
+        },
+        {
+          "model": "meta-llama/llama-4-maverick",
+          "provider_slug": "REPLACE_PROVIDER_D"
+        }
       ],
       "tiebreak": {
         "model": "qwen/qwen3-235b-a22b-2507",
@@ -78,7 +112,9 @@
       }
     },
     "worker_policy": {
-      "allowed_models": ["qwen/qwen3-32b"],
+      "allowed_models": [
+        "qwen/qwen3-32b"
+      ],
       "published_token_ceiling": 100000,
       "dollar_limit_usd": "1",
       "max_inference_output_tokens": 8192,
