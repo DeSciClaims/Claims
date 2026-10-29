@@ -41,3 +41,28 @@ def test_stage_jobs_include_baseline_but_never_enqueue_later_papers():
     assert len(jobs) == 2
     assert {job["paper_id"] for job in jobs} == {"screen-paper"}
     assert {job["hotkey"] for job in jobs} == {"challenger", "incumbent"}
+
+
+def test_week_one_runs_reference_once_per_paper_for_all_challengers():
+    papers = ["paper-1", "paper-2"]
+    jobs = build_jobs(
+        round_id="launch", stage="week_one", configuration_sha256="c" * 64,
+        selected=[
+            {"hotkey": "reference", "package_sha256": "f" * 64, "role": "reference"},
+            *(
+                {"hotkey": f"miner-{index}", "package_sha256": f"{index}" * 64,
+                 "role": "challenger"}
+                for index in range(1, 6)
+            ),
+        ],
+        sample=[{"stage": "week_one", "paper_id": paper_id} for paper_id in papers],
+    )
+
+    assert len(jobs) == len(papers) * 6
+    for paper_id in papers:
+        paper_jobs = [job for job in jobs if job["paper_id"] == paper_id]
+        assert len([job for job in paper_jobs if job["hotkey"] == "reference"]) == 1
+        assert {job["hotkey"] for job in paper_jobs} == {
+            "reference", *(f"miner-{index}" for index in range(1, 6)),
+        }
+        assert len({job["job_id"] for job in paper_jobs}) == 6

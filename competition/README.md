@@ -110,6 +110,9 @@ weekly dollar budget can fund the declared final count after the duplicate
 draw, using the proposal's pre-screen, screen, and final cost formula. A budget
 that cannot fund the declared final fails before release.
 With one or two challengers, the single stage is capped at 1,000 papers.
+For each sampled paper, the controller schedules one reference or incumbent
+extraction job and reuses its completed artifact for every challenger on that
+paper. It never reruns the baseline separately for each comparison.
 Each paper job has one retry after an expired lease or a reported
 infrastructure fault. A second failure is terminal; scoring drops the affected
 paper for every package. A stale worker cannot complete it, and each attempt
