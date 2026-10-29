@@ -28,10 +28,8 @@
     "schedule": {
       "mode": "custom",
       "reveal_delay_blocks": 1,
-      "gold_close_at": "2026-10-29T13:00:00+00:00",
       "publish_at": "2026-10-29T13:05:00+00:00",
-      "production_activate_at": "2026-10-29T13:10:00+00:00",
-      "replay_gold_window_seconds": 60
+      "production_activate_at": "2026-10-29T13:10:00+00:00"
     },
     "duplicate_verdict_public_at": "2026-10-29T12:05:00+00:00",
     "duplicate_dispute_window": {
@@ -53,23 +51,9 @@
           "name": "final",
           "papers": 5
         }
-      ],
-      "gold_known_answers": 2
+      ]
     },
-    "consensus": {
-      "schema_version": "claims_competition_consensus_v1",
-      "reviewers_per_round": 4,
-      "vote_quorum": 3,
-      "agreement_percent": 75,
-      "genuine_cases_per_round": 2,
-      "synthetic_cases_per_bucket": 1,
-      "response_deadline_seconds": 180,
-      "check_sample_size": 4,
-      "check_min_decided": 4,
-      "check_refusal_percent": 75,
-      "escalation_limit": 16,
-      "controlled_test_accounts": []
-    }
+    "winner_selection": "silver_tiebreak"
   },
   "configuration_spec": {
     "weekly_budget_usd": 10,

@@ -47,8 +47,9 @@ def round_evaluation(record: Mapping[str, Any]) -> RoundEvaluation | None:
     if raw is None:
         return None
     if (not isinstance(raw, dict)
-        or set(raw) != {"schema_version", "mode", "stages",
-                        "gold_known_answers", "required_challengers"}
+        or set(raw) != ({"schema_version", "mode", "stages", "required_challengers"}
+                        | ({"gold_known_answers"} if "gold_known_answers" in raw else set()))
+        or ("gold_known_answers" not in raw and policy.get("winner_selection") != "silver_tiebreak")
         or raw["schema_version"] != SCHEMA_VERSION
         or raw["mode"] not in {"testnet_smoke", "production"}
         or (raw["mode"] == "testnet_smoke" and
@@ -106,12 +107,12 @@ def round_evaluation(record: Mapping[str, Any]) -> RoundEvaluation | None:
                    ((12, 2) if stage.name == "prescreen" else (3, 1))
                    for stage in stages if stage.name in {"prescreen", "screen"})):
             raise ValueError("production evaluation plan violates published minimums")
-    known = raw["gold_known_answers"]
+    known = raw.get("gold_known_answers", 0)
     required = raw["required_challengers"]
-    if (type(known) is not int or not 1 <= known <= (500 if raw["mode"] == "production" else 40)
+    if (type(known) is not int or not (0 if policy.get("winner_selection") == "silver_tiebreak" else 1) <= known <= (500 if raw["mode"] == "production" else 40)
         or type(required) is not int or not 1 <= required <= 20
         or sum(stage.papers for stage in stages) > (10000 if raw["mode"] == "production" else 1000)
-        or (raw["mode"] == "production" and (known < 40 or required != 1))):
+        or (raw["mode"] == "production" and ((known < 40 and policy.get("winner_selection") != "silver_tiebreak") or required != 1))):
         raise ValueError("evaluation Gold or entrant count is invalid")
     return RoundEvaluation(tuple(stages), known, required)
 

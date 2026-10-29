@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from bittensor_wallet import Keypair
 
 from competition.final_selection import FinalSelection, FinalistVerdict
@@ -9,7 +11,8 @@ from competition.publication import canonical_sha256
 from competition.replay_finalizer import finalize_replay
 
 
-def test_replay_finalizer_waits_then_signs_own_gold_and_vector(monkeypatch):
+@pytest.mark.parametrize("reviewed", [True, False])
+def test_replay_finalizer_waits_then_signs_own_gold_and_vector(monkeypatch, reviewed):
     signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
     review = {"round_id": "week-1", "stage": "week_one", "cases": []}
     tally = {
@@ -68,6 +71,10 @@ def test_replay_finalizer_waits_then_signs_own_gold_and_vector(monkeypatch):
         inputs=SimpleNamespace(qualification_evidence=qualification),
         freeze_replay_publication=lambda _, receipt, **__: seen.update(receipt=receipt),
     )
+    if not reviewed:
+        backend.snapshot["rules_public"]["policy"] = {"winner_selection": "silver_tiebreak"}
+        backend.get_gold_review = lambda _: pytest.fail("Silver-only replay must not read votes")
+        tally["gold_by_hotkey"] = {}
     publisher = SimpleNamespace(
         primary_published=lambda _: seen["ready"],
         publish=lambda _, receipt, **__: seen["published"].append(receipt),
@@ -86,13 +93,20 @@ def test_replay_finalizer_waits_then_signs_own_gold_and_vector(monkeypatch):
     seen["ready"] = True
     first = finalize_replay("week-1", **params)
     assert first["status"] == "independent_published"
-    assert seen["selected"]["gold_review"] is review
-    assert seen["selected"]["gold_by_hotkey"]["miner-1"].refusal is False
+    assert seen["selected"]["gold_review"] is (review if reviewed else None)
+    if reviewed:
+        assert seen["selected"]["gold_by_hotkey"]["miner-1"].refusal is False
+    else:
+        assert seen["selected"]["gold_by_hotkey"] == {}
+        assert seen["receipt"]["bundle"]["gold_policy_id"] == "silver-tiebreak-v1"
     assert seen["receipt"]["bundle"]["weights"]["vector"] == [
         {"uid": 0, "weight": 0.03}, {"uid": 1, "weight": 0.9},
         {"uid": 2, "weight": 0.07},
     ]
     assert seen["receipt"]["bundle"]["gold_adjusted_pairs_sha256"] == canonical_sha256(pairs)
-    assert seen["receipt"]["bundle"]["results"]["gold"]["miner-1"]["refusal"] is False
+    if reviewed:
+        assert seen["receipt"]["bundle"]["results"]["gold"]["miner-1"]["refusal"] is False
+    else:
+        assert seen["receipt"]["bundle"]["results"]["gold"] == {}
     assert finalize_replay("week-1", **params) == first
     assert len(seen["published"]) == 2

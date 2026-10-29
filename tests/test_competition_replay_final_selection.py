@@ -138,3 +138,14 @@ def test_replay_selection_uses_own_closed_escalation(monkeypatch):
             "week-1", backend=backend, gold_by_hotkey=GOLD,
             gold_review=review, case_decisions={},
         )
+
+
+def test_silver_only_replay_and_primary_select_from_unchanged_judge_scores():
+    backend = LocalFinal()
+    backend.record.update(status="final", rules_public={"policy": {"winner_selection": "silver_tiebreak"}})
+    selected = select_replay_final("week-1", backend=backend, gold_by_hotkey={})
+    assert selected.production_hotkey == "miner-1"
+    assert selected == select_ready_final("week-1", backend=backend,
+        code_passed_by_hotkey={"miner-1": True}, copy_by_hotkey={"miner-1": False}, gold_by_hotkey={})
+    with pytest.raises(ValueError, match="cannot use miner review"):
+        select_replay_final("week-1", backend=backend, gold_by_hotkey=GOLD)

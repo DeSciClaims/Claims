@@ -8,6 +8,7 @@ from typing import Any, Callable, Mapping, Protocol
 from .gold_controller import contested_claims_for_paper
 from .pair_evaluator import WeeklyPaperEvaluation
 from .publication import canonical_sha256
+from .review_policy import uses_miner_review
 
 
 class ScoringBackend(Protocol):
@@ -128,7 +129,7 @@ def score_ready_paper(
             pairs = list(evaluation.pair_rows)
             scores_by_hotkey = {row.miner_id: row.score for row in evaluation.pipeline.scores}
             gold_candidates = []
-            if scoring_stage in {"final", "week_one"}:
+            if scoring_stage in {"final", "week_one"} and uses_miner_review(round_record):
                 gold_candidates = [{
                     "case": {
                         "case_id": claim.case.case_id,
@@ -142,19 +143,19 @@ def score_ready_paper(
                 } for claim in contested_claims_for_paper(round_id, evaluation, entries)]
             silver = {
                 "silver_record": evaluation.pipeline.silver_record.model_dump(mode="json"),
+                "bronze_candidates": [row.model_dump(mode="json") for row in getattr(evaluation.pipeline, "bronze_candidates", [])],
                 "diff_cases": [row.model_dump(mode="json") for row in evaluation.pipeline.diff_cases],
                 "adjudication_consensus": [row.model_dump(mode="json")
                                            for row in evaluation.pipeline.adjudication_consensus],
                 "gold_candidates": gold_candidates,
-            }
-            if scoring_stage in {"final", "week_one"}:
-                silver["miner_submissions"] = [{
+                "adjudication_decisions": [row.model_dump(mode="json")
+                    for row in getattr(evaluation.pipeline, "adjudication_decisions", [])],
+                "miner_submissions": [{
                     "miner_id": submission.miner_id,
-                    "candidates": [candidate.model_dump(mode="json")
-                                   for candidate in submission.candidates],
-                    "normal_findings": [finding.model_dump(mode="json")
-                                        for finding in submission.normal_findings],
-                } for submission in evaluation.pipeline.miner_submissions]
+                    "candidates": [candidate.model_dump(mode="json") for candidate in submission.candidates],
+                    "normal_findings": [finding.model_dump(mode="json") for finding in submission.normal_findings],
+                } for submission in getattr(evaluation.pipeline, "miner_submissions", [])],
+            }
         if (len(pairs) != len(challengers)
             or {row["challenger_hotkey"] for row in pairs} != {row["hotkey"] for row in challengers}
             or any(row["paper_id"] != paper_id
@@ -184,10 +185,10 @@ def score_ready_paper(
                   "judge_usage": (list(getattr(evaluation, "judge_usage_events", None))
                                   if not infrastructure_fault
                                   and getattr(evaluation, "judge_usage_events", None) is not None else None)}
-        frozen = backend.freeze_paper_evaluation(
-            round_id, stage, paper_id, input_sha256=input_sha256, result_private=result,
-        )
-        result = frozen["result_private"]
+    frozen = backend.freeze_paper_evaluation(
+        round_id, stage, paper_id, input_sha256=input_sha256, result_private=result,
+    )
+    result = frozen["result_private"]
     for item in result["scores"]:
         backend.record_score(item["job_id"], item["score"])
     for pair in result["pairs"]:

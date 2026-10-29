@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from .gold import GoldResult, VoteDecision
+from .review_policy import uses_miner_review
 from .publication import canonical_sha256
 from .replay_final_selection import select_replay_final
 from .replay_publication import (
@@ -32,8 +33,9 @@ def finalize_replay(
         publication_client.publish(round_id, prior, verify_signature=verify_signature)
         return {"status": "independent_published",
                 "bundle_sha256": prior["bundle_sha256"]}
-    review = backend.get_gold_review(round_id)
-    if (not isinstance(review, dict) or review.get("round_id") != round_id
+    reviewed = uses_miner_review(backend.snapshot)
+    review = backend.get_gold_review(round_id) if reviewed else None
+    if reviewed and (not isinstance(review, dict) or review.get("round_id") != round_id
         or tally.get("review_sha256") != canonical_sha256(review)):
         raise ValueError("replay final lacks its own closed Gold review")
     try:
@@ -89,12 +91,12 @@ def finalize_replay(
     }
     bundle = replay_publication_bundle(
         round_id, backend=backend, selection=selection, weight_plan=weights,
-        gold_policy_id="independent-gold-v1",
+        gold_policy_id="independent-gold-v1" if reviewed else "silver-tiebreak-v1",
         gold_evidence_sha256=tally["evidence_sha256"],
         qualification_evidence_sha256=canonical_sha256(qualification),
         gold_by_hotkey=gold,
         case_decisions_sha256=canonical_sha256(tally["case_decisions"]),
-        allow_gold_adjustments=True,
+        allow_gold_adjustments=reviewed,
     )
     receipt = sign_replay_publication(bundle, signer)
     backend.freeze_replay_publication(

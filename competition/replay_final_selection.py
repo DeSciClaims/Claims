@@ -8,6 +8,7 @@ from typing import Any, Mapping
 from .failure_policy import ReferenceFallbackRequired, incumbent_failure_summary
 from .final_selection import FinalSelection, Finalist, select_final_production
 from .final_stage import effective_final_stage
+from .review_policy import uses_miner_review
 from .gold import GoldResult, VoteDecision
 from .gold_override import rescore_final_paper_from_escalations
 from .policy import PaperPairScore
@@ -59,9 +60,12 @@ def select_replay_final(
                or type(security[hotkey].get("passed")) is not bool
                for hotkey in finalist_hotkeys)):
         raise ValueError("replay final audit is incomplete or unsafe")
-    if set(gold_by_hotkey) != finalist_hotkeys or any(
-        not isinstance(gold_by_hotkey[hotkey], GoldResult)
-        for hotkey in finalist_hotkeys
+    reviewed = uses_miner_review(getattr(backend, "snapshot", record))
+    if not reviewed and (gold_by_hotkey or gold_review is not None or case_decisions):
+        raise ValueError("Silver-only replay cannot use miner review")
+    if (reviewed and set(gold_by_hotkey) != finalist_hotkeys) or any(
+        not isinstance(value, GoldResult)
+        for value in gold_by_hotkey.values()
     ):
         raise ValueError("replay Gold outcome must cover each local finalist")
     papers = [row["paper_id"] for row in backend.list_sample(round_id)
@@ -151,7 +155,7 @@ def select_replay_final(
                 grid[(paper_id, hotkey)]["baseline_score"], faults[paper_id],
             ) for paper_id in papers),
             code[hotkey] and security[hotkey]["passed"],
-            copy[hotkey]["is_copy"], gold_by_hotkey[hotkey].refusal,
+            copy[hotkey]["is_copy"], (gold_by_hotkey[hotkey].refusal if hotkey in gold_by_hotkey else False),
         ))
     selection = select_final_production(
         finalists,

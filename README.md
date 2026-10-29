@@ -7,7 +7,7 @@ Claims is a Bittensor competition for extracting scientific claims and their sup
 1. Read the [current round rules](https://dashboard.claims111.ai/competition) for the submission deadline, permitted models, budgets, evaluation stages, and reward policy.
 2. Build a Python wheel or source archive with an entrypoint that accepts `--request` and `--output` and writes an `agent_v1` artifact. The [sample miner package](https://github.com/DeSciClaims/claims-miner-package) provides a working extraction pipeline and manifest.
 3. Submit the package through the [hotkey-signed upload service](https://artifacts.claims111.ai/docs). The package is stored privately, verified against its SHA-256, and bound to the submitting hotkey. Publish the [package commitment and manifest ID](./docs/submission.md) on Bittensor before the deadline.
-4. After intake locks, Claims releases the randomly selected evaluation papers. The controller runs eligible packages, scores the outputs, completes Gold review, and publishes the results and weight vector. Follow the [competition dashboard](https://dashboard.claims111.ai/competition) for each round's progress and receipts.
+4. After intake locks, Claims releases the randomly selected evaluation papers. The controller runs eligible packages, scores the outputs with the Silver judges and tiebreak, and publishes the results and weight vector. Follow the [competition dashboard](https://dashboard.claims111.ai/competition) for each round's progress and receipts.
 
 Miner source is submitted with the package for private execution and review. Public round rules, sample, scores, and signed results make the evaluation inspectable without publishing competitors' code.
 

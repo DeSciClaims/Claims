@@ -12,6 +12,7 @@ from .gold import GoldResult
 from .gold_controller import closed_gold_decisions
 from .gold_override import rescore_final_paper_from_escalations
 from .policy import PaperPairScore
+from .review_policy import uses_miner_review
 
 
 class FinalBackend(Protocol):
@@ -36,6 +37,8 @@ def select_ready_final(
     round_record = backend.get_round(round_id)
     if round_record["status"] not in {"final", "gold_closed"}:
         raise ValueError("final round has not finished evaluation or Gold voting")
+    if not uses_miner_review(round_record) and gold_by_hotkey:
+        raise ValueError("Silver-only selection cannot use miner review results")
     ledgers = backend.list_stages(round_id)
     stage = effective_final_stage(ledgers)
     entries = ledgers[-1]["entries"]

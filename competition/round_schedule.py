@@ -33,6 +33,7 @@ def schedule_for_round(record: Mapping[str, Any]) -> RoundSchedule:
     deadline = _utc(record["deadline_at"], "competition deadline")
     rules = record.get("rules_public") or {}
     policy = rules.get("policy") or {}
+    silver_only = policy.get("winner_selection") == "silver_tiebreak"
     custom = policy.get("schedule")
     if custom is None:
         if (deadline.weekday(), deadline.hour, deadline.minute, deadline.second,
@@ -44,8 +45,8 @@ def schedule_for_round(record: Mapping[str, Any]) -> RoundSchedule:
             deadline + timedelta(days=7, hours=-3), False,
         )
     if (record.get("network") not in {"mainnet", "testnet"} or not isinstance(custom, dict)
-        or not {"mode", "reveal_delay_blocks", "gold_close_at", "publish_at",
-                "production_activate_at"} <= set(custom)
+        or not ({"mode", "reveal_delay_blocks", "publish_at", "production_activate_at"}
+                | (set() if silver_only else {"gold_close_at"})) <= set(custom)
         or set(custom) - {
             "mode", "reveal_delay_blocks", "gold_close_at", "publish_at",
             "production_activate_at", "replay_gold_window_seconds",
@@ -57,10 +58,10 @@ def schedule_for_round(record: Mapping[str, Any]) -> RoundSchedule:
     replay_window = custom.get("replay_gold_window_seconds", 86400)
     if type(replay_window) is not int or not 60 <= replay_window <= 86400:
         raise ValueError("custom replay Gold window must be 60 to 86400 seconds")
-    gold_close = _utc(custom["gold_close_at"], "Gold close")
     publish_at = _utc(custom["publish_at"], "publication")
+    gold_close = publish_at if silver_only else _utc(custom["gold_close_at"], "Gold close")
     activate_at = _utc(custom["production_activate_at"], "production activation")
-    if not deadline < gold_close < publish_at < activate_at:
+    if not (deadline < publish_at < activate_at and (silver_only or deadline < gold_close < publish_at)):
         raise ValueError("custom schedule gates are out of order")
     return RoundSchedule(deadline, delay, gold_close, publish_at,
                          activate_at, True, replay_window)

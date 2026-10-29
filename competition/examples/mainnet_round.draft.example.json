@@ -57,23 +57,9 @@
           "name": "final",
           "papers": 500
         }
-      ],
-      "gold_known_answers": 40
+      ]
     },
-    "consensus": {
-      "schema_version": "claims_competition_consensus_v1",
-      "reviewers_per_round": 20,
-      "vote_quorum": 11,
-      "agreement_percent": 75,
-      "genuine_cases_per_round": 100,
-      "synthetic_cases_per_bucket": 50,
-      "response_deadline_seconds": 1800,
-      "check_sample_size": 300,
-      "check_min_decided": 60,
-      "check_refusal_percent": 75,
-      "escalation_limit": 1700,
-      "controlled_test_accounts": []
-    }
+    "winner_selection": "silver_tiebreak"
   },
   "configuration_spec": {
     "weekly_budget_usd": 690,

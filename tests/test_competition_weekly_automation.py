@@ -10,6 +10,40 @@ from competition.weekly_automation import FinalAudit, tick_round
 DEADLINE = datetime(2026, 10, 26, 12, tzinfo=UTC)
 
 
+def test_silver_only_round_publishes_without_review_even_after_old_gold_cutoff(monkeypatch):
+    record = {**_round("final"), "network": "testnet", "rules_public": {"policy": {
+        "winner_selection": "silver_tiebreak",
+        "schedule": {"mode": "custom", "reveal_delay_blocks": 1,
+                     "publish_at": (DEADLINE + timedelta(minutes=20)).isoformat(),
+                     "production_activate_at": (DEADLINE + timedelta(minutes=30)).isoformat()},
+    }}}
+    backend = SimpleNamespace(
+        get_round=lambda _: record,
+        list_stages=lambda _: [{"stage": "week_one", "entries": [
+            {"hotkey": "ref", "role": "reference"}, {"hotkey": "miner", "role": "challenger"}]}],
+        list_sample=lambda _: [{"stage": "week_one", "paper_id": "paper"}],
+        list_stage_pairs=lambda *_: [{"paper_id": "paper", "challenger_hotkey": "miner", "infrastructure_fault": False}],
+    )
+    inputs = SimpleNamespace(signer=object(), operator_hotkey="operator", final_audit=lambda _: FinalAudit(
+        {"miner": True}, {"miner": True}, {"miner": 2}, None, {"miner": 0}, "a" * 64))
+    monkeypatch.setattr("competition.weekly_automation.advance_ready_stage", lambda *_, **__: {"status": "final_running"})
+    for name in ("prepare_frozen_gold_review", "tally_closed_gold_review", "build_known_answer_challenges"):
+        monkeypatch.setattr("competition.weekly_automation." + name, lambda *_, **__: pytest.fail("no miner review"))
+    monkeypatch.setattr("competition.weekly_automation.audit_final_output_copies", lambda *_, **__: {"miner": {"is_copy": False}})
+    monkeypatch.setattr("competition.weekly_automation.audit_final_worker_security", lambda *_, **__: {"miner": {"passed": True}, "ref": {"passed": True}})
+    def select(*_, **kwargs):
+        assert kwargs["gold_by_hotkey"] == {}
+        return object()
+    def publish(*_, **kwargs):
+        assert kwargs["gold_by_hotkey"] == {}
+        assert kwargs["gold_check"] is None and kwargs["known_answer_audit"] is None
+        return {"bundle_sha256": "b" * 64}
+    monkeypatch.setattr("competition.weekly_automation.select_ready_final", select)
+    monkeypatch.setattr("competition.weekly_automation.publish_selected_round", publish)
+    assert tick_round("round", backend=backend, inputs=inputs, now=DEADLINE + timedelta(minutes=19))["status"] == "waiting_for_publication"
+    assert tick_round("round", backend=backend, inputs=inputs, now=DEADLINE + timedelta(minutes=25))["status"] == "published"
+
+
 def _round(status):
     return {"status": status, "deadline_at": DEADLINE.isoformat(),
             "reveal_block": 700, "drand_seed": "a" * 64,

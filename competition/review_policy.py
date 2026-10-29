@@ -6,7 +6,6 @@ without this object keep their original limits.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
@@ -59,6 +58,12 @@ class ReviewPolicy:
 
 def review_policy(record: Mapping[str, Any]) -> ReviewPolicy:
     policy = (record.get("rules_public") or {}).get("policy") or {}
+    if "test_participants" in policy:
+        raise ValueError("funding exceptions are configured by the backend, not round rules")
+    if policy.get("winner_selection") not in (None, "silver_tiebreak"):
+        raise ValueError("unknown competition winner selection policy")
+    if not uses_miner_review(record) and policy.get("review_execution") is not None:
+        raise ValueError("Silver-only selection does not run competition review")
     if policy.get("team_identity") not in (None, "linked"):
         raise ValueError("unknown competition team identity policy")
     if policy.get("review_execution") not in (None, "controller"):
@@ -116,27 +121,9 @@ def review_policy(record: Mapping[str, Any]) -> ReviewPolicy:
     ):
         raise ValueError("competition consensus thresholds exceed their sample")
     accounts = raw["controlled_test_accounts"]
-    if not isinstance(accounts, list) or len(accounts) > 256:
-        raise ValueError("controlled test accounts must be a bounded public list")
-    seen_hotkeys, seen_coldkeys = set(), set()
+    if accounts != []:
+        raise ValueError("controlled funding exceptions are configured by the backend, not round rules")
     controlled = []
-    for row in accounts:
-        if (
-            not isinstance(row, dict)
-            or set(row) != {"hotkey", "coldkey", "team_id"}
-            or any(not isinstance(row[key], str) for key in row)
-            or any(
-                not re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{47,49}", row[key])
-                for key in ("hotkey", "coldkey")
-            )
-            or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", row["team_id"])
-            or row["hotkey"] in seen_hotkeys
-            or row["coldkey"] in seen_coldkeys
-        ):
-            raise ValueError("controlled test account identity is invalid or repeated")
-        seen_hotkeys.add(row["hotkey"])
-        seen_coldkeys.add(row["coldkey"])
-        controlled.append(ControlledTestAccount(**row))
     evaluation, schedule = policy.get("evaluation") or {}, policy.get("schedule") or {}
     smoke = (
         record.get("network") == "testnet"
@@ -167,3 +154,10 @@ def review_policy(record: Mapping[str, Any]) -> ReviewPolicy:
             "reduced consensus rules and controlled accounts require a testnet smoke round"
         )
     return ReviewPolicy(**values, controlled_test_accounts=tuple(controlled))
+
+
+def uses_miner_review(record: Mapping[str, Any]) -> bool:
+    """Historical signed rounds retain their policy; new rounds use Silver only."""
+    return ((record.get("rules_public") or {}).get("policy") or {}).get(
+        "winner_selection"
+    ) != "silver_tiebreak"

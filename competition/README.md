@@ -1,7 +1,32 @@
 # Weekly competition controller components
 
+## Selection and asynchronous consensus
+
+Current round configs set `policy.winner_selection: silver_tiebreak`. The
+primary judge pair and tiebreak determine final Silver scores. The normal
+statistical improvement, code, copy, team and security rules still select the
+production package. Miner votes do not change these scores or veto selection.
+The controller publishes at the frozen publication time once evaluation and
+audits are complete; it does not run or wait for consensus rounds.
+
+The backend exports frozen competition evaluations to the ordinary
+`silver_records`, `adjudication_cases`, `adjudication_votes`,
+`adjudication_consensus` and `adjudication_decisions` tables, with namespaced
+IDs and the competition round/stage as provenance. Once a stage is exported,
+it enqueues a standard materialization job under `weekly:<round_id>:<stage>`.
+The existing materializer, preparer and consensus validator consume that job.
+They use the ordinary review policy and exclude the producing teams. These
+review results appear on the Consensus page and never feed back into weekly
+selection. Per-miner competition jobs, pair scores and signed receipts remain
+in their dedicated competition tables.
+
+No Gold bank, voting window, or crown-check configuration is needed for new
+rounds. The Gold and controller-owned review APIs described below remain only
+for replaying historical rounds whose signed rules enabled those mechanisms.
+New configurations must not set `review_execution`.
+
 The controller modules in this directory run outside untrusted miner workers.
-They lock submissions, release the sample, run and score paper jobs, tally Gold,
+They lock submissions, release the sample, run and score paper jobs,
 and sign the weekly publication. See the Team vault engineering plan for the
 round schedule and repository ownership.
 

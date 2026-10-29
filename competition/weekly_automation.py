@@ -23,6 +23,7 @@ from .gold_controller import (
 )
 from .intake_lock import ArchiveReader, CompetitionBackend
 from .paper_score_controller import score_ready_paper
+from .review_policy import uses_miner_review
 from .result_controller import publish_selected_round
 from .round_controller import lock_ready_round, reveal_selected_sample, start_revealed_round
 from .round_schedule import schedule_for_round
@@ -134,6 +135,9 @@ def _score_active_stage(
         )
         if failure.reference_required:
             raise ReferenceFallbackRequired(failure)
+    round_record = backend.get_round(round_id)
+    if not uses_miner_review(round_record):
+        return _publish_final(round_id, backend=backend, inputs=inputs, now=now)
     if now >= gold_close:
         return {"status": "missed_gold_window", "stage": stage}
     round_record = backend.get_round(round_id)
@@ -161,6 +165,67 @@ def _score_active_stage(
         return result
     return {"status": "gold_open", "stage": stage,
             "case_count": result["case_count"]}
+
+
+def _publish_final(
+    round_id: str, *, backend: CompetitionBackend,
+    inputs: TrustedRoundInputs, now: datetime,
+) -> dict[str, Any]:
+    round_record = backend.get_round(round_id)
+    publish_at = schedule_for_round(round_record).publish_at
+    if now < publish_at:
+        return {"status": "waiting_for_publication", "publish_at": publish_at.isoformat()}
+    reviewed = uses_miner_review(round_record)
+    gold = tally_closed_gold_review(round_id, backend=backend) if reviewed else {}
+    candidates = frozen_gold_candidates(round_id, backend=backend) if reviewed else []
+    check_ids = sorted(
+        row["case_id"] for row in (backend.list_gold_cases(round_id, include_answers=True) if reviewed else [])
+        if "check" in row["answer_private"].get("review_purposes", [])
+    )
+    audit = inputs.final_audit(round_id)
+    copy_audit = audit_final_output_copies(round_id, backend=backend)
+    security_audit = audit_final_worker_security(round_id, backend=backend)
+    baseline_hotkeys = [row["hotkey"] for row in backend.list_stages(round_id)[-1]["entries"]
+                        if row["role"] in {"incumbent", "reference"}]
+    if len(baseline_hotkeys) != 1 or not security_audit[baseline_hotkeys[0]]["passed"]:
+        raise ValueError("final baseline attempted denied egress; crown requires review")
+    try:
+        selection = select_ready_final(
+            round_id, backend=backend,
+            code_passed_by_hotkey={hotkey: passed and security_audit[hotkey]["passed"]
+                                   for hotkey, passed in audit.code_passed_by_hotkey.items()},
+            copy_by_hotkey={hotkey: row["is_copy"] for hotkey, row in copy_audit.items()},
+            gold_by_hotkey=gold,
+        )
+    except ReferenceFallbackRequired as exc:
+        return {"status": "reference_fallback_required",
+                "stage": exc.summary.stage,
+                "failed_papers": exc.summary.failed_papers,
+                "eligible_papers": exc.summary.eligible_papers}
+    receipt = publish_selected_round(
+        round_id, backend=backend, signer=inputs.signer, selection=selection,
+        operator_hotkey=inputs.operator_hotkey,
+        uid_by_hotkey=audit.uid_by_hotkey,
+        qualified_by_hotkey=audit.qualified_by_hotkey,
+        production_team_id=audit.production_team_id,
+        gold_by_hotkey=gold,
+        copy_audit=copy_audit,
+        worker_security_audit=security_audit,
+        code_audit={
+            "evidence_sha256": audit.code_evidence_sha256,
+            "failed_checks": dict(audit.code_failure_counts_by_hotkey),
+        },
+        gold_check={
+            "seed": round_record["gold_check_seed_private"],
+            "commitment": round_record["gold_check_commitment"],
+            "candidate_ids": sorted(candidate.case.case_id for candidate in candidates),
+            "case_ids": check_ids,
+        } if reviewed else None,
+        known_answer_audit=audit_closed_known_answers(
+            round_id, backend=backend, tiebreak_judge=inputs.judge_known_answer,
+        ) if reviewed else None,
+    )
+    return {"status": "published", "bundle_sha256": receipt["bundle_sha256"]}
 
 
 def tick_round(
@@ -230,58 +295,7 @@ def tick_round(
             return {"status": "waiting_for_gold_close", "close_at": gold_close.isoformat()}
         return backend.close_gold_voting(round_id)
     if status == "gold_closed":
-        if now < publish_at:
-            return {"status": "waiting_for_publication", "publish_at": publish_at.isoformat()}
-        gold = tally_closed_gold_review(round_id, backend=backend)
-        candidates = frozen_gold_candidates(round_id, backend=backend)
-        check_ids = sorted(
-            row["case_id"] for row in backend.list_gold_cases(round_id, include_answers=True)
-            if "check" in row["answer_private"].get("review_purposes", [])
-        )
-        audit = inputs.final_audit(round_id)
-        copy_audit = audit_final_output_copies(round_id, backend=backend)
-        security_audit = audit_final_worker_security(round_id, backend=backend)
-        baseline_hotkeys = [row["hotkey"] for row in backend.list_stages(round_id)[-1]["entries"]
-                            if row["role"] in {"incumbent", "reference"}]
-        if len(baseline_hotkeys) != 1 or not security_audit[baseline_hotkeys[0]]["passed"]:
-            raise ValueError("final baseline attempted denied egress; crown requires review")
-        try:
-            selection = select_ready_final(
-                round_id, backend=backend,
-                code_passed_by_hotkey={hotkey: passed and security_audit[hotkey]["passed"]
-                                       for hotkey, passed in audit.code_passed_by_hotkey.items()},
-                copy_by_hotkey={hotkey: row["is_copy"] for hotkey, row in copy_audit.items()},
-                gold_by_hotkey=gold,
-            )
-        except ReferenceFallbackRequired as exc:
-            return {"status": "reference_fallback_required",
-                    "stage": exc.summary.stage,
-                    "failed_papers": exc.summary.failed_papers,
-                    "eligible_papers": exc.summary.eligible_papers}
-        receipt = publish_selected_round(
-            round_id, backend=backend, signer=inputs.signer, selection=selection,
-            operator_hotkey=inputs.operator_hotkey,
-            uid_by_hotkey=audit.uid_by_hotkey,
-            qualified_by_hotkey=audit.qualified_by_hotkey,
-            production_team_id=audit.production_team_id,
-            gold_by_hotkey=gold,
-            copy_audit=copy_audit,
-            worker_security_audit=security_audit,
-            code_audit={
-                "evidence_sha256": audit.code_evidence_sha256,
-                "failed_checks": dict(audit.code_failure_counts_by_hotkey),
-            },
-            gold_check={
-                "seed": round_record["gold_check_seed_private"],
-                "commitment": round_record["gold_check_commitment"],
-                "candidate_ids": sorted(candidate.case.case_id for candidate in candidates),
-                "case_ids": check_ids,
-            },
-            known_answer_audit=audit_closed_known_answers(
-                round_id, backend=backend, tiebreak_judge=inputs.judge_known_answer,
-            ),
-        )
-        return {"status": "published", "bundle_sha256": receipt["bundle_sha256"]}
+        return _publish_final(round_id, backend=backend, inputs=inputs, now=now)
     if status == "published":
         return {"status": "already_published"}
     raise ValueError("round has an unknown competition status")

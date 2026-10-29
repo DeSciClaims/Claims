@@ -9,6 +9,7 @@ from typing import Any, Callable, Mapping
 from .final_selection import FinalSelection
 from .final_stage import effective_final_stage
 from .gold import GoldResult
+from .review_policy import uses_miner_review
 from .publication import canonical_sha256
 from .weights import WeightPlan
 
@@ -37,9 +38,11 @@ def replay_publication_bundle(
            for value in (gold_evidence_sha256, qualification_evidence_sha256,
                          case_decisions_sha256)):
         raise ValueError("replay publication lacks Gold or qualification evidence")
-    if (set(gold_by_hotkey) != {row.hotkey for row in selection.verdicts}
+    if (set(gold_by_hotkey) != ({row.hotkey for row in selection.verdicts} if uses_miner_review(snapshot) else set())
         or any(not isinstance(row, GoldResult) for row in gold_by_hotkey.values())):
         raise ValueError("replay publication lacks finalist Gold results")
+    if not uses_miner_review(snapshot) and allow_gold_adjustments:
+        raise ValueError("Silver-only replay cannot adjust frozen judge scores")
     stage = effective_final_stage(backend.list_stages(round_id))
     local_pairs = backend.list_stage_pairs(round_id, stage)
     adjusted_pairs = selection.final_pair_rows

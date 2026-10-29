@@ -33,6 +33,7 @@ from .replay_runtime import (
     initialize_replay_runtime,
 )
 from .replay_store import ReplayStore
+from .review_policy import uses_miner_review
 from .publication import canonical_sha256
 from .ssh_worker import RestrictedSshWorkerTransport
 from .smoke_profile import smoke_profile
@@ -136,6 +137,13 @@ class ReplayController:
                 round_id, backend=self.backend, fetch_package=self.packages,
                 code_policy=self.code_policy,
             )
+        if not uses_miner_review(self.backend.snapshot):
+            evidence = {"winner_selection": "silver_tiebreak", "round_id": round_id,
+                        "final_audit_sha256": canonical_sha256(frozen)}
+            return self._complete_gold(round_id, result["stage"], {
+                "gold_by_hotkey": {}, "case_decisions": {},
+                "evidence_sha256": canonical_sha256(evidence),
+            })
         if self.certified_gold_source is None:
             return {"status": "final_audit_complete", "stage": result["stage"],
                     "audit_sha256": canonical_sha256(frozen)}
