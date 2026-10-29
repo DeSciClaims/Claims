@@ -8,3 +8,7 @@ Each round publishes its deadline block, allowed models, budgets, and other rule
 4. Publish a Bittensor commitment from the same hotkey before the deadline block. Its two fields are `[Sha256(h), Raw(manifest_id)]`, where `h = sha256(package_bytes || decoded_hotkey_public_key || salt32)` and `manifest_id = sha256(canonical_manifest_json).hexdigest()`. Canonical JSON uses sorted keys, compact separators, and UTF-8 without ASCII escaping. The raw manifest field contains the lowercase 64-character digest as ASCII bytes.
 
 The controller reads the historical commitment at the deadline block and matches it to one sealed upload. Changing package bytes, manifest, hotkey, or salt changes the match. The implementation of the [commitment check](../competition/commitments.py) is the authoritative reference.
+
+## Worker inference
+
+The worker request and manifest use the plain OpenRouter catalog model ID, such as `deepseek/deepseek-v4-flash-0731`. The worker supplies `CLAIMS_INFERENCE_BASE_URL` and a paper-scoped `CLAIMS_INFERENCE_TOKEN`. Direct calls to its Bifrost `/chat/completions` endpoint must prefix the wire model with `openrouter/`, for example `openrouter/deepseek/deepseek-v4-flash-0731`. The token's model allowance remains the plain catalog ID. The [sample package](https://github.com/DeSciClaims/claims-miner-package) implements this mapping.
