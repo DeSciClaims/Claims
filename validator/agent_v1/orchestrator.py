@@ -108,6 +108,7 @@ def run_paper_silver_pipeline(
     | None = None,
     file_agent_workflow: FileAgentSilverWorkflow | None = None,
     decision_router: Callable[[AdjudicationContextBundle], AdjudicationConsensus | None] | None = None,
+    decision_max_workers: int = 1,
 ) -> PaperSilverPipelineResult:
     stage_timings: list[dict] = []
 
@@ -270,8 +271,9 @@ def run_paper_silver_pipeline(
         contexts = [adjudication_context(case) for case in cases]
         routed: dict[str, AdjudicationConsensus] = {}
         if allow_router and decision_router is not None and file_session is None:
-            for context in contexts:
-                decision = decision_router(context)
+            with ThreadPoolExecutor(max_workers=max(1, decision_max_workers)) as pool:
+                decisions = list(pool.map(decision_router, contexts))
+            for context, decision in zip(contexts, decisions):
                 if decision is not None:
                     if (decision.case_id != context.case.case_id
                         or decision.final_disposition is None

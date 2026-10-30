@@ -8,10 +8,12 @@ holds its own inference credential outside miner execution.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Callable, Mapping, Protocol
 
+from .execution_policy import execution_policy, pipelined_execution
 from .copy_audit import audit_final_output_copies
 from .drand import BlockClock
 from .failure_policy import ReferenceFallbackRequired, incumbent_failure_summary
@@ -95,7 +97,7 @@ def _score_active_stage(
               for row in backend.list_stage_pairs(round_id, stage)}
     if not papers or len({row["paper_id"] for row in papers}) != len(papers) or not scored <= expected:
         raise ValueError("stage score grid differs from released sample")
-    attempted = 0
+    ready = []
     for paper in papers:
         paper_id = paper["paper_id"]
         if all((paper_id, hotkey) in scored for hotkey in challengers):
@@ -105,12 +107,28 @@ def _score_active_stage(
             continue
         if any(job["status"] != "completed" for job in jobs):
             continue
-        score_ready_paper(
+        ready.append(paper_id)
+
+    def score(paper_id):
+        return score_ready_paper(
             round_id, stage, paper_id, backend=backend,
             bronze_artifact=inputs.bronze_for_paper(stage, paper_id),
             evaluate=inputs.evaluate_for_stage(scoring_stage),
         )
-        attempted += 1
+
+    attempted = 0
+    errors = []
+    limits = execution_policy(backend.get_round(round_id))
+    with ThreadPoolExecutor(max_workers=limits.scoring_max_workers) as pool:
+        for future in as_completed([pool.submit(score, paper_id) for paper_id in ready]):
+            try:
+                future.result()
+                attempted += 1
+            except Exception as exc:
+                # Other papers have already persisted their results.
+                errors.append(exc)
+    if errors:
+        raise errors[0]
     if scoring_stage in {"prescreen", "screen"}:
         result = advance_ready_stage(round_id, backend=backend, identity_preparer=identity_preparer)
         if result["status"] == "started":
@@ -268,7 +286,8 @@ def tick_round(
                 identity = inputs.prepare_identities(round_id)
                 if identity.get("status") == "waiting_for_team_review":
                     return identity
-        if round_record.get("rules_public", {}).get("policy", {}).get("bronze", {}).get("mode") == "after_reveal":
+        if (round_record.get("rules_public", {}).get("policy", {}).get("bronze", {}).get("mode") == "after_reveal"
+            and not pipelined_execution(round_record)):
             bronze = inputs.prepare_bronze(round_id)
             if bronze["status"] != "bronze_ready":
                 return bronze

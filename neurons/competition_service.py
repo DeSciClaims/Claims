@@ -15,7 +15,7 @@ import time
 from typing import Any
 
 from competition.intake_lock import CompetitionBackend
-from competition.service_loops import run_controller_cycle, run_worker_cycle
+from competition.service_loops import run_controller_cycle, run_worker_cycle, run_bronze_cycle
 
 
 def _factory(module_name: str) -> Any:
@@ -27,7 +27,7 @@ def _factory(module_name: str) -> Any:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--role", choices=("controller", "worker", "handoff", "production"), required=True)
+    parser.add_argument("--role", choices=("controller", "bronze", "worker", "handoff", "production"), required=True)
     parser.add_argument("--network", choices=("mainnet", "testnet"), required=True)
     parser.add_argument("--backend-url", required=True)
     parser.add_argument("--factory-module", required=True)
@@ -47,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         backend = CompetitionBackend(base_url=args.backend_url, controller_token=token)
         factory = _factory(args.factory_module)
-        callback_name = {"controller": "create_controller_inputs",
+        callback_name = {"controller": "create_controller_inputs", "bronze": "create_bronze_inputs",
                          "worker": "create_worker_coordinator",
                          "handoff": "create_handoff_service",
                          "production": "create_production_worker"}[args.role]
@@ -64,8 +64,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     while True:
         try:
-            if args.role == "controller":
-                results = run_controller_cycle(
+            if args.role in {"controller", "bronze"}:
+                cycle = run_controller_cycle if args.role == "controller" else run_bronze_cycle
+                results = cycle(
                     backend=backend, network=args.network,
                     inputs_for_round=lambda row: callback(row, backend),
                 )

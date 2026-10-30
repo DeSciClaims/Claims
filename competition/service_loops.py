@@ -13,6 +13,31 @@ from typing import Any, Callable, Mapping
 
 from .weekly_automation import tick_round
 from .worker_service import CompetitionWorkerCoordinator
+from .execution_policy import pipelined_execution
+
+
+def run_bronze_cycle(*, backend: Any, network: str, inputs_for_round: Callable) -> list[dict]:
+    """Independent trusted preparation: ready papers unblock workers immediately."""
+    results = []
+    for row in _pending(backend, network):
+        if row["status"] not in {"revealed", "screening", "final"}:
+            continue
+        record = backend.get_round(row["round_id"])
+        if (not pipelined_execution(record)
+            or record.get("rules_public", {}).get("policy", {}).get("bronze", {}).get("mode") != "after_reveal"):
+            continue
+        inputs = None
+        try:
+            inputs = inputs_for_round(row)
+            result = inputs.prepare_bronze(row["round_id"])
+            results.append({"round_id": row["round_id"], "status": _safe_status(result)})
+        except Exception as exc:
+            results.append({"round_id": row["round_id"], "status": "error",
+                            "error_type": type(exc).__name__})
+        finally:
+            if inputs is not None:
+                inputs.close()
+    return results
 
 
 def _safe_status(result: Mapping[str, Any]) -> str:

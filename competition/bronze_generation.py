@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import os
+from concurrent.futures import ThreadPoolExecutor
 import shlex
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from validator.agent_v1.reference_client import (
     ReferenceMinerInput,
 )
 from .pdf_fetch import TrustedPdfFetcher
+from .execution_policy import execution_policy
 
 
 def prepare_selected_bronze(
@@ -27,14 +29,18 @@ def prepare_selected_bronze(
     record = backend.get_round(round_id)
     if record["status"] in {"open", "locked"}:
         raise ValueError("Bronze generation cannot precede sample reveal")
-    selected = {row["paper_id"] for row in backend.list_sample(round_id)}
-    for paper_id in sorted(selected):
+    order = {"prescreen": 0, "screen": 1, "week_one": 2, "final": 2, "rerun": 3}
+    sample = sorted(backend.list_sample(round_id),
+                    key=lambda row: (order.get(row.get("stage"), 4), row.get("position", 0), row["paper_id"]))
+    selected = list(dict.fromkeys(row["paper_id"] for row in sample))
+
+    def generate(paper_id):
         suffix = "/bronze/" + quote(paper_id, safe="")
         lease = backend.runtime_request(
             round_id, suffix + "/claim", {"worker_id": worker_id}
         )
         if lease["status"] == "completed":
-            continue
+            return None
         if lease["status"] != "claimed":
             return {"status": "waiting_for_bronze", "paper_id": paper_id}
         paper = lease["paper"]
@@ -116,7 +122,13 @@ def prepare_selected_bronze(
                 "full_source_id": "",
             },
         )
-    return {"status": "bronze_ready", "papers": len(selected)}
+        return None
+
+    # Durable per-paper leases let workers consume ready Bronze immediately.
+    with ThreadPoolExecutor(max_workers=execution_policy(record).bronze_max_workers) as pool:
+        results = list(pool.map(generate, selected))
+    waiting = next((result for result in results if result is not None), None)
+    return waiting or {"status": "bronze_ready", "papers": len(selected)}
 
 
 def configured_bronze_preparer(backend: Any, client: Any, s3_client: Any):

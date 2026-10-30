@@ -151,3 +151,34 @@ def test_early_stage_routes_singleton_without_invoking_judges():
     )
     assert any(row.route == "decision_model" for row in result.pipeline.adjudication_consensus)
     assert len(calls) == 1
+
+
+def test_independent_decisions_run_concurrently_without_changing_case_order():
+    from threading import Barrier
+    barrier = Barrier(2, timeout=3)
+
+    def post(_url, **kwargs):
+        candidate = kwargs["json"]["questions"][0]["choices"][0]["value"]
+        barrier.wait()
+        return type("Response", (), {
+            "raise_for_status": lambda self: None,
+            "json": lambda self: {"answers": [{"type": "choice", "name": "supported_candidate",
+                "choice": candidate, "confidence": 0.95, "probabilities": [
+                    {"value": candidate, "probability": 0.95}, {"value": "neither", "probability": 0.05}]}]},
+        })()
+
+    def artifact(claims):
+        return {"paper": {"paper_id": "paper-1"}, "logic": {"claims": claims}}
+    statements = ["A reduced mortality.", "B increased cellular growth."]
+    claims = [{"claim_id": f"C0{i}", "statement": text, "evidence_ids": [],
+               "sources": [{"span_ids": [f"S{i}"], "quote": text}]} for i, text in enumerate(statements, 1)]
+    passes = tuple(StaticAdjudicationPass(p, p, "static", {}, default_disposition="miner_error") for p in ("p1", "p2"))
+    result = evaluate_weekly_paper(paper_id="paper-1", bronze_artifact=artifact([]),
+        artifacts_by_hotkey={"incumbent": artifact([]), "challenger": artifact(claims)},
+        baseline_hotkey="incumbent", challenger_hotkeys=["challenger"], silver_record_id="silver-parallel",
+        adjudication_passes_by_judge={"J1": passes, "J2": passes}, stage="screen", judge_id="J1",
+        decision_router=OpenAIDecisionsRouter("secret", 0.9, http_post=post), decision_max_workers=2,
+        source_context_by_span_id={f"S{i}": text for i, text in enumerate(statements, 1)})
+    routed = [row for row in result.pipeline.adjudication_consensus if row.route == "decision_model"]
+    assert len(routed) == 2
+    assert [row.case_id for row in routed] == [row.case_id for row in result.pipeline.diff_cases]

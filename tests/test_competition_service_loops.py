@@ -75,3 +75,17 @@ def test_worker_cycle_only_claims_active_matching_rounds():
         {"round_id": "old", "status": "job_processed", "worker_status": "completed"},
         {"round_id": "new", "status": "job_processed", "worker_status": "completed"},
     ]
+
+
+def test_bronze_service_only_prepares_rounds_with_frozen_pipeline_policy():
+    from competition.service_loops import run_bronze_cycle
+    backend = Backend()
+    backend.get_round = lambda rid: {"rules_public": {"policy": ({"bronze": {"mode": "after_reveal"},
+        "execution": {"schema_version": "claims_competition_execution_v1", "bronze_max_workers": 3,
+        "scoring_max_workers": 2, "decision_max_workers": 8}} if rid == "new" else {})}}
+    called = []
+    def inputs(row):
+        return SimpleNamespace(prepare_bronze=lambda rid: called.append(rid) or {"status": "bronze_ready"}, close=lambda: None)
+    assert run_bronze_cycle(backend=backend, network="testnet", inputs_for_round=inputs) == [
+        {"round_id": "new", "status": "bronze_ready"}]
+    assert called == ["new"]

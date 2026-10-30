@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import time
+from contextvars import copy_context
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Any, Callable, Protocol
@@ -182,7 +183,7 @@ def _run_pass_batches(
         )
         request_timeout = None if deadline is None else max(0.001, deadline - time.monotonic())
         futures: dict[Future[list[AdjudicationVote]], _BatchJob] = {
-            executor.submit(_run_batch_job, job, request_timeout): job for job in runnable
+            executor.submit(copy_context().run, _run_batch_job, job, request_timeout): job for job in runnable
         }
         timeout = None if deadline is None else max(0.0, deadline - time.monotonic())
         done, not_done = wait(futures, timeout=timeout)

@@ -57,6 +57,8 @@ class ReviewPolicy:
 
 
 def review_policy(record: Mapping[str, Any]) -> ReviewPolicy:
+    from .execution_policy import execution_policy
+    execution_policy(record)
     policy = (record.get("rules_public") or {}).get("policy") or {}
     if "test_participants" in policy:
         raise ValueError("funding exceptions are configured by the backend, not round rules")

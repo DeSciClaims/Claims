@@ -240,17 +240,18 @@ class CompetitionControllerInputs:
         return self.paper_inputs.bronze_for_paper(stage, paper_id)
 
     def evaluate_for_stage(self, stage: str) -> Callable[..., Any]:
-        self._round(self.evaluation.round_id)
+        from .execution_policy import execution_policy
+        limits = execution_policy(self._round(self.evaluation.round_id))
         evaluate = self.evaluation.evaluate_for_stage(stage)
-        if self.judge_usage_capture is None:
-            return evaluate
 
         def capture(**kwargs):
+            if self.judge_usage_capture is None:
+                return evaluate(**kwargs, decision_max_workers=limits.decision_max_workers)
             paper_id = kwargs.get("paper_id")
             if not isinstance(paper_id, str) or not paper_id:
                 raise ValueError("judge usage needs a paper ID")
             with self.judge_usage_capture.collect(paper_id) as events:
-                result = evaluate(**kwargs)
+                result = evaluate(**kwargs, decision_max_workers=limits.decision_max_workers)
             return replace(result, judge_usage_events=tuple(events))
 
         return capture

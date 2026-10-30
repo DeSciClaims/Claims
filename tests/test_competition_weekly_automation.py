@@ -10,6 +10,21 @@ from competition.weekly_automation import FinalAudit, tick_round
 DEADLINE = datetime(2026, 10, 26, 12, tzinfo=UTC)
 
 
+def test_pipelined_round_starts_stage_without_waiting_for_all_bronze(monkeypatch):
+    record = {**_round("revealed"), "rules_public": {"policy": {
+        "bronze": {"mode": "after_reveal"}, "execution": {
+            "schema_version": "claims_competition_execution_v1", "bronze_max_workers": 3,
+            "scoring_max_workers": 2, "decision_max_workers": 8}}}}
+    backend = SimpleNamespace(get_round=lambda _: record)
+    inputs = SimpleNamespace(
+        prepare_bronze=lambda _: pytest.fail("independent Bronze service prepares papers"),
+        baseline_for_round=lambda _: {}, package_for_submission=lambda _: b"package",
+        incumbent_package_for_round=lambda _: None, linked_pairs_for_round=lambda _: [])
+    monkeypatch.setattr("competition.weekly_automation.start_revealed_round",
+                        lambda *_, **__: {"status": "started", "stage": "prescreen"})
+    assert tick_round("round", backend=backend, inputs=inputs, now=DEADLINE)["status"] == "started"
+
+
 def test_silver_only_round_publishes_without_review_even_after_old_gold_cutoff(monkeypatch):
     record = {**_round("final"), "network": "testnet", "rules_public": {"policy": {
         "winner_selection": "silver_tiebreak",
@@ -329,3 +344,41 @@ def test_tick_starts_frozen_reference_rerun_after_incumbent_failure(monkeypatch)
     monkeypatch.setattr("competition.weekly_automation.start_failed_incumbent_reference_rerun", start)
     assert tick_round("week", backend=Backend(), inputs=Inputs(),
                       now=DEADLINE + timedelta(hours=3))["status"] == "reference_rerun_started"
+
+
+def test_parallel_scoring_keeps_completed_papers_when_another_paper_fails(monkeypatch):
+    from threading import Barrier
+    from competition.weekly_automation import _score_active_stage
+    barrier = Barrier(2, timeout=3)
+    record = {**_round("screening"), "rules_public": {"policy": {"execution": {
+        "schema_version": "claims_competition_execution_v1", "bronze_max_workers": 2,
+        "scoring_max_workers": 2, "decision_max_workers": 2}}}}
+    pairs, calls = [], []
+    failed_once = False
+    backend = SimpleNamespace(get_round=lambda _: record,
+        list_stages=lambda _: [{"stage": "prescreen", "entries": [
+            {"hotkey": "ref", "role": "reference"}, {"hotkey": "miner", "role": "challenger"}]}],
+        list_sample=lambda _: [{"stage": "prescreen", "paper_id": paper} for paper in ("p1", "p2")],
+        list_stage_pairs=lambda *_: list(pairs),
+        list_paper_jobs=lambda *_: [{"hotkey": hotkey, "status": "completed"} for hotkey in ("ref", "miner")])
+    inputs = SimpleNamespace(bronze_for_paper=lambda *_: {}, evaluate_for_stage=lambda _: object())
+    monkeypatch.setattr("competition.weekly_automation.advance_ready_stage",
+                        lambda *_, **__: {"status": "waiting_for_scores"})
+
+    def score(_, stage, paper_id, **kwargs):
+        nonlocal failed_once
+        calls.append(paper_id)
+        if len(calls) <= 2:
+            barrier.wait()
+        if paper_id == "p2" and not failed_once:
+            failed_once = True
+            raise RuntimeError("paper failed")
+        pairs.append({"paper_id": paper_id, "challenger_hotkey": "miner"})
+
+    monkeypatch.setattr("competition.weekly_automation.score_ready_paper", score)
+    kwargs = dict(backend=backend, inputs=inputs, now=DEADLINE, gold_close=DEADLINE)
+    with pytest.raises(RuntimeError, match="paper failed"):
+        _score_active_stage("round", **kwargs)
+    assert pairs == [{"paper_id": "p1", "challenger_hotkey": "miner"}]
+    _score_active_stage("round", **kwargs)
+    assert calls.count("p1") == 1 and calls.count("p2") == 2

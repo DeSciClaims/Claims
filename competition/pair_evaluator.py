@@ -34,6 +34,7 @@ def evaluate_weekly_paper(
     judge_id: str = "J1", stage: str = "final",
     source_context_by_span_id: dict[str, str] | None = None,
     decision_router: Callable[[AdjudicationContextBundle], AdjudicationConsensus | None] | None = None,
+    decision_max_workers: int = 1,
 ) -> WeeklyPaperEvaluation:
     """Produce a common Silver record and pair-specific scores for one PDF.
 
@@ -71,7 +72,7 @@ def evaluate_weekly_paper(
         silver_record_id=silver_record_id, adjudication_passes=passes,
         tiebreak_pass=tiebreak_pass,
         source_context_by_span_id=source_context_by_span_id,
-        decision_router=decision_router,
+        decision_router=decision_router, decision_max_workers=decision_max_workers,
         **silver_settings,
     )
     candidates = {row.miner_id: row.candidates for row in pipeline.miner_submissions}

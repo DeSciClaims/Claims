@@ -139,6 +139,38 @@ def _final_audit(
     )
 
 
+def create_bronze_inputs(row: Mapping[str, Any], backend: Any) -> Any:
+    """Trusted preparation needs signed backend writes, but no chain connection."""
+    from types import SimpleNamespace
+    import bittensor as bt
+    from neurons.backend_client import ClaimsBackendClient
+    from .bronze_generation import configured_bronze_preparer
+    from .policy_runtime import policy_runtime_config
+    from .silver_runtime import silver_runtime_config
+
+    round_id = str(row["round_id"])
+    document = _round_file(round_id)
+    configuration = document.get("configuration")
+    if (not isinstance(configuration, dict)
+        or canonical_sha256(configuration) != row["configuration_sha256"]
+        or document.get("configuration_sha256") != row["configuration_sha256"]
+        or configuration.get("competition_policy_runtime") != policy_runtime_config()
+        or configuration.get("silver_runtime") != silver_runtime_config()):
+        raise ValueError("Bronze preparation runtime differs from frozen round")
+    wallet = bt.Wallet(name=_required("CLAIMS_COMPETITION_WALLET_NAME"),
+        hotkey=_required("CLAIMS_COMPETITION_WALLET_HOTKEY"),
+        path=_required("CLAIMS_COMPETITION_WALLET_PATH"))
+    if wallet.hotkey.ss58_address != _required("CLAIMS_COMPETITION_PUBLISHER_HOTKEY"):
+        raise ValueError("Bronze wallet differs from configured signer")
+    client = hippius_s3_client(endpoint=_required("CLAIMS_HIPPIUS_ENDPOINT"),
+        access_key_id=_required("CLAIMS_HIPPIUS_ACCESS_KEY_ID"),
+        secret_access_key=_required("CLAIMS_HIPPIUS_SECRET_ACCESS_KEY"))
+    validator_client = ClaimsBackendClient(base_url=backend.base_url, wallet=wallet,
+                                          network=str(row["network"]))
+    return SimpleNamespace(prepare_bronze=configured_bronze_preparer(backend, validator_client, client),
+                           close=lambda: None)
+
+
 def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> CompetitionControllerInputs:
     """Bind archive, signer, provisional judges and late-stage trusted receipts."""
     round_id = str(row["round_id"])
