@@ -8,8 +8,10 @@ from competition.worker import run_one_paper
 
 
 def make_wheel(path):
-    code = '''import json,sys
+    code = '''import json,sys,os
 def main():
+    assert os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] == "True"
+    assert os.environ["HF_HUB_OFFLINE"] == "1"
     request=json.load(open(sys.argv[2]))
     paper=request["paper"]
     artifact={

@@ -158,6 +158,9 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend, identity_
         paper_id for paper_id in paper_ids
         if any(grid[(paper_id, row["hotkey"])]["infrastructure_fault"] for row in challengers)
     }
+    if paper_ids and infrastructure_faults == set(paper_ids):
+        return {"stage": stage, "status": "infrastructure_sample_exhausted",
+                "excluded_papers": len(paper_ids)}
     if baseline[0]["role"] == "incumbent":
         failure = incumbent_failure_summary(
             round_id, stage=stage, paper_ids=paper_ids,

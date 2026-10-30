@@ -243,3 +243,23 @@ def test_promotion_waits_for_identity_review_and_uses_linked_teams():
     )
     assert result["selected_hotkeys"] == ["miner-a", "miner-c", "miner-d"]
     assert backend.ledger[-1]["entries"][1]["team_id"] == "linked-team"
+
+
+def test_all_infrastructure_papers_stop_advancement_without_ranking_empty_scores():
+    backend = Backend()
+    backend.ledger = [{"stage": "screen", "entries": [
+        {"hotkey": "incumbent", "package_sha256": "a" * 64,
+         "team_id": "baseline", "role": "incumbent", "position": 0},
+        {"hotkey": "miner-a", "package_sha256": "b" * 64,
+         "team_id": "challenger", "role": "challenger", "position": 1},
+    ]}]
+    backend.pairs = [{
+        "stage": "screen", "paper_id": paper_id,
+        "challenger_hotkey": "miner-a", "challenger_package_sha256": "b" * 64,
+        "baseline_hotkey": "incumbent", "baseline_package_sha256": "a" * 64,
+        "challenger_score": 0, "baseline_score": 0, "infrastructure_fault": True,
+    } for paper_id in ("paper-1", "paper-2")]
+    assert advance_ready_stage("week2", backend=backend) == {
+        "stage": "screen", "status": "infrastructure_sample_exhausted", "excluded_papers": 2,
+    }
+    assert len(backend.ledger) == 1

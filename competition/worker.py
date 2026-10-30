@@ -95,6 +95,12 @@ def run_one_paper(
         "PIP_FIND_LINKS": str(wheelhouse),
         "PIP_DISABLE_PIP_VERSION_CHECK": "1",
         "PYTHONNOUSERSITE": "1",
+        # SDK metadata is supplied by installed wheels. The miner UID has no
+        # internet route; importing an SDK must not fetch its cost catalogue.
+        "LITELLM_LOCAL_MODEL_COST_MAP": "True",
+        "HF_HUB_OFFLINE": "1",
+        "HF_HUB_DISABLE_TELEMETRY": "1",
+        "DO_NOT_TRACK": "1",
     }
     ca_bundle = os.environ.get("SSL_CERT_FILE")
     if ca_bundle and Path(ca_bundle).is_file():

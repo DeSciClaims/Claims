@@ -8,6 +8,10 @@ from typing import Any, Mapping
 
 
 _ENTRYPOINT = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*\Z")
+_PAPER_METADATA_FIELDS = frozenset({
+    "paper_id", "title", "authors", "year", "venue", "doi", "domain",
+    "keywords", "abstract", "source_url", "source_sha256",
+})
 
 
 def validated_package_filename(filename: Any, package_format: Any) -> str:
@@ -65,7 +69,7 @@ def build_worker_contract(
         raise ValueError("max output tokens are outside the worker contract")
     request = {
         "schema_version": "claims_competition_request_v1",
-        "paper": paper,
+        "paper": {key: value for key, value in paper.items() if key in _PAPER_METADATA_FIELDS},
         "pdf_path": "paper.pdf",
         "inference": {
             "model": models[0], "allowed_models": models,

@@ -25,6 +25,7 @@ from typing import Any, Callable
 from .targon_vms import WorkerVm
 from .worker_bundle import build_worker_bundle
 from .worker_controller import ExecutionOutput
+from .worker_errors import WorkerTransportError
 
 
 def _tar_bytes(files: dict[str, bytes]) -> bytes:
@@ -108,7 +109,18 @@ class PinnedSshWorkerTransport:
         except subprocess.TimeoutExpired as exc:
             raise TimeoutError("worker SSH operation timed out") from exc
         if result.returncode != 0:
-            raise RuntimeError(f"worker SSH operation failed with exit {result.returncode}")
+            stderr = result.stderr[-8192:].decode(errors="replace")
+            reasons = {
+                "worker is already processing a job": "worker_busy",
+                "worker has surviving miner processes": "worker_processes_remain",
+                "worker has uncleared files from a previous job": "worker_unclean",
+                "worker control guest unit is not confirmed stopped": "guest_stop_failed",
+                "worker control firewall differs from reviewed policy": "firewall_mismatch",
+                "worker control gateway hostname differs from allowed IP": "gateway_mismatch",
+            }
+            reason = next((value for message, value in reasons.items()
+                           if message in stderr), "ssh_failed")
+            raise WorkerTransportError(reason)
         return result.stdout
 
     def _check_egress(self, vm: WorkerVm) -> int:

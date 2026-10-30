@@ -14,7 +14,8 @@ from competition.ssh_worker import RestrictedSshWorkerTransport, _tar_bytes
 from competition.targon_vms import WorkerVm
 from competition.worker_contract import build_worker_contract
 from competition.worker_control import (
-    _exclusive_job, _firewall_counters, _limited_read, _read_bundle, _stop_unit, load_config,
+    _denied_during_job, _exclusive_job, _firewall_counters, _limited_read,
+    _read_bundle, _require_idle_miner, _stop_unit, load_config,
 )
 
 
@@ -29,6 +30,29 @@ def test_persistent_worker_refuses_overlapping_jobs(tmp_path):
                 pass
     with _exclusive_job(lock_dir, require_root_owned=False):
         pass
+
+
+def test_prior_blocked_traffic_does_not_poison_later_jobs():
+    assert _denied_during_job(0, 12) == 12
+    assert _denied_during_job(12, 12) == 0
+    assert _denied_during_job(12, 14) == 2
+    with pytest.raises(RuntimeError, match="counters changed"):
+        _denied_during_job(14, 0)
+
+
+@pytest.mark.parametrize("returncode,processes,passes", [
+    (1, b"", True), (0, b" 123\n", False), (2, b"", False),
+])
+def test_reuse_requires_no_surviving_miner_processes(monkeypatch, returncode, processes, passes):
+    def invoke(argv, **_):
+        assert argv == ["ps", "-u", "995", "-o", "pid="]
+        return subprocess.CompletedProcess(argv, returncode, processes, b"")
+    monkeypatch.setattr("competition.worker_control.subprocess.run", invoke)
+    if passes:
+        _require_idle_miner(995)
+    else:
+        with pytest.raises(RuntimeError, match="surviving miner"):
+            _require_idle_miner(995)
 
 
 def _job(package, pdf):

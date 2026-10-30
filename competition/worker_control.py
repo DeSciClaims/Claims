@@ -141,6 +141,23 @@ def _check_gateway_address(config: dict[str, Any]) -> None:
         raise ValueError("worker control gateway hostname differs from allowed IP")
 
 
+def _require_idle_miner(miner_uid: int) -> None:
+    """A reused UID must have no surviving process between serialized jobs."""
+    result = subprocess.run(
+        ["ps", "-u", str(miner_uid), "-o", "pid="],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL, timeout=15, check=False,
+    )
+    if result.returncode not in {0, 1} or result.stdout.strip():
+        raise RuntimeError("worker has surviving miner processes")
+
+
+def _denied_during_job(before: int, after: int) -> int:
+    if after < before:
+        raise RuntimeError("worker egress counters changed unexpectedly")
+    return after - before
+
+
 def _write_input(directory: Path, files: dict[str, bytes], miner_uid: int, miner_gid: int) -> tuple[Path, Path, Path]:
     directory.chmod(0o711)
     inputs = directory / "input"
@@ -229,8 +246,10 @@ def _run_once_locked(stream: BinaryIO, config: dict[str, Any]) -> dict[str, Any]
         raise PermissionError("worker control must run as root")
     account = pwd.getpwnam("claims-miner")
     miner_uid, miner_gid = account.pw_uid, account.pw_gid
-    if miner_uid == 0 or _firewall_counters(miner_uid, config) != 0:
-        raise ValueError("worker control requires fresh miner egress counters")
+    if miner_uid == 0:
+        raise ValueError("worker miner account must be unprivileged")
+    _require_idle_miner(miner_uid)
+    denied_before = _firewall_counters(miner_uid, config)
     _check_gateway_address(config)
     job_id, files = _read_bundle(stream)
     jobs_dir = Path("/var/lib/claims-worker/jobs")
@@ -268,7 +287,8 @@ def _run_once_locked(stream: BinaryIO, config: dict[str, Any]) -> dict[str, Any]
                                      timeout=2600, check=False)
         finally:
             _stop_unit(unit)
-        denied = _firewall_counters(miner_uid, config)
+        _require_idle_miner(miner_uid)
+        denied = _denied_during_job(denied_before, _firewall_counters(miner_uid, config))
         log_path = results / "worker.log"
         log = _limited_read(log_path, MAX_LOG_BYTES, miner_uid) if log_path.exists() or log_path.is_symlink() else b""
         if denied:

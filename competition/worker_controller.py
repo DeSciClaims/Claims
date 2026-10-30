@@ -12,6 +12,7 @@ from typing import Any, Callable, Protocol
 
 from .bifrost import PaperKey, PaperUsage
 from .worker_contract import build_worker_contract
+from .worker_errors import WorkerTransportError
 from miner.agent_v1.artifact_models import Artifact
 from miner.agent_v1.artifact_validator import validate_agent_artifact
 
@@ -208,8 +209,10 @@ def run_claimed_job(
                 inference_base_url=inference_base_url, paper_key=key.value,
             )
         except Exception as exc:
+            reason = exc.reason if isinstance(exc, WorkerTransportError) else type(exc).__name__
             output = ExecutionOutput("infrastructure_fault", None,
-                                     f"worker transport failed: {type(exc).__name__}".encode())
+                                     f"worker transport failed: {reason}".encode(),
+                                     detail=reason)
         usage = keys.check_budget(key)
     finally:
         keys.revoke(key)

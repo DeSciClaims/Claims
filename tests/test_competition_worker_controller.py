@@ -360,3 +360,15 @@ def test_claimed_job_uses_locked_pdf_source_before_worker_execution():
     )
     assert result["status"] == "completed"
     assert backend.receipt[0] == job["job_id"]
+
+
+def test_worker_transport_diagnostic_is_safe_and_survives_job_completion():
+    from competition.worker_errors import WorkerTransportError
+    class FailedExecutor:
+        def run(self, **kwargs):
+            raise WorkerTransportError("worker_processes_remain")
+    result, keys, logs, _, _ = run(execution=FailedExecutor())
+    assert result["status"] == "infrastructure_fault"
+    assert result["detail"] == "worker_processes_remain"
+    assert b"worker_processes_remain" in logs.content
+    assert keys.revoked

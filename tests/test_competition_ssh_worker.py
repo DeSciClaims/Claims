@@ -149,7 +149,7 @@ def test_ssh_transport_cleans_up_after_guest_failure(tmp_path, denied_packets):
         assert result.status == "security_violation"
         assert result.denied_egress_packets == denied_packets
     else:
-        with pytest.raises(RuntimeError, match="exit 1"):
+        with pytest.raises(RuntimeError, match="ssh_failed"):
             transport.run(*args, **kwargs)
     assert commands[-1].startswith("sudo -n rm -rf -- ")
 
@@ -185,3 +185,22 @@ def test_transport_rejects_missing_firewall_before_staging(tmp_path):
             inference_base_url="https://gateway.example/v1", paper_key="scoped-key",
         )
     assert len(commands) == 2
+
+
+def test_remote_transport_error_keeps_a_safe_reason_without_remote_secrets(tmp_path):
+    from competition.worker_errors import WorkerTransportError
+    identity, known_hosts = tmp_path / "key", tmp_path / "hosts"
+    identity.write_text("key")
+    known_hosts.write_text("pinned host")
+    def invoke(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 1, b"", (
+            b"private sk-secret-value\nRuntimeError: worker has surviving miner processes\n"
+        ))
+    transport = PinnedSshWorkerTransport(
+        identity, known_hosts, "https://gateway.example/v1", "192.0.2.20", 443,
+        invoke=invoke,
+    )
+    with pytest.raises(WorkerTransportError) as failure:
+        transport._ssh(WorkerVm("vm", "192.0.2.1", 22, 0), "run")
+    assert str(failure.value) == "worker_processes_remain"
+    assert "secret" not in str(failure.value)

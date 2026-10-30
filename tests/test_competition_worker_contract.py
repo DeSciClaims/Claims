@@ -47,6 +47,18 @@ def test_contract_rejects_undeclared_or_unapproved_models_and_wrong_paper():
         build_worker_contract(data, allowed_models=("example/model-a",), max_output_tokens=8192)
 
 
+def test_worker_receives_bibliographic_metadata_without_reference_findings():
+    data = job()
+    data["paper"].update(claims_summary=["Private reference finding"],
+                         private_judge_answer="secret", doi="10.1234/example")
+    contract = build_worker_contract(
+        data, allowed_models=("example/model-a", "example/model-b"), max_output_tokens=8192,
+    )
+    assert contract["request"]["paper"] == {
+        "paper_id": "paper-1", "title": "Study", "doi": "10.1234/example",
+    }
+
+
 @pytest.mark.parametrize("filename", ["miner.whl", "../miner.whl",
                                       "sample-0.1.0-py3-none-any.tar.gz"])
 def test_contract_rejects_noninstallable_or_unsafe_wheel_name(filename):
