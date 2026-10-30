@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from competition.bifrost import BifrostClient, BifrostError
+from competition.bifrost import BifrostClient, BifrostError, PaperKey
 
 
 class Response:
@@ -48,7 +48,10 @@ def test_paper_key_scopes_models_and_usage_without_exposing_management_token():
                 "expires_at": json.loads(request.data)["expires_at"],
             }})
         if request.method == "GET":
-            return Response(quota(usage=101 if sum(item.method == "GET" for item in requests) > 1 else 0))
+            data = quota(usage=101 if sum(item.method == "GET" for item in requests) > 1 else 0)
+            if "from_memory=true" in request.full_url:
+                return Response({"virtual_key": {"id": "key-1", **data}})
+            return Response(data)
         return Response({"message": "deleted"})
 
     client = BifrostClient(management_url="http://127.0.0.1:8080", admin_bearer="admin-secret")
@@ -71,15 +74,17 @@ def test_paper_key_scopes_models_and_usage_without_exposing_management_token():
     assert requests[0].get_header("Authorization") == "Bearer admin-secret"
     assert requests[1].get_header("X-bf-vk") == "sk-bf-scoped"
     assert requests[1].get_header("Authorization") is None
-    assert requests[2].get_header("X-bf-vk") == "sk-bf-scoped"
+    assert requests[2].get_header("X-bf-vk") is None
+    assert requests[2].get_header("Authorization") == "Bearer admin-secret"
+    assert requests[2].full_url.endswith("/key-1?from_memory=true")
     assert requests[3].method == "DELETE"
 
 
 def test_bifrost_fails_closed_on_missing_usage():
     client = BifrostClient(management_url="http://localhost:8080")
-    with patch("competition.bifrost.urllib.request.urlopen", return_value=Response({})):
+    with patch("competition.bifrost.urllib.request.urlopen", return_value=Response({"virtual_key": {"id": "key-test"}})):
         with pytest.raises(BifrostError, match="lacks token usage"):
-            client.token_usage(type("Key", (), {"value": "sk-bf-test"})())
+            client.token_usage(type("Key", (), {"value": "sk-bf-test", "key_id": "key-test"})())
 
 
 @pytest.mark.parametrize("models", [(), ("*",), ("model", "model"), ("model*",)])
@@ -95,10 +100,10 @@ def test_paper_key_rejects_unbounded_or_duplicate_models(models):
 
 def test_bifrost_fails_closed_on_missing_dollar_spend():
     client = BifrostClient(management_url="http://localhost:8080")
-    key = type("Key", (), {"value": "sk-bf-test", "token_limit": 100,
+    key = type("Key", (), {"value": "sk-bf-test", "key_id": "key-test", "token_limit": 100,
                            "dollar_limit": 0.25})()
     with patch("competition.bifrost.urllib.request.urlopen",
-               return_value=Response({"rate_limit": {"token_current_usage": 10}})):
+               return_value=Response({"virtual_key": {"id": "key-test", "rate_limit": {"token_current_usage": 10}}})):
         with pytest.raises(BifrostError, match="paper budget usage"):
             client.check_budget(key)
 
@@ -106,6 +111,33 @@ def test_bifrost_fails_closed_on_missing_dollar_spend():
 def test_management_url_cannot_be_plain_http_to_remote_host():
     with pytest.raises(ValueError):
         BifrostClient(management_url="http://192.0.2.10:8080")
+
+
+def test_live_budget_detects_overage_even_when_persisted_quota_is_zero():
+    client = BifrostClient(management_url="http://localhost:8080", admin_bearer="admin")
+    key = PaperKey("key-live", "sk-bf-paper", datetime.now(UTC), 100, 0.25)
+    paths = []
+
+    def request(method, path, **kwargs):
+        paths.append(path)
+        if path.endswith("?from_memory=true"):
+            return {"virtual_key": {"id": key.key_id, **quota(usage=101)}}
+        return quota(usage=0)
+
+    with patch.object(client, "_request", side_effect=request):
+        assert client.token_usage(key) == 101
+        assert client.check_budget(key).over_cap
+    assert paths == ["/api/governance/virtual-keys/key-live?from_memory=true"] * 2
+
+
+@pytest.mark.parametrize("record", [None, {}, {"id": "another-paper"}])
+def test_missing_or_mismatched_live_usage_never_falls_back_to_saved_quota(record):
+    client = BifrostClient(management_url="http://localhost:8080")
+    key = PaperKey("key-live", "sk-bf-paper", datetime.now(UTC), 100, 0.25)
+    with patch.object(client, "_request", return_value={"virtual_key": record}) as request:
+        with pytest.raises(BifrostError, match="live paper usage"):
+            client.check_budget(key)
+    assert request.call_count == 1
 
 
 def test_oss_management_uses_basic_auth_while_worker_key_remains_separate():

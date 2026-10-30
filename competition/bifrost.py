@@ -174,13 +174,10 @@ class BifrostClient:
         return key
 
     def token_usage(self, key: PaperKey) -> int:
-        # Self-service quota is scoped to this virtual key, including streams.
-        response = self._request(
-            "GET", "/api/governance/virtual-keys/quota", virtual_key=key.value,
-        )
+        response = self._live_key_usage(key)
         rate_limit = response.get("rate_limit") or {}
         usage = rate_limit.get("token_current_usage")
-        if not isinstance(usage, int) or usage < 0:
+        if isinstance(usage, bool) or not isinstance(usage, int) or usage < 0:
             raise BifrostError("Bifrost quota response lacks token usage")
         return usage
 
@@ -189,9 +186,7 @@ class BifrostClient:
         self._request("DELETE", f"/api/governance/virtual-keys/{key_id}")
 
     def check_budget(self, key: PaperKey) -> PaperUsage:
-        response = self._request(
-            "GET", "/api/governance/virtual-keys/quota", virtual_key=key.value,
-        )
+        response = self._live_key_usage(key)
         rate_limit = response.get("rate_limit") or {}
         tokens = rate_limit.get("token_current_usage")
         if isinstance(tokens, bool) or not isinstance(tokens, int) or tokens < 0:
@@ -214,3 +209,17 @@ class BifrostClient:
             raise BifrostError("Bifrost paper budget lacks dollar usage")
         return PaperUsage(tokens, float(cost),
                           tokens > key.token_limit or cost > key.dollar_limit)
+
+    def _live_key_usage(self, key: PaperKey) -> dict[str, Any]:
+        # The self-service quota endpoint reads persisted counters. Those can
+        # lag a completed stream, including its entire cost for a one-call job.
+        # Use the trusted management endpoint's live enforcement counters;
+        # never fall back to stale quota data when live accounting is absent.
+        key_id = urllib.parse.quote(key.key_id, safe="")
+        response = self._request(
+            "GET", f"/api/governance/virtual-keys/{key_id}?from_memory=true",
+        )
+        record = response.get("virtual_key")
+        if not isinstance(record, dict) or record.get("id") != key.key_id:
+            raise BifrostError("Bifrost live paper usage is unavailable")
+        return record
