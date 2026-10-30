@@ -50,8 +50,8 @@ class AgentV1Config(BaseModel):
         return cls(
             base_dir=resolved_base_dir,
             package_dir=package_dir,
-            cache_dir=package_dir / ".cache",
-            output_dir=package_dir / "outputs" / "agent_v1",
+            cache_dir=Path(os.getenv("SUBNET_CLAIMS_AGENT_CACHE_DIR", str(package_dir / ".cache"))).expanduser(),
+            output_dir=Path(os.getenv("SUBNET_CLAIMS_AGENT_OUTPUT_DIR", str(package_dir / "outputs" / "agent_v1"))).expanduser(),
             runtime=os.getenv("SUBNET_CLAIMS_AGENT_RUNTIME", "dspy-react"),
             skill_dir=Path(os.getenv("SUBNET_CLAIMS_AGENT_SKILL_DIR", str(package_dir / "skills" / "compiler"))),
             timeout_seconds=int(os.getenv("SUBNET_CLAIMS_AGENT_TIMEOUT", "1800")),
