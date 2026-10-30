@@ -43,6 +43,18 @@ from neurons.protocol import ClaimExtractionSynapse
 from neurons.tasks import ClaimsTask
 
 
+def test_signed_miner_upload_network_is_independent_of_rpc_endpoint():
+    for network in ("testnet", "mainnet"):
+        miner = ClaimsMiner.__new__(ClaimsMiner)
+        miner.wallet = SimpleNamespace()
+        miner.config = SimpleNamespace(
+            claims_backend_url="https://uploads.example",
+            claims_network=network,
+            claims_subtensor_network_arg="ws://127.0.0.1:19944",
+        )
+        assert miner._build_backend_client().network == network
+
+
 def test_agent_v1_skillpack_preserves_all_resources() -> None:
     skill_dir = Path("miner/agent_v1/skills/compiler")
     skill_pack = load_skill_pack(skill_dir)

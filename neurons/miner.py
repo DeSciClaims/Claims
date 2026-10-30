@@ -203,6 +203,13 @@ class ClaimsMiner:
             help="Include per-paper source_payload objects in batch axon responses. Off by default to keep responses small.",
         )
         parser.add_argument(
+            "--claims.network",
+            dest="claims_network",
+            choices=("mainnet", "testnet"),
+            default=os.getenv("CLAIMS_NETWORK") or None,
+            help="Claims data network, independent of a custom chain RPC endpoint.",
+        )
+        parser.add_argument(
             "--claims.backend-url",
             dest="claims_backend_url",
             default=os.getenv("CLAIMS_BACKEND_URL", ""),
@@ -268,6 +275,9 @@ class ClaimsMiner:
         config.claims_backend_retry_backoff = float(parsed_args.claims_backend_retry_backoff or 0.0)
         config.claims_dry_run = parsed_args.claims_dry_run
         config.claims_subtensor_network_arg = _subtensor_network_arg(parsed_args)
+        config.claims_network = parsed_args.claims_network or (
+            "testnet" if getattr(parsed_args, "subtensor.network", None) == "test" else "mainnet"
+        )
         config.full_path = os.path.expanduser(
             "{}/{}/{}/netuid{}/miner".format(
                 config.logging.logging_dir,
@@ -308,7 +318,7 @@ class ClaimsMiner:
         return ClaimsBackendClient(
             base_url=backend_url,
             wallet=self.wallet,
-            network="testnet" if str(getattr(self.config, "claims_subtensor_network_arg", "test")) == "test" else "mainnet",
+            network=_claims_network(self.config),
             timeout_seconds=float(getattr(self.config, "claims_backend_timeout", 60.0)),
             max_retries=int(getattr(self.config, "claims_backend_retries", 2)),
             retry_backoff_seconds=float(getattr(self.config, "claims_backend_retry_backoff", 2.0)),
@@ -740,7 +750,7 @@ class ClaimsMiner:
         evidence_count = _evidence_count(extraction)
         payload = {
             "artifact_id": artifact_id,
-            "network": task.network or ("testnet" if str(getattr(self.config, "claims_subtensor_network_arg", "test")) == "test" else "mainnet"),
+            "network": task.network or _claims_network(self.config),
             "run_id": task.run_id,
             "batch_id": task.batch_id,
             "task_id": task.task_id,
@@ -1039,6 +1049,14 @@ def _default_output_dir(pipeline: str) -> Path:
     if pipeline == "agent_v1":
         return Path("miner/agent_v1/outputs/neuron")
     return Path("miner/v0/outputs/neuron")
+
+
+def _claims_network(config: Any) -> str:
+    explicit = getattr(config, "claims_network", None)
+    if explicit in {"testnet", "mainnet"}:
+        return explicit
+    # Compatibility for programmatically constructed legacy configurations.
+    return "testnet" if getattr(config, "claims_subtensor_network_arg", "test") == "test" else "mainnet"
 
 
 def _subtensor_network_arg(parsed_args: argparse.Namespace) -> str | None:
