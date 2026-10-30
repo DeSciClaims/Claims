@@ -50,6 +50,7 @@ def run_controller_cycle(
     results = []
     for row in _pending(backend, network):
         round_id = row["round_id"]
+        inputs = None
         try:
             inputs = inputs_for_round(row)
             if (inputs.evaluation.round_id != round_id
@@ -62,6 +63,10 @@ def run_controller_cycle(
             # Exception text can include provider responses or private data.
             results.append({"round_id": round_id, "status": "error",
                             "error_type": type(exc).__name__})
+        finally:
+            close = getattr(inputs, "close", None)
+            if callable(close):
+                close()
     return results
 
 

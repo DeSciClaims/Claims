@@ -140,6 +140,11 @@ class CompetitionControllerInputs:
     identity_preparer: Callable[[str], dict] | None = None
     consensus_runner: Any = None
 
+    def close(self) -> None:
+        close = getattr(getattr(self.archive, "subtensor", None), "close", None)
+        if callable(close):
+            close()
+
     def prepare_identities(self, round_id: str) -> dict:
         if self.identity_preparer is None:
             raise ValueError("team identity resolver is not configured")

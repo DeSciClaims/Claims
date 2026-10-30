@@ -18,12 +18,14 @@ class Backend:
 def test_controller_cycle_resumes_all_rounds_after_one_fault(monkeypatch):
     backend = Backend()
     seen = []
+    closed = []
 
     def inputs(row):
         return SimpleNamespace(
             evaluation=SimpleNamespace(round_id=row["round_id"],
                                        configuration_sha256=row["configuration_sha256"]),
             paper_inputs=SimpleNamespace(backend=backend),
+            close=lambda: closed.append(row["round_id"]),
         )
 
     def tick(round_id, **kwargs):
@@ -38,6 +40,7 @@ def test_controller_cycle_resumes_all_rounds_after_one_fault(monkeypatch):
         now=datetime(2026, 11, 9, 12, tzinfo=UTC),
     )
     assert seen == ["old", "new"]
+    assert closed == ["old", "new"]
     assert result == [
         {"round_id": "old", "status": "error", "error_type": "RuntimeError"},
         {"round_id": "new", "status": "waiting_for_final_scores"},

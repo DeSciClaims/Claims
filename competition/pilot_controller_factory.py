@@ -168,7 +168,6 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         raise ValueError("duplicate links must be reviewed after the intake lock")
     import bittensor as bt
 
-    chain = BittensorArchive(bt.Subtensor(network=_required("CLAIMS_ARCHIVE_SUBTENSOR_NETWORK")))
     wallet = bt.Wallet(
         name=_required("CLAIMS_COMPETITION_WALLET_NAME"),
         hotkey=_required("CLAIMS_COMPETITION_WALLET_HOTKEY"),
@@ -222,6 +221,9 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
     validator_client = (ClaimsBackendClient(base_url=backend.base_url, wallet=wallet, network=str(row["network"]))
         if hasattr(backend, "base_url") else None)
     public = row.get("rules_public", {}).get("policy", {})
+    bronze = (configured_bronze_preparer(backend, validator_client, client)
+              if public.get("bronze", {}).get("mode") == "after_reveal" else None)
+    chain = BittensorArchive(bt.Subtensor(network=_required("CLAIMS_ARCHIVE_SUBTENSOR_NETWORK")))
     consensus = (CompetitionConsensusRunner(backend=backend, validator_client=validator_client,
         wallet=wallet, chain=chain, netuid=netuid, network=str(row["network"]))
         if public.get("review_execution") == "controller" else None)
@@ -239,8 +241,7 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         evaluation=policy, weekly_budget_usd=float(configuration["weekly_budget_usd"]),
         judge_usage_capture=judge_usage_capture,
         identity_preparer=resolve_teams, consensus_runner=consensus,
-        bronze_preparer=(configured_bronze_preparer(backend, validator_client, client)
-            if public.get("bronze", {}).get("mode") == "after_reveal" else None),
+        bronze_preparer=bronze,
         linked_pairs=(), duplicate_review_reader=lambda rid: _duplicate_links(backend, rid),
         qualified_voters=lambda rid: _voters(backend, rid),
         audited_finalists=lambda rid: _final_audit(
