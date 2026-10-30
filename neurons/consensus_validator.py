@@ -619,7 +619,11 @@ def _apply_bittensor_args(config: Any, parsed_args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    ClaimsConsensusValidator().run()
+    validator = ClaimsConsensusValidator()
+    try:
+        validator.run()
+    finally:
+        validator.subtensor.close()
 
 
 if __name__ == "__main__":

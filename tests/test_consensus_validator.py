@@ -7,6 +7,23 @@ from types import SimpleNamespace
 
 import pytest
 
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_cli_closes_rpc_when_bounded_run_finishes(monkeypatch, fails):
+    from neurons import consensus_validator
+    closed = []
+    def run():
+        if fails:
+            raise RuntimeError("round failed")
+    instance = SimpleNamespace(run=run, subtensor=SimpleNamespace(close=lambda: closed.append(True)))
+    monkeypatch.setattr(consensus_validator, "ClaimsConsensusValidator", lambda: instance)
+    if fails:
+        with pytest.raises(RuntimeError, match="round failed"):
+            consensus_validator.main()
+    else:
+        consensus_validator.main()
+    assert closed == [True]
+
 from neurons.consensus_validator import (
     ClaimsConsensusValidator,
     _validate_response_deadline,
