@@ -9,6 +9,10 @@ Each round publishes its deadline block, allowed models, budgets, and other rule
 
 The controller reads the historical commitment at the deadline block and matches it to one sealed upload. Changing package bytes, manifest, hotkey, or salt changes the match. The implementation of the [commitment check](../competition/commitments.py) is the authoritative reference.
 
+## Team identity
+
+Declare the same `team_id` for pipelines controlled by the same operator or team. The manifest records declared affiliation; it does not establish independence. The backend merges entries using shared declarations, shared coldkeys, resolved funding lineage and reviewed code links, even when their declared IDs differ. Advancement and reward limits use these resolved teams: at most two entries per team advance to screen, and one reaches final under the standard stage plan. Unresolved required funding evidence blocks advancement beyond prescreen. Code duplicate checks also apply before execution, independently of the declared IDs.
+
 ## Worker inference
 
 The worker request and manifest use the plain OpenRouter catalog model ID, such as `deepseek/deepseek-v4-flash-0731`. The worker supplies `CLAIMS_INFERENCE_BASE_URL` and a paper-scoped `CLAIMS_INFERENCE_TOKEN`. Direct calls to its Bifrost `/chat/completions` endpoint must prefix the wire model with `openrouter/`, for example `openrouter/deepseek/deepseek-v4-flash-0731`. The token's model allowance remains the plain catalog ID. The [sample package](https://github.com/DeSciClaims/claims-miner-package) implements this mapping.
