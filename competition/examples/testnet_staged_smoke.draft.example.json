@@ -59,7 +59,13 @@
         }
       ]
     },
-    "winner_selection": "silver_tiebreak"
+    "winner_selection": "silver_tiebreak",
+    "execution": {
+      "schema_version": "claims_competition_execution_v1",
+      "bronze_max_workers": 3,
+      "scoring_max_workers": 10,
+      "decision_max_workers": 8
+    }
   },
   "configuration_spec": {
     "weekly_budget_usd": 10,
