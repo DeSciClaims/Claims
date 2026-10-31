@@ -99,7 +99,7 @@ def run_worker_cycle(
     *, backend: Any, network: str,
     coordinator_for_round: Callable[[Mapping[str, Any]], CompetitionWorkerCoordinator],
 ) -> list[dict[str, Any]]:
-    """Claim at most one job per active round from a dedicated worker."""
+    """Drain one package through the worker VM's memory-admitted slots."""
     results = []
     for row in _pending(backend, network):
         if row["status"] not in {"screening", "final"}:
@@ -110,10 +110,14 @@ def run_worker_cycle(
             if (coordinator.round_id != round_id or coordinator.network != network
                 or coordinator.backend is not backend):
                 raise ValueError("worker factory differs from pending round")
-            result = coordinator.run_once()
-            results.append({"round_id": round_id, "status": "idle"} if result is None
-                           else {"round_id": round_id, "status": "job_processed",
-                                 "worker_status": _safe_status(result)})
+            run_available = getattr(coordinator, "run_available", None)
+            batch = run_available() if callable(run_available) else [coordinator.run_once()]
+            processed = [result for result in batch if result is not None]
+            if not processed:
+                results.append({"round_id": round_id, "status": "idle"})
+            for result in processed:
+                results.append({"round_id": round_id, "status": "job_processed",
+                                "worker_status": _safe_status(result)})
         except Exception as exc:
             results.append({"round_id": round_id, "status": "error",
                             "error_type": type(exc).__name__})

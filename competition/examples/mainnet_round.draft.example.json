@@ -108,7 +108,8 @@
       "dollar_limit_usd": "1",
       "max_inference_output_tokens": 8192,
       "lease_seconds": 3600,
-      "inference_base_url": "https://REPLACE_GATEWAY_HOST:8443/v1"
+      "inference_base_url": "https://REPLACE_GATEWAY_HOST:8443/v1",
+      "memory_per_job_bytes": 4294967296
     },
     "workflow_specs": {
       "comparison_model_ref": "J1.0",

@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from .chain_archive import BittensorArchive
+from .chain_archive import BittensorArchive, LazySubtensor
 from .code_audit import automatic_code_audit, collect_final_code_evidence, verify_code_audit_receipt
 from .controller_inputs import CompetitionControllerInputs, build_provisional_evaluation_policy
 from .duplicate_candidate_setup import load_candidate_report
@@ -256,7 +256,8 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
     public = row.get("rules_public", {}).get("policy", {})
     bronze = (configured_bronze_preparer(backend, validator_client, client)
               if public.get("bronze", {}).get("mode") == "after_reveal" else None)
-    chain = BittensorArchive(bt.Subtensor(network=_required("CLAIMS_ARCHIVE_SUBTENSOR_NETWORK")))
+    chain_network = _required("CLAIMS_ARCHIVE_SUBTENSOR_NETWORK")
+    chain = BittensorArchive(LazySubtensor(lambda: bt.Subtensor(network=chain_network)))
     consensus = (CompetitionConsensusRunner(backend=backend, validator_client=validator_client,
         wallet=wallet, chain=chain, netuid=netuid, network=str(row["network"]))
         if public.get("review_execution") == "controller" else None)

@@ -327,11 +327,25 @@ class CompetitionBackend:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/close"
         return self._request("POST", path)
 
-    def claim_job(self, round_id: str, *, worker_id: str, lease_seconds: int) -> dict[str, Any] | None:
+    def claim_job(self, round_id: str, *, worker_id: str, lease_seconds: int, hotkey: str | None = None, stage: str | None = None) -> dict[str, Any] | None:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/jobs/claim"
-        return self._request("POST", path, {
-            "worker_id": worker_id, "lease_seconds": lease_seconds,
-        })
+        payload = {"worker_id": worker_id, "lease_seconds": lease_seconds}
+        if hotkey is not None:
+            payload["hotkey"] = hotkey
+        if stage is not None:
+            payload["stage"] = stage
+        return self._request("POST", path, payload)
+
+    def defer_job(self, job_id: str, *, worker_id: str, lease_token: str) -> bool:
+        result = self._request("POST", "/internal/competition/jobs/"
+            + urllib.parse.quote(job_id, safe="") + "/defer", {
+                "worker_id":worker_id,"lease_token":lease_token})
+        return result["deferred"]
+
+    def ready_papers(self, round_id: str, stage: str, *, limit: int = 32) -> list[str]:
+        path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/stages/" + urllib.parse.quote(stage, safe="") + "/ready-papers?limit=" + str(limit))
+        return self._request("GET", path)
 
     def list_paper_jobs(self, round_id: str, stage: str, paper_id: str) -> list[dict[str, Any]]:
         path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")

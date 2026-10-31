@@ -372,3 +372,27 @@ def test_worker_transport_diagnostic_is_safe_and_survives_job_completion():
     assert result["detail"] == "worker_processes_remain"
     assert b"worker_processes_remain" in logs.content
     assert keys.revoked
+
+
+def test_capacity_race_revokes_unused_key_and_defers_without_faulting(monkeypatch):
+    from competition.worker_errors import WorkerTransportError
+    class Busy:
+        def run(self, **_):
+            raise WorkerTransportError('worker_busy')
+    deferred=[]
+    monkeypatch.setattr(Keys,'check_budget',lambda *_:PaperUsage(0,0,False))
+    monkeypatch.setattr(Backend,'defer_job',lambda self,*args,**kwargs:deferred.append((args,kwargs)) or True,raising=False)
+    result,keys,logs,backend,job=run(execution=Busy())
+    assert result=={'status':'capacity_deferred'}
+    assert keys.revoked and backend.receipt is None and logs.key is None
+    assert deferred[0][0]==(job['job_id'],)
+
+
+def test_capacity_deferral_cannot_erase_inference_spend(monkeypatch):
+    from competition.worker_errors import WorkerTransportError
+    class Busy:
+        def run(self, **_):
+            raise WorkerTransportError('worker_busy')
+    monkeypatch.setattr(Backend,'defer_job',lambda *_ ,**__:pytest.fail('spent attempts cannot be deferred'),raising=False)
+    result,*_=run(execution=Busy())
+    assert result['status']=='infrastructure_fault'

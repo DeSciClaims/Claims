@@ -50,3 +50,20 @@ class BittensorArchive:
         if not isinstance(timestamp, datetime) or timestamp.tzinfo is None:
             raise RuntimeError("archive node returned a timestamp without timezone")
         return timestamp
+
+
+class LazySubtensor:
+    """Evaluation polling needs the backend, not a fresh chain connection."""
+    def __init__(self, factory):
+        self._factory = factory
+        self._instance = None
+
+    def __getattr__(self, name):
+        if self._instance is None:
+            self._instance = self._factory()
+        return getattr(self._instance, name)
+
+    def close(self):
+        if self._instance is not None:
+            self._instance.close()
+            self._instance = None

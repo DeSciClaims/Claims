@@ -63,8 +63,9 @@ def run_one_paper(
 ) -> WorkerResult:
     """Install an untrusted package offline and invoke its fixed entrypoint.
 
-    This harness assumes the whole VM is discarded after the paper. The
-    controller must independently validate the returned artifact and account
+    This harness requires a fresh isolated paper workspace. The root worker
+    helper owns slot isolation and cleanup; package code is never trusted.
+    The controller must independently validate the returned artifact and account
     for Bifrost usage after each call and after termination.
     """
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_]*", entrypoint):

@@ -367,7 +367,7 @@ publisher hotkey, and the dashboard shows its vector and evidence hashes.
 An automatic signing step still needs the Gold policy.
 `python -m neurons.competition_replay_service --role controller --round-id ID
 --backend-url URL --db-path PATH` runs the replay scoring step repeatedly;
-`--role worker --worker-id ID` runs one local paper job per poll. `--once`
+`--role worker --worker-id ID` fills the prepared VM's memory-admitted paper slots for one package per cycle; slots refill as papers finish. `--once`
 performs one step. The dedicated `replay_pilot_factory` bootstraps both roles
 from a separately verified archive and drand beacon, the read-only replay API,
 and a private 0600 `<round_id>.json` file under
@@ -426,6 +426,15 @@ per-hotkey counts from private worker receipts and blocks a finalist with any
 denied egress; it stops publication for a baseline violation. This is one
 observable code-integrity check, not a substitute for package and behavioral
 audits.
+
+Worker capacity is derived from VM RAM minus the host reserve, divided by the
+published per-paper memory hard limit. Every paper has its own isolated slot,
+scoped inference key, lease, logs and result. The next package starts after the
+current package drains; stage advancement waits for complete scores. The
+controller scores ready papers concurrently through a compact readiness API.
+The worker's hard limit must match `worker_policy.memory_per_job_bytes` in the
+frozen round. Host admission settings live in the infra inventory, with a
+separate UID and network counter chain per slot.
 
 ## Shared validator and Decision API eligibility
 

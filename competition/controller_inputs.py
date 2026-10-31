@@ -43,7 +43,10 @@ def build_provisional_evaluation_policy(
         raise ValueError("pilot weekly budget must be positive and finite")
     required = {"allowed_models", "published_token_ceiling", "dollar_limit_usd",
                 "max_inference_output_tokens", "lease_seconds", "inference_base_url"}
-    if set(worker_policy) != required:
+    memory = worker_policy.get("memory_per_job_bytes")
+    if memory is not None and (type(memory) is not int or not 256*1024**2 <= memory <= 1024**4):
+        raise ValueError("worker per-paper memory limit is invalid")
+    if set(worker_policy) != required | ({"memory_per_job_bytes"} if memory is not None else set()):
         raise ValueError("pilot worker policy must freeze every required field")
     models = worker_policy["allowed_models"]
     if (not isinstance(models, (list, tuple)) or not models
@@ -84,6 +87,8 @@ def build_provisional_evaluation_policy(
         for name in ("J1", "J2"):
             models.update(item["model"] for item in judge_specs[name])
         allowed_judges = sorted(models)
+    if memory is not None:
+        frozen_worker["memory_per_job_bytes"] = memory
     configuration = {
         "decision_routing": decision_routing_config(
             provider=decision_provider, model=decision_model, api_base=decision_api_base,

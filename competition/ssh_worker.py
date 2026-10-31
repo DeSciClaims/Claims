@@ -273,6 +273,19 @@ class RestrictedSshWorkerTransport(PinnedSshWorkerTransport):
 
     ssh_user: str = "claims-control"
 
+    def capacity(self, vm: WorkerVm) -> dict[str, int]:
+        response = self._ssh(vm, "sudo -n /usr/local/sbin/claims-worker-control run",
+                             input_bytes=b'{"operation":"capacity"}', timeout=30)
+        if len(response) > 4096:
+            raise ValueError("worker capacity response is too large")
+        body = json.loads(response)
+        if (not isinstance(body, dict) or body.get("schema_version") != "claims_worker_capacity_v1"
+            or type(body.get("slots")) is not int or not 0 <= body["slots"] <= 64
+            or type(body.get("available_slots")) is not int
+            or not 0 <= body["available_slots"] <= body["slots"]):
+            raise ValueError("worker capacity response is invalid")
+        return body
+
     def run(
         self, vm: WorkerVm, *, job: dict[str, Any], package: bytes, pdf: bytes,
         inference_base_url: str, paper_key: str,

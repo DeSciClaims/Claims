@@ -382,3 +382,40 @@ def test_parallel_scoring_keeps_completed_papers_when_another_paper_fails(monkey
     assert pairs == [{"paper_id": "p1", "challenger_hotkey": "miner"}]
     _score_active_stage("round", **kwargs)
     assert calls.count("p1") == 1 and calls.count("p2") == 2
+
+
+def test_ready_projection_streams_scoring_without_loading_all_worker_artifacts(monkeypatch):
+    from threading import Event, Lock
+    from competition.weekly_automation import _score_active_stage
+    lock=Lock();released=Event();done=set();started=[]
+    record={**_round('screening'),'rules_public':{'policy':{'execution':{
+        'schema_version':'claims_competition_execution_v1','bronze_max_workers':3,
+        'scoring_max_workers':2,'decision_max_workers':8}}}}
+    def ready(*_,limit):
+        with lock:
+            return [p for p in ('p1','p2','p3') if p not in done][:limit]
+    def pairs(*_):
+        with lock:
+            return [{'paper_id':p,'challenger_hotkey':'miner'} for p in done]
+    backend=SimpleNamespace(get_round=lambda _:record,
+        list_stages=lambda _:[{'stage':'prescreen','entries':[
+            {'hotkey':'ref','role':'reference'},{'hotkey':'miner','role':'challenger'}]}],
+        list_sample=lambda _:[{'stage':'prescreen','paper_id':p} for p in ('p1','p2','p3')],
+        list_stage_pairs=pairs,ready_papers=ready,
+        list_paper_jobs=lambda *_:pytest.fail('readiness must not fetch raw worker artifacts'))
+    def score(_,stage,paper_id,**kwargs):
+        with lock:
+            started.append(paper_id)
+        if paper_id=='p1':
+            assert released.wait(3),'third paper must start before the slow first finishes'
+        elif paper_id=='p3':
+            released.set()
+        with lock:
+            done.add(paper_id)
+    monkeypatch.setattr('competition.weekly_automation.advance_ready_stage',lambda *_,**__:{'status':'waiting_for_scores'})
+    monkeypatch.setattr('competition.weekly_automation.score_ready_paper',score)
+    result=_score_active_stage('round',backend=backend,
+        inputs=SimpleNamespace(bronze_for_paper=lambda *_:{},evaluate_for_stage=lambda _:object()),
+        now=DEADLINE,gold_close=DEADLINE)
+    assert result['scored_papers_this_tick']==3
+    assert sorted(started)==['p1','p2','p3']

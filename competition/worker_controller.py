@@ -216,6 +216,14 @@ def run_claimed_job(
         usage = keys.check_budget(key)
     finally:
         keys.revoke(key)
+    # Capacity changed between probe and admission. No miner executed and no
+    # inference was billed: return the lease rather than faulting the paper.
+    if (output.status == "infrastructure_fault" and output.detail == "worker_busy"
+        and usage.tokens == 0 and usage.dollar_cost_usd == 0 and not usage.over_cap
+        and callable(getattr(backend, "defer_job", None))):
+        if not backend.defer_job(job["job_id"], worker_id=worker_id, lease_token=job["lease_token"]):
+            raise RuntimeError("capacity-blocked job lease could not be returned")
+        return {"status": "capacity_deferred"}
     if usage.tokens < 0 or not math.isfinite(usage.dollar_cost_usd) or usage.dollar_cost_usd < 0:
         raise ValueError("gateway returned invalid usage")
     if (isinstance(output.denied_egress_packets, bool)
@@ -291,9 +299,10 @@ def run_next_claimed_job(
     inference_base_url: str, allowed_models: tuple[str, ...],
     published_token_ceiling: int, dollar_limit: float,
     lease_seconds: int = 3600, max_inference_output_tokens: int = 8192,
+    claimed_job: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Lease one job and stage only its frozen PDF bytes on the worker."""
-    job = backend.claim_job(round_id, worker_id=worker_id, lease_seconds=lease_seconds)
+    job = claimed_job or backend.claim_job(round_id, worker_id=worker_id, lease_seconds=lease_seconds)
     if job is None:
         return None
     if job.get("round_id") != round_id or job.get("status") != "leased":

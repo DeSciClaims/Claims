@@ -8,7 +8,7 @@ holds its own inference credential outside miner execution.
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Callable, Mapping, Protocol
@@ -97,17 +97,21 @@ def _score_active_stage(
               for row in backend.list_stage_pairs(round_id, stage)}
     if not papers or len({row["paper_id"] for row in papers}) != len(papers) or not scored <= expected:
         raise ValueError("stage score grid differs from released sample")
+    limits = execution_policy(backend.get_round(round_id))
+    ready_projection = getattr(backend, "ready_papers", None)
+    # Older replay adapters retain their existing readiness path.
     ready = []
-    for paper in papers:
-        paper_id = paper["paper_id"]
-        if all((paper_id, hotkey) in scored for hotkey in challengers):
-            continue
-        jobs = backend.list_paper_jobs(round_id, stage, paper_id)
-        if len(jobs) != len(entries) or {job["hotkey"] for job in jobs} != entries:
-            continue
-        if any(job["status"] != "completed" for job in jobs):
-            continue
-        ready.append(paper_id)
+    if not callable(ready_projection):
+        for paper in papers:
+            paper_id = paper["paper_id"]
+            if all((paper_id, hotkey) in scored for hotkey in challengers):
+                continue
+            jobs = backend.list_paper_jobs(round_id, stage, paper_id)
+            if len(jobs) != len(entries) or {job["hotkey"] for job in jobs} != entries:
+                continue
+            if any(job["status"] != "completed" for job in jobs):
+                continue
+            ready.append(paper_id)
 
     def score(paper_id):
         return score_ready_paper(
@@ -118,15 +122,32 @@ def _score_active_stage(
 
     attempted = 0
     errors = []
-    limits = execution_policy(backend.get_round(round_id))
+    submitted = set()
+    paper_ids = {paper['paper_id'] for paper in papers}
+    def discover():
+        candidates = (ready_projection(round_id, stage, limit=limits.scoring_max_workers * 2)
+                      if callable(ready_projection) else ready)
+        if not isinstance(candidates, list) or not set(candidates) <= paper_ids:
+            raise ValueError("ready-paper projection differs from the frozen sample")
+        return [paper for paper in candidates if paper not in submitted]
+
+    # Only one task per available scoring slot is submitted. Discover newly
+    # completed worker streams after every result, without a whole-wave barrier.
     with ThreadPoolExecutor(max_workers=limits.scoring_max_workers) as pool:
-        for future in as_completed([pool.submit(score, paper_id) for paper_id in ready]):
-            try:
-                future.result()
-                attempted += 1
-            except Exception as exc:
-                # Other papers have already persisted their results.
-                errors.append(exc)
+        running = set()
+        while True:
+            for paper_id in discover()[:limits.scoring_max_workers - len(running)]:
+                submitted.add(paper_id)
+                running.add(pool.submit(score, paper_id))
+            if not running:
+                break
+            finished, running = wait(running, return_when=FIRST_COMPLETED)
+            for future in finished:
+                try:
+                    future.result()
+                    attempted += 1
+                except Exception as exc:
+                    errors.append(exc)
     if errors:
         raise errors[0]
     if scoring_stage in {"prescreen", "screen"}:

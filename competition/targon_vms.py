@@ -64,7 +64,7 @@ class DisposableVmExecution:
 
 @dataclass(frozen=True)
 class PersistentVmExecution:
-    """Run sequential jobs on one prepared, pinned worker VM."""
+    """Run memory-admitted paper jobs on one prepared, pinned worker VM."""
 
     vm: WorkerVm
     transport: WorkerTransport
@@ -82,18 +82,23 @@ class PersistentVmExecution:
         except ValueError as exc:
             raise ValueError("persistent worker SSH address is invalid") from exc
 
+    def capacity(self) -> dict[str, int]:
+        probe = getattr(self.transport, "capacity", None)
+        return probe(self.vm) if callable(probe) else {"slots": 1, "available_slots": 1}
+
     def run(
         self, *, job: dict[str, Any], package: bytes, pdf: bytes,
         inference_base_url: str, paper_key: str,
     ) -> ExecutionOutput:
         started = self.clock()
+        billing_slots = max(1, self.capacity()["slots"])
         output = self.transport.run(
             self.vm, job=job, package=package, pdf=pdf,
             inference_base_url=inference_base_url, paper_key=paper_key,
         )
         elapsed = max(0.0, self.clock() - started)
         return replace(output, vm_elapsed_seconds=elapsed,
-                       vm_cost_estimate_usd=self.vm.hourly_cost_usd * elapsed / 3600)
+                       vm_cost_estimate_usd=self.vm.hourly_cost_usd * elapsed / 3600 / billing_slots)
 
 
 class TargonVmLifecycle:
