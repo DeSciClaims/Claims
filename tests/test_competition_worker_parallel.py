@@ -77,6 +77,11 @@ def test_memory_pressure_blocks_admission_without_breaking_active_slot(
 
 
 def test_parallel_coordinator_refills_before_slowest_sibling_finishes(monkeypatch):
+    monkeypatch.setattr(
+        CompetitionWorkerCoordinator,
+        "_validated_policy",
+        lambda self: self.evaluation.configuration["worker_policy"],
+    )
     lock = threading.Lock()
     release = threading.Event()
     state = {"active": 0, "peak": 0, "completed": [], "filters": []}
@@ -224,7 +229,12 @@ def test_v2_control_config_validates_memory_and_gateway(tmp_path):
         load_config(path, require_root_owned=False)
 
 
-def test_worker_rejects_host_memory_limit_different_from_frozen_round():
+def test_worker_rejects_host_memory_limit_different_from_frozen_round(monkeypatch):
+    monkeypatch.setattr(
+        CompetitionWorkerCoordinator,
+        "_validated_policy",
+        lambda self: self.evaluation.configuration["worker_policy"],
+    )
     backend = SimpleNamespace(
         claim_job=lambda *_, **__: pytest.fail("must reject before leasing")
     )
@@ -265,3 +275,42 @@ def test_staged_input_bytes_count_against_host_reservations(tmp_path, monkeypatc
         with pytest.raises(RuntimeError, match="no memory slot"):
             with execution_slot(CONFIG, "a" * 64, staging_bytes=100_000_000, **args):
                 pass
+
+
+def test_changed_runtime_is_rejected_before_capacity_probe_or_leasing():
+    from competition.publication import canonical_sha256
+
+    config = {
+        "competition_policy_runtime": {"old": "runtime"},
+        "worker_policy": {"lease_seconds": 60},
+    }
+    digest = canonical_sha256(config)
+    backend = SimpleNamespace(
+        get_round=lambda _: {
+            "round_id": "r",
+            "network": "testnet",
+            "configuration_sha256": digest,
+        },
+        claim_job=lambda *_, **__: pytest.fail(
+            "must not lease from a frozen historical runtime"
+        ),
+    )
+    coordinator = CompetitionWorkerCoordinator(
+        "r",
+        "testnet",
+        "w",
+        backend,
+        SimpleNamespace(round_id="r", backend=backend),
+        SimpleNamespace(backend=backend),
+        SimpleNamespace(
+            round_id="r", configuration_sha256=digest, configuration=config
+        ),
+        None,
+        None,
+        SimpleNamespace(
+            capacity=lambda: pytest.fail("must validate before touching execution VM")
+        ),
+        None,
+    )
+    with pytest.raises(ValueError, match="frozen round"):
+        coordinator.run_available()

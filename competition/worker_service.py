@@ -73,7 +73,7 @@ class CompetitionWorkerCoordinator:
         ):
             raise ValueError("worker coordinator has mismatched round services")
 
-    def run_once(self, *, claimed_job=None) -> dict[str, Any] | None:
+    def _validated_policy(self) -> dict[str, Any]:
         record = self.backend.get_round(self.round_id)
         if (
             record.get("round_id") != self.round_id
@@ -89,6 +89,10 @@ class CompetitionWorkerCoordinator:
         policy = self.evaluation.configuration.get("worker_policy")
         if not isinstance(policy, dict):
             raise ValueError("frozen worker policy is missing")
+        return policy
+
+    def run_once(self, *, claimed_job=None) -> dict[str, Any] | None:
+        policy = self._validated_policy()
         return run_next_claimed_job(
             self.round_id,
             backend=self.backend,
@@ -117,6 +121,7 @@ class CompetitionWorkerCoordinator:
         immediately through the existing run_once path, independent of siblings.
         A process crash leaves only the usual bounded job leases to reconcile.
         """
+        self._validated_policy()  # Runtime and round checks must precede every lease.
         capacity = getattr(self.execution, "capacity", None)
         if not callable(capacity):
             result = self.run_once()
