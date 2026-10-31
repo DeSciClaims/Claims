@@ -3,16 +3,19 @@ from pathlib import Path
 from validator.agent_v1.adjudication_passes import StaticAdjudicationPass
 
 from competition.evaluation_policy import FrozenEvaluationPolicy, judge_runtime_config
-from competition.decision_router import PROMPT_SHA256
+from validator.agent_v1.eligibility_decisions import PROMPT_SHA256
 from competition.publication import canonical_sha256
 from competition.policy_runtime import policy_runtime_config
 from competition.silver_runtime import silver_runtime_config
+from competition.validator_workflow import validated_workflow_spec
 
 
 ROUTING = {
+    "schema_version": "claims_competition_eligibility_routing_v2",
+    "routing_scope": "paper", "predicate_threshold": 0.5,
     "provider": "openai", "model": "gpt-6-luna", "api_base": "https://api.openai.com/v1",
     "prompt_sha256": PROMPT_SHA256,
-    "prescreen_confidence_threshold": 0.8, "screen_confidence_threshold": 0.9,
+    "prescreen_acceptance_fraction": 0.8, "screen_confidence_threshold": 0.9,
 }
 PANELS = {
     judge_id: tuple(StaticAdjudicationPass(
@@ -27,6 +30,7 @@ TIEBREAK = StaticAdjudicationPass(
 
 def _configuration(tiebreak=None):
     return {"decision_routing": ROUTING, "silver_runtime": silver_runtime_config(),
+            "workflow_specs": validated_workflow_spec(None),
             "competition_policy_runtime": policy_runtime_config(),
             **judge_runtime_config(PANELS, tiebreak)}
 
@@ -56,9 +60,11 @@ def test_stage_factory_freezes_routing_and_never_uses_decisions_in_final(monkeyp
         assert captured["source_context_by_span_id"] == {"span-1": "Source for paper-1"}
         assert captured["silver_record_id"].startswith("competition_silver_")
         if expected_threshold is None:
-            assert captured["decision_router"] is None
+            assert captured["file_agent_workflow"].eligibility_decision_policy is None
         else:
-            assert captured["decision_router"].threshold == expected_threshold
+            decision = captured["file_agent_workflow"].eligibility_decision_policy
+            assert decision.cutoff == expected_threshold
+            assert decision.mode == ("top_fraction" if stage == "prescreen" else "confidence_threshold")
     assert len({call["silver_record_id"] for call in calls}) == 4
     with pytest.raises(ValueError, match="differs"):
         policy.evaluate_for_stage("final")(stage="screen", paper_id="paper-1")
@@ -130,6 +136,7 @@ def test_pass_ids_alone_do_not_make_two_distinct_judges():
         ) for index in (1, 2)),
     }
     configuration = {"decision_routing": ROUTING, "silver_runtime": silver_runtime_config(),
+                     "workflow_specs": validated_workflow_spec(None),
                      "competition_policy_runtime": policy_runtime_config(),
                      **judge_runtime_config(same_model_panels, None)}
     with pytest.raises(ValueError, match="distinct"):

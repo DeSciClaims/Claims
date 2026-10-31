@@ -39,9 +39,17 @@ class JudgeUsageCapture:
             or isinstance(amount, bool) or not isinstance(amount, (int, float))
             or not math.isfinite(amount) or amount < 0):
             kind, amount = "unavailable", None
-        events.append({
+        recorded = {
             "model": str(event.get("model") or "unknown"),
-            "pass_id": str(event.get("pass_id") or "unknown"),
+            "pass_id": str(event.get("pass_id") or event.get("stage_key") or "unknown"),
             "status": str(event.get("status") or "unknown"),
             "cost_kind": kind, "cost_usd": amount,
-        })
+        }
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            value = usage.get(key)
+            if type(value) is int and value >= 0:
+                recorded[key] = value
+        if ("total_tokens" not in recorded and "prompt_tokens" in recorded
+            and "completion_tokens" in recorded):
+            recorded["total_tokens"] = recorded["prompt_tokens"] + recorded["completion_tokens"]
+        events.append(recorded)

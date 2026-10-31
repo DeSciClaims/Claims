@@ -107,8 +107,6 @@ def run_paper_silver_pipeline(
     ]
     | None = None,
     file_agent_workflow: FileAgentSilverWorkflow | None = None,
-    decision_router: Callable[[AdjudicationContextBundle], AdjudicationConsensus | None] | None = None,
-    decision_max_workers: int = 1,
 ) -> PaperSilverPipelineResult:
     stage_timings: list[dict] = []
 
@@ -187,6 +185,8 @@ def run_paper_silver_pipeline(
             comparison_edges = file_session.run_comparison()
             comparison_mode = "file_agent"
         except Exception as exc:
+            if getattr(file_session.config, "strict_comparison", False):
+                raise
             LOGGER.exception(
                 "File-agent comparison failed for paper=%s; using legacy comparison to keep paper adjudicable.",
                 paper_id,
@@ -266,26 +266,12 @@ def run_paper_silver_pipeline(
         )
 
     def adjudicate_cases(
-        cases: list[BronzeDiffCase], *, allow_router: bool = False,
+        cases: list[BronzeDiffCase],
     ) -> list[tuple[AdjudicationConsensus, AdjudicationDecision | None]]:
         contexts = [adjudication_context(case) for case in cases]
-        routed: dict[str, AdjudicationConsensus] = {}
-        if allow_router and decision_router is not None and file_session is None:
-            with ThreadPoolExecutor(max_workers=max(1, decision_max_workers)) as pool:
-                decisions = list(pool.map(decision_router, contexts))
-            for context, decision in zip(contexts, decisions):
-                if decision is not None:
-                    if (decision.case_id != context.case.case_id
-                        or decision.final_disposition is None
-                        or decision.route != "decision_model"):
-                        raise ValueError("decision router returned an invalid adjudication")
-                    routed[context.case.case_id] = decision
-            contexts_to_judge = [context for context in contexts if context.case.case_id not in routed]
-        else:
-            contexts_to_judge = contexts
         if file_session is not None:
             consensus_records = file_session.run_adjudication(
-                contexts_to_judge,
+                contexts,
                 passes=adjudication_passes,
                 tiebreak_pass=tiebreak_pass,
                 direct_judge_confidence=direct_judge_confidence,
@@ -293,7 +279,7 @@ def run_paper_silver_pipeline(
             )
         else:
             consensus_records = run_adjudication_cases(
-                contexts_to_judge,
+                contexts,
                 passes=adjudication_passes,
                 tiebreak_pass=tiebreak_pass,
                 direct_judge_confidence=direct_judge_confidence,
@@ -307,7 +293,7 @@ def run_paper_silver_pipeline(
         return [
             (consensus, _decision_from_consensus(context.case, consensus, context.candidates))
             for context in contexts
-            for consensus in [routed.get(context.case.case_id) or judged[context.case.case_id]]
+            for consensus in [judged[context.case.case_id]]
         ]
 
     adjudication_timer = _stage_start("silver_adjudication", "Adjudication")
@@ -332,7 +318,7 @@ def run_paper_silver_pipeline(
         adjudication_workflow = "eligibility_selection"
     else:
         worker_count = max(1, min(int(adjudication_max_workers or 1), len(diff_cases) or 1))
-        adjudicated = adjudicate_cases(diff_cases, allow_router=True)
+        adjudicated = adjudicate_cases(diff_cases)
         consensus_records = [consensus for consensus, _decision in adjudicated]
         _raise_for_operational_adjudication_failures(consensus_records, stage="primary")
         decisions = [decision for _consensus, decision in adjudicated if decision is not None]

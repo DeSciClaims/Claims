@@ -4,12 +4,13 @@ import pytest
 
 from validator.agent_v1.adjudication_config import SilverAdjudicationConfig
 
-from competition.decision_router import PROMPT_SHA256
+from validator.agent_v1.eligibility_decisions import PROMPT_SHA256
 from competition.evaluation_policy import FrozenEvaluationPolicy, judge_runtime_config
 from competition.judges import build_weekly_judges
 from competition.publication import canonical_sha256
 from competition.silver_runtime import silver_runtime_config
 from competition.policy_runtime import policy_runtime_config
+from competition.validator_workflow import validated_workflow_spec
 
 
 def _configs():
@@ -30,11 +31,14 @@ def test_builds_two_model_backed_panels_and_hides_credential(monkeypatch):
     )
     config = {
         "decision_routing": {
+            "schema_version": "claims_competition_eligibility_routing_v2",
+            "routing_scope": "paper", "predicate_threshold": 0.5,
             "provider": "openai", "model": "gpt-6-luna",
             "api_base": "https://api.openai.com/v1", "prompt_sha256": PROMPT_SHA256,
-            "prescreen_confidence_threshold": 0.8, "screen_confidence_threshold": 0.9,
+            "prescreen_acceptance_fraction": 0.8, "screen_confidence_threshold": 0.9,
         },
         "silver_runtime": silver_runtime_config(),
+        "workflow_specs": validated_workflow_spec(None),
         "competition_policy_runtime": policy_runtime_config(),
         **judge_runtime_config(panels, tie),
     }

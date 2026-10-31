@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from miner.agent_v1.provider import dspy_model_id, normalize_provider
 from miner.agent_v1.runtime.usage import empty_usage, usage_from_dspy_lm
 
-from .model_usage import UsageSink
+from .model_usage import UsageSink, pinned_provider_options
 
 
 @dataclass
@@ -21,6 +21,7 @@ class DSPyComparisonRuntime:
     api_base: str
     api_key_env: str
     temperature: float = 0.0
+    provider_slug: str = ""
     max_tokens: int = 32768
     timeout_seconds: float = 300.0
     usage_sink: UsageSink | None = None
@@ -66,6 +67,7 @@ class DSPyComparisonRuntime:
                     max_tokens=self.max_tokens,
                     timeout=self.timeout_seconds,
                     num_retries=0,
+                    **pinned_provider_options(self.provider_slug, self.api_base),
                 )
                 program = self._program(dspy_module, output_model)
                 if hasattr(dspy_module, "context"):

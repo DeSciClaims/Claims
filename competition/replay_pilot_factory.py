@@ -246,12 +246,13 @@ def create_replay_controller(
             else "CLAIMS_COMPETITION_DECISION_API_KEY"),
         weekly_budget_usd=float(configuration["weekly_budget_usd"]),
         worker_policy=configuration["worker_policy"],
-        prescreen_threshold=float(routing["prescreen_confidence_threshold"]),
+        prescreen_fraction=float(routing["prescreen_acceptance_fraction"]),
         screen_threshold=float(routing["screen_confidence_threshold"]),
         decision_api_base=str(routing["api_base"]),
         decision_provider=str(routing.get("provider", "openai")),
         decision_model=str(routing.get("model", "gpt-6-luna")),
         judge_specs=configuration.get("judge_specs"),
+        workflow_specs=configuration.get("workflow_specs"),
     )
     if (evaluation.configuration_sha256 != backend.snapshot["configuration_sha256"]
         or evaluation.configuration != configuration):

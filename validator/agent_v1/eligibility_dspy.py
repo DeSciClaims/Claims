@@ -14,7 +14,7 @@ from miner.agent_v1.provider import dspy_model_id, normalize_provider
 from miner.agent_v1.runtime.usage import empty_usage, usage_from_dspy_lm
 
 from .eligibility_compact import (CompactEligibilityOutput, CompactVerdict, CompactBlindOutput, CompactBlindFinding)
-from .model_usage import UsageSink
+from .model_usage import UsageSink, pinned_provider_options
 from .eligibility import (
     ELIGIBILITY_GATES,
     EligibilityAdjudicationAgentOutput,
@@ -33,6 +33,7 @@ class DSPyEligibilityRuntime:
     api_base: str
     api_key_env: str
     temperature: float = 0.0
+    provider_slug: str = ""
     max_tokens: int = 32768
     timeout_seconds: float = 300.0
     usage_sink: UsageSink | None = None
@@ -80,6 +81,7 @@ class DSPyEligibilityRuntime:
                     max_tokens=self.max_tokens,
                     timeout=self.timeout_seconds,
                     num_retries=0,
+                    **pinned_provider_options(self.provider_slug, self.api_base),
                 )
                 schema_model = _constrained_output_model(output_model, task)
                 program = self._program(dspy_module, schema_model)

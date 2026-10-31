@@ -14,7 +14,7 @@ from .publication import canonical_sha256
 
 
 CHECKS = frozenset({
-    "build", "hardcoded_output", "evaluation_context", "cap_evasion", "fragmentation",
+    "build", "evaluation_context", "cap_evasion", "fragmentation",
 })
 SCHEMA = "claims_code_audit_calibration_v1"
 
@@ -33,7 +33,7 @@ def evaluate_audit_calibration(document: Mapping[str, Any]) -> dict[str, Any]:
         check: {"expected_pass": 0, "expected_fail": 0,
                 "false_reject": 0, "missed_attack": 0} for check in sorted(CHECKS)
     }
-    # Lower values pass the three numeric checks. A policy can separate controls
+    # Lower values pass the two numeric checks. A policy can separate controls
     # from attacks only when max(control) is strictly below min(attack).
     measurements: dict[str, dict[str, list[float]]] = defaultdict(
         lambda: {"expected_pass": [], "expected_fail": []},
@@ -73,13 +73,10 @@ def evaluate_audit_calibration(document: Mapping[str, Any]) -> dict[str, Any]:
                     counts[check]["false_reject"] += 1
                 elif not should_pass and did_pass:
                     counts[check]["missed_attack"] += 1
-            completed = row["completed_job_count"]
             total = row["final_job_count"]
             baseline = row["baseline_claim_count_median"]
             candidate = row["completed_claim_count_median"]
             values = {
-                "hardcoded_output": row["max_same_statement_set_papers"] / completed
-                if completed else None,
                 "cap_evasion": row["cap_trip_count"] / total if total else None,
                 "fragmentation": candidate / max(1, baseline)
                 if isinstance(candidate, (int, float)) and isinstance(baseline, (int, float))
@@ -90,7 +87,7 @@ def evaluate_audit_calibration(document: Mapping[str, Any]) -> dict[str, Any]:
                     bucket = "expected_pass" if expected[check] else "expected_fail"
                     measurements[check][bucket].append(value)
     envelopes = {}
-    for check in ("hardcoded_output", "cap_evasion", "fragmentation"):
+    for check in ("cap_evasion", "fragmentation"):
         control = measurements[check]["expected_pass"]
         attack = measurements[check]["expected_fail"]
         envelopes[check] = {

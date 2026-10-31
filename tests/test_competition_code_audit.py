@@ -34,8 +34,7 @@ def _wheel():
 
 
 def _auto_policy():
-    return {"min_completed_papers": 2, "max_repeated_output_fraction": 1.0,
-            "max_cap_trip_fraction": 0.0, "max_claim_count_ratio": 2.0}
+    return {"min_completed_papers": 2, "max_cap_trip_fraction": 0.0, "max_claim_count_ratio": 2.0}
 
 
 class Backend:
@@ -93,13 +92,13 @@ def test_code_audit_binds_review_to_packages_and_worker_receipts():
     assert row["package_sha256"] == package_hash
     assert row["build_passed"] is True
     assert row["final_job_count"] == 2
-    assert row["max_same_statement_set_papers"] == 2
+    assert "max_same_statement_set_papers" not in row
     review = {
         "round_id": "week1", "evidence_sha256": canonical_sha256(evidence),
         "reviewer": "claims-reviewer", "packages": [{
             "hotkey": "miner", "package_sha256": package_hash,
             "checks": {name: True for name in (
-                "hardcoded_output", "evaluation_context", "cap_evasion", "fragmentation",
+                "evaluation_context", "cap_evasion", "fragmentation",
             )},
         }],
     }
@@ -131,7 +130,7 @@ def test_review_cannot_skip_or_invent_a_check():
     with pytest.raises(ValueError, match="sealed finalist"):
         finalize_code_audit(evidence, {**base, "packages": [{
             "hotkey": "miner", "package_sha256": evidence["packages"][0]["package_sha256"],
-            "checks": {"hardcoded_output": True},
+            "checks": {"unexpected_check": True},
         }]})
     evidence["packages"][0]["denied_egress_packets"] = 1
     with pytest.raises(ValueError, match="denied worker egress"):
@@ -140,7 +139,7 @@ def test_review_cannot_skip_or_invent_a_check():
             "reviewer": "claims-reviewer", "packages": [{
                 "hotkey": "miner", "package_sha256": backend.package_hash,
                 "checks": {name: True for name in (
-                    "hardcoded_output", "evaluation_context", "cap_evasion", "fragmentation",
+                    "evaluation_context", "cap_evasion", "fragmentation",
                 )},
             }],
         })
@@ -157,7 +156,7 @@ def test_automatic_audit_recomputes_frozen_thresholds_and_rejects_tampering():
     assert verify_code_audit_receipt(receipt, evidence, policy=policy) == {"miner": True}
     with pytest.raises(ValueError, match="frozen policy"):
         verify_code_audit_receipt(receipt, evidence, policy={**policy,
-            "max_repeated_output_fraction": 0.5})
+            "max_claim_count_ratio": 3.0})
     tampered = json.loads(json.dumps(receipt))
     tampered["packages"][0]["checks"]["cap_evasion"] = False
     with pytest.raises(ValueError, match="frozen policy"):
@@ -169,25 +168,59 @@ def test_automatic_audit_recomputes_frozen_thresholds_and_rejects_tampering():
     assert automatic_code_audit(changed, policy)["packages"][0]["checks"]["cap_evasion"] is False
     changed["packages"][0]["completed_claim_count_median"] = 10
     assert automatic_code_audit(changed, policy)["packages"][0]["checks"]["fragmentation"] is False
-    assert automatic_code_audit(evidence, {**policy,
-        "max_repeated_output_fraction": 0.5})["packages"][0]["checks"]["hardcoded_output"] is False
     with pytest.raises(ValueError, match="thresholds"):
         validated_audit_policy({"min_completed_papers": 2})
 
 
-@pytest.mark.parametrize("literal,check", [
-    ("paper-1", "hardcoded_output"), ("input.json", "evaluation_context"),
-])
-def test_automatic_audit_flags_embedded_sample_ids_and_context(literal, check):
+def test_automatic_audit_flags_evaluation_context():
     stream = io.BytesIO()
     with zipfile.ZipFile(stream, "w") as archive:
-        archive.writestr("example_miner/__init__.py", f"MARKER = {literal!r}\n")
+        archive.writestr("example_miner/__init__.py", "MARKER = 'input.json'\n")
     package = stream.getvalue()
     evidence = collect_final_code_evidence(
         "week1", backend=Backend(hashlib.sha256(package).hexdigest()),
         fetch_package=lambda _: package,
     )
-    assert automatic_code_audit(evidence, _auto_policy())["packages"][0]["checks"][check] is False
+    assert automatic_code_audit(evidence, _auto_policy())["packages"][0]["checks"]["evaluation_context"] is False
+
+
+@pytest.mark.parametrize("statement", ["same finding", None])
+def test_repeated_outputs_and_paper_literals_do_not_disqualify_a_package(statement):
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        archive.writestr("example_miner/__init__.py", "PAPER = 'paper-1'\nPDF = '" + "e" * 64 + "'\n")
+    package = stream.getvalue()
+
+    class FivePaperBackend(Backend):
+        def list_sample(self, _):
+            return [{"stage": "final", "paper_id": f"paper-{i}", "source_sha256": "e" * 64}
+                    for i in range(1, 6)]
+
+        def list_paper_jobs(self, round_id, stage, paper_id):
+            jobs = super().list_paper_jobs(round_id, stage, paper_id)
+            for job in jobs:
+                result = job["result_private"]
+                result["artifact"] = _artifact(paper_id, statement or f"Finding for {paper_id}")
+                if paper_id == "paper-5" and job["hotkey"] == "miner":
+                    result["status"] = "package_failed"
+                    result["artifact"] = None
+            return jobs
+
+    evidence = collect_final_code_evidence(
+        "week1", backend=FivePaperBackend(hashlib.sha256(package).hexdigest()),
+        fetch_package=lambda _: package,
+    )
+    checks = automatic_code_audit(evidence, _auto_policy())["packages"][0]["checks"]
+    assert evidence["packages"][0]["completed_job_count"] == 4
+    assert set(checks) == {"build", "evaluation_context", "cap_evasion", "fragmentation"}
+    assert all(checks.values())
+    assert verify_code_audit_receipt(automatic_code_audit(evidence, _auto_policy()), evidence,
+                                    policy=_auto_policy()) == {"miner": True}
+
+
+def test_removed_repetition_threshold_cannot_be_frozen_in_new_rules():
+    with pytest.raises(ValueError, match="thresholds"):
+        validated_audit_policy({**_auto_policy(), "max_repeated_output_fraction": 0.2})
 
 
 def test_malformed_finalist_archive_fails_its_build_check_without_blocking_audit():
@@ -208,7 +241,7 @@ def test_malformed_finalist_archive_fails_its_build_check_without_blocking_audit
         "reviewer": "claims-reviewer", "packages": [{
             "hotkey": "miner", "package_sha256": package_hash,
             "checks": {name: True for name in (
-                "hardcoded_output", "evaluation_context", "cap_evasion", "fragmentation",
+                "evaluation_context", "cap_evasion", "fragmentation",
             )},
         }],
     }
@@ -240,7 +273,7 @@ def test_audit_setup_writes_private_review_bound_receipt(tmp_path):
               "reviewer": "claims-reviewer", "packages": [{
                   "hotkey": "miner", "package_sha256": package_hash,
                   "checks": {name: True for name in (
-                      "hardcoded_output", "evaluation_context", "cap_evasion", "fragmentation",
+                      "evaluation_context", "cap_evasion", "fragmentation",
                   )},
               }]}
     final = prepare_code_audit(

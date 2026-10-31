@@ -132,3 +132,18 @@ def _timestamp(value: Any) -> str:
         return value.astimezone(timezone.utc).isoformat()
     text = str(value or "").strip()
     return text or datetime.now(timezone.utc).isoformat()
+
+
+def pinned_provider_options(provider_slug: str, api_base: str) -> dict:
+    """Keep a frozen OpenRouter provider pin on structured DSPy calls."""
+    if not provider_slug:
+        return {}
+    import re
+    from urllib.parse import urlsplit
+
+    if (urlsplit(api_base).hostname not in {"openrouter.ai", "eu.openrouter.ai"}
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,127}", provider_slug)):
+        raise ValueError("provider pin requires an OpenRouter endpoint and slug")
+    return {"extra_body": {"provider": {
+        "order": [provider_slug], "only": [provider_slug], "allow_fallbacks": False,
+    }}}

@@ -143,8 +143,7 @@ def test_mainnet_round_requires_published_automatic_audit_thresholds(tmp_path):
     with pytest.raises(ValueError, match="automatic code audit"):
         prepare_round(draft, backend=object(), directory=tmp_path)
     draft["policy_public"]["code_audit"] = {
-        "min_completed_papers": 200, "max_repeated_output_fraction": 0.2,
-        "max_cap_trip_fraction": 0.01, "max_claim_count_ratio": 4.0,
+        "min_completed_papers": 200, "max_cap_trip_fraction": 0.01, "max_claim_count_ratio": 4.0,
     }
 
     class Backend:
@@ -195,8 +194,7 @@ def test_prepare_round_accepts_accelerated_testnet_schedule(tmp_path):
     assert rules["policy"]["schedule"]["reveal_delay_blocks"] == 5
     draft["network"] = "mainnet"
     draft["policy_public"]["code_audit"] = {
-        "min_completed_papers": 2, "max_repeated_output_fraction": 0.2,
-        "max_cap_trip_fraction": 0.01, "max_claim_count_ratio": 4.0,
+        "min_completed_papers": 2, "max_cap_trip_fraction": 0.01, "max_claim_count_ratio": 4.0,
     }
     mainnet_dir = tmp_path / "mainnet"
     mainnet_dir.mkdir()
@@ -279,11 +277,17 @@ def test_pilot_setup_generates_frozen_configuration_from_json_spec(tmp_path, mon
     draft.pop("round_id")
     draft.pop("configuration")
     draft["configuration_spec"] = {
+        "workflow_specs": {
+            "comparison_model_ref": "J1.0", "canonicalization_model_ref": "tiebreak",
+            "canonical_audit_model_ref": "tiebreak", "comparison_harness": "dspy",
+            "canonicalization_harness": "dspy", "eligibility_output_contract": "compact",
+            "max_tokens": 32768, "timeout_seconds": 1800, "equivalence_group_bypass": True,
+        },
         "judge_specs": judge_specs,
         "decision_routing": {
             "provider": "jev", "model": "jev-latest",
             "api_base": "https://api.typesafe.ai/v1",
-            "prescreen_confidence_threshold": 0.8,
+            "prescreen_acceptance_fraction": 0.8,
             "screen_confidence_threshold": 0.9,
         },
         "worker_policy": worker_policy, "weekly_budget_usd": 10,

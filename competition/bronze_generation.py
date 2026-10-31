@@ -62,19 +62,25 @@ def prepare_selected_bronze(
                 - 60,
             ),
         )
-        bronze = delegate.get_or_create_bronze(
-            request=ReferenceMinerInput(
-                paper_id=paper_id,
-                run_id=round_id,
-                batch_id="competition:" + round_id,
-                network=record["network"],
-                paper_url=paper["source_url"],
-                source_sha256=paper["source_sha256"],
-                input_path=str(pdf),
-                input_kind="pdf",
-            ),
-            reference_release_id=record["reference_release_id"],
-        )
+        from neurons.memory_monitor import ValidatorMemorySampler
+        sampler = ValidatorMemorySampler()
+        sampler.start()
+        try:
+            bronze = delegate.get_or_create_bronze(
+                request=ReferenceMinerInput(
+                    paper_id=paper_id,
+                    run_id=round_id,
+                    batch_id="competition:" + round_id,
+                    network=record["network"],
+                    paper_url=paper["source_url"],
+                    source_sha256=paper["source_sha256"],
+                    input_path=str(pdf),
+                    input_kind="pdf",
+                ),
+                reference_release_id=record["reference_release_id"],
+            )
+        finally:
+            sampler.stop()
         if (
             bronze.source_sha256 != paper["source_sha256"]
             or bronze.reference_release_id != record["reference_release_id"]
@@ -90,6 +96,7 @@ def prepare_selected_bronze(
             raise ValueError("reference miner must produce complete portable Bronze")
         metadata = {
             **bronze.metadata,
+            "competition_resources": sampler.summary(),
             "source_sha256": paper["source_sha256"],
             "reference_lock_sha256": record["rules_public"]["policy"][
                 "reference_lock_sha256"

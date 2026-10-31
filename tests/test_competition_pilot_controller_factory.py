@@ -108,7 +108,7 @@ def test_late_voter_and_code_audit_receipts_are_package_bound(tmp_path, monkeypa
         "reviewer": "claims-reviewer", "packages": [{
             "hotkey": "miner-a", "package_sha256": "a" * 64,
             "checks": {key: True for key in (
-                "hardcoded_output", "evaluation_context", "cap_evasion", "fragmentation",
+                "evaluation_context", "cap_evasion", "fragmentation",
             )},
         }],
     })
@@ -140,19 +140,16 @@ def test_late_voter_and_code_audit_receipts_are_package_bound(tmp_path, monkeypa
 def test_controller_recomputes_automatic_code_audit(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAIMS_COMPETITION_ROUNDS_DIR", str(tmp_path))
     monkeypatch.setenv("CLAIMS_COMPETITION_NETUID", "111")
-    policy = {"min_completed_papers": 2, "max_repeated_output_fraction": 0.5,
-              "max_cap_trip_fraction": 0.0, "max_claim_count_ratio": 3.0}
+    policy = {"min_completed_papers": 2, "max_cap_trip_fraction": 0.0, "max_claim_count_ratio": 3.0}
     evidence = {"schema_version": "claims_final_code_audit_v1", "round_id": "week1",
                 "stage": "final", "sample_sha256": "s" * 64,
                 "packages": [{
                     "hotkey": "miner-a", "package_sha256": "a" * 64,
                     "build_passed": True, "denied_egress_packets": 0,
                     "final_job_count": 2, "completed_job_count": 2,
-                    "cap_trip_count": 0, "max_same_statement_set_papers": 1,
+                    "cap_trip_count": 0,
                     "completed_claim_count_median": 3, "baseline_claim_count_median": 2,
-                    "source_indicators": {"embedded_sample_paper_id_count": 0,
-                                          "embedded_sample_pdf_hash_count": 0,
-                                          "evaluation_context_markers": []},
+                    "source_indicators": {"evaluation_context_markers": []},
                 }]}
     monkeypatch.setattr("competition.pilot_controller_factory.collect_final_code_evidence",
                         lambda *args, **kwargs: evidence)
@@ -172,7 +169,7 @@ def test_controller_recomputes_automatic_code_audit(tmp_path, monkeypatch):
     assert (tmp_path / "week1.audit.json").stat().st_mode & 0o777 == 0o600
     assert _final_audit(backend, chain, "week1", owner_hotkey="owner",
                         operator_hotkey="operator", fetch_package=lambda job: b"package") == audit
-    receipt["packages"][0]["checks"]["hardcoded_output"] = False
+    receipt["packages"][0]["checks"]["cap_evasion"] = False
     (tmp_path / "week1.audit.json").write_text(json.dumps(receipt))
     with pytest.raises(ValueError, match="already differs"):
         _final_audit(backend, chain, "week1", owner_hotkey="owner",
@@ -182,7 +179,7 @@ def test_controller_recomputes_automatic_code_audit(tmp_path, monkeypatch):
 def test_controller_factory_rejects_runtime_that_differs_from_frozen_rules(monkeypatch):
     configuration = {"weekly_budget_usd": "750", "worker_policy": {"lease_seconds": 3600},
                      "decision_routing": {
-                         "prescreen_confidence_threshold": 0.8,
+                         "prescreen_acceptance_fraction": 0.8,
                          "screen_confidence_threshold": 0.9,
                          "api_base": "https://api.openai.com/v1",
                      },

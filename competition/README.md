@@ -207,14 +207,15 @@ receipts remain private. Run
 `python -m neurons.competition_code_audit --round-id ID --rounds-dir DIR --backend-url URL`
 after the final job grid completes. It writes a private
 `<round_id>.audit-evidence.json` containing sealed source fingerprints, build
-outcomes, gateway usage, denied egress, and claim-count/repeated-output
+outcomes, gateway usage, denied egress, and claim-count
 statistics. Mainnet rules must publish `policy.code_audit` with
-`min_completed_papers`, `max_repeated_output_fraction`,
+`min_completed_papers`,
 `max_cap_trip_fraction`, and `max_claim_count_ratio`. When the final grid is
 ready, the trusted controller writes the evidence and `<round_id>.audit.json`
-automatically; the CLI can also prepare the same receipt. It checks embedded sample IDs and PDF
-hashes, evaluation-context literals, denied egress and cap trips, repeated
-output sets, and claim-count ratio. The controller recomputes the verdicts
+automatically; the CLI can also prepare the same receipt. It checks
+evaluation-context literals, denied egress and cap trips, and claim-count ratio.
+Repeated outputs and embedded paper identifiers do not disqualify packages;
+claim validity is determined by ordinary adjudication. The controller recomputes the verdicts
 from the sealed evidence and frozen thresholds. Calibrate the thresholds on
 week −1 perturbation and baseline runs before a paid round.
 To compare candidate thresholds with independently reviewed week −1 controls
@@ -224,7 +225,7 @@ The input is a private JSON object with `schema_version` set to
 `claims_code_audit_calibration_v1`, a proposed `policy.code_audit` body under
 `policy`, and `cases`. Each case has a unique `case_id`, one frozen
 `audit-evidence.json` body under `evidence`, and `expected_checks` keyed by
-finalist hotkey, each with Boolean `build`, `hardcoded_output`,
+finalist hotkey, each with Boolean `build`,
 `evaluation_context`, `cap_evasion`, and `fragmentation` labels. The report
 counts false rejections and missed attacks for each check, and shows whether
 the observed numeric controls and attacks can be separated by an upper
@@ -234,7 +235,7 @@ and freeze chosen thresholds in the public rules before mainnet.
 For a testnet round without automatic thresholds, review the sealed source and this evidence, then provide a private
 review JSON with `round_id`, `evidence_sha256`, `reviewer`, and one package row
 per finalist: `hotkey`, `package_sha256`, and Boolean `checks` for
-`hardcoded_output`, `evaluation_context`, `cap_evasion`, and `fragmentation`.
+`evaluation_context`, `cap_evasion`, and `fragmentation`.
 Run the same command with `--review-file PATH` to write `<round_id>.audit.json`.
 The `build` result is derived from trusted jobs and cannot be overridden.
 The controller recomputes the evidence and rejects a stale or altered review;
@@ -414,8 +415,9 @@ from the frozen private Silver receipt and paired score grid. The 85% accepted
 unit overlap and two-standard-error gain rule is applied against the baseline,
 and the evidence is included in the signed public result. The final code-audit
 evidence collector now binds review to measured worker and sealed package
-receipts; the automatic thresholds for hard-coded outputs, context gaming, cap
-evasion and fragmentation still need week −1 calibration.
+receipts; the automatic thresholds for cap evasion and fragmentation still
+need week −1 calibration. Output repetition and embedded paper IDs are not
+audit disqualification criteria.
 The disposable worker firewall also counts denied packets for the miner UID.
 The trusted SSH transport checks the reviewed two-rule policy before and after
 each run, records blocked attempts even when the guest exits unsuccessfully,
@@ -425,21 +427,43 @@ denied egress; it stops publication for a baseline violation. This is one
 observable code-integrity check, not a substitute for package and behavioral
 audits.
 
-## Early-stage Decision API pilot
+## Shared validator and Decision API eligibility
 
-The Zils checkpoint named in the reward proposal is unavailable. The
-`DecisionsRouter` is a trusted-controller adapter for the
-pre-screen and screen. It submits only single-candidate cases with source
-context to OpenAI Decisions (`gpt-6-luna`); pairs, missing source context, and
-choices below the frozen stage confidence threshold go to the two full judges. The router
-is never passed to the final or week-one evaluator. Freeze the provider,
-model, prompt hash, and thresholds in the weekly configuration. Do not enable
-the route for a paid round until its confidence buckets have been measured on
-the Claims holdout; the older direct-choice benchmark shows weak rejection
-recall. `FrozenEvaluationPolicy` checks the local configuration hash and
-published routing fields before constructing stage evaluators, then keeps
-Decisions out of the final and week-one stages. The API key belongs only to
-the trusted controller.
+Competition evaluation uses the existing file-agent Silver workflow:
+comparison, semantic equivalence groups, eligibility adjudication,
+canonicalization and canonical audit, then Silver scoring. Schema checks
+run on package outputs; separate diagnostic LLM validation stays disabled.
+Comparison and canonicalization use the existing structured DSPy runtimes.
+The round's `configuration_spec.workflow_specs` selects their frozen model
+references (`J1.0`, `J1.1`, `J2.0`, `J2.1`, or `tiebreak`), output contract,
+token/timeout limits, and equivalence-group policy. Provider pins are retained.
+No controller-side agent CLI installation is needed for these DSPy stages.
+
+The existing `validator.agent_v1.eligibility_decisions` adapter supplies Jev
+requests and response parsing. Each early-stage case receives the normal
+negative and positive eligibility assessments, covering every gate and claim
+support, including paired cases. Agreeing results can shortcut full judging:
+
+- Prescreen: use at most `floor(prescreen_acceptance_fraction × case_count)`
+  cases per paper, ranked by confidence, with case ID breaking ties.
+- Screen: use cases meeting `screen_confidence_threshold`.
+- Final and week one: use the normal full eligibility judges and appellate
+  tiebreak; no Decision API shortcut.
+
+Routing confidence is the minimum certainty of the required predicate and
+preference answers across both roles. Predicate truth uses the adapter's 0.5
+boundary; certainty uses `max(p, 1-p)`, so confident negative answers remain
+eligible for routing. Splits, missing source, refusals and provider failures
+go to the full judges. Canonicalization and scoring consume the ordinary
+eligibility decisions regardless of their source. Private per-paper routing
+receipts record confidence and fallback cases. Jev credentials stay on the
+controller; unreported inference cost remains unpriced unless an estimate
+rate is explicitly configured.
+
+The frozen routing descriptor is `claims_competition_eligibility_routing_v2`.
+It publishes the per-paper scope, predicate boundary, acceptance fraction,
+screen threshold, adapter hash and model/provider. Old frozen rounds retain
+their original rules and runtime; this routing requires a new round.
 
 The post-deadline seed assigns each screen and final paper J1 or J2. Each
 configuration is a separate two-pass panel; only the assigned panel runs on a

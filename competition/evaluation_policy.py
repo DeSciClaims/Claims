@@ -4,17 +4,29 @@ from __future__ import annotations
 
 import hashlib
 import re
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 from validator.agent_v1.adjudication_runner import AdjudicationPass
 
-from .decision_router import DecisionsRouter, PROMPT_SHA256
+from validator.agent_v1.eligibility_decisions import PROMPT_SHA256, InputTokenRateLimiter
+from .validator_workflow import build_validator_workflow, validated_workflow_spec
 from .gold_judge import judge_known_answer_case
 from .pair_evaluator import WeeklyPaperEvaluation, evaluate_weekly_paper
 from .publication import canonical_sha256
 from .policy_runtime import policy_runtime_config
 from .silver_runtime import silver_runtime_config
+
+
+def decision_routing_config(*, provider, model, api_base, prescreen_fraction, screen_threshold):
+    return {
+        "schema_version": "claims_competition_eligibility_routing_v2",
+        "provider": provider, "model": model, "api_base": api_base,
+        "prompt_sha256": PROMPT_SHA256, "routing_scope": "paper", "predicate_threshold": 0.5,
+        "prescreen_acceptance_fraction": prescreen_fraction,
+        "screen_confidence_threshold": screen_threshold,
+    }
 
 
 def _pass_descriptor(adjudication_pass: AdjudicationPass) -> dict[str, Any]:
@@ -62,26 +74,39 @@ class FrozenEvaluationPolicy:
     source_context_for_paper: Callable[[str], Mapping[str, str]]
     decision_api_key: str = field(repr=False)
     tiebreak_pass: AdjudicationPass | None = field(default=None, repr=False)
-    prescreen_threshold: float = 0.8
+    prescreen_fraction: float = 0.8
     screen_threshold: float = 0.9
     decision_api_base: str = "https://api.openai.com/v1"
     decision_provider: str = "openai"
     decision_model: str = "gpt-6-luna"
     decision_http_post: Callable | None = field(default=None, repr=False)
+    decision_usage_sink: Callable | None = field(default=None, repr=False)
+    judge_request_gate: Any = field(default=None, repr=False)
+    decision_rate_limiter: Any = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if (not self.round_id or not re.fullmatch(r"[0-9a-f]{64}", self.configuration_sha256)
             or set(self.adjudication_passes_by_judge) != {"J1", "J2"}
             or any(len(passes) != 2 for passes in self.adjudication_passes_by_judge.values())
-            or not 0.5 <= self.prescreen_threshold <= 1
+            or not 0 <= self.prescreen_fraction <= 1
             or not 0.5 <= self.screen_threshold <= 1):
             raise ValueError("weekly evaluation policy is incomplete")
         self._verify_frozen_runtime()
+        if self.judge_request_gate is None:
+            object.__setattr__(self, "judge_request_gate", threading.BoundedSemaphore(
+                (self.configuration.get("judge_specs") or {}).get("max_in_flight", 16),
+            ))
+        if self.decision_rate_limiter is None:
+            rate = self.configuration["silver_runtime"]["settings"]["CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_TOKENS_PER_SECOND"]
+            object.__setattr__(self, "decision_rate_limiter", InputTokenRateLimiter(int(rate)))
 
     def _verify_frozen_runtime(self) -> None:
         frozen = judge_runtime_config(self.adjudication_passes_by_judge, self.tiebreak_pass)
         panels = frozen["judge_panels"]
         silver = silver_runtime_config()
+        validated_workflow_spec(self.configuration.get("workflow_specs"))
+        if "workflow_specs" not in self.configuration:
+            raise ValueError("frozen validator workflow spec is missing")
         embedding_mode = silver["settings"]["CLAIMS_SILVER_PAIRING_EMBEDDING_MODE"].strip().lower()
         if (embedding_mode in {"openrouter", "on", "true", "1"}
             and not silver["embedding_credential_present"]):
@@ -101,13 +126,10 @@ class FrozenEvaluationPolicy:
 
     def public_routing_config(self) -> dict[str, object]:
         """Fields to bind into the round's frozen configuration before intake."""
-        return {
-            "provider": self.decision_provider, "model": self.decision_model,
-            "api_base": self.decision_api_base,
-            "prompt_sha256": PROMPT_SHA256,
-            "prescreen_confidence_threshold": self.prescreen_threshold,
-            "screen_confidence_threshold": self.screen_threshold,
-        }
+        return decision_routing_config(
+            provider=self.decision_provider, model=self.decision_model, api_base=self.decision_api_base,
+            prescreen_fraction=self.prescreen_fraction, screen_threshold=self.screen_threshold,
+        )
 
     def public_judge_config(self) -> dict[str, Any]:
         return judge_runtime_config(self.adjudication_passes_by_judge, self.tiebreak_pass)
@@ -121,17 +143,9 @@ class FrozenEvaluationPolicy:
     def evaluate_for_stage(self, stage: str) -> Callable[..., WeeklyPaperEvaluation]:
         if stage not in {"prescreen", "screen", "final", "week_one"}:
             raise ValueError("unknown evaluation stage")
-        router = None
         if stage in {"prescreen", "screen"}:
             if not self.decision_api_key:
                 raise ValueError("early-stage Decisions API credential is required")
-            kwargs = {"http_post": self.decision_http_post} if self.decision_http_post else {}
-            router = DecisionsRouter(
-                self.decision_api_key,
-                self.prescreen_threshold if stage == "prescreen" else self.screen_threshold,
-                api_base=self.decision_api_base, transport=self.decision_provider,
-                model=self.decision_model, **kwargs,
-            )
 
         def evaluate(**kwargs) -> WeeklyPaperEvaluation:
             self._verify_frozen_runtime()
@@ -151,10 +165,14 @@ class FrozenEvaluationPolicy:
                            self.configuration_sha256)).encode(),
             ).hexdigest()[:32]
             return evaluate_weekly_paper(
+                file_agent_workflow=build_validator_workflow(
+                    self, stage=stage, judge_id=kwargs.get("judge_id", "J1"),
+                    decision_max_workers=kwargs.pop("decision_max_workers", 1),
+                ),
                 **kwargs, silver_record_id=silver_record_id,
                 adjudication_passes_by_judge=self.adjudication_passes_by_judge,
                 tiebreak_pass=self.tiebreak_pass,
-                source_context_by_span_id=dict(context), decision_router=router,
+                source_context_by_span_id=dict(context),
             )
 
         return evaluate

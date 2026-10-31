@@ -71,7 +71,7 @@ def test_replay_final_audit_uses_own_jobs_silver_and_frozen_policy():
     with pytest.raises(ValueError, match="already frozen differently"):
         audit_replay_final(
             "week1", backend=backend, fetch_package=lambda _: package,
-            code_policy={**_auto_policy(), "max_repeated_output_fraction": 0.5},
+            code_policy={**_auto_policy(), "max_claim_count_ratio": 3.0},
         )
 
 

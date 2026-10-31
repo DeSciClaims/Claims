@@ -182,6 +182,8 @@ def score_ready_paper(
                 },
             }})
         result = {"scores": scores, "pairs": pairs, "silver": silver,
+                  "resources": (getattr(evaluation, "resources", None)
+                                if not infrastructure_fault else None),
                   "judge_usage": (list(getattr(evaluation, "judge_usage_events", None))
                                   if not infrastructure_fault
                                   and getattr(evaluation, "judge_usage_events", None) is not None else None)}

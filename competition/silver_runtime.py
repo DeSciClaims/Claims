@@ -14,6 +14,14 @@ SILVER_SOURCE_FILES = (
     "adjudication_config.py",
     "adjudication_passes.py",
     "adjudication_runner.py",
+    "eligibility.py",
+    "eligibility_compact.py",
+    "eligibility_dspy.py",
+    "eligibility_decisions.py",
+    "eligibility_decision_policy.py",
+    "comparison_dspy.py",
+    "canonicalization_dspy.py",
+    "model_usage.py",
     "equivalence.py",
     "file_agent_workflow.py",
     "orchestrator.py",
@@ -40,6 +48,9 @@ SILVER_ENV_DEFAULTS = {
     "CLAIMS_SILVER_PAIRING_SPAN_PAGE_PROXIMITY": "1",
     "CLAIMS_SILVER_ADJUDICATION_BATCH_SIZE": "4",
     "CLAIMS_SILVER_ADJUDICATION_MAX_WORKERS": "4",
+    "CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_TOKENS_PER_SECOND": "100000",
+    "CLAIMS_SILVER_ADJUDICATION_DECISIONS_TIMEOUT": "120",
+    "CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_COST_PER_MILLION_USD": "",
     "CLAIMS_SILVER_MAX_ELIGIBLE_CLAIMS_PER_MINER": "10",
     "CLAIMS_SILVER_MAX_ADJUDICATION_CASES_PER_PAPER": "80",
     "CLAIMS_SILVER_FILTER_BY_ASSESSMENT": "false",
@@ -70,6 +81,17 @@ def silver_pipeline_kwargs(settings: Mapping[str, str]) -> dict[str, int | bool]
         if value not in {"true", "false"}:
             raise ValueError(f"invalid frozen Silver flag: {source}")
         parsed[target] = value == "true"
+    rate = settings["CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_TOKENS_PER_SECOND"]
+    timeout = settings["CLAIMS_SILVER_ADJUDICATION_DECISIONS_TIMEOUT"]
+    price = settings["CLAIMS_SILVER_ADJUDICATION_DECISIONS_INPUT_COST_PER_MILLION_USD"]
+    import math
+    try:
+        if (not rate.isdecimal() or not 0 <= int(rate) <= 100_000_000
+            or not math.isfinite(float(timeout)) or not 1 <= float(timeout) <= 600
+            or price and (not math.isfinite(float(price)) or float(price) < 0)):
+            raise ValueError("invalid frozen Decision API limits")
+    except (ValueError, OverflowError) as exc:
+        raise ValueError("invalid frozen Decision API limits") from exc
     return parsed
 
 
@@ -85,6 +107,10 @@ def silver_runtime_config() -> dict[str, Any]:
         name: hashlib.sha256((source_dir / name).read_bytes()).hexdigest()
         for name in SILVER_SOURCE_FILES
     }
+    source_hashes.update({
+        str(path.relative_to(source_dir)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted((source_dir / "skills").glob("claims-silver-*/SKILL.md"))
+    })
     settings = {name: os.getenv(name, default)
                 for name, default in SILVER_ENV_DEFAULTS.items()}
     silver_pipeline_kwargs(settings)

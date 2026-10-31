@@ -129,6 +129,13 @@ def publish_selected_round(
     )} for row in duplicate_disputes]
     results = {
         "decision": selection.decision,
+        "uid_by_hotkey": {
+            hotkey: int(uid_by_hotkey[hotkey])
+            for hotkey in sorted({operator_hotkey} | {
+                entry["hotkey"] for stage_receipt in stages
+                for entry in stage_receipt["entries"]
+            }) if hotkey in uid_by_hotkey
+        },
         "duplicate_disputes": dispute_summary,
         "production_hotkey": selection.production_hotkey,
         "fallback_reference_hotkey": baseline[0]["hotkey"]

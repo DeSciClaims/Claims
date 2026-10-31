@@ -44,12 +44,18 @@
         {
           "name": "prescreen",
           "papers": 2,
+          "advance_top": 4,
+          "max_per_team": 2
+        },
+        {
+          "name": "screen",
+          "papers": 5,
           "advance_top": 3,
           "max_per_team": 1
         },
         {
           "name": "final",
-          "papers": 5
+          "papers": 10
         }
       ]
     },
@@ -61,8 +67,8 @@
       "provider": "jev",
       "model": "jev-latest",
       "api_base": "https://api.typesafe.ai/v1",
-      "prescreen_confidence_threshold": 0.8,
-      "screen_confidence_threshold": 0.9
+      "screen_confidence_threshold": 0.9,
+      "prescreen_acceptance_fraction": 0.8
     },
     "judge_specs": {
       "api_base": "https://openrouter.ai/api/v1",
@@ -104,6 +110,17 @@
       "max_inference_output_tokens": 8192,
       "lease_seconds": 3600,
       "inference_base_url": "https://REPLACE_GATEWAY_HOST/v1"
+    },
+    "workflow_specs": {
+      "comparison_model_ref": "J1.0",
+      "canonicalization_model_ref": "tiebreak",
+      "canonical_audit_model_ref": "tiebreak",
+      "comparison_harness": "dspy",
+      "canonicalization_harness": "dspy",
+      "eligibility_output_contract": "compact",
+      "max_tokens": 32768,
+      "timeout_seconds": 1800,
+      "equivalence_group_bypass": true
     }
   }
 }

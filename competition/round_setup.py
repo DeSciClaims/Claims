@@ -246,13 +246,13 @@ def prepare_pilot_round(
             raise ValueError("mainnet round needs a supplied public evaluation plan")
     if spec is not None:
         if (draft.get("configuration") is not None or not isinstance(spec, dict)
-            or set(spec) != {"judge_specs", "decision_routing",
-                             "worker_policy", "weekly_budget_usd"}):
+            or set(spec) != {"judge_specs", "decision_routing", "worker_policy",
+                             "weekly_budget_usd", "workflow_specs"}):
             raise ValueError("round configuration spec is malformed")
         routing = spec["decision_routing"]
         if (not isinstance(routing, dict)
             or set(routing) != {"provider", "model", "api_base",
-                                "prescreen_confidence_threshold",
+                                "prescreen_acceptance_fraction",
                                 "screen_confidence_threshold"}):
             raise ValueError("Decision routing spec is malformed")
         policy = build_provisional_evaluation_policy(
@@ -261,12 +261,13 @@ def prepare_pilot_round(
             decision_api_key=decision_api_key,
             weekly_budget_usd=float(spec["weekly_budget_usd"]),
             worker_policy=spec["worker_policy"],
-            prescreen_threshold=float(routing["prescreen_confidence_threshold"]),
+            prescreen_fraction=float(routing["prescreen_acceptance_fraction"]),
             screen_threshold=float(routing["screen_confidence_threshold"]),
             decision_api_base=str(routing["api_base"]),
             decision_provider=str(routing["provider"]),
             decision_model=str(routing["model"]),
             judge_specs=spec["judge_specs"],
+            workflow_specs=spec.get("workflow_specs"),
         )
         draft = {key: value for key, value in draft.items() if key != "configuration_spec"}
         draft["configuration"] = policy.configuration
@@ -282,12 +283,13 @@ def prepare_pilot_round(
         decision_api_key=decision_api_key,
         weekly_budget_usd=float(configuration["weekly_budget_usd"]),
         worker_policy=configuration["worker_policy"],
-        prescreen_threshold=float(routing["prescreen_confidence_threshold"]),
+        prescreen_fraction=float(routing["prescreen_acceptance_fraction"]),
         screen_threshold=float(routing["screen_confidence_threshold"]),
         decision_api_base=str(routing["api_base"]),
         decision_provider=str(routing.get("provider", "openai")),
         decision_model=str(routing.get("model", "gpt-6-luna")),
         judge_specs=configuration.get("judge_specs"),
+        workflow_specs=configuration.get("workflow_specs"),
     )
     if policy.configuration != configuration:
         raise ValueError("pilot judge runtime differs from proposed frozen rules")

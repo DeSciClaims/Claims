@@ -19,3 +19,15 @@ def test_scoped_judge_usage_capture_separates_papers_and_unpriced_calls():
                       "status": "success", "cost_kind": "actual", "cost_usd": 0.02}]
     assert second[0]["cost_kind"] == "unavailable"
     assert second[0]["cost_usd"] is None
+
+
+def test_judge_token_usage_preserves_reported_total_and_rejects_invalid_values():
+    capture = JudgeUsageCapture()
+    with capture.collect("paper") as events:
+        capture.record({"paper_id": "paper", "usage": {
+            "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15,
+        }})
+        capture.record({"paper_id": "paper", "usage": {
+            "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": True,
+        }})
+    assert [event["total_tokens"] for event in events] == [15, 15]

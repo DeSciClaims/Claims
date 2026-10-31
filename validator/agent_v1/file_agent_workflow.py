@@ -11,6 +11,7 @@ import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -52,6 +53,7 @@ from .eligibility import (
     validate_eligibility_adjudication_output,
 )
 from .eligibility_dspy import DSPyEligibilityRuntime
+from .eligibility_decision_policy import EligibilityDecisionPolicy
 from .model_usage import UsageSink, provider_from_model_or_base
 from .record_projection import normalize_statement
 from .equivalence import confirmed_equivalence_groups, propose_similarity_groups
@@ -275,6 +277,9 @@ class FileAgentWorkflowConfig:
     comparison_model: str
     canonicalization_model: str
     canonical_audit_model: str = ""
+    comparison_harness: str = "file-agent"
+    strict_comparison: bool = False
+    model_provider_slugs: dict[str, str] = field(default_factory=dict)
     equivalence_group_bypass: bool = True
     canonicalization_harness: str = "file-agent"
     canonicalization_provider: str = "openrouter"
@@ -295,6 +300,8 @@ class FileAgentWorkflowConfig:
     adjudication_max_tokens: int = 32768
     adjudication_appellate_max_tokens: int = 32768
     adjudication_timeout_seconds: float = 120.0
+    adjudication_temperature: float = 0.0
+    temperature: float = 0.0
     command_template: str = ""
     max_turns: int = 30
     max_tokens: int = 32768
@@ -307,6 +314,8 @@ class FileAgentWorkflowConfig:
     resume_existing_stages: bool = False
 
     def __post_init__(self) -> None:
+        if self.comparison_harness not in {"file-agent", "dspy"}:
+            raise ValueError("Comparison harness must be file-agent or dspy.")
         if self.eligibility_output_contract not in {"verbose", "compact"}:
             raise ValueError("Eligibility output contract must be verbose or compact.")
         if self.canonicalization_harness not in {"file-agent", "dspy"}:
@@ -518,6 +527,7 @@ class FileAgentWorkflowSession:
     eligibility_source_context_by_span_id: dict[str, str] | None = None
     usage_sink: UsageSink | None = None
     request_gate: Any | None = None
+    eligibility_decision_policy: EligibilityDecisionPolicy | None = None
     root: Path = field(init=False)
     manifest: dict[str, Any] = field(init=False)
     initial_candidates: list[ComparisonCandidate] = field(init=False)
@@ -552,6 +562,33 @@ class FileAgentWorkflowSession:
         if not contexts:
             self._write_json("eligibility_adjudication/decisions.json", {"decisions": []})
             return []
+        routed = {}
+        all_contexts = contexts
+        if self.eligibility_decision_policy is not None:
+            source_map = (self.eligibility_source_context_by_span_id
+                          if self.eligibility_source_context_by_span_id is not None
+                          else self.source_context_by_span_id)
+
+            def prepare_task(items):
+                return build_eligibility_adjudication_task(
+                    items, paper_context=self.paper_context, source_context_by_span_id=source_map,
+                )
+
+            def validate_output(output, task, ids):
+                _validate_eligibility_adjudication_payload(
+                    output, expected_candidate_refs_by_case={key: set(value) for key, value in ids.items()},
+                    known_span_ids=set(task["source_spans"]),
+                    source_span_ids_by_candidate_ref=_eligibility_candidate_source_spans_by_ref(task),
+                )
+
+            routed, routing = self.eligibility_decision_policy.route(
+                contexts, paper_id=self.paper_id, workspace_id=self.workspace_id,
+                prepare_task=prepare_task, validate_output=validate_output,
+                skill_instructions=lambda role: _skill_path(
+                    f"claims-silver-eligibility-selection-{role}").read_text(),
+            )
+            self._write_json("eligibility_adjudication/decision-routing.json", routing)
+            contexts = [c for c in contexts if c.case.case_id not in routed]
         source_map = (
             self.eligibility_source_context_by_span_id
             if self.eligibility_source_context_by_span_id is not None
@@ -573,23 +610,27 @@ class FileAgentWorkflowSession:
             with ThreadPoolExecutor(max_workers=worker_count) as executor:
                 futures = [
                     executor.submit(
-                        self._run_eligibility_adjudication_batch,
+                        copy_context().run, self._run_eligibility_adjudication_batch,
                         batch,
                         batch_index=index,
                     )
                     for index, batch in enumerate(batches)
                 ]
                 batch_decisions = [future.result() for future in futures]
-        decisions = [decision for batch in batch_decisions for decision in batch]
+        by_case = {decision.case_id: decision for batch in batch_decisions for decision in batch}
+        by_case.update(routed)
+        decisions = [by_case[c.case.case_id] for c in all_contexts]
         self._write_json(
             "eligibility_adjudication/decisions.json",
             {
                 "schema": "claims_silver_eligibility_adjudication_v2",
                 "output_contract": self.config.eligibility_output_contract,
                 "eligibility_profile_id": ELIGIBILITY_PROFILE_ID,
-                "case_count": len(contexts),
-                "single_case_count": sum(len(context.candidates) == 1 for context in contexts),
-                "pair_case_count": sum(len(context.candidates) == 2 for context in contexts),
+                "case_count": len(all_contexts),
+                "decision_model_case_count": len(routed),
+                "full_judge_case_count": len(contexts),
+                "single_case_count": sum(len(context.candidates) == 1 for context in all_contexts),
+                "pair_case_count": sum(len(context.candidates) == 2 for context in all_contexts),
                 "batch_size": self.config.adjudication_batch_size,
                 "max_source_chars": self.config.adjudication_max_source_chars,
                 "batch_count": len(batches),
@@ -651,12 +692,12 @@ class FileAgentWorkflowSession:
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             negative_future = executor.submit(
-                run_primary,
+                copy_context().run, run_primary,
                 "negative",
                 self.config.adjudication_negative_model,
             )
             positive_future = executor.submit(
-                run_primary,
+                copy_context().run, run_primary,
                 "positive",
                 self.config.adjudication_positive_model,
             )
@@ -1145,6 +1186,8 @@ class FileAgentWorkflowSession:
         try:
             with _request_slot(self.request_gate):
                 payload = DSPyEligibilityRuntime(
+                    temperature=self.config.adjudication_temperature,
+                    provider_slug=self.config.model_provider_slugs.get(model, ""),
                     provider=self.config.adjudication_provider,
                     api_base=self.config.adjudication_api_base,
                     api_key_env=self.config.adjudication_api_key_env,
@@ -1617,6 +1660,8 @@ class FileAgentWorkflowSession:
         try:
             with _request_slot(self.request_gate):
                 payload = DSPyCanonicalizationRuntime(
+                    temperature=self.config.temperature,
+                    provider_slug=self.config.model_provider_slugs.get(model, ""),
                     provider=self.config.canonicalization_provider,
                     api_base=self.config.canonicalization_api_base,
                     api_key_env=self.config.canonicalization_api_key_env,
@@ -1709,15 +1754,20 @@ class FileAgentWorkflowSession:
             },
         }
         try:
-            result = self._run_stage(
-                stage_key="comparison",
-                stage_label="Comparison graph",
-                model=self.config.comparison_model,
-                task=task,
-                output_model=ComparisonAgentOutput,
-                skill_path=_skill_path("claims-silver-comparator"),
-            )
-            output = result.payload
+            if self.config.comparison_harness == "dspy":
+                output = self._run_dspy_comparison_recovery(
+                    task=task, candidates_by_alias=candidates_by_alias, mandatory_pairs=mandatory_pairs,
+                )
+            else:
+                result = self._run_stage(
+                    stage_key="comparison",
+                    stage_label="Comparison graph",
+                    model=self.config.comparison_model,
+                    task=task,
+                    output_model=ComparisonAgentOutput,
+                    skill_path=_skill_path("claims-silver-comparator"),
+                )
+                output = result.payload
         except Exception as first_error:
             LOGGER.warning(
                 "File-agent comparison failed for paper=%s; attempting structured "
@@ -1927,7 +1977,8 @@ class FileAgentWorkflowSession:
         candidates_by_alias: dict[str, ComparisonCandidate],
         mandatory_pairs: set[tuple[str, str]],
     ) -> ComparisonAgentOutput:
-        stage_key = "comparison_dspy_recovery"
+        primary = self.config.comparison_harness == "dspy" and "operational_retry" not in task
+        stage_key = "comparison" if primary else "comparison_dspy_recovery"
         stage_dir = self.root / "executions" / stage_key
         stage_dir.mkdir(parents=True, exist_ok=True)
         enriched_task = {
@@ -1955,27 +2006,30 @@ class FileAgentWorkflowSession:
             stage_dir / "output_schema.json",
             ComparisonAgentOutput.model_json_schema(),
         )
-        payload = DSPyComparisonRuntime(
-            provider=self.config.adjudication_provider,
-            api_base=self.config.adjudication_api_base,
-            api_key_env=self.config.adjudication_api_key_env,
-            max_tokens=self.config.adjudication_max_tokens,
-            timeout_seconds=self.config.adjudication_timeout_seconds,
-            usage_sink=self.usage_sink,
-            raw_output_sink=lambda raw: self._atomic_json(
-                stage_dir / "raw_response.json",
-                {"raw_response": raw},
-            ),
-        ).run(
-            task=enriched_task,
-            output_model=ComparisonAgentOutput,
-            model=self.config.comparison_model,
-            stage_key=stage_key,
-            paper_id=self.paper_id,
-            workspace_id=self.workspace_id,
-            validator=validator,
-        )
-        assert isinstance(payload, ComparisonAgentOutput)
+        with _request_slot(self.request_gate):
+            payload = DSPyComparisonRuntime(
+                temperature=self.config.temperature,
+                provider_slug=self.config.model_provider_slugs.get(self.config.comparison_model, ""),
+                provider=self.config.adjudication_provider,
+                api_base=self.config.adjudication_api_base,
+                api_key_env=self.config.adjudication_api_key_env,
+                max_tokens=self.config.adjudication_max_tokens,
+                timeout_seconds=self.config.adjudication_timeout_seconds,
+                usage_sink=self.usage_sink,
+                raw_output_sink=lambda raw: self._atomic_json(
+                    stage_dir / "raw_response.json",
+                    {"raw_response": raw},
+                ),
+            ).run(
+                task=enriched_task,
+                output_model=ComparisonAgentOutput,
+                model=self.config.comparison_model,
+                stage_key=stage_key,
+                paper_id=self.paper_id,
+                workspace_id=self.workspace_id,
+                validator=validator,
+            )
+            assert isinstance(payload, ComparisonAgentOutput)
         self._atomic_json(stage_dir / "output.json", payload.model_dump(mode="json"))
         self._record_manifest_stage(
             {
@@ -1983,7 +2037,7 @@ class FileAgentWorkflowSession:
                 "status": "complete",
                 "model": self.config.comparison_model,
                 "harness": "dspy",
-                "recovery": "file_agent_to_structured_dspy",
+                "recovery": "none" if primary else "file_agent_to_structured_dspy",
                 "output_sha256": _sha256(stage_dir / "output.json"),
             }
         )
@@ -2720,6 +2774,7 @@ class FileAgentSilverWorkflow:
     config: FileAgentWorkflowConfig
     usage_sink: UsageSink | None = None
     request_gate: Any | None = None
+    eligibility_decision_policy: EligibilityDecisionPolicy | None = None
 
     @classmethod
     def from_env(
@@ -2754,6 +2809,7 @@ class FileAgentSilverWorkflow:
             eligibility_source_context_by_span_id=eligibility_source_context_by_span_id,
             usage_sink=self.usage_sink,
             request_gate=self.request_gate,
+            eligibility_decision_policy=self.eligibility_decision_policy,
         )
 
 

@@ -10,8 +10,8 @@ from urllib.parse import urlsplit
 
 from validator.agent_v1.model_usage import UsageSink
 
-from .decision_router import PROMPT_SHA256
-from .evaluation_policy import FrozenEvaluationPolicy, judge_runtime_config
+from .validator_workflow import validated_workflow_spec
+from .evaluation_policy import FrozenEvaluationPolicy, judge_runtime_config, decision_routing_config
 from .judge_usage import JudgeUsageCapture
 from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
@@ -26,10 +26,11 @@ def build_provisional_evaluation_policy(
     *, paper_inputs: CompetitionPaperInputs, decision_api_key: str,
     weekly_budget_usd: float, worker_policy: Mapping[str, Any],
     judge_usage_sink: UsageSink | None = None,
-    prescreen_threshold: float = 0.8, screen_threshold: float = 0.9,
+    prescreen_fraction: float = 0.8, screen_threshold: float = 0.9,
     decision_api_base: str = "https://api.openai.com/v1",
     decision_provider: str = "openai", decision_model: str = "gpt-6-luna",
     judge_specs: Mapping[str, Any] | None = None,
+    workflow_specs: Mapping[str, Any] | None = None,
 ) -> FrozenEvaluationPolicy:
     """Bind the pilot judges, Bronze source, and budget into one rules hash."""
     if not decision_api_key:
@@ -84,13 +85,12 @@ def build_provisional_evaluation_policy(
             models.update(item["model"] for item in judge_specs[name])
         allowed_judges = sorted(models)
     configuration = {
-        "decision_routing": {
-            "provider": decision_provider, "model": decision_model,
-            "api_base": decision_api_base, "prompt_sha256": PROMPT_SHA256,
-            "prescreen_confidence_threshold": prescreen_threshold,
-            "screen_confidence_threshold": screen_threshold,
-        },
+        "decision_routing": decision_routing_config(
+            provider=decision_provider, model=decision_model, api_base=decision_api_base,
+            prescreen_fraction=prescreen_fraction, screen_threshold=screen_threshold,
+        ),
         "silver_runtime": silver_runtime_config(),
+        "workflow_specs": validated_workflow_spec(workflow_specs),
         "competition_policy_runtime": policy_runtime_config(),
         "judge_model_allowlist": allowed_judges,
         "weekly_budget_usd": format(budget.normalize(), "f"),
@@ -107,9 +107,10 @@ def build_provisional_evaluation_policy(
         tiebreak_pass=tie,
         source_context_for_paper=paper_inputs.source_context_for_paper,
         decision_api_key=decision_api_key,
-        prescreen_threshold=prescreen_threshold, screen_threshold=screen_threshold,
+        prescreen_fraction=prescreen_fraction, screen_threshold=screen_threshold,
         decision_api_base=decision_api_base,
         decision_provider=decision_provider, decision_model=decision_model,
+        decision_usage_sink=judge_usage_sink,
     )
 
 
@@ -247,12 +248,19 @@ class CompetitionControllerInputs:
         def capture(**kwargs):
             if self.judge_usage_capture is None:
                 return evaluate(**kwargs, decision_max_workers=limits.decision_max_workers)
+            from neurons.memory_monitor import ValidatorMemorySampler
             paper_id = kwargs.get("paper_id")
             if not isinstance(paper_id, str) or not paper_id:
                 raise ValueError("judge usage needs a paper ID")
-            with self.judge_usage_capture.collect(paper_id) as events:
-                result = evaluate(**kwargs, decision_max_workers=limits.decision_max_workers)
-            return replace(result, judge_usage_events=tuple(events))
+            sampler = ValidatorMemorySampler()
+            sampler.start()
+            try:
+                with self.judge_usage_capture.collect(paper_id) as events:
+                    result = evaluate(**kwargs, decision_max_workers=limits.decision_max_workers)
+            finally:
+                sampler.stop()
+            return replace(result, judge_usage_events=tuple(events),
+                           resources=sampler.summary())
 
         return capture
 
