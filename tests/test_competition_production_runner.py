@@ -90,6 +90,7 @@ class Execution:
 
     def run(self, **kwargs):
         self.calls += 1
+        self.request = kwargs["job"]["worker_contract"]["request"]
         assert kwargs["paper_key"] == TOKEN
         assert kwargs["job"]["worker_contract"]["request"]["paper"]["paper_id"] == "paper-1"
         return ExecutionOutput("completed", self.artifact, b"run " + TOKEN.encode())
@@ -192,6 +193,10 @@ def test_production_retry_uses_only_recorded_remaining_budget():
     assert keys.created and keys.revoked and execution.calls == 1
     assert result["token_limit"] == 700
     assert result["paper_token_limit"] == 1000
+    assert execution.request["inference"]["budget"] == {
+        "token_limit": 1000, "dollar_limit_usd": 1.0,
+        "remaining_tokens": 700, "remaining_dollar_limit_usd": 0.8,
+    }
 
 
 @pytest.mark.parametrize("prior, expected", [

@@ -59,6 +59,7 @@ class Keys:
 
 class Executor:
     def run(self, **kwargs):
+        self.request = kwargs["job"]["worker_contract"]["request"]
         assert kwargs["paper_key"] == "sk-bf-short-lived"
         assert kwargs["job"]["worker_contract"]["request"]["pdf_path"] == "paper.pdf"
         assert kwargs["job"]["worker_contract"]["entrypoint"] == "claims_sample_miner.cli:main"
@@ -187,11 +188,12 @@ def test_retry_key_receives_only_unspent_paper_budget():
         },
     }
     keys, logs, backend = Keys(expected_cap=600, expected_dollars=0.75), Logs(), Backend(job)
+    execution = Executor()
     result = run_claimed_job(
         job, backend=backend, worker_id="worker-1", network="testnet",
         fetch_package=lambda _: package, fetch_pdf=lambda _: pdf,
         expected_pdf_sha256=hashlib.sha256(pdf).hexdigest(),
-        keys=keys, execution=Executor(), logs=logs,
+        keys=keys, execution=execution, logs=logs,
         inference_base_url="http://gateway.internal:8080/v1",
         allowed_models=("example/model",), published_token_ceiling=1000,
         dollar_limit=1.0,
@@ -200,6 +202,19 @@ def test_retry_key_receives_only_unspent_paper_budget():
     assert result["token_limit"] == 600
     assert result["paper_token_limit"] == 1000
     assert backend.receipt[1]["result"]["token_limit"] == 600
+    assert execution.request["inference"]["budget"] == {
+        "token_limit": 1000, "dollar_limit_usd": 1.0,
+        "remaining_tokens": 600, "remaining_dollar_limit_usd": 0.75,
+    }
+
+
+def test_challenger_request_reports_derived_cap_matching_the_gateway_key():
+    execution = Executor()
+    _, keys, _, _, _ = run(challenger=True, execution=execution)
+    budget = execution.request["inference"]["budget"]
+    assert budget == {"token_limit": 525, "dollar_limit_usd": 1.0,
+                      "remaining_tokens": 525, "remaining_dollar_limit_usd": 1.0}
+    assert budget["remaining_tokens"] == keys.expected_cap
 
 
 @pytest.mark.parametrize("prior, expected", [

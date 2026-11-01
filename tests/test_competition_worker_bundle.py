@@ -25,7 +25,7 @@ def _job(package, pdf):
         },
     }
     data["worker_contract"] = build_worker_contract(
-        data, allowed_models=("allowed/model",), max_output_tokens=8192,
+        data, allowed_models=("allowed/model",), max_output_tokens=8192, paper_token_limit=1000, dollar_limit_usd=0.10,
     )
     return data
 

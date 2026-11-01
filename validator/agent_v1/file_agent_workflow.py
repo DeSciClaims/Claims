@@ -2652,6 +2652,19 @@ class FileAgentWorkflowSession:
         status = "success"
         error: str | None = None
         completed: subprocess.CompletedProcess[str] | None = None
+        agent_env = None
+        if resolved_harness == "hermes-cli":
+            agent_env = {**os.environ, "HERMES_MAX_TOKENS": str(self.config.max_tokens)}
+            provider_slug = self.config.model_provider_slugs.get(model)
+            if provider_slug:
+                # A private per-stage profile avoids changing global Hermes
+                # settings while enforcing the round's frozen provider route.
+                hermes_home = stage_dir / "hermes-home"
+                hermes_home.mkdir(mode=0o700, exist_ok=True)
+                self._atomic_json(hermes_home / "config.yaml", {
+                    "provider_routing": {"only": [provider_slug], "require_parameters": True},
+                })
+                agent_env["HERMES_HOME"] = str(hermes_home)
         try:
             with _request_slot(self.request_gate):
                 completed = _run_until_valid_output(
@@ -2665,14 +2678,7 @@ class FileAgentWorkflowSession:
                     poll_seconds=self.config.output_poll_seconds,
                     stable_seconds=self.config.output_stable_seconds,
                     usage_grace_seconds=self.config.usage_grace_seconds,
-                    env=(
-                        {
-                            **os.environ,
-                            "HERMES_MAX_TOKENS": str(self.config.max_tokens),
-                        }
-                        if resolved_harness == "hermes-cli"
-                        else None
-                    ),
+                    env=agent_env,
                 )
             for path in (task_path, schema_path, skill_copy):
                 if _sha256(path) != input_hashes[path.name]:

@@ -107,7 +107,7 @@ def provisional_judge_configs(
         provider_slug_a=os.getenv("CLAIMS_JUDGE_J1_A_PROVIDER", ""),
         provider_slug_b=os.getenv("CLAIMS_JUDGE_J1_B_PROVIDER", ""),
         provider_slug_tiebreak=os.getenv("CLAIMS_JUDGE_TIEBREAK_PROVIDER", ""),
-        temperature=1.0, max_tokens=8192, timeout_seconds=180.0,
+        temperature=0.0, max_tokens=32768, timeout_seconds=120.0,
         max_in_flight=16,
     )
     return j1, replace(

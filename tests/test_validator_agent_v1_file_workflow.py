@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass
+import subprocess
+from pathlib import Path
+from dataclasses import dataclass, replace
 from types import MethodType, SimpleNamespace
 
 import pytest
 import validator.agent_v1.file_agent_workflow as file_agent_workflow_module
+
 
 from validator.agent_v1.comparison_dspy import DSPyComparisonRuntime
 from validator.agent_v1.adjudication_models import (
@@ -1349,4 +1352,28 @@ def _artifact(paper_id: str, claim_id: str, statement: str) -> dict:
                 }
             ]
         },
+    }
+
+
+def test_hermes_file_stage_uses_private_frozen_provider_profile(tmp_path, monkeypatch):
+    session = _session(tmp_path, [])
+    session.config = replace(session.config, harness="hermes-cli", max_tokens=81920,
+                             model_provider_slugs={"qwen/qwen3-32b": "siliconflow/fp8"})
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen.update(kwargs)
+        kwargs["output_path"].write_text('{"submission_reviews":[],"equivalence_groups":[]}')
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(file_agent_workflow_module, "_run_until_valid_output", fake_run)
+    monkeypatch.setattr(file_agent_workflow_module, "usage_from_cli_process", lambda *a, **kw: {})
+    session._run_stage(stage_key="comparison", stage_label="Comparison", model="qwen/qwen3-32b",
+                       task={}, output_model=ComparisonAgentOutput,
+                       skill_path=file_agent_workflow_module._skill_path("claims-silver-comparator"))
+    assert seen["env"]["HERMES_MAX_TOKENS"] == "81920"
+    home = Path(seen["env"]["HERMES_HOME"])
+    assert home.is_relative_to(session.root)
+    assert json.loads((home / "config.yaml").read_text())["provider_routing"] == {
+        "only": ["siliconflow/fp8"], "require_parameters": True,
     }

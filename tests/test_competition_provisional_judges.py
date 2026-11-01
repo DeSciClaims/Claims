@@ -14,8 +14,8 @@ def test_pilot_models_are_distinct_and_frozen_without_credential(monkeypatch):
     assert (j2.model_a, j2.model_b) == PROVISIONAL_JUDGE_MODELS["J2"]
     assert j1.tiebreak_model == j2.tiebreak_model == PROVISIONAL_TIEBREAK_MODEL
     assert j1.api_base == j2.api_base == "https://openrouter.ai/api/v1"
-    assert j1.temperature == j2.temperature == 1.0
-    assert j1.max_tokens == j2.max_tokens == 8192
+    assert j1.temperature == j2.temperature == 0.0
+    assert j1.max_tokens == j2.max_tokens == 32768
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "pilot-secret")
     usage_events = []

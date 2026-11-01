@@ -162,10 +162,6 @@ def run_claimed_job(
     pdf = fetch_pdf(job)
     if hashlib.sha256(pdf).hexdigest() != expected_pdf_sha256:
         raise ValueError("paper PDF differs from released sample hash")
-    contract = build_worker_contract(
-        job, allowed_models=allowed_models,
-        max_output_tokens=max_inference_output_tokens,
-    )
     paper_limit, cap_source = paper_token_cap(
         job, backend=backend, published_ceiling=published_token_ceiling,
     )
@@ -194,6 +190,12 @@ def run_claimed_job(
             result=result, log_object_key=log_key,
         )
         return result
+    contract = build_worker_contract(
+        job, allowed_models=allowed_models,
+        max_output_tokens=max_inference_output_tokens,
+        paper_token_limit=paper_limit, dollar_limit_usd=dollar_limit,
+        remaining_tokens=token_limit, remaining_dollar_limit_usd=attempt_dollars,
+    )
     key = keys.create_paper_key(
         round_id=job["round_id"], paper_id=job["paper_id"], hotkey=job["hotkey"],
         allowed_models=contract["allowed_models"], token_limit=token_limit,

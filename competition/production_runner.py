@@ -81,10 +81,6 @@ def run_production_paper(
         "lease_token": lease_token, "paper": paper,
         "manifest": active.manifest,
     }
-    contract = build_worker_contract(
-        job, allowed_models=allowed_models,
-        max_output_tokens=max_inference_output_tokens,
-    )
     pdf = fetch_pdf(source_url, pdf_sha256)
     if hashlib.sha256(pdf).hexdigest() != pdf_sha256:
         raise ValueError("production PDF differs from its pinned source hash")
@@ -118,6 +114,12 @@ def run_production_paper(
             log_object_key=log_key,
         )
         return result
+    contract = build_worker_contract(
+        job, allowed_models=allowed_models,
+        max_output_tokens=max_inference_output_tokens,
+        paper_token_limit=token_limit, dollar_limit_usd=dollar_limit,
+        remaining_tokens=attempt_tokens, remaining_dollar_limit_usd=attempt_dollars,
+    )
     key = keys.create_paper_key(
         round_id=active.round_id, paper_id=paper_id, hotkey=active.hotkey,
         allowed_models=contract["allowed_models"], token_limit=attempt_tokens,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any, Mapping
 
@@ -34,6 +35,9 @@ def validated_package_filename(filename: Any, package_format: Any) -> str:
 def build_worker_contract(
     job: Mapping[str, Any], *, allowed_models: tuple[str, ...],
     max_output_tokens: int,
+    paper_token_limit: int, dollar_limit_usd: float,
+    remaining_tokens: int | None = None,
+    remaining_dollar_limit_usd: float | None = None,
 ) -> dict[str, Any]:
     """Bind a worker invocation to the selected upload and frozen model rules.
 
@@ -67,6 +71,16 @@ def build_worker_contract(
         raise ValueError("pinned paper metadata differs from the leased paper")
     if isinstance(max_output_tokens, bool) or not isinstance(max_output_tokens, int) or not 1 <= max_output_tokens <= 32768:
         raise ValueError("max output tokens are outside the worker contract")
+    if remaining_tokens is None:
+        remaining_tokens = paper_token_limit
+    if remaining_dollar_limit_usd is None:
+        remaining_dollar_limit_usd = dollar_limit_usd
+    if (type(paper_token_limit) is not int or paper_token_limit < 1
+        or type(remaining_tokens) is not int or not 1 <= remaining_tokens <= paper_token_limit
+        or any(type(value) not in {int, float} or not math.isfinite(value) or value <= 0
+               for value in (dollar_limit_usd, remaining_dollar_limit_usd))
+        or remaining_dollar_limit_usd > dollar_limit_usd):
+        raise ValueError("worker inference budget is invalid")
     request = {
         "schema_version": "claims_competition_request_v1",
         "paper": {key: value for key, value in paper.items() if key in _PAPER_METADATA_FIELDS},
@@ -74,6 +88,12 @@ def build_worker_contract(
         "inference": {
             "model": models[0], "allowed_models": models,
             "stream": True, "max_output_tokens": max_output_tokens,
+            "budget": {
+                "token_limit": paper_token_limit,
+                "dollar_limit_usd": dollar_limit_usd,
+                "remaining_tokens": remaining_tokens,
+                "remaining_dollar_limit_usd": remaining_dollar_limit_usd,
+            },
         },
     }
     # Reject JSON values that would be coerced or vary across runners.

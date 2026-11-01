@@ -18,6 +18,35 @@ from validator.agent_v1.eligibility_decisions import DecisionsEligibilityRuntime
 from test_validator_agent_v1_eligibility import _session, _candidate, _context
 
 
+def test_default_competition_harness_and_limits_match_the_validator():
+    from competition.validator_workflow import build_validator_workflow
+    from competition.silver_runtime import SILVER_ENV_DEFAULTS
+    policy = SimpleNamespace(
+        configuration={
+            "workflow_specs": validated_workflow_spec(None),
+            "judge_panels": {
+                "J1": [{"model": "a"}, {"model": "b"}],
+                "J2": [{"model": "c"}, {"model": "d"}],
+            },
+            "tiebreak_pass": {"model": "tie"},
+            "silver_runtime": {"settings": SILVER_ENV_DEFAULTS},
+            "judge_specs": {"max_tokens": 32768, "temperature": 0, "timeout_seconds": 120},
+        }, decision_usage_sink=None, judge_request_gate=None,
+    )
+    workflow = build_validator_workflow(policy, stage="final", judge_id="J1", decision_max_workers=8)
+    config = workflow.config
+    assert config.harness == "hermes-cli"
+    assert config.comparison_harness == config.canonicalization_harness == "file-agent"
+    assert config.strict_comparison is False
+    assert config.max_tokens == 81920 and config.max_turns == 30
+    assert config.timeout_seconds == 1800
+    assert config.adjudication_harness == "dspy"
+    assert config.adjudication_max_tokens == config.adjudication_appellate_max_tokens == 32768
+    assert config.adjudication_temperature == config.temperature == 0
+    assert config.adjudication_timeout_seconds == 120
+    assert workflow.eligibility_decision_policy is None
+
+
 def response(task, questions, probability=0.99, *, choice=None):
     candidates = task["cases"][0]["candidates"]
     selected = choice or candidates[0]["candidate_ref"]
@@ -321,6 +350,8 @@ def test_competition_uses_real_comparison_eligibility_canonicalization_and_silve
         worker_policy=worker,
         workflow_specs={
             **validated_workflow_spec(None),
+            "comparison_harness": "dspy",
+            "canonicalization_harness": "dspy",
             "equivalence_group_bypass": False,
         },
     )

@@ -159,7 +159,7 @@ def main():
                 },
             }
             job["worker_contract"] = build_worker_contract(
-                job, allowed_models=("probe/model",), max_output_tokens=8192
+                job, allowed_models=("probe/model",), max_output_tokens=8192, paper_token_limit=1000, dollar_limit_usd=0.10
             )
             jobs.append(job)
             bundles.append(
@@ -241,7 +241,7 @@ def main():
             },
         }
         bad["worker_contract"] = build_worker_contract(
-            bad, allowed_models=("probe/model",), max_output_tokens=8192
+            bad, allowed_models=("probe/model",), max_output_tokens=8192, paper_token_limit=1000, dollar_limit_usd=0.10
         )
         bad_bundle = archive(
             {

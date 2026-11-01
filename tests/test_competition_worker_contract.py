@@ -20,7 +20,7 @@ def job():
 def test_contract_scopes_key_to_declared_models_and_builds_sample_request():
     contract = build_worker_contract(
         job(), allowed_models=("example/model-a", "example/model-b", "example/model-c"),
-        max_output_tokens=8192,
+        max_output_tokens=8192, paper_token_limit=1000, dollar_limit_usd=0.10,
     )
     assert contract["allowed_models"] == ("example/model-a", "example/model-b")
     assert contract["package_filename"] == "claims_sample_miner-0.1.0-py3-none-any.whl"
@@ -30,21 +30,24 @@ def test_contract_scopes_key_to_declared_models_and_builds_sample_request():
         "pdf_path": "paper.pdf",
         "inference": {"model": "example/model-a",
                       "allowed_models": ["example/model-a", "example/model-b"],
-                      "stream": True, "max_output_tokens": 8192},
+                      "stream": True, "max_output_tokens": 8192,
+                      "budget": {"token_limit": 1000, "dollar_limit_usd": 0.10,
+                                 "remaining_tokens": 1000,
+                                 "remaining_dollar_limit_usd": 0.10}},
     }
 
 
 def test_contract_rejects_undeclared_or_unapproved_models_and_wrong_paper():
     data = job()
     with pytest.raises(ValueError, match="whitelist"):
-        build_worker_contract(data, allowed_models=("example/model-a",), max_output_tokens=8192)
+        build_worker_contract(data, allowed_models=("example/model-a",), max_output_tokens=8192, paper_token_limit=1000, dollar_limit_usd=0.10)
     data["manifest"]["models"] = ["example/model-a", "example/model-a"]
     with pytest.raises(ValueError, match="whitelist"):
-        build_worker_contract(data, allowed_models=("example/model-a",), max_output_tokens=8192)
+        build_worker_contract(data, allowed_models=("example/model-a",), max_output_tokens=8192, paper_token_limit=1000, dollar_limit_usd=0.10)
     data["manifest"]["models"] = ["example/model-a"]
     data["paper"]["paper_id"] = "other-paper"
     with pytest.raises(ValueError, match="metadata"):
-        build_worker_contract(data, allowed_models=("example/model-a",), max_output_tokens=8192)
+        build_worker_contract(data, allowed_models=("example/model-a",), max_output_tokens=8192, paper_token_limit=1000, dollar_limit_usd=0.10)
 
 
 def test_worker_receives_bibliographic_metadata_without_reference_findings():
@@ -52,7 +55,7 @@ def test_worker_receives_bibliographic_metadata_without_reference_findings():
     data["paper"].update(claims_summary=["Private reference finding"],
                          private_judge_answer="secret", doi="10.1234/example")
     contract = build_worker_contract(
-        data, allowed_models=("example/model-a", "example/model-b"), max_output_tokens=8192,
+        data, allowed_models=("example/model-a", "example/model-b"), max_output_tokens=8192, paper_token_limit=1000, dollar_limit_usd=0.10,
     )
     assert contract["request"]["paper"] == {
         "paper_id": "paper-1", "title": "Study", "doi": "10.1234/example",
@@ -67,5 +70,18 @@ def test_contract_rejects_noninstallable_or_unsafe_wheel_name(filename):
     with pytest.raises(ValueError, match="filename|wheel"):
         build_worker_contract(
             data, allowed_models=("example/model-a", "example/model-b"),
-            max_output_tokens=8192,
+            max_output_tokens=8192, paper_token_limit=1000, dollar_limit_usd=0.10,
         )
+
+
+@pytest.mark.parametrize("changes", [
+    {"paper_token_limit": True}, {"paper_token_limit": 0},
+    {"remaining_tokens": 1001}, {"remaining_tokens": 0},
+    {"dollar_limit_usd": float("nan")}, {"dollar_limit_usd": True},
+    {"remaining_dollar_limit_usd": 0.11}, {"remaining_dollar_limit_usd": -0.01},
+])
+def test_contract_rejects_misleading_or_invalid_budget(changes):
+    budget = {"paper_token_limit": 1000, "dollar_limit_usd": 0.10, **changes}
+    with pytest.raises(ValueError, match="inference budget"):
+        build_worker_contract(job(), allowed_models=("example/model-a", "example/model-b"),
+                              max_output_tokens=8192, **budget)

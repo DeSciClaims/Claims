@@ -19,10 +19,15 @@ DEFAULT_WORKFLOW_SPEC = {
     "comparison_model_ref": "J1.0",
     "canonicalization_model_ref": "J1.0",
     "canonical_audit_model_ref": "J1.0",
-    "comparison_harness": "dspy",
-    "canonicalization_harness": "dspy",
+    "harness": "hermes-cli",
+    "comparison_harness": "file-agent",
+    "canonicalization_harness": "file-agent",
+    "strict_comparison": False,
+    "max_turns": 30,
+    "fallback_to_legacy": False,
+    "require_distinct_direct_judges": False,
     "eligibility_output_contract": "compact",
-    "max_tokens": 32768,
+    "max_tokens": 81920,
     "timeout_seconds": 1800,
     "equivalence_group_bypass": True,
 }
@@ -31,7 +36,7 @@ DEFAULT_WORKFLOW_SPEC = {
 def validated_workflow_spec(value: Mapping[str, Any] | None) -> dict[str, Any]:
     if value is not None and not isinstance(value, Mapping):
         raise ValueError("competition validator workflow spec is invalid")
-    spec = dict(DEFAULT_WORKFLOW_SPEC if value is None else value)
+    spec = {**DEFAULT_WORKFLOW_SPEC, **(value or {})}
     if (
         set(spec) != set(DEFAULT_WORKFLOW_SPEC)
         or any(
@@ -43,8 +48,12 @@ def validated_workflow_spec(value: Mapping[str, Any] | None) -> dict[str, Any]:
                 "canonical_audit_model_ref",
             )
         )
-        or spec["comparison_harness"] != "dspy"
-        or spec["canonicalization_harness"] != "dspy"
+        or spec["harness"] != "hermes-cli"
+        or spec["comparison_harness"] not in {"file-agent", "dspy"}
+        or spec["canonicalization_harness"] not in {"file-agent", "dspy"}
+        or type(spec["max_turns"]) is not int or not 1 <= spec["max_turns"] <= 100
+        or any(type(spec[key]) is not bool for key in (
+            "strict_comparison", "fallback_to_legacy", "require_distinct_direct_judges"))
         or not isinstance(spec["eligibility_output_contract"], str)
         or spec["eligibility_output_contract"] not in {"compact", "verbose"}
         or type(spec["max_tokens"]) is not int
@@ -97,14 +106,14 @@ def build_validator_workflow(
     )
     config = FileAgentWorkflowConfig(
         root=root,
-        harness="hermes-cli",
+        harness=spec["harness"],
         provider="openrouter",
         comparison_model=model(resolve(spec["comparison_model_ref"])),
         canonicalization_model=model(resolve(spec["canonicalization_model_ref"])),
         canonical_audit_model=model(resolve(spec["canonical_audit_model_ref"])),
         comparison_harness=spec["comparison_harness"],
         canonicalization_harness=spec["canonicalization_harness"],
-        strict_comparison=True,
+        strict_comparison=spec["strict_comparison"],
         model_provider_slugs=provider_slugs,
         adjudication_harness="dspy",
         adjudication_negative_model=model(pair[0]),
@@ -120,13 +129,14 @@ def build_validator_workflow(
         adjudication_appellate_max_tokens=int(
             judge_spec.get("max_tokens", spec["max_tokens"])
         ),
-        adjudication_timeout_seconds=float(judge_spec.get("timeout_seconds", 180)),
+        adjudication_timeout_seconds=float(judge_spec.get("timeout_seconds", 120)),
         adjudication_temperature=float(judge_spec.get("temperature", 0)),
         temperature=float(judge_spec.get("temperature", 0)),
         max_tokens=spec["max_tokens"],
+        max_turns=spec["max_turns"],
         timeout_seconds=float(spec["timeout_seconds"]),
-        fallback_to_legacy=False,
-        require_distinct_direct_judges=True,
+        fallback_to_legacy=spec["fallback_to_legacy"],
+        require_distinct_direct_judges=spec["require_distinct_direct_judges"],
     )
     decision_policy = None
     if stage in {"prescreen", "screen"}:
