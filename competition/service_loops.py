@@ -60,7 +60,9 @@ def _pending(backend: Any, network: str) -> list[Mapping[str, Any]]:
             or row.get("network") != network or row.get("status") == "published"):
             raise ValueError("backend returned invalid pending round identity")
         seen.add(row["round_id"])
-    return rows
+    # Older backends include failed rounds in their unpublished feed. A
+    # stopped round must never construct adapters or resume any paid work.
+    return [row for row in rows if row.get("status") != "failed"]
 
 
 def run_controller_cycle(

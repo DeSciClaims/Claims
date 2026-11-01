@@ -15,6 +15,20 @@ class Backend:
         ]
 
 
+def test_stopped_rounds_never_construct_or_run_adapters():
+    from competition.service_loops import run_bronze_cycle
+    backend = SimpleNamespace(list_pending_rounds=lambda network: [
+        {"round_id": "stopped", "network": network, "status": "failed"},
+    ])
+
+    def forbidden(*args):
+        raise AssertionError("stopped round resumed")
+
+    assert run_controller_cycle(backend=backend, network="testnet", inputs_for_round=forbidden) == []
+    assert run_bronze_cycle(backend=backend, network="testnet", inputs_for_round=forbidden) == []
+    assert run_worker_cycle(backend=backend, network="testnet", coordinator_for_round=forbidden) == []
+
+
 def test_controller_cycle_resumes_all_rounds_after_one_fault(monkeypatch):
     backend = Backend()
     seen = []
