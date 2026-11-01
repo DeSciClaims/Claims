@@ -1375,5 +1375,5 @@ def test_hermes_file_stage_uses_private_frozen_provider_profile(tmp_path, monkey
     home = Path(seen["env"]["HERMES_HOME"])
     assert home.is_relative_to(session.root)
     assert json.loads((home / "config.yaml").read_text())["provider_routing"] == {
-        "only": ["siliconflow/fp8"], "require_parameters": True,
+        "only": ["siliconflow/fp8"],
     }

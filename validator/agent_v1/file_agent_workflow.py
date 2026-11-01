@@ -2662,7 +2662,7 @@ class FileAgentWorkflowSession:
                 hermes_home = stage_dir / "hermes-home"
                 hermes_home.mkdir(mode=0o700, exist_ok=True)
                 self._atomic_json(hermes_home / "config.yaml", {
-                    "provider_routing": {"only": [provider_slug], "require_parameters": True},
+                    "provider_routing": {"only": [provider_slug]},
                 })
                 agent_env["HERMES_HOME"] = str(hermes_home)
         try:
