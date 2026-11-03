@@ -87,7 +87,7 @@ def test_retained_incumbent_handoff_can_seed_next_round_without_resubmission(tmp
     for row in bundle["results"]["final_pair_scores"]:
         row["baseline_package_sha256"] = PACKAGE_SHA
     receipt = sign_publication(bundle, signer)
-    held = dict(hotkey="incumbent", team_id="old-team", package_sha256=PACKAGE_SHA,
+    held = dict(hotkey="incumbent", team_id="declared-original-team", package_sha256=PACKAGE_SHA,
                 package_object_key="sealed/original.whl", package_size_bytes=len(PACKAGE), manifest=MANIFEST)
     backend=SimpleNamespace(get_round=lambda _:prior,list_stages=lambda _:[stage],list_submissions=lambda _:[])
     storage=SimpleNamespace(package_for_submission=lambda upload: PACKAGE if upload==held else pytest.fail("wrong upload"))
@@ -107,4 +107,4 @@ def test_retained_incumbent_handoff_can_seed_next_round_without_resubmission(tmp
     with pytest.raises(ValueError,match="matching sealed baseline"):
         activate_published_round(prior["round_id"],backend=backend,publication_for_round=lambda _:receipt,
             sealed_packages=storage,releases=store,expected_signer_hotkey=signer.ss58_address,
-            network="testnet",now=now,baseline_upload={**held,"team_id":"different"})
+            network="testnet",now=now,baseline_upload={**held,"package_sha256":"a"*64})

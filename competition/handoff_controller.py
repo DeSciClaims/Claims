@@ -68,11 +68,11 @@ def activate_published_round(
     def selected_upload(plan: ProductionHandoffPlan) -> Mapping[str, Any]:
         if receipt.get("bundle", {}).get("results", {}).get("decision") == "incumbent_continues":
             if (baseline_upload is None or baseline_upload.get("hotkey") != plan.hotkey
-                or baseline_upload.get("package_sha256") != plan.package_sha256
-                or not any(row.get("role") == "incumbent" and row.get("hotkey") == plan.hotkey
-                           and row.get("team_id") == baseline_upload.get("team_id")
-                           for row in final.get("entries", []))):
+                or baseline_upload.get("package_sha256") != plan.package_sha256):
                 raise ValueError("retained incumbent has no matching sealed baseline upload")
+            # The backend resolves canonical teams after intake. The original
+            # sealed receipt keeps its declared team, while signed hotkey and
+            # package hash bind the retained pipeline to its canonical entry.
             return baseline_upload
         if (receipt.get("bundle", {}).get("results", {}).get("decision")
             in {"reference_fallback", "no_crown"}

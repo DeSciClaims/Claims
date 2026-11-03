@@ -97,7 +97,8 @@ def resolve_baseline(
     if (
         len(uploads) != 1
         or not entries
-        or any(row["team_id"] != uploads[0]["team_id"] for row in entries)
+        or len({row["team_id"] for row in entries}) != 1
+        or (not continuing and any(row["team_id"] != uploads[0]["team_id"] for row in entries))
     ):
         raise ValueError("active package has no unique sealed submission and team")
     return {
