@@ -4,6 +4,48 @@ from types import SimpleNamespace
 from competition.service_loops import run_controller_cycle, run_worker_cycle
 
 
+def test_closed_rounds_evaluate_in_deadline_order_while_next_intake_stays_open(monkeypatch):
+    rows=[{'round_id':'b','network':'testnet','status':'locked','deadline_at':'2026-11-04T12:00:00+00:00','configuration_sha256':'b'*64},
+          {'round_id':'c','network':'testnet','status':'open','deadline_at':'2026-11-05T12:00:00+00:00','configuration_sha256':'c'*64},
+          {'round_id':'a','network':'testnet','status':'final','deadline_at':'2026-11-03T12:00:00+00:00','configuration_sha256':'a'*64}]
+    backend=SimpleNamespace(list_pending_rounds=lambda _:rows)
+    seen=[]
+    def inputs(row):
+        seen.append(row['round_id'])
+        return SimpleNamespace(evaluation=SimpleNamespace(round_id=row['round_id'],configuration_sha256=row['configuration_sha256']),paper_inputs=SimpleNamespace(backend=backend))
+    monkeypatch.setattr('competition.service_loops.tick_round',lambda *a,**kw:{'status':'waiting_for_final_scores'})
+    assert run_controller_cycle(backend=backend,network='testnet',inputs_for_round=inputs,separate_intake=True)==[
+        {'round_id':'a','status':'waiting_for_final_scores'}]
+    assert seen==['a']
+
+
+def test_queued_round_waits_before_constructing_judges_or_worker_inputs():
+    row={'round_id':'b','network':'testnet','status':'locked','deadline_at':'2026-11-04T12:00:00+00:00'}
+    backend=SimpleNamespace(list_pending_rounds=lambda _:[row])
+    assert run_controller_cycle(backend=backend,network='testnet',separate_intake=True,
+        evaluation_preparer=lambda *_:{'status':'waiting_for_preceding_handoff'},
+        inputs_for_round=lambda _: (_ for _ in ()).throw(AssertionError('paid adapters started early')))==[
+            {'round_id':'b','status':'waiting_for_preceding_handoff'}]
+
+
+def test_intake_locks_deadline_commitments_without_evaluation_adapters(monkeypatch):
+    from competition.service_loops import run_intake_cycle
+    rows=[{'round_id':'a','network':'testnet','status':'final','deadline_at':'2026-11-02T12:00:00+00:00'},
+          {'round_id':'b','network':'testnet','status':'open','deadline_at':'2026-11-03T12:00:00+00:00','deadline_block':100},
+          {'round_id':'c','network':'testnet','status':'open','deadline_at':'2026-11-04T12:00:00+00:00','deadline_block':200}]
+    backend=SimpleNamespace(list_pending_rounds=lambda _:rows,
+        list_submissions=lambda _:[{'qualified':True,'status':'accepted'}])
+    seen=[];closed=[]
+    def inputs(row):
+        seen.append(row['round_id'])
+        return SimpleNamespace(archive=SimpleNamespace(get_current_block=lambda:100),netuid=530,
+            package_for_submission=lambda _:b'package',close=lambda:closed.append(row['round_id']))
+    monkeypatch.setattr('competition.round_controller.lock_ready_round',lambda *a,**kw:{'status':'locked'})
+    assert run_intake_cycle(backend=backend,network='testnet',inputs_for_round=inputs,
+        now=datetime(2026,11,3,12,tzinfo=UTC))==[{'round_id':'b','status':'locked'}]
+    assert seen==closed==['b']
+
+
 class Backend:
     def list_pending_rounds(self, network):
         assert network == "testnet"

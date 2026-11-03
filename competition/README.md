@@ -1,5 +1,22 @@
 # Weekly competition controller components
 
+## Independent submission intake
+
+With `independent_intake: true`, recurring rounds open on the calendar while a
+single background evaluator processes closed rounds in deadline order. The main
+controller loop snapshots each expiring intake before opening its successor, so
+next-round commitments cannot overwrite the preceding deadline-block record.
+Inference or judging latency cannot hold up that loop. The backend still rejects
+uploads at the immutable UTC deadline even when the controller is unavailable.
+
+Intake freezes models, budgets, reference package and both launch/incumbent stage
+plans. Before releasing papers or running jobs, the evaluator resolves the prior
+signed, activated outcome. The backend atomically records a one-time
+`claims_competition_evaluation_binding_v1` receipt and enforces queue order. The
+private `<round_id>.evaluation.json` supplies the sealed package receipt; public
+intake rules retain their original hash, and the final publication signs the
+binding as well. Legacy rounds keep their existing pre-bound baseline behaviour.
+
 ## Selection and asynchronous consensus
 
 Current round configs set `policy.winner_selection: silver_tiebreak`. The

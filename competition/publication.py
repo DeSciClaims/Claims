@@ -33,6 +33,8 @@ def publication_bundle(
     return {
         "schema_version": PUBLICATION_SCHEMA,
         **{field: round_record[field] for field in FROZEN_FIELDS},
+        **({"evaluation_binding": round_record["evaluation_binding"]}
+           if round_record.get("evaluation_binding") is not None else {}),
         "results": dict(results), "weights": dict(weights),
     }
 

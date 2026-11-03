@@ -101,6 +101,9 @@ def prepare_round(
     review_policy(schedule_record)
     smoke_profile({**schedule_record, "incumbent_hotkey": draft.get("incumbent_hotkey")})
     round_evaluation({**schedule_record, "incumbent_hotkey": draft.get("incumbent_hotkey")})
+    if public_policy.get("baseline_selection") == "previous_completed_round":
+        # Both branches are published before any code is submitted.
+        round_evaluation({**schedule_record, "incumbent_hotkey": "pending-predecessor"})
     week_start = (deadline - timedelta(days=deadline.weekday())).date().isoformat()
     if str(draft.get("week_start")) != week_start:
         raise ValueError("week start differs from deadline week Monday")
@@ -178,6 +181,8 @@ def prepare_round(
         "baseline_origin": draft.get("baseline_origin"),
         "linked_pairs": links,
     }
+    if public_policy.get("baseline_selection") == "previous_completed_round":
+        private["baseline_pending"] = True
     if not isinstance(draft.get("policy_public", {}), dict):
         raise ValueError("public policy must be a JSON object")
     if not directory.is_dir():
@@ -215,6 +220,16 @@ def prepare_pilot_round(
             return any(contains_placeholder(item) for item in value)
         return False
 
+    if draft.get("baseline_selection") == "previous_completed_round":
+        reference = draft.get("reference_upload") or draft.get("baseline_upload")
+        if not isinstance(reference, dict):
+            raise ValueError("independent intake needs a frozen fallback reference")
+        policy = {**draft.get("policy_public", {}), "baseline_selection": "previous_completed_round"}
+        if draft.get("launch_evaluation") is not None:
+            policy["launch_evaluation"] = draft["launch_evaluation"]
+        draft = {**draft, "baseline_upload": reference, "reference_upload": None,
+                 "incumbent_hotkey": None, "policy_public": policy}
+        draft = {k: v for k, v in draft.items() if k not in {"launch_evaluation", "baseline_origin"}}
     if draft.get("baseline_selection") == "active_production":
         from .incumbent import resolve_baseline
         from .production_reader import ProductionReleaseReader

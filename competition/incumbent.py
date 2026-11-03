@@ -17,6 +17,7 @@ def resolve_baseline(
     publication_for_round: Callable[[str], Mapping[str, Any]],
     expected_signer_hotkey: str,
     baseline_upload_for_round: Callable[[str], Mapping[str, Any] | None] | None = None,
+    as_of: datetime | None = None,
 ) -> dict[str, Any]:
     if config.get("baseline_selection") != "active_production":
         return dict(config)
@@ -45,7 +46,7 @@ def resolve_baseline(
         or any(prior.get(key) != bundle.get(key) for key in FROZEN_FIELDS)
         or canonical_sha256(prior.get("rules_public")) != bundle["rules_sha256"]
         or active.receipt_sha256 != receipt.get("bundle_sha256")
-        or active.activate_at > datetime.fromisoformat(config["deadline_at"])
+        or active.activate_at > (as_of or datetime.fromisoformat(config["deadline_at"]))
     ):
         raise ValueError("active package differs from its prior signed round")
     results = bundle["results"]

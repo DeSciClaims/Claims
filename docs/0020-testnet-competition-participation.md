@@ -11,12 +11,13 @@ Build a Python extraction package, submit it with a registered testnet hotkey, a
 | Public round API | `https://api.claims111.ai` |
 | Signed uploads and logs | `https://artifacts.claims111.ai` |
 | Dashboard | [Testnet competitions](https://dashboard.claims111.ai/competition?network=testnet) |
+| Submission window | **12:00 UTC to 12:00 UTC the following day** |
 | Daily submission deadline | **12:00 UTC (noon)** |
 | Evaluation stages | Prescreen **2** papers → screen **5** → final **10** |
 
 Testnet competitions use the production Claims services. Select `network=testnet` in API queries and signed requests, and use testnet subnet 530 for chain operations.
 
-These are the defaults as of 3 November 2026. Each round's published rules control its actual deadlines, models, budgets and stages. A new round opens only after the previous round has published and completed its production handoff; missed intake windows can be skipped. Evaluation continues after intake closes.
+These are the defaults as of 3 November 2026. Each round's published rules control its actual deadlines, models, budgets and stages. At each noon deadline, the controller locks that round’s submissions and opens the next day’s round, while evaluation continues separately. The normal submission window is 24 hours; initial startup requires at least six hours remaining before the selected deadline. Evaluation runs in deadline order, so a submitted round can queue while an earlier one finishes.
 
 ## 1. Register your hotkey
 
@@ -29,15 +30,17 @@ btcli subnet register --network test --netuid 530 \
 
 Review the registration cost before confirming. Mainnet registration does not register a hotkey on testnet.
 
-Prior consensus reviews are currently **waived for testnet package entry**. Registration, signatures, commitments, duplicate detection and team/funding checks still apply. Declare the same team ID for entries you control; different IDs do not establish independence. The backend resolves linked teams and applies advancement limits. See [team identity](./submission.md#team-identity).
+Prior consensus reviews are currently **waived for testnet package entry**. Registration, signatures, commitments, duplicate detection and team/funding checks still apply. The incumbent hotkey is reserved for its baseline execution; submit an improved version through a distinct qualified hotkey. If a submitted hotkey becomes the incumbent when the preceding result is bound, that challenger entry is excluded. Declare the same team ID for entries you control; different IDs do not establish independence. The backend resolves linked teams and applies advancement limits. See [team identity](./submission.md#team-identity).
 
 ## 2. Get the submission round ID
 
 Each daily round has a submission window **before evaluation begins**:
 
-**Submissions open → submission deadline → paper release → evaluation → results.**
+**Submissions open → submission deadline → queued for evaluation → paper release → evaluation → results.**
 
 When submissions open, the controller creates the round with its own `round_id` and publishes its fixed rules and deadlines. During this window, `status: "open"` means **accepting submissions**; the evaluation has not started.
+
+The preceding round can still be evaluating while this submission window is open. Models, budgets and both the launch and incumbent stage plans are fixed before submissions. Before evaluation, Claims binds the baseline to the preceding signed, activated result; the exact package is recorded separately in a public evaluation-binding receipt.
 
 Your upload must include this `round_id` so Claims can associate the package with the correct submission deadline, rules and eventual results. Use the API to get the round currently accepting submissions:
 
@@ -45,7 +48,7 @@ Your upload must include this `round_id` so Claims can associate the package wit
 curl -fsS 'https://api.claims111.ai/public/competition/rounds?network=testnet&limit=25'
 ```
 
-Find the record with `status: "open"` and copy its `round_id`, `deadline_at` and `deadline_block`. If there is no open record, the next submission window has not opened yet. Wait for that window; an older round that is evaluating or already published cannot accept your package.
+Find the record with `status: "open"` and copy its `round_id`, `deadline_at` and `deadline_block`. Check that its deadline is still in the future. If there is no accepting round, wait for the controller to open the next window; an older round that is evaluating or already published cannot accept your package.
 
 ```sh
 export ROUND_ID='COPY_THE_SUBMISSION_ROUND_ID'
@@ -229,7 +232,7 @@ curl -fsS "https://api.claims111.ai/public/competition/rounds/$ROUND_ID/score-su
 curl -fsS "https://api.claims111.ai/public/competition/rounds/$ROUND_ID/results"
 ```
 
-Results are available after publication. Follow the [testnet competition dashboard](https://dashboard.claims111.ai/competition?network=testnet), or open `https://dashboard.claims111.ai/competition/ROUND_ID` for a specific round. To run the [dashboard locally](https://github.com/DeSciClaims/Claims-Dashboard), set `NEXT_PUBLIC_CLAIMS_API_URL=https://api.claims111.ai` in its `.env.local`, run it, and open `http://localhost:3000/competition/ROUND_ID`.
+The baseline receipt is available at `/public/competition/rounds/{round_id}/evaluation-binding` once bound. The original `/rules` document and its hash remain unchanged. Results are available after publication. Follow the [testnet competition dashboard](https://dashboard.claims111.ai/competition?network=testnet), or open `https://dashboard.claims111.ai/competition/ROUND_ID` for a specific round. To run the [dashboard locally](https://github.com/DeSciClaims/Claims-Dashboard), set `NEXT_PUBLIC_CLAIMS_API_URL=https://api.claims111.ai` in its `.env.local`, run it, and open `http://localhost:3000/competition/ROUND_ID`.
 
 Retrieve your own installation and execution logs using the same hotkey:
 

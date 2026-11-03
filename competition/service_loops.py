@@ -16,6 +16,39 @@ from .worker_service import CompetitionWorkerCoordinator
 from .execution_policy import pipelined_execution
 
 
+def run_intake_cycle(*, backend: Any, network: str, inputs_for_round: Callable,
+                     now: datetime | None = None) -> list[dict]:
+    """Lock expired intake independently of the potentially slow scoring loop."""
+    from .round_controller import lock_ready_round
+    clock = now or datetime.now(UTC)
+    if clock.tzinfo is None:
+        raise ValueError("intake clock must have a timezone")
+    results = []
+    for row in _pending(backend, network):
+        if row["status"] != "open" or clock < datetime.fromisoformat(row["deadline_at"]):
+            continue
+        inputs = None
+        try:
+            inputs = inputs_for_round(row)
+            if inputs.archive.get_current_block() < row["deadline_block"]:
+                result = {"status": "waiting_for_deadline_block"}
+            else:
+                result = lock_ready_round(row["round_id"], backend=backend,
+                    archive=inputs.archive, netuid=inputs.netuid,
+                    package_for_upload=inputs.package_for_submission)
+                if not any(s.get("qualified") and s.get("status") == "accepted"
+                           for s in backend.list_submissions(row["round_id"])):
+                    result = backend.close_empty_round(row["round_id"])
+            results.append({"round_id": row["round_id"], "status": _safe_status(result)})
+        except Exception as exc:
+            results.append({"round_id": row["round_id"], "status": "error",
+                            "component": "intake", "error_type": type(exc).__name__})
+        finally:
+            if inputs is not None:
+                inputs.close()
+    return results
+
+
 def run_bronze_cycle(*, backend: Any, network: str, inputs_for_round: Callable) -> list[dict]:
     """Independent trusted preparation: ready papers unblock workers immediately."""
     results = []
@@ -69,16 +102,28 @@ def run_controller_cycle(
     *, backend: Any, network: str,
     inputs_for_round: Callable[[Mapping[str, Any]], Any],
     now: datetime | None = None,
+    separate_intake: bool = False,
+    evaluation_preparer: Callable | None = None,
 ) -> list[dict[str, Any]]:
     """Advance every pending round once, isolating a fault to that round."""
     clock = now or datetime.now(UTC)
     if clock.tzinfo is None:
         raise ValueError("controller clock must have a timezone")
     results = []
-    for row in _pending(backend, network):
+    rows = _pending(backend, network)
+    if separate_intake:
+        rows = sorted((r for r in rows if r["status"] != "open"),
+                      key=lambda r: (datetime.fromisoformat(r["deadline_at"]), r["round_id"]))[:1]
+    for row in rows:
         round_id = row["round_id"]
         inputs = None
         try:
+            if separate_intake and row["status"] == "locked" and evaluation_preparer is not None:
+                preparation = evaluation_preparer(row, backend)
+                if preparation["status"] != "evaluation_ready":
+                    results.append({"round_id": round_id, "status": _safe_status(preparation)})
+                    continue
+                row = backend.get_round(round_id)
             inputs = inputs_for_round(row)
             if (inputs.evaluation.round_id != round_id
                 or inputs.evaluation.configuration_sha256 != row["configuration_sha256"]

@@ -48,6 +48,10 @@ def validate_profile(profile: dict, network: str) -> None:
     expected = fields | ({"weekday"} if profile.get("cadence") == "weekly" else set())
     if "acknowledged_failed_round_id" in profile:
         expected.add("acknowledged_failed_round_id")
+    if "independent_intake" in profile:
+        expected.add("independent_intake")
+        if type(profile["independent_intake"]) is not bool:
+            raise ValueError("independent_intake must be boolean")
     if (set(profile) != expected
         or profile.get("schema_version") != SCHEMA or profile.get("network") != network
         or network not in {"testnet", "mainnet"} or type(profile.get("enabled")) is not bool
@@ -104,6 +108,8 @@ def render_round(profile: dict, template: dict, deadline: datetime, deadline_blo
                  reveal_block=deadline_block + profile["reveal_delay_blocks"],
                  week_start=(deadline - timedelta(days=deadline.weekday())).date().isoformat(),
                  incumbent_hotkey=None, baseline_upload=None)
+    if profile.get("independent_intake"):
+        draft["baseline_selection"] = "previous_completed_round"
     publish = deadline + timedelta(seconds=profile["publication_delay_seconds"])
     opened = deadline + timedelta(seconds=profile["duplicate_verdict_delay_seconds"])
     draft["policy_public"]["schedule"] = {
@@ -196,19 +202,27 @@ class RecurringRounds:
             state = self.backend.recurrence_state(self.network)
             if state.get("network") != self.network:
                 raise ValueError("recurrence backend returned another network")
-            if state.get("active_round") is not None:
+            independent = profile.get("independent_intake", False)
+            if independent and not {"intake_round", "evaluation_round"} <= set(state):
+                raise ValueError("backend needs the independent-intake migration before opening rounds")
+            intake = state.get("intake_round")
+            if independent and intake is not None:
+                status = ("recurrence_already_created" if datetime.fromisoformat(intake["deadline_at"]) > clock
+                          else "waiting_for_intake_lock")
+                return {"status": status, "round_id": intake["round_id"]}
+            if not independent and state.get("active_round") is not None:
                 return {"status": "recurrence_waiting_for_round", "round_id": state["active_round"]["round_id"]}
             latest = state.get("latest_round")
             if latest is not None:
                 previous_deadline = datetime.fromisoformat(latest["deadline_at"])
                 if previous_deadline.tzinfo is None:
                     raise ValueError("latest round has no aware deadline")
-                if (latest["status"] == "failed" and latest.get("decision") != "no_contest"
+                if (not independent and latest["status"] == "failed" and latest.get("decision") != "no_contest"
                     and latest["round_id"] != profile.get("acknowledged_failed_round_id")):
                     return {"status": "recurrence_paused_after_failure", "round_id": latest["round_id"]}
                 if previous_deadline >= deadline:
                     return {"status": "recurrence_already_created", "round_id": latest["round_id"]}
-            if not self._handoff_ready(state.get("latest_published"), clock):
+            if not independent and not self._handoff_ready(state.get("latest_published"), clock):
                 return {"status": "recurrence_waiting_for_handoff"}
             rid = round_id_for_draft({"network": self.network, "deadline_at": deadline.isoformat()})
             candidate = root / f"{rid}.candidate.json"

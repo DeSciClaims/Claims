@@ -27,6 +27,29 @@ from .round_setup import _canonical_bytes, _write_once
 from .weekly_automation import FinalAudit
 
 
+def prepare_evaluation(row, backend):
+    from .evaluation_binding import prepare_evaluation as prepare
+    return prepare(row, backend)
+
+
+def create_intake_inputs(row, backend):
+    """Archive and sealed storage only: no judges or evaluation baseline needed."""
+    import bittensor as bt
+    from types import SimpleNamespace
+    chain = BittensorArchive(LazySubtensor(lambda: bt.Subtensor(
+        network=_required("CLAIMS_ARCHIVE_SUBTENSOR_NETWORK"))))
+    client = hippius_s3_client(endpoint=_required("CLAIMS_HIPPIUS_ENDPOINT"),
+        access_key_id=_required("CLAIMS_HIPPIUS_ACCESS_KEY_ID"),
+        secret_access_key=_required("CLAIMS_HIPPIUS_SECRET_ACCESS_KEY"))
+    storage = HippiusPrivateStorage(client, _required("CLAIMS_HIPPIUS_PACKAGE_BUCKET"),
+                                    _required("CLAIMS_HIPPIUS_LOG_BUCKET"))
+    def close():
+        chain.subtensor.close()
+        client.close()
+    return SimpleNamespace(archive=chain, netuid=int(_required("CLAIMS_COMPETITION_NETUID")),
+                           package_for_submission=storage.package_for_submission, close=close)
+
+
 def _late_receipt(round_id: str, suffix: str) -> dict[str, Any]:
     root = Path(_required("CLAIMS_COMPETITION_ROUNDS_DIR"))
     with (root / f"{round_id}.{suffix}.json").open("rb") as handle:
@@ -150,6 +173,8 @@ def create_bronze_inputs(row: Mapping[str, Any], backend: Any) -> Any:
 
     round_id = str(row["round_id"])
     document = _round_file(round_id)
+    if row.get("evaluation_binding") is not None and document.get("binding") != row["evaluation_binding"]:
+        raise ValueError("private evaluation binding differs from backend")
     configuration = document.get("configuration")
     if (not isinstance(configuration, dict)
         or canonical_sha256(configuration) != row["configuration_sha256"]

@@ -76,6 +76,15 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
         "configuration_sha256", "reference_release_id", "incumbent_hotkey",
         "baseline_package_sha256", "reference_package_sha256",
     )
+    if rules.get("policy", {}).get("baseline_selection") == "previous_completed_round":
+        binding = snapshot.get("evaluation_binding")
+        if (not isinstance(binding, dict)
+            or binding.get("schema_version") != "claims_competition_evaluation_binding_v1"
+            or any(binding.get(k) != snapshot.get(k) for k in (
+                "round_id", "network", "rules_sha256", "configuration_sha256",
+                "incumbent_hotkey", "baseline_package_sha256", "reference_package_sha256"))):
+            raise ValueError("replay snapshot differs from immutable evaluation binding")
+        pinned = tuple(k for k in pinned if k not in {"incumbent_hotkey", "baseline_package_sha256"})
     if any(snapshot.get(key) != rules.get(key) for key in pinned):
         raise ValueError("replay snapshot identity differs from hashed rules")
     sample = snapshot.get("sample")

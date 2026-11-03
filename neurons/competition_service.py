@@ -13,10 +13,11 @@ import os
 import sys
 import time
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from competition.intake_lock import CompetitionBackend
-from competition.service_loops import run_controller_cycle, run_worker_cycle, run_bronze_cycle
+from competition.service_loops import run_controller_cycle, run_worker_cycle, run_bronze_cycle, run_intake_cycle
 
 
 def _factory(module_name: str) -> Any:
@@ -64,18 +65,30 @@ def main(argv: list[str] | None = None) -> int:
             backend, network=args.network, worker_id=args.worker_id,
         ) if args.role == "production" else None
         recurrence = None
+        independent_intake = False
         if args.recurrence_config is not None:
+            os.environ["CLAIMS_COMPETITION_RECURRENCE_CONFIG"] = str(args.recurrence_config)
             from competition.pilot_recurrence_factory import create_round_scheduler
             recurrence = create_round_scheduler(backend, network=args.network,
                                                 profile_path=args.recurrence_config)
+            from competition.recurrence import read_json
+            independent_intake = read_json(args.recurrence_config).get("independent_intake", False)
+            if independent_intake and not all(callable(getattr(factory, name, None))
+                    for name in ("create_intake_inputs", "prepare_evaluation")):
+                raise ValueError("independent intake needs trusted intake and evaluation adapters")
     except (ImportError, AttributeError, ValueError) as exc:
         print(json.dumps({"status": "startup_error", "error_type": type(exc).__name__}),
               file=sys.stderr, flush=True)
         return 1
+    evaluation_pool = ThreadPoolExecutor(max_workers=1) if independent_intake and not args.once else None
+    evaluation_future = None
     while True:
         try:
             if args.role in {"controller", "bronze"}:
                 recurring_results = []
+                intake_results = (run_intake_cycle(backend=backend, network=args.network,
+                    inputs_for_round=lambda row: factory.create_intake_inputs(row, backend))
+                    if independent_intake else [])
                 if recurrence is not None:
                     try:
                         result = recurrence.tick()
@@ -84,11 +97,26 @@ def main(argv: list[str] | None = None) -> int:
                     except Exception as exc:
                         recurring_results.append({"status": "error", "component": "recurrence",
                                                   "error_type": type(exc).__name__})
-                cycle = run_controller_cycle if args.role == "controller" else run_bronze_cycle
-                results = recurring_results + cycle(
-                    backend=backend, network=args.network,
-                    inputs_for_round=lambda row: callback(row, backend),
-                )
+                if independent_intake:
+                    results = intake_results + recurring_results
+                    options = dict(backend=backend, network=args.network,
+                        inputs_for_round=lambda row: callback(row, backend),
+                        separate_intake=True, evaluation_preparer=factory.prepare_evaluation)
+                    if args.once:
+                        results += run_controller_cycle(**options)
+                    else:
+                        if evaluation_future is not None and evaluation_future.done():
+                            completed = evaluation_future
+                            evaluation_future = None
+                            results += completed.result()
+                        if evaluation_future is None:
+                            evaluation_future = evaluation_pool.submit(run_controller_cycle, **options)
+                else:
+                    cycle = run_controller_cycle if args.role == "controller" else run_bronze_cycle
+                    results = recurring_results + cycle(
+                        backend=backend, network=args.network,
+                        inputs_for_round=lambda row: callback(row, backend),
+                    )
             elif args.role == "worker":
                 results = run_worker_cycle(
                     backend=backend, network=args.network,

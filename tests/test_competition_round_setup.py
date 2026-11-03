@@ -252,7 +252,8 @@ def test_pilot_setup_checks_real_judges_and_sealed_baseline_before_intake(
         )
 
 
-def test_pilot_setup_generates_frozen_configuration_from_json_spec(tmp_path, monkeypatch):
+@pytest.mark.parametrize("deferred", [False, True])
+def test_pilot_setup_generates_frozen_configuration_from_json_spec(tmp_path, monkeypatch, deferred):
     monkeypatch.setenv("OPENROUTER_API_KEY", "pilot-test-key")
     worker_policy = {
         "allowed_models": ["qwen/qwen3-32b"],
@@ -292,6 +293,20 @@ def test_pilot_setup_generates_frozen_configuration_from_json_spec(tmp_path, mon
         },
         "worker_policy": worker_policy, "weekly_budget_usd": 10,
     }
+    if deferred:
+        draft['baseline_selection']='previous_completed_round'
+        draft['reference_upload']=draft['baseline_upload']
+        draft['baseline_upload']=None
+        draft['policy_public']['winner_selection']='silver_tiebreak'
+        draft['policy_public']['evaluation']={
+            'schema_version':'claims_competition_evaluation_v1','mode':'production',
+            'required_challengers':1,'stages':[
+                {'name':'prescreen','papers':20,'advance_top':12,'max_per_team':2},
+                {'name':'screen','papers':120,'advance_top':3,'max_per_team':1},
+                {'name':'final','papers':500}]}
+        draft['launch_evaluation']={
+            'schema_version':'claims_competition_evaluation_v1','mode':'production',
+            'required_challengers':1,'stages':[{'name':'week_one','papers':320}]}
     class Storage:
         def package_for_submission(self, _):
             return b"sealed"
@@ -306,3 +321,12 @@ def test_pilot_setup_generates_frozen_configuration_from_json_spec(tmp_path, mon
     assert rules["configuration"]["judge_specs"] == judge_specs
     assert rules["configuration"]["judge_panels"]["J1"][0]["model"] == "qwen/qwen3-32b"
     assert "decision-key" not in (tmp_path / "round_20261102T120000Z_testnet.rules.json").read_text()
+    if deferred:
+        private=json.loads((tmp_path/'round_20261102T120000Z_testnet.json').read_text())
+        assert private['baseline_pending'] is True
+        assert rules['policy']['baseline_selection']=='previous_completed_round'
+        assert rules['policy']['launch_evaluation']==draft['launch_evaluation']
+        from competition.round_evaluation import round_evaluation
+        record={'network':'testnet','deadline_at':rules['deadline_at'],'rules_public':rules}
+        assert round_evaluation(record).stages[0].name=='week_one'
+        assert round_evaluation({**record,'incumbent_hotkey':'eventual-winner'}).stages[0].name=='prescreen'

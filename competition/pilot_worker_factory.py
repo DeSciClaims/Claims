@@ -107,6 +107,16 @@ def _round_file(round_id: str) -> dict[str, Any]:
     document = json.loads(body)
     if not isinstance(document, dict) or document.get("round_id") != round_id:
         raise ValueError("trusted round file has another round identity")
+    binding_file = root / f"{round_id}.evaluation.json"
+    if document.get("baseline_pending") and binding_file.exists():
+        from .recurrence import read_json
+        binding = read_json(binding_file, private=True)
+        public = binding.get("binding", {})
+        if (public.get("round_id") != round_id
+            or public.get("configuration_sha256") != document.get("configuration_sha256")
+            or public.get("baseline_package_sha256") != binding.get("baseline_upload", {}).get("package_sha256")):
+            raise ValueError("private baseline binding differs from frozen round")
+        document = {**document, **binding}
     return document
 
 

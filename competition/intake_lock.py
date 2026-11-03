@@ -74,6 +74,12 @@ class CompetitionBackend:
             raise ValueError("unknown competition network")
         return self._request("GET", "/internal/competition/recurrence-state?network=" + network)
 
+    def evaluation_gate(self, round_id: str) -> dict[str, Any]:
+        return self._request("GET", "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/evaluation-gate")
+
+    def bind_evaluation(self, round_id: str, binding: dict[str, Any]) -> dict[str, Any]:
+        return self.runtime_request(round_id, "/evaluation-binding", {"binding": binding})
+
     def close_empty_round(self, round_id: str) -> dict[str, Any]:
         return self.runtime_request(round_id, "/no-contest", {})
 

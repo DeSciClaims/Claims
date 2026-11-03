@@ -44,6 +44,9 @@ class RoundEvaluation:
 def round_evaluation(record: Mapping[str, Any]) -> RoundEvaluation | None:
     policy = ((record.get("rules_public") or {}).get("policy") or {})
     raw = policy.get("evaluation")
+    if (policy.get("baseline_selection") == "previous_completed_round"
+        and record.get("incumbent_hotkey") is None):
+        raw = policy.get("launch_evaluation", raw)
     if raw is None:
         return None
     if (not isinstance(raw, dict)

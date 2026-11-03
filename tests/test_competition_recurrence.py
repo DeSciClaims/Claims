@@ -55,6 +55,55 @@ def test_calendar_skips_missed_intake_and_supports_weekly():
     with pytest.raises(ValueError): validate_profile({**p,"round_config":"../unsafe.json"},"testnet")
 
 
+@pytest.mark.parametrize("cadence,seconds", [("daily",86400),("weekly",604800)])
+def test_independent_intake_opens_next_period_while_predecessor_evaluates(tmp_path,cadence,seconds):
+    scheduler,kwargs,state,calls=setup(tmp_path)
+    p={**profile(),"independent_intake":True,"cadence":cadence,
+       "intake_seconds":seconds,"minimum_intake_seconds":21600}
+    if cadence=='weekly':p['weekday']=0
+    state.update(intake_round=None,evaluation_round=None)
+    kwargs['profile_path'].write_text(json.dumps(p))
+    state['active_round']={'round_id':'previous','status':'final'}
+    state['latest_round']={'round_id':'previous','status':'final','deadline_at':'2026-11-02T12:00:00+00:00'}
+    scheduler.reader.read_active=lambda:pytest.fail('intake must not wait on incumbent handoff')
+    now=datetime(2026,11,2,12,tzinfo=UTC)
+    assert scheduler.tick(now=now)['status']=='recurrence_opened'
+    assert datetime.fromisoformat(calls[0]['deadline_at'])==now+timedelta(seconds=seconds)
+    assert calls[0]['baseline_selection']=='previous_completed_round'
+    state['intake_round']={'round_id':calls[0]['round_id'],'deadline_at':calls[0]['deadline_at']}
+    state['latest_round']={**state['intake_round'],'status':'open'}
+    # A restart or another tick reuses the same accepting round.
+    assert RecurringRounds(**kwargs).tick(now=now+timedelta(minutes=1))['status']=='recurrence_already_created'
+    assert len(calls)==1
+
+
+def test_independent_intake_can_open_after_failed_previous_evaluation(tmp_path):
+    state=dict(network='testnet',active_round=None,latest_published=None,
+        latest_round=dict(round_id='previous',status='failed',decision='failure',deadline_at='2026-11-02T12:00:00+00:00'))
+    scheduler,kwargs,_,calls=setup(tmp_path,state=state)
+    state.update(intake_round=None,evaluation_round=None)
+    p={**profile(),'independent_intake':True,'intake_seconds':86400,'minimum_intake_seconds':21600}
+    kwargs['profile_path'].write_text(json.dumps(p))
+    assert scheduler.tick(now=datetime(2026,11,2,12,tzinfo=UTC))['status']=='recurrence_opened'
+    assert len(calls)==1
+
+
+def test_next_intake_waits_for_deadline_snapshot_not_previous_scoring(tmp_path):
+    scheduler,kwargs,state,calls=setup(tmp_path)
+    p={**profile(),'independent_intake':True,'intake_seconds':86400,'minimum_intake_seconds':21600}
+    state['evaluation_round']=None
+    kwargs['profile_path'].write_text(json.dumps(p))
+    state['intake_round']={'round_id':'a','deadline_at':'2026-11-03T12:00:00+00:00'}
+    state['active_round']={'round_id':'a','status':'open'}
+    now=datetime(2026,11,3,12,tzinfo=UTC)
+    assert scheduler.tick(now=now)['status']=='waiting_for_intake_lock'
+    assert not calls
+    state['intake_round']=None
+    state['active_round']['status']='locked'
+    assert scheduler.tick(now=now+timedelta(minutes=1))['status']=='recurrence_opened'
+    assert calls[0]['deadline_at']=='2026-11-04T12:00:00+00:00'
+
+
 def test_open_round_is_frozen_once_and_restart_does_not_duplicate(tmp_path):
     scheduler, kwargs, state, calls = setup(tmp_path)
     now = datetime(2026,11,3,0,tzinfo=UTC)

@@ -4,6 +4,41 @@ from types import ModuleType, SimpleNamespace
 from neurons import competition_service
 
 
+def test_slow_scoring_does_not_block_intake_or_recurrence(monkeypatch,tmp_path):
+    import json
+    import threading
+    import time
+    module=ModuleType('competition.fake_overlap_factory')
+    module.create_controller_inputs=lambda *_:None
+    module.create_intake_inputs=lambda *_:None
+    module.prepare_evaluation=lambda *_:{'status':'evaluation_ready'}
+    monkeypatch.setitem(sys.modules,module.__name__,module)
+    monkeypatch.setenv('CLAIMS_COMPETITION_CONTROLLER_TOKEN','private-token')
+    monkeypatch.setattr(competition_service,'CompetitionBackend',lambda **_:object())
+    ticks=[];intakes=[];release=threading.Event();started=threading.Event()
+    scheduler=SimpleNamespace(tick=lambda:ticks.append(1) or None)
+    monkeypatch.setattr('competition.pilot_recurrence_factory.create_round_scheduler',lambda *a,**kw:scheduler)
+    monkeypatch.setattr(competition_service,'run_intake_cycle',lambda **kw:intakes.append(1) or [])
+    def slow(**kw):
+        started.set()
+        assert release.wait(2)
+        return []
+    monkeypatch.setattr(competition_service,'run_controller_cycle',slow)
+    original_sleep=time.sleep
+    def sleep(_):
+        assert started.wait(1)
+        if len(intakes)>=3:
+            release.set()
+            raise KeyboardInterrupt
+        original_sleep(.01)
+    monkeypatch.setattr(competition_service.time,'sleep',sleep)
+    profile=tmp_path/'recurrence.json';profile.write_text(json.dumps({'independent_intake':True}))
+    assert competition_service.main(['--role','controller','--network','testnet',
+        '--backend-url','https://backend.example','--factory-module',module.__name__,
+        '--recurrence-config',str(profile)])==0
+    assert len(intakes)==len(ticks)==3
+
+
 def test_controller_cli_runs_one_cycle_without_exposing_private_data(monkeypatch, capsys):
     module = ModuleType("competition.fake_service_factory")
     module.create_controller_inputs = lambda row, backend: SimpleNamespace(

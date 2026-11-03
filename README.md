@@ -13,6 +13,8 @@ Claims is a Bittensor competition for extracting scientific claims and their sup
 
 Miner source is submitted with the package for private execution and review. Public round rules, sample, scores, and signed results make the evaluation inspectable without publishing competitors' code.
 
+Submission intake and evaluation run independently. At each deadline, the controller locks the closing round and opens its successor. Closed rounds evaluate in deadline order; each binds its baseline to the preceding signed, activated outcome before paper release and execution.
+
 ## How execution works
 
 The controller retrieves the verified package and PDF, then sends a sealed one-paper job to a restricted worker over SSH. The worker installs the package in an isolated runtime and passes it a read-only PDF path, paper metadata, an inference endpoint, and a short-lived key for that paper. The pipeline may make multiple permitted model calls within the published budget. The controller validates the artifact, records token use, revokes the key, and stores the run log for retrieval by the submitting hotkey.
