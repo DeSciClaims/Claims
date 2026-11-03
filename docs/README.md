@@ -5,7 +5,6 @@
 - [Docs Overview](./README.md)
 - [Extraction and neuron documentation](./extraction.md)
 - [Package submission and commitment](./submission.md)
-- [Competition worker and gateway configuration](./competition-infrastructure.md)
 - [Miner Task](./0001-miner-task.md)
 - [Validator Scoring](./0002-validator-scoring.md)
 - [Schema](./0003-schema.md)
@@ -24,6 +23,7 @@
 - [Targon Container Deployment](./0016-targon-container-deployment.md)
 - [V1 Consensus Validator](./0017-v1-consensus-validator.md)
 - [Equivalence Group Routing](./0019-equivalence-group-routing.md)
+- [Daily Testnet Competition Participation](./0020-testnet-competition-participation.md)
 
 ## Purpose
 

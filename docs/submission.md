@@ -1,5 +1,7 @@
 # Package submission and commitment
 
+For daily testnet rounds, use the [testnet participation guide](./0020-testnet-competition-participation.md) for the current service URLs, schedule and runnable submission examples.
+
 Each round publishes its deadline block, allowed models, budgets, and other rules before intake closes. The submitting hotkey signs requests to the [miner upload API](https://artifacts.claims111.ai/docs).
 
 Entry qualification is owned by the backend. Check `/public/competition/entry-policy?network=testnet` for the policy for new rounds, and `/public/competition/rounds/{round_id}/entry-policy` for a round's immutable policy. A testnet waiver removes the prior-consensus-review requirement for package entry; hotkey registration, signed uploads, chain commitments, duplicate checks and team identity rules still apply. Mainnet requires two qualifying mainnet consensus rounds within the seven days preceding the deadline. Consensus reviewer qualification remains separate. Validators cannot request or override an entry waiver.
@@ -17,7 +19,7 @@ Declare the same `team_id` for pipelines controlled by the same operator or team
 
 ## Worker inference
 
-The sample package and the reference pipeline are separate implementations. The generated `claims_reference_competition-0.1.0` wheel is built from the public [reference adapter and build guide](https://github.com/DeSciClaims/claims-reference-miner/tree/feat/weekly-pipeline-competition#competition-baseline-package), using the round's pinned extraction source and reference profile.
+The sample package and the reference pipeline are separate implementations. The generated `claims_reference_competition-0.1.0` wheel is built from the public [reference adapter and build guide](https://github.com/DeSciClaims/claims-reference-miner#competition-baseline-package), using the round's pinned extraction source and reference profile.
 
 The worker request and manifest use the plain OpenRouter catalog model ID, such as `deepseek/deepseek-v4-flash-0731`. The worker supplies `CLAIMS_INFERENCE_BASE_URL` and a paper-scoped `CLAIMS_INFERENCE_TOKEN`. Direct calls to its Bifrost `/chat/completions` endpoint must prefix the wire model with `openrouter/`, for example `openrouter/deepseek/deepseek-v4-flash-0731`. The token's model allowance remains the plain catalog ID. The [sample package](https://github.com/DeSciClaims/claims-miner-package) implements this mapping.
 
