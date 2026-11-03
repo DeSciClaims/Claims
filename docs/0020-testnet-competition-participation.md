@@ -31,16 +31,24 @@ Review the registration cost before confirming. Mainnet registration does not re
 
 Prior consensus reviews are currently **waived for testnet package entry**. Registration, signatures, commitments, duplicate detection and team/funding checks still apply. Declare the same team ID for entries you control; different IDs do not establish independence. The backend resolves linked teams and applies advancement limits. See [team identity](./submission.md#team-identity).
 
-## 2. Find an open round
+## 2. Get the submission round ID
+
+Each daily round has a submission window **before evaluation begins**:
+
+**Submissions open → submission deadline → paper release → evaluation → results.**
+
+When submissions open, the controller creates the round with its own `round_id` and publishes its fixed rules and deadlines. During this window, `status: "open"` means **accepting submissions**; the evaluation has not started.
+
+Your upload must include this `round_id` so Claims can associate the package with the correct submission deadline, rules and eventual results. Use the API to get the round currently accepting submissions:
 
 ```sh
 curl -fsS 'https://api.claims111.ai/public/competition/rounds?network=testnet&limit=25'
 ```
 
-Choose a record with `status: "open"`. Copy its `round_id`, `deadline_at` and `deadline_block`. If none is open, wait for the next intake. Do not submit to an evaluating or published round.
+Find the record with `status: "open"` and copy its `round_id`, `deadline_at` and `deadline_block`. If there is no open record, the next submission window has not opened yet. Wait for that window; an older round that is evaluating or already published cannot accept your package.
 
 ```sh
-export ROUND_ID='COPY_THE_OPEN_ROUND_ID'
+export ROUND_ID='COPY_THE_SUBMISSION_ROUND_ID'
 curl -fsS "https://api.claims111.ai/public/competition/rounds/$ROUND_ID/rules"
 curl -fsS "https://api.claims111.ai/public/competition/rounds/$ROUND_ID/entry-policy"
 ```
