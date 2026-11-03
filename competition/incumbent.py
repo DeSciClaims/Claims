@@ -16,6 +16,7 @@ def resolve_baseline(
     reader: Any,
     publication_for_round: Callable[[str], Mapping[str, Any]],
     expected_signer_hotkey: str,
+    baseline_upload_for_round: Callable[[str], Mapping[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
     if config.get("baseline_selection") != "active_production":
         return dict(config)
@@ -59,7 +60,8 @@ def resolve_baseline(
             "baseline_upload": reference,
             "reference_upload": None,
         }
-    if not any(
+    continuing = results.get("decision") == "incumbent_continues"
+    if not continuing and not any(
         row.get("challenger_hotkey") == active.hotkey
         and row.get("challenger_package_sha256") == active.package_sha256
         for row in results.get("final_pair_scores", [])
@@ -81,6 +83,17 @@ def resolve_baseline(
         and row["package_sha256"] == active.package_sha256
         and row["status"] in {"accepted", "evaluating", "finished"}
     ]
+    if continuing:
+        held = baseline_upload_for_round(active.round_id) if baseline_upload_for_round else None
+        pairs = results.get("final_pair_scores", [])
+        if (active.package_sha256 != bundle["baseline_package_sha256"]
+            or prior.get("incumbent_hotkey") != active.hotkey
+            or not pairs or any(row.get("baseline_hotkey") != active.hotkey
+                               or row.get("baseline_package_sha256") != active.package_sha256 for row in pairs)
+            or held is None or held.get("hotkey") != active.hotkey
+            or held.get("package_sha256") != active.package_sha256):
+            raise ValueError("retained incumbent has no signed sealed baseline")
+        uploads = [held]
     if (
         len(uploads) != 1
         or not entries

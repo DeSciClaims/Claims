@@ -69,6 +69,14 @@ class CompetitionBackend:
             raise ValueError("unknown competition network")
         return self._request("GET", "/internal/competition/rounds?network=" + network)
 
+    def recurrence_state(self, network: str) -> dict[str, Any]:
+        if network not in {"mainnet", "testnet"}:
+            raise ValueError("unknown competition network")
+        return self._request("GET", "/internal/competition/recurrence-state?network=" + network)
+
+    def close_empty_round(self, round_id: str) -> dict[str, Any]:
+        return self.runtime_request(round_id, "/no-contest", {})
+
     def list_published_rounds(self, network: str) -> list[dict[str, Any]]:
         if network not in {"mainnet", "testnet"}:
             raise ValueError("unknown competition network")

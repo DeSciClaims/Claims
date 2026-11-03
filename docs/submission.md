@@ -2,6 +2,8 @@
 
 Each round publishes its deadline block, allowed models, budgets, and other rules before intake closes. The submitting hotkey signs requests to the [miner upload API](https://artifacts.claims111.ai/docs).
 
+Entry qualification is owned by the backend. Check `/public/competition/entry-policy?network=testnet` for the policy for new rounds, and `/public/competition/rounds/{round_id}/entry-policy` for a round's immutable policy. A testnet waiver removes the prior-consensus-review requirement for package entry; hotkey registration, signed uploads, chain commitments, duplicate checks and team identity rules still apply. Mainnet requires two qualifying mainnet consensus rounds within the seven days preceding the deadline. Consensus reviewer qualification remains separate. Validators cannot request or override an entry waiver.
+
 1. Build the exact wheel or source archive you want evaluated, and record its SHA-256 and byte length.
 2. Prepare a `claims_competition_manifest_v1` manifest with its real package filename, entrypoint, declared models, team ID, included source, and production-use licence. See the [sample manifest](https://github.com/DeSciClaims/claims-miner-package/blob/main/examples/competition_manifest.json).
 3. Generate a random 32-byte salt. Send the manifest, package hash, size, salt, round ID, and network to `POST /miner/competition/uploads`. Upload the bytes to the returned private staging URL, then sign and send the same body to `POST /miner/competition/uploads/finalize`. The service verifies the bytes and stores a sealed receipt.
@@ -14,6 +16,8 @@ The controller reads the historical commitment at the deadline block and matches
 Declare the same `team_id` for pipelines controlled by the same operator or team. The manifest records declared affiliation; it does not establish independence. The backend merges entries using shared declarations, shared coldkeys, resolved funding lineage and reviewed code links, even when their declared IDs differ. Advancement and reward limits use these resolved teams: at most two entries per team advance to screen, and one reaches final under the standard stage plan. Unresolved required funding evidence blocks advancement beyond prescreen. Code duplicate checks also apply before execution, independently of the declared IDs.
 
 ## Worker inference
+
+The sample package and the reference pipeline are separate implementations. The generated `claims_reference_competition-0.1.0` wheel is built from the public [reference adapter and build guide](https://github.com/DeSciClaims/claims-reference-miner/tree/feat/weekly-pipeline-competition#competition-baseline-package), using the round's pinned extraction source and reference profile.
 
 The worker request and manifest use the plain OpenRouter catalog model ID, such as `deepseek/deepseek-v4-flash-0731`. The worker supplies `CLAIMS_INFERENCE_BASE_URL` and a paper-scoped `CLAIMS_INFERENCE_TOKEN`. Direct calls to its Bifrost `/chat/completions` endpoint must prefix the wire model with `openrouter/`, for example `openrouter/deepseek/deepseek-v4-flash-0731`. The token's model allowance remains the plain catalog ID. The [sample package](https://github.com/DeSciClaims/claims-miner-package) implements this mapping.
 

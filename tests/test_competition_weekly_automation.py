@@ -419,3 +419,12 @@ def test_ready_projection_streams_scoring_without_loading_all_worker_artifacts(m
         now=DEADLINE,gold_close=DEADLINE)
     assert result['scored_papers_this_tick']==3
     assert sorted(started)==['p1','p2','p3']
+
+
+def test_empty_recurring_intake_closes_before_chain_or_paid_work():
+    record={**_round("locked"),"rules_public":{"policy":{"recurrence":{"profile_id":"daily","cadence":"daily"}}}}
+    calls=[]
+    backend=SimpleNamespace(get_round=lambda _:record,list_submissions=lambda _:[],
+        close_empty_round=lambda rid: calls.append(rid) or {"status":"no_contest"})
+    assert tick_round("week",backend=backend,inputs=object(),now=DEADLINE)["status"] == "no_contest"
+    assert calls == ["week"]

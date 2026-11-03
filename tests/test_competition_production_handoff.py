@@ -57,6 +57,7 @@ def _fixture(decision="new_crown", *, accelerated=False):
         "final_pair_scores": [{
             "round_id": "week2", "stage": "final", "paper_id": "paper-1",
             "challenger_hotkey": "winner", "challenger_package_sha256": PACKAGE_SHA,
+            "baseline_hotkey": "incumbent", "baseline_package_sha256": "3" * 64,
             "configuration_sha256": "2" * 64,
         }],
     }, weights={
@@ -100,10 +101,16 @@ def test_accelerated_testnet_handoff_uses_frozen_activation_time():
     assert plan.activate_at == datetime(2026, 11, 2, 15, tzinfo=UTC)
 
 
-def test_continuing_incumbent_has_no_handoff():
+def test_continuing_incumbent_advances_receipt_with_same_package():
     signer, round_record, stage, receipt = _fixture("incumbent_continues")
-    assert _plan(signer, round_record, stage, receipt,
-                 datetime(2026, 11, 9, 9, 0, tzinfo=UTC)) is None
+    plan = _plan(signer, round_record, stage, receipt,
+                 datetime(2026, 11, 9, 9, 0, tzinfo=UTC))
+    assert plan.hotkey == "incumbent"
+    assert plan.package_sha256 == "3" * 64
+    assert plan.round_id == "week2" and plan.receipt_sha256 == receipt["bundle_sha256"]
+    stage["entries"][1]["package_sha256"] = "5" * 64
+    with pytest.raises(ValueError, match="signed baseline"):
+        _plan(signer, round_record, stage, receipt, datetime(2026, 11, 9, 9, tzinfo=UTC))
 
 
 def test_rejects_package_or_frozen_round_change():

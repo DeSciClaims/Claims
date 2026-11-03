@@ -234,7 +234,16 @@ def prepare_pilot_round(
                 publication_for_round=lambda rid: fetch_round_publication(
                     backend_url=backend.base_url, round_id=rid),
                 expected_signer_hotkey=os.environ["CLAIMS_COMPETITION_PUBLISHER_HOTKEY"],
+                baseline_upload_for_round=lambda prior_id: json.loads(
+                    (directory / f"{prior_id}.json").read_text())["baseline_upload"],
             )
+    launch = draft.get("launch_evaluation")
+    if launch is not None:
+        if not isinstance(launch, dict):
+            raise ValueError("launch evaluation must be a supplied stage plan")
+        if draft.get("incumbent_hotkey") is None:
+            draft = {**draft, "policy_public": {**draft.get("policy_public", {}), "evaluation": launch}}
+        draft = {key: value for key, value in draft.items() if key != "launch_evaluation"}
     if contains_placeholder(draft):
         raise ValueError("round draft still contains template placeholders")
     draft = {**draft, "round_id": round_id_for_draft(draft)}

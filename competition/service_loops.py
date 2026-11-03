@@ -1,6 +1,6 @@
 """Restartable scheduling steps for trusted controller and worker processes.
 
-The backend owns round and job state. A timer invokes the controller step; each
+The backend owns round and job state. The controller loop invokes each step; each
 worker invokes the worker step with its own identity and disposable execution
 adapter. Factories reconstruct credentials and frozen inputs outside miner VMs.
 """

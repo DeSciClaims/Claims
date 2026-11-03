@@ -63,6 +63,9 @@ def finalize_replay(
         evidence = backend.inputs.qualification_evidence(
             round_id, hotkeys=payout_hotkeys[offset:offset + 8],
             deadline_at=cutoff,
+            **({"network": backend.snapshot["network"],
+                "qualification_policy": backend.snapshot["qualification_policy"]}
+               if backend.snapshot.get("qualification_policy") is not None else {}),
         )
         windows.add((evidence["window_start"], evidence["cutoff"]))
         qualification_rows.extend(evidence["hotkeys"])
@@ -88,6 +91,8 @@ def finalize_replay(
         "window_start": next(iter(windows))[0],
         "cutoff": next(iter(windows))[1],
         "hotkeys": sorted(qualification_rows, key=lambda row: row["hotkey"]),
+        **({"qualification_policy": backend.snapshot["qualification_policy"]}
+           if backend.snapshot.get("qualification_policy") is not None else {}),
     }
     bundle = replay_publication_bundle(
         round_id, backend=backend, selection=selection, weight_plan=weights,

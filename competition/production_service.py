@@ -24,7 +24,7 @@ class ProductionHandoffService:
     reader: ProductionReleaseReader
     publication_for_round: Callable[[str], Mapping[str, Any]]
     reference_upload_for_round: Callable[[str], Mapping[str, Any] | None]
-    _handled_without_change: set[str] = field(default_factory=set, repr=False)
+    baseline_upload_for_round: Callable[[str], Mapping[str, Any] | None] = field(default=lambda _: None, repr=False)
     _verified_gates: dict[str, tuple[str, datetime]] = field(default_factory=dict, repr=False)
 
     def run_once(self, *, now: datetime | None = None) -> list[dict[str, Any]]:
@@ -93,8 +93,6 @@ class ProductionHandoffService:
                 continue
             if latest is not None and gate <= latest:
                 continue
-            if round_id in self._handled_without_change:
-                continue
             try:
                 activation = activate_published_round(
                     round_id, backend=self.backend,
@@ -103,15 +101,10 @@ class ProductionHandoffService:
                     expected_signer_hotkey=self.expected_signer_hotkey,
                     network=self.network, now=clock,
                     reference_upload=self.reference_upload_for_round(round_id),
+                    baseline_upload=self.baseline_upload_for_round(round_id),
                 )
                 if activation is None:
-                    if active is None:
-                        raise ValueError("continuing production has no active release")
-                    self._handled_without_change.add(round_id)
-                    latest_deadline = deadlines[round_id]
-                    results.append({"round_id": round_id, "status": "no_package_change",
-                                    "active_release_present": active is not None})
-                    continue
+                    raise ValueError("due handoff did not advance the active receipt")
                 active = self.reader.read_active()
                 if (active is None or active.receipt_sha256 != activation["receipt_sha256"]
                     or active.package_sha256 != activation["package_sha256"]

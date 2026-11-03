@@ -340,3 +340,24 @@ def test_replay_sample_accepts_backend_stage_order_and_rejects_changed_position(
     snapshot["sample"][0]["position"] += 1
     with pytest.raises(ValueError, match="independently redrawn"):
         verify_replay_sample(snapshot, paper_pool=pool, verified_beacon=beacon)
+
+
+def test_replay_waiver_must_match_backend_snapshot_and_testnet_network():
+    policy = {"schema_version": "claims_competition_qualification_v1", "source": "backend",
+              "network": "testnet", "required_consensus_rounds": 0, "window_days": 7}
+    body = {"round_id": "week-1", "window_start": "2026-10-23T12:00:00+00:00",
+            "cutoff": "2026-10-30T12:00:00+00:00", "qualification_policy": policy,
+            "hotkeys": [{"hotkey": "miner-1", "qualified_round_count": 0,
+                         "qualified": True, "qualifying_rounds": []}]}
+    client = CompetitionReplayInputs("https://backend.example", "replay-only",
+        open_request=lambda *a, **kw: io.BytesIO(json.dumps(body).encode()))
+    args = dict(hotkeys=["miner-1"], deadline_at=body["cutoff"])
+    assert client.qualification_evidence("week-1", **args, network="testnet", qualification_policy=policy) == body
+    with pytest.raises(ValueError, match="differs from the backend snapshot"):
+        client.qualification_evidence("week-1", **args)
+    with pytest.raises(ValueError, match="invalid backend qualification policy"):
+        client.qualification_evidence("week-1", **args, network="mainnet", qualification_policy=policy)
+    strict = {**policy, "required_consensus_rounds": 2}
+    body["qualification_policy"] = strict
+    with pytest.raises(ValueError, match="verdict differs"):
+        client.qualification_evidence("week-1", **args, network="testnet", qualification_policy=strict)

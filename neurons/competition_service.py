@@ -12,6 +12,7 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
 from competition.intake_lock import CompetitionBackend
@@ -34,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--worker-id")
     parser.add_argument("--poll-seconds", type=int, default=30)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--recurrence-config", type=Path,
+                        help="Primary controller recurrence profile installed by infra")
     args = parser.parse_args(argv)
     if not 1 <= args.poll_seconds <= 600:
         parser.error("--poll-seconds must be between 1 and 600")
@@ -41,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("worker and production modes need --worker-id")
     if args.role not in {"worker", "production"} and args.worker_id:
         parser.error("only worker and production modes accept a worker ID")
+    if args.recurrence_config is not None and args.role != "controller":
+        parser.error("only the primary controller can create recurring rounds")
     token = os.environ.get("CLAIMS_COMPETITION_CONTROLLER_TOKEN", "")
     if not token:
         parser.error("CLAIMS_COMPETITION_CONTROLLER_TOKEN is required")
@@ -58,6 +63,11 @@ def main(argv: list[str] | None = None) -> int:
         production = callback(
             backend, network=args.network, worker_id=args.worker_id,
         ) if args.role == "production" else None
+        recurrence = None
+        if args.recurrence_config is not None:
+            from competition.pilot_recurrence_factory import create_round_scheduler
+            recurrence = create_round_scheduler(backend, network=args.network,
+                                                profile_path=args.recurrence_config)
     except (ImportError, AttributeError, ValueError) as exc:
         print(json.dumps({"status": "startup_error", "error_type": type(exc).__name__}),
               file=sys.stderr, flush=True)
@@ -65,8 +75,17 @@ def main(argv: list[str] | None = None) -> int:
     while True:
         try:
             if args.role in {"controller", "bronze"}:
+                recurring_results = []
+                if recurrence is not None:
+                    try:
+                        result = recurrence.tick()
+                        if result is not None:
+                            recurring_results.append(result)
+                    except Exception as exc:
+                        recurring_results.append({"status": "error", "component": "recurrence",
+                                                  "error_type": type(exc).__name__})
                 cycle = run_controller_cycle if args.role == "controller" else run_bronze_cycle
-                results = cycle(
+                results = recurring_results + cycle(
                     backend=backend, network=args.network,
                     inputs_for_round=lambda row: callback(row, backend),
                 )

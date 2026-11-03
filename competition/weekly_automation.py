@@ -286,6 +286,10 @@ def tick_round(
             package_for_upload=inputs.package_for_submission,
         )
     if status == "locked":
+        if ((round_record.get("rules_public") or {}).get("policy", {}).get("recurrence")
+            and not any(row.get("qualified") and row.get("status") == "accepted"
+                   for row in backend.list_submissions(round_id))):
+            return backend.close_empty_round(round_id)
         if inputs.chain.get_current_block() < int(round_record["reveal_block"]):
             return {"status": "waiting_for_reveal_block",
                     "reveal_block": round_record["reveal_block"]}

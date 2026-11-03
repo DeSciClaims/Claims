@@ -45,6 +45,7 @@ def activate_published_round(
     releases: FilesystemProductionReleaseStore,
     expected_signer_hotkey: str, network: str, now: datetime,
     reference_upload: Mapping[str, Any] | None = None,
+    baseline_upload: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Verify the result, resolve the unique upload, and switch local pointer."""
     round_record = backend.get_round(round_id)
@@ -65,6 +66,14 @@ def activate_published_round(
         return None
 
     def selected_upload(plan: ProductionHandoffPlan) -> Mapping[str, Any]:
+        if receipt.get("bundle", {}).get("results", {}).get("decision") == "incumbent_continues":
+            if (baseline_upload is None or baseline_upload.get("hotkey") != plan.hotkey
+                or baseline_upload.get("package_sha256") != plan.package_sha256
+                or not any(row.get("role") == "incumbent" and row.get("hotkey") == plan.hotkey
+                           and row.get("team_id") == baseline_upload.get("team_id")
+                           for row in final.get("entries", []))):
+                raise ValueError("retained incumbent has no matching sealed baseline upload")
+            return baseline_upload
         if (receipt.get("bundle", {}).get("results", {}).get("decision")
             in {"reference_fallback", "no_crown"}
             and reference_upload is not None

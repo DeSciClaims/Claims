@@ -57,4 +57,5 @@ def create_handoff_service(
             backend_url=backend_url, round_id=round_id,
         ),
         reference_upload_for_round=reference_upload,
+        baseline_upload_for_round=lambda round_id: _round_file(round_id).get("baseline_upload"),
     )

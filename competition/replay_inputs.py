@@ -25,6 +25,7 @@ from .round_schedule import schedule_for_round
 from .smoke_profile import smoke_profile
 from .round_evaluation import round_evaluation
 from .review_policy import review_policy
+from .qualification_policy import required_consensus_rounds
 
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -63,6 +64,7 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
             != snapshot.get("duplicate_review_sha256")):
         raise ValueError("replay snapshot differs from frozen round rules")
     rules = snapshot["rules_public"]
+    required_consensus_rounds(snapshot.get("qualification_policy"), snapshot["network"])
     review_policy(snapshot)
     profile = smoke_profile(snapshot)
     evaluation = round_evaluation(snapshot)
@@ -262,6 +264,7 @@ class CompetitionReplayInputs:
 
     def qualification_evidence(
         self, round_id: str, *, hotkeys: list[str], deadline_at: str,
+        network: str | None = None, qualification_policy: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Check source-round evidence against the frozen seven-day cutoff."""
         if (not 1 <= len(hotkeys) <= 8 or len(set(hotkeys)) != len(hotkeys)
@@ -279,6 +282,9 @@ class CompetitionReplayInputs:
         path = "/internal/competition/replay/rounds/" + urllib.parse.quote(round_id, safe="")
         query = urllib.parse.urlencode([("hotkey", hotkey) for hotkey in hotkeys])
         body = self._get(path + "/qualification?" + query)
+        required = required_consensus_rounds(qualification_policy, network)
+        if body.get("qualification_policy") != qualification_policy:
+            raise ValueError("replay qualification policy differs from the backend snapshot")
         rows = body.get("hotkeys")
         if (body.get("round_id") != round_id or not isinstance(rows, list)
             or len(rows) != len(hotkeys)
@@ -322,7 +328,7 @@ class CompetitionReplayInputs:
             if (type(row["qualified_round_count"]) is not int
                 or row["qualified_round_count"] != len(rounds)
                 or type(row["qualified"]) is not bool
-                or row["qualified"] != (len(rounds) >= 2)):
+                or row["qualified"] != (len(rounds) >= required)):
                 raise ValueError("replay qualification verdict differs from source rounds")
         return body
 

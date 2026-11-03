@@ -201,9 +201,8 @@ def planned_production_handoff(
 ) -> ProductionHandoffPlan | None:
     """Return the exact winning package once its activation gate is due.
 
-    Continuing the incumbent and a week-one no-crown result need no package
-    change. The caller may stage the returned sealed package in trusted
-    production infrastructure, using the receipt digest as an idempotency key.
+    Every completed selection advances the active receipt, including a retained
+    incumbent. Package bytes are reused when their hash is unchanged.
     """
     if now.tzinfo is None:
         raise ValueError("handoff clock must have a timezone")
@@ -238,7 +237,25 @@ def planned_production_handoff(
         expected_hotkey = round_record.get("incumbent_hotkey")
         if (not expected_hotkey or results.get("production_hotkey") != expected_hotkey):
             raise ValueError("no-change decision names another production hotkey")
-        return None
+        baseline = [row for row in final_stage.get("entries", []) if row.get("role") == "incumbent"]
+        pairs = results.get("final_pair_scores")
+        paid = [row for row in bundle["weights"]["roles"]
+                if row.get("role", "").removesuffix("_burned") == "production"]
+        if (len(baseline) != 1 or baseline[0].get("hotkey") != expected_hotkey
+            or len(paid) != 1 or paid[0].get("hotkey") != expected_hotkey
+            or baseline[0].get("package_sha256") != bundle["baseline_package_sha256"]
+            or not isinstance(pairs, list) or not pairs
+            or final_stage.get("stage") not in {"final", "rerun"}
+            or (final_stage.get("stage") == "rerun" and final_stage.get("source_stage") != "final")
+            or any(row.get("baseline_hotkey") != expected_hotkey
+                   or row.get("baseline_package_sha256") != bundle["baseline_package_sha256"]
+                   or row.get("stage") != final_stage["stage"] for row in pairs)):
+            raise ValueError("retained incumbent differs from signed baseline evidence")
+        return ProductionHandoffPlan(
+            round_id=bundle["round_id"], receipt_sha256=receipt["bundle_sha256"],
+            hotkey=expected_hotkey, package_sha256=bundle["baseline_package_sha256"],
+            activate_at=activate_at,
+        )
     if decision in {"reference_fallback", "no_crown"}:
         baseline = [row for row in final_stage.get("entries", [])
                     if row.get("role") == "reference"]
