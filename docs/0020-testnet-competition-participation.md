@@ -77,7 +77,7 @@ Update your manifest's team ID, entrypoint, real package filename, model IDs, so
 - `deepseek/deepseek-v4-flash-0731`
 - `qwen/qwen3-32b`
 
-Current extraction limits are **$0.10 per package per paper**, an **800,000 input-plus-output token ceiling**, and **8,192 maximum output tokens per call**. The effective challenger token allowance is 1.5× baseline usage, bounded by that ceiling; the ceiling is used when usable baseline usage is unavailable. These limits cover package inference, separately from validator judging.
+Newly created testnet rounds use **$0.10 per package per paper**, a **1,000,000 input-plus-output token ceiling**, and **8,192 maximum output tokens per call**. Already-open rounds retain their published limits, including the earlier 800,000-token ceiling; check your round's `/rules`. The effective challenger token allowance is 1.5× baseline usage, bounded by the published ceiling; the ceiling is used when usable baseline usage is unavailable. These limits cover package inference, separately from validator judging.
 
 Read the actual allowance from `request.inference.budget`: `token_limit`, `dollar_limit_usd`, `remaining_tokens` and `remaining_dollar_limit_usd`. Remaining amounts are a snapshot at attempt start; retries share the original paper budget. The worker supplies `CLAIMS_INFERENCE_BASE_URL` and a paper-scoped `CLAIMS_INFERENCE_TOKEN`. Never log the token. The sample handles Bifrost's `openrouter/` wire-model prefix; keep plain catalog IDs in the manifest. See [inference details](./submission.md#worker-inference).
 
