@@ -81,6 +81,25 @@ def reveal_ready_sample(
     return backend.reveal_sample(round_id, receipt)
 
 
+def _admitted_duplicate_selection(round_record, submissions, **kwargs):
+    """Prescreen all entries; apply backend funding admission before other stages.
+
+    Draw again with the same seed and duplicate groups when a held representative
+    must be replaced. A funding hold must not eliminate an eligible group mate.
+    """
+    selection = select_distinct_submissions(submissions, **kwargs)
+    held = {row["hotkey"] for row in submissions if row.get("funding_eligible") is False}
+    if held and "prescreen" not in stages_for_round(round_record, len(selection.selected_hotkeys)):
+        selection = select_distinct_submissions(submissions, ineligible_hotkeys=held, **kwargs)
+    return selection
+
+
+def _no_admitted_entrants(round_id, backend, submissions):
+    if any(row.get("funding_eligible") is False for row in submissions):
+        return backend.runtime_request(round_id, "/funding/no-eligible-entries", {})
+    return {"status": "waiting_for_entrants"}
+
+
 def reveal_selected_sample(
     round_id: str, *, backend: CompetitionBackend, chain: BlockClock,
     papers: list[PaperRecord], baseline: Mapping[str, Any],
@@ -105,16 +124,30 @@ def reveal_selected_sample(
     beacon = beacon_for_round(round_record, chain=chain)
     submissions = [row for row in backend.list_submissions(round_id)
                    if row["status"] == "accepted" and row["qualified"]]
-    selection = select_distinct_submissions(
-        submissions, seed=beacon.seed,
+    selection = _admitted_duplicate_selection(
+        round_record, submissions, seed=beacon.seed,
         incumbent=baseline if round_record["incumbent_hotkey"] else None,
         package_for_submission=package_for_submission,
         incumbent_package=incumbent_package,
         linked_pairs=linked_pairs,
     )
-    stages = stages_for_round(round_record, len(selection.selected_hotkeys))
+    planning_count = len(selection.selected_hotkeys)
+    stages = stages_for_round(round_record, planning_count)
     if not stages:
-        return {"status": "waiting_for_entrants"}
+        # A nonheld entry may still be an incumbent copy. Release the original
+        # plan so start_revealed_round can persist its duplicate verdict before
+        # the backend determines that no admitted challenger remains.
+        if selection.held_hotkeys and any(row.get("funding_eligible") is not False for row in submissions):
+            original = select_distinct_submissions(
+                submissions, seed=beacon.seed,
+                incumbent=baseline if round_record["incumbent_hotkey"] else None,
+                package_for_submission=package_for_submission,
+                incumbent_package=incumbent_package, linked_pairs=linked_pairs,
+            )
+            planning_count = len(original.selected_hotkeys)
+            stages = stages_for_round(round_record, planning_count)
+        if not stages:
+            return _no_admitted_entrants(round_id, backend, submissions)
     profile = smoke_profile(round_record)
     evaluation = round_evaluation(round_record)
     if profile is not None and not week_one:
@@ -125,7 +158,7 @@ def reveal_selected_sample(
                 .get("mode") == "production" and not week_one):
             affordable = final_paper_count(
                 weekly_budget_usd=weekly_budget_usd,
-                distinct_challengers=len(selection.selected_hotkeys),
+                distinct_challengers=planning_count,
                 week_one=False,
             )
             if final_count > affordable:
@@ -138,7 +171,7 @@ def reveal_selected_sample(
         final_count = (profile.paper_count if profile is not None
                        else final_paper_count(
                            weekly_budget_usd=weekly_budget_usd,
-                           distinct_challengers=len(selection.selected_hotkeys),
+                           distinct_challengers=planning_count,
                            week_one=week_one,
                        ))
         prescreen_count = 20 if "prescreen" in stages else 0
@@ -191,8 +224,8 @@ def start_revealed_round(
                    if row["status"] in {"accepted", "duplicate"} and row["qualified"]]
     if not submissions:
         return {"status": "waiting_for_entrants"}
-    selection = select_distinct_submissions(
-        submissions, seed=seed,
+    selection = _admitted_duplicate_selection(
+        round_record, submissions, seed=seed,
         incumbent=baseline if round_record["incumbent_hotkey"] else None,
         package_for_submission=package_for_submission,
         incumbent_package=incumbent_package,
@@ -216,14 +249,16 @@ def start_revealed_round(
         raise ValueError("stored duplicate is absent from seeded draw")
     selected = set(selection.selected_hotkeys)
     challengers = [row for row in submissions if row["hotkey"] in selected]
-    if not challengers:
-        return {"status": "waiting_for_entrants"}
     expected_stages = set(stages_for_round(round_record, len(challengers)))
+    pending = [verdict for verdict in verdicts
+               if stored_by_hotkey[verdict["hotkey"]]["status"] == "accepted"]
+    if not expected_stages:
+        if pending:
+            backend.mark_duplicates(round_id, pending)
+        return _no_admitted_entrants(round_id, backend, submissions)
     released_stages = {row["stage"] for row in backend.list_sample(round_id)}
     if released_stages != expected_stages:
         raise ValueError("released sample stages differ from seeded entrant count")
-    pending = [verdict for verdict in verdicts
-               if stored_by_hotkey[verdict["hotkey"]]["status"] == "accepted"]
     if pending:
         backend.mark_duplicates(round_id, pending)
     return start_initial_stage(round_id, backend=backend,

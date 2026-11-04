@@ -26,6 +26,7 @@ class DuplicateSelection:
     excluded_hotkeys: tuple[str, ...]
     groups: tuple[tuple[str, ...], ...]
     evidence: tuple[tuple[str, str, str], ...]
+    held_hotkeys: tuple[str, ...] = ()
 
 
 def duplicate_verdicts(
@@ -37,9 +38,11 @@ def duplicate_verdicts(
         raise ValueError("duplicate draw seed is missing")
     selected = set(selection.selected_hotkeys)
     excluded = set(selection.excluded_hotkeys)
+    held = set(selection.held_hotkeys)
     groups = [set(group) for group in selection.groups]
-    if (selected & excluded or set().union(*groups) != selected | excluded
-        or sum(len(group) for group in groups) != len(selected | excluded)):
+    if (selected & excluded or selected & held or excluded & held
+        or set().union(*groups) != selected | excluded | held
+        or sum(len(group) for group in groups) != len(selected | excluded | held)):
         raise ValueError("duplicate selection does not partition entries")
     verdicts: list[dict[str, Any]] = []
     for group in selection.groups:
@@ -181,6 +184,7 @@ def select_distinct_submissions(
     linked_pairs: list[tuple[str, str, str]] | None = None,
     package_for_submission: Callable[[Mapping[str, Any]], bytes] | None = None,
     incumbent_package: bytes | None = None,
+    ineligible_hotkeys: set[str] | None = None,
 ) -> DuplicateSelection:
     """Link copies and choose one ticket per team in each linked group.
 
@@ -213,6 +217,9 @@ def select_distinct_submissions(
                 # round-wide infrastructure failure.
                 fingerprints[hotkey] = ""
     parent = {hotkey: hotkey for hotkey in by_hotkey}
+    ineligible = set(ineligible_hotkeys or ())
+    if not ineligible <= set(by_hotkey):
+        raise ValueError("duplicate draw names an unknown ineligible hotkey")
     evidence: list[tuple[str, str, str]] = []
 
     def root(hotkey: str) -> str:
@@ -284,7 +291,8 @@ def select_distinct_submissions(
         touches_incumbent = any(hotkey in copied_incumbent for hotkey in members)
         eligible = [
             hotkey for hotkey in members
-            if not touches_incumbent or str(by_hotkey[hotkey]["team_id"]) == incumbent_team
+            if hotkey not in ineligible
+            and (not touches_incumbent or str(by_hotkey[hotkey]["team_id"]) == incumbent_team)
         ]
         if eligible:
             teams = sorted({str(by_hotkey[hotkey]["team_id"]) for hotkey in eligible})
@@ -294,5 +302,7 @@ def select_distinct_submissions(
             selected.append(chosen)
         else:
             chosen = None
-        excluded.extend(hotkey for hotkey in members if hotkey != chosen)
-    return DuplicateSelection(tuple(sorted(selected)), tuple(sorted(excluded)), tuple(groups), tuple(sorted(set(evidence))))
+        # Funding holds are their own admission verdict, never copy accusations.
+        excluded.extend(hotkey for hotkey in members if hotkey != chosen and hotkey not in ineligible)
+    return DuplicateSelection(tuple(sorted(selected)), tuple(sorted(excluded)), tuple(groups),
+                              tuple(sorted(set(evidence))), tuple(sorted(ineligible)))

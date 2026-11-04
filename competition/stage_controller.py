@@ -175,10 +175,16 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend, identity_
         if row["status"] == "accepted" and row["commit_block"] is not None
     }
     candidates: list[StageCandidate] = []
+    funding_eligible = {
+        row["hotkey"] for row in backend.list_submissions(round_id)
+        if row.get("funding_eligible", True)
+    }
     for entry in entries:
         if entry["role"] != "challenger":
             continue
         hotkey = entry["hotkey"]
+        if hotkey not in funding_eligible:
+            continue
         if hotkey not in commits:
             raise ValueError("challenger commitment is missing from frozen intake")
         result = paired_result([
@@ -192,6 +198,8 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend, identity_
         candidates.append(StageCandidate(
             hotkey, entry["team_id"], result.mean_gain, commits[hotkey],
         ))
+    if not candidates:
+        return backend.runtime_request(round_id, "/funding/no-eligible-entries", {})
     evaluation = round_evaluation(round_record)
     if evaluation is None:
         winners = advance(candidates, stage=source_stage)

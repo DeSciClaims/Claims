@@ -15,7 +15,9 @@ The controller reads the historical commitment at the deadline block and matches
 
 ## Team identity
 
-Declare the same `team_id` for pipelines controlled by the same operator or team. The manifest records declared affiliation; it does not establish independence. The backend merges entries using shared declarations, shared coldkeys, resolved funding lineage and reviewed code links, even when their declared IDs differ. Advancement and reward limits use these resolved teams: at most two entries per team advance to screen, and one reaches final under the standard stage plan. Unresolved required funding evidence blocks advancement beyond prescreen. Code duplicate checks also apply before execution, independently of the declared IDs.
+Declare the same `team_id` for pipelines controlled by the same operator or team. The manifest records declared affiliation; it does not establish independence. The backend merges entries using shared declarations, shared coldkeys, resolved funding lineage and reviewed code links, even when their declared IDs differ. Advancement and reward limits use these resolved teams: at most two entries per team advance to screen, and one reaches final under the standard stage plan. Code duplicate checks also apply before execution, independently of the declared IDs.
+
+Required funding evidence is checked per entry. An unresolved entry may run prescreen but cannot advance; if prescreen is skipped, it is held before evaluation. Other eligible entries continue. The backend records the decision with the round's immutable team evidence, and the public submission list shows the hold reason. Later funding resolution applies to subsequent rounds. If no eligible field remains, the round closes without a contest or new rewards.
 
 ## Worker inference
 
