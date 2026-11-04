@@ -23,7 +23,7 @@ def wheel(source, resource=None):
 def setup(tmp_path):
     base = wheel('def common(): pass')
     (tmp_path / 'base.zip').write_bytes(base)
-    policy = {'schema_version': 'claims_duplicate_automation_v1', 'enabled': True,
+    policy = {'schema_version': 'claims_duplicate_automation_v2', 'enabled': True,
               'review_similarity_threshold': 0.8,
               'public_base_archives': [{'filename': 'base.zip', 'sha256': hashlib.sha256(base).hexdigest()}]}
     policy_path = tmp_path / 'policy.json'
@@ -74,8 +74,10 @@ def test_clear_comparisons_generate_verified_receipt_and_reuse_it(setup):
     assert s.reads == []
 
 
-def test_normalized_near_copy_waits_then_resumes_after_operator_review(setup):
+def test_frozen_v1_policy_keeps_its_original_manual_review_contract(setup):
     s = setup
+    s.policy['schema_version'] = 'claims_duplicate_automation_v1'
+    s.policy_path.write_text(json.dumps(s.policy))
     s.add('a', wheel('def extract(paper): return [x for x in paper if x.valid]'))
     s.add('b', wheel('def harvest(document): return [item for item in document if item.ok]'))
     assert s.run() == {'status': 'waiting_for_duplicate_review'}
@@ -106,16 +108,17 @@ def test_changed_prompt_is_not_assumed_to_be_an_exact_pipeline(setup):
     s = setup
     s.add('a', wheel('def extract(paper): return paper', 'First prompt'))
     s.add('b', wheel('def extract(paper): return paper', 'Different prompt'))
-    assert s.run() == {'status': 'waiting_for_duplicate_review'}
+    assert s.run() == {'status': 'evaluation_ready'}
+    assert s.states[-1]['review_pair_count'] == 1
 
 
-def test_scan_errors_require_review_without_importing_package_code(setup):
+def test_scan_errors_are_recorded_without_blocking_other_entries_or_importing_code(setup):
     s = setup
     s.add('a', wheel('this is not valid python !!!'))
     s.add('b', wheel('raise AssertionError("must never execute miner code")'))
-    assert s.run() == {'status': 'waiting_for_duplicate_review'}
+    assert s.run() == {'status': 'evaluation_ready'}
     assert s.states[-1]['scan_error_count'] == 1
-    assert not (s.root / 'round.duplicates.json').exists()
+    assert (s.root / 'round.duplicates.json').exists()
 
 
 def test_public_base_checksum_failure_never_approves_a_package(setup):
@@ -140,12 +143,16 @@ def test_policy_is_frozen_for_a_round_while_later_rounds_can_change(setup):
     s = setup
     s.add('a', wheel('def extract(paper): return [x for x in paper if x.valid]'))
     s.add('b', wheel('def harvest(document): return [item for item in document if item.ok]'))
-    assert s.run()['status'] == 'waiting_for_duplicate_review'
+    assert s.run()['status'] == 'evaluation_ready'
     original = s.states[-1]['policy_sha256']
-    s.policy['review_similarity_threshold'] = 1
+    assert s.states[-1]['review_pair_count'] == 1
+    s.policy['schema_version'] = 'claims_duplicate_automation_v1'
     s.policy_path.write_text(json.dumps(s.policy))
-    assert s.run()['status'] == 'waiting_for_duplicate_review'
+    s.reads.clear()
+    assert s.run()['status'] == 'evaluation_ready'
     assert s.states[-1]['policy_sha256'] == original
+    assert s.states[-1]['review_pair_count'] == 1
+    assert s.reads == []
 
 
 def test_bound_incumbent_is_compared_to_challengers(setup):
@@ -155,7 +162,8 @@ def test_bound_incumbent_is_compared_to_challengers(setup):
     incumbent = s.rows.pop()
     s.record.update(incumbent_hotkey='incumbent', baseline_package_sha256=incumbent['package_sha256'])
     s.document['baseline_upload'] = incumbent
-    assert s.run()['status'] == 'waiting_for_duplicate_review'
+    assert s.run()['status'] == 'evaluation_ready'
+    assert s.states[-1]['review_pair_count'] == 1
     assert s.states[-1]['comparison_count'] == 1
     assert s.states[-1]['package_count'] == 2
 
@@ -168,3 +176,27 @@ def test_report_or_review_cannot_be_reused_for_a_different_intake(setup):
     with pytest.raises(ValueError):
         s.run()
     assert s.states[-1]['status'] == 'error'
+
+
+def test_v2_near_copy_evidence_does_not_wait_for_review_or_exclude_entrants(setup):
+    s = setup
+    s.add('a', wheel('def extract(paper): return [x for x in paper if x.valid]'))
+    s.add('b', wheel('def harvest(document): return [item for item in document if item.ok]'))
+    assert s.run() == {'status': 'evaluation_ready'}
+    assert s.states[-1]['status'] == 'complete' and s.states[-1]['review_pair_count'] == 1
+    review = json.loads((s.root / 'round.duplicates.json').read_text())
+    assert review['links'] == []
+    assert review['automation']['uncertain_matches'] == 'evaluate'
+
+
+def test_v2_still_groups_exact_copies_using_existing_seeded_selection(setup):
+    from competition.duplicates import select_distinct_submissions
+    s = setup
+    body = wheel('def extract(paper): return paper')
+    s.add('a', body)
+    s.add('b', body)
+    assert s.run()['status'] == 'evaluation_ready'
+    selection = select_distinct_submissions(s.rows, seed=b'1' * 32,
+        package_for_submission=lambda row: s.packages[row['package_sha256']])
+    assert len(selection.selected_hotkeys) == 1
+    assert len(selection.excluded_hotkeys) == 1

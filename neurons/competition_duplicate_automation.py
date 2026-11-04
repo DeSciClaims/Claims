@@ -1,7 +1,8 @@
 """Controller preflight for existing exact-copy rules and bounded review queues.
 
-Similarity only requests review. Exact hash/AST grouping and its seeded draw
-remain in competition.duplicates; no miner code is imported or executed here.
+Similarity is retained for follow-up without delaying v2 rounds. Exact hash/AST
+grouping and its seeded draw remain in competition.duplicates; no miner code is
+imported or executed here. Frozen v1 policies retain their original behavior.
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ def read_policy(path: Path) -> dict:
     policy = json.loads(path.read_text())
     if (not isinstance(policy, dict) or set(policy) != {
         "schema_version", "enabled", "review_similarity_threshold", "public_base_archives",
-    } or policy["schema_version"] != "claims_duplicate_automation_v1"
+    } or policy["schema_version"] not in {"claims_duplicate_automation_v1", "claims_duplicate_automation_v2"}
         or type(policy["enabled"]) is not bool
         or type(policy["review_similarity_threshold"]) not in {float, int}
         or not 0 < policy["review_similarity_threshold"] <= 1
@@ -60,7 +61,7 @@ def _base_packages(path: Path, policy: dict) -> list[bytes]:
 
 def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
                    directory: Path, document: dict, storage: Any) -> dict:
-    """Create evidence and clear unambiguous cases; retain immutable manual reviews."""
+    """Freeze automatic decisions; v2 similarity evidence never gates a round."""
     policy = read_policy(policy_path)
     if not policy["enabled"]:
         return {"status": "evaluation_ready"}
@@ -111,7 +112,7 @@ def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
                 raise ValueError("duplicate preflight package differs from sealed receipt")
             try:
                 fingerprints[hotkey] = python_source_fingerprint(body)
-            except ValueError:
+            except (ValueError, RecursionError):
                 fingerprints[hotkey] = None
             return body
 
@@ -148,7 +149,8 @@ def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
                     submissions=submissions, candidate_report=report)
                 # The receipt itself records whether this coordinator wrote it.
                 origin = review.get("automation", {})
-                state.update(status="complete", decision="automatic" if origin.get("policy_sha256") else "operator")
+                state.update(status="complete", decision="automatic" if origin.get("policy_sha256") else "operator",
+                             review_pair_count=origin.get("follow_up_review_pair_count", 0))
                 publish()
                 return {"status": "evaluation_ready"}
             if report["public_base_package_sha256"] != sorted({item["sha256"] for item in policy["public_base_archives"]}):
@@ -168,14 +170,16 @@ def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
                 if not exact:
                     flagged.append(pair)
             state["review_pair_count"] = len(flagged)
-            if flagged or report["scan_errors"]:
+            if policy["schema_version"] == "claims_duplicate_automation_v1" and (flagged or report["scan_errors"]):
                 state["status"] = "review_required"
                 publish()
                 return {"status": "waiting_for_duplicate_review"}
             review = make_duplicate_review(rid, round_record=row, submissions=submissions,
                 linked_pairs=[], candidate_report=report)
-            review["automation"] = {"schema_version": "claims_duplicate_automation_v1",
+            review["automation"] = {"schema_version": policy["schema_version"],
                 "policy_sha256": policy_hash,
+                "uncertain_matches": "evaluate" if policy["schema_version"] == "claims_duplicate_automation_v2" else "review",
+                "follow_up_review_pair_count": len(flagged),
                 "coordinator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
             _write_once(review_path, _canonical_bytes(review), 0o600)
             state.update(status="complete", decision="automatic")

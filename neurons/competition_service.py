@@ -55,7 +55,14 @@ def main(argv: list[str] | None = None) -> int:
     if not token:
         parser.error("CLAIMS_COMPETITION_CONTROLLER_TOKEN is required")
     try:
-        backend = CompetitionBackend(base_url=args.backend_url, controller_token=token)
+        backend_type = CompetitionBackend
+        if args.duplicate_review_policy is not None:
+            from neurons.competition_duplicate_automation import read_policy
+            duplicate_policy = read_policy(args.duplicate_review_policy)
+            if duplicate_policy['enabled'] and duplicate_policy['schema_version'] == 'claims_duplicate_automation_v2':
+                from neurons.competition_duplicate_appeals import NonBlockingAppealsBackend
+                backend_type = NonBlockingAppealsBackend
+        backend = backend_type(base_url=args.backend_url, controller_token=token)
         factory = _factory(args.factory_module)
         callback_name = {"controller": "create_controller_inputs", "bronze": "create_bronze_inputs",
                          "worker": "create_worker_coordinator",
@@ -81,8 +88,6 @@ def main(argv: list[str] | None = None) -> int:
                     for name in ("create_intake_inputs", "prepare_evaluation")):
                 raise ValueError("independent intake needs trusted intake and evaluation adapters")
         if args.duplicate_review_policy is not None:
-            from neurons.competition_duplicate_automation import read_policy
-            read_policy(args.duplicate_review_policy)
             if not independent_intake:
                 raise ValueError("automatic preflight requires the independent intake loop")
     except (ImportError, AttributeError, ValueError, OSError) as exc:

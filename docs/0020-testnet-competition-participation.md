@@ -261,3 +261,18 @@ PY
 ```
 
 Each log belongs to one package–paper execution attempt, including failed attempts, and is uploaded after that attempt finishes. Download URLs expire after **10 minutes**; request fresh links when needed. Keep them private. A new daily round requires a fresh round-specific upload, salt and commitment, even if you reuse the same package.
+
+## 7. Duplicate verdicts and appeals
+
+Identical package hashes and identical Python syntax fingerprints are grouped automatically, with one seeded selection per duplicate group and one ticket per resolved team. Shared public starter code is accounted for in the broader similarity report. Broader similarity and scanner errors are saved for follow-up; they do not create a manual review gate.
+
+An excluded miner can submit one appeal per resolved team during the advertised `duplicate_dispute_window` in the round rules. Use the same hotkey-signed client:
+
+```python
+client.post(f"/miner/competition/rounds/{round_id}/duplicate-disputes", {
+    "network": "testnet",
+    "reason": "Explain why your extraction pipeline is distinct.",
+})
+```
+
+Appeals do not delay evaluation or publication. Reviews can finish after publication, and public corrections appear in `/public/competition/rounds/{round_id}/intake`. Private reasons and source code stay private. Appeals correct the verdict record; they do not rerun that round or rewrite its signed scores or weights.
