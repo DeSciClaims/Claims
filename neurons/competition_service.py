@@ -38,6 +38,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--recurrence-config", type=Path,
                         help="Primary controller recurrence profile installed by infra")
+    parser.add_argument("--duplicate-review-policy", type=Path,
+                        help="Trusted automatic package preflight and review policy installed by infra")
     args = parser.parse_args(argv)
     if not 1 <= args.poll_seconds <= 600:
         parser.error("--poll-seconds must be between 1 and 600")
@@ -47,6 +49,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("only worker and production modes accept a worker ID")
     if args.recurrence_config is not None and args.role != "controller":
         parser.error("only the primary controller can create recurring rounds")
+    if args.duplicate_review_policy is not None and args.role != "controller":
+        parser.error("only the primary controller can run duplicate preflight")
     token = os.environ.get("CLAIMS_COMPETITION_CONTROLLER_TOKEN", "")
     if not token:
         parser.error("CLAIMS_COMPETITION_CONTROLLER_TOKEN is required")
@@ -76,7 +80,12 @@ def main(argv: list[str] | None = None) -> int:
             if independent_intake and not all(callable(getattr(factory, name, None))
                     for name in ("create_intake_inputs", "prepare_evaluation")):
                 raise ValueError("independent intake needs trusted intake and evaluation adapters")
-    except (ImportError, AttributeError, ValueError) as exc:
+        if args.duplicate_review_policy is not None:
+            from neurons.competition_duplicate_automation import read_policy
+            read_policy(args.duplicate_review_policy)
+            if not independent_intake:
+                raise ValueError("automatic preflight requires the independent intake loop")
+    except (ImportError, AttributeError, ValueError, OSError) as exc:
         print(json.dumps({"status": "startup_error", "error_type": type(exc).__name__}),
               file=sys.stderr, flush=True)
         return 1
@@ -99,9 +108,11 @@ def main(argv: list[str] | None = None) -> int:
                                                   "error_type": type(exc).__name__})
                 if independent_intake:
                     results = intake_results + recurring_results
+                    from neurons.competition_duplicate_automation import prepare_bound_round
                     options = dict(backend=backend, network=args.network,
                         inputs_for_round=lambda row: callback(row, backend),
-                        separate_intake=True, evaluation_preparer=factory.prepare_evaluation)
+                        separate_intake=True, evaluation_preparer=lambda row, client: prepare_bound_round(
+                            row, client, factory, args.duplicate_review_policy))
                     if args.once:
                         results += run_controller_cycle(**options)
                     else:
