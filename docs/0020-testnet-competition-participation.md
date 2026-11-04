@@ -30,7 +30,9 @@ btcli subnet register --network test --netuid 530 \
 
 Review the registration cost before confirming. Mainnet registration does not register a hotkey on testnet.
 
-Prior consensus reviews are currently **waived for testnet package entry**. Registration, signatures, commitments, duplicate detection and team/funding checks still apply. The incumbent hotkey is reserved for its baseline execution; submit an improved version through a distinct qualified hotkey. If a submitted hotkey becomes the incumbent when the preceding result is bound, that challenger entry is excluded. Declare the same team ID for entries you control; different IDs do not establish independence. The backend resolves linked teams and applies advancement limits. See [team identity](./submission.md#team-identity).
+Prior consensus reviews are currently **waived for testnet package entry**. Registration, signatures, commitments, duplicate detection and team identity checks still apply. The incumbent hotkey is reserved for its baseline execution; submit an improved version through a distinct qualified hotkey. If a submitted hotkey becomes the incumbent when the preceding result is bound, that challenger entry is excluded. Declare the same team ID for entries you control; different IDs do not establish independence. The backend resolves linked teams and applies advancement limits. See [team identity](./submission.md#team-identity).
+
+While testnet funding history catches up, the backend also **temporarily waives unresolved funding lineage** for competition team selection. Declared teams, shared coldkeys, code links and already resolved funding links still apply. This exception is recorded in each affected team snapshot; mainnet funding requirements continue to apply.
 
 ## 2. Get the submission round ID
 
