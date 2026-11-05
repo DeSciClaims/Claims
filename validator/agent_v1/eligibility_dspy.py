@@ -15,6 +15,7 @@ from miner.agent_v1.runtime.usage import empty_usage, usage_from_dspy_lm
 
 from .eligibility_compact import (CompactEligibilityOutput, CompactVerdict, CompactBlindOutput, CompactBlindFinding)
 from .model_usage import UsageSink, pinned_provider_options
+from .dspy_resources import close_dspy_lm as _close_dspy_lm
 from .eligibility import (
     ELIGIBILITY_GATES,
     EligibilityAdjudicationAgentOutput,
@@ -121,9 +122,11 @@ class DSPyEligibilityRuntime:
             error = f"{type(exc).__name__}: {exc}"
             raise
         finally:
-            if lm is not None:
-                usage = usage_from_dspy_lm(lm)
-                _close_dspy_lm(lm)
+            try:
+                if lm is not None:
+                    usage = usage_from_dspy_lm(lm)
+            finally:
+                _close_dspy_lm(lm, dspy_module=self.dspy_module)
             if self.usage_sink is not None:
                 self.usage_sink(
                     {
@@ -332,13 +335,3 @@ def _parse_json_object(raw: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("DSPy eligibility must return one JSON object.")
     return payload
-
-
-def _close_dspy_lm(lm: Any) -> None:
-    for target in (lm, getattr(lm, "client", None)):
-        close = getattr(target, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception:
-                continue

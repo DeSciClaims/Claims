@@ -7,7 +7,6 @@ inside the miner VM. The VM SSH host key must be pinned separately.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from dataclasses import dataclass
@@ -33,9 +32,11 @@ class FrozenWorkerRules:
     round_id: str
     configuration_sha256: str
     configuration: Mapping[str, Any]
+    rules_revision: int = 1
 
     def __post_init__(self) -> None:
-        if (not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", self.round_id)
+        if (type(self.rules_revision) is not int or self.rules_revision < 1
+            or not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", self.round_id)
             or canonical_sha256(self.configuration) != self.configuration_sha256):
             raise ValueError("worker rules do not match their frozen hash")
 
@@ -100,30 +101,17 @@ def _round_file(round_id: str) -> dict[str, Any]:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", round_id):
         raise ValueError("invalid round ID for trusted worker file")
     root = Path(_required("CLAIMS_COMPETITION_ROUNDS_DIR"))
-    with (root / f"{round_id}.json").open("rb") as handle:
-        body = handle.read(1_000_001)
-    if len(body) > 1_000_000:
-        raise ValueError("trusted round file exceeds one megabyte")
-    document = json.loads(body)
-    if not isinstance(document, dict) or document.get("round_id") != round_id:
-        raise ValueError("trusted round file has another round identity")
-    binding_file = root / f"{round_id}.evaluation.json"
-    if document.get("baseline_pending") and binding_file.exists():
-        from .recurrence import read_json
-        binding = read_json(binding_file, private=True)
-        public = binding.get("binding", {})
-        if (public.get("round_id") != round_id
-            or public.get("configuration_sha256") != document.get("configuration_sha256")
-            or public.get("baseline_package_sha256") != binding.get("baseline_upload", {}).get("package_sha256")):
-            raise ValueError("private baseline binding differs from frozen round")
-        document = {**document, **binding}
-    return document
+    from .rule_amendments import read_private_round
+    return read_private_round(root, round_id)
 
 
 def create_worker_coordinator(
     row: Mapping[str, Any], backend: Any, worker_id: str,
 ) -> CompetitionWorkerCoordinator:
     """Compose real Hippius, Bifrost, Targon and SSH adapters for one round."""
+    if int(row.get("rules_revision", 1)) > 1:
+        from .rule_amendments import sync_current_rules
+        row = sync_current_rules(backend, row)
     round_id = str(row["round_id"])
     document = _round_file(round_id)
     configuration = document.get("configuration")
@@ -132,6 +120,7 @@ def create_worker_coordinator(
     rules = FrozenWorkerRules(
         round_id=round_id, configuration_sha256=str(row["configuration_sha256"]),
         configuration=configuration,
+        rules_revision=int(row.get("rules_revision", 1)),
     )
     if document.get("configuration_sha256") != rules.configuration_sha256:
         raise ValueError("trusted round file has a different configuration hash")

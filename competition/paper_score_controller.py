@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Callable, Mapping, Protocol
 
 from .gold_controller import contested_claims_for_paper
@@ -20,6 +21,8 @@ class ScoringBackend(Protocol):
     def freeze_paper_evaluation(
         self, round_id: str, stage: str, paper_id: str,
         *, input_sha256: str, result_private: dict[str, Any],
+        expected_configuration_sha256: str | None = None,
+        expected_rules_revision: int | None = None,
     ) -> dict[str, Any]: ...
     def record_score(self, job_id: str, score: dict[str, Any]) -> dict[str, Any]: ...
     def record_pair_score(self, round_id: str, stage: str, payload: dict[str, Any]) -> dict[str, Any]: ...
@@ -38,10 +41,41 @@ def _status_fault(status: str) -> str:
     raise ValueError("paper job has an unknown worker status")
 
 
+def _continued_score_jobs(frozen: Mapping[str, Any], round_record: Mapping[str, Any],
+                          jobs: list[dict[str, Any]]) -> dict[str, str] | None:
+    """Accept only the backend's explicit carry-forward of an old checkpoint.
+
+    The original receipt stays immutable. Its score rows refer to original job
+    IDs, while extraction jobs are rebound to the newly approved generation.
+    """
+    carried = frozen.get("carried_forward")
+    if carried is None or carried == {}:
+        return None
+    revision = round_record.get("rules_revision", 1)
+    if (not isinstance(carried, dict)
+        or type(carried.get("from_revision")) is not int
+        or not 1 <= carried["from_revision"] < revision
+        or carried.get("to_revision") != revision
+        or carried.get("input_sha256") != frozen.get("input_sha256")
+        or not re.fullmatch(r"[0-9a-f]{64}", str(carried.get("configuration_sha256", "")))
+        or not isinstance(carried.get("job_id_map"), dict)):
+        raise ValueError("preserved paper checkpoint has invalid revision provenance")
+    mapping = carried["job_id_map"]
+    score_ids = [item["job_id"] for item in frozen["result_private"]["scores"]]
+    if (len(set(score_ids)) != len(score_ids) or set(mapping) != set(score_ids)
+        or set(mapping.values()) != {job["job_id"] for job in jobs}
+        or len(set(mapping.values())) != len(jobs)):
+        raise ValueError("preserved paper checkpoint differs from current execution grid")
+    return mapping
+
+
 def score_ready_paper(
     round_id: str, stage: str, paper_id: str, *, backend: ScoringBackend,
     bronze_artifact: Mapping[str, Any],
     evaluate: Callable[..., WeeklyPaperEvaluation],
+    expected_configuration_sha256: str | None = None,
+    expected_rules_revision: int | None = None,
+    scoring_provenance: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Return waiting or replay the immutable receipt into public score tables.
 
@@ -49,6 +83,20 @@ def score_ready_paper(
     for early stages or the assigned two-pass judge configuration for the final.
     """
     round_record = backend.get_round(round_id)
+    if scoring_provenance is not None:
+        if (set(scoring_provenance) != {"rules_revision", "configuration_sha256"}
+            or type(scoring_provenance.get("rules_revision")) is not int
+            or not 1 <= scoring_provenance["rules_revision"] <= round_record.get("rules_revision", 1)
+            or not re.fullmatch(r"[0-9a-f]{64}", str(scoring_provenance.get("configuration_sha256", "")))):
+            raise ValueError("paper scoring provenance is invalid")
+        scoring_provenance = dict(scoring_provenance)
+    if (expected_configuration_sha256 is not None
+        and expected_configuration_sha256 != round_record["configuration_sha256"]):
+        raise ValueError("paper evaluator belongs to a stale configuration")
+    if (expected_rules_revision is not None
+        and (type(expected_rules_revision) is not int or expected_rules_revision < 1
+             or expected_rules_revision != round_record.get("rules_revision", 1))):
+        raise ValueError("paper evaluator belongs to a stale rules revision")
     stage_receipts = backend.list_stages(round_id)
     receipt = next((row for row in stage_receipts if row["stage"] == stage), None)
     if receipt is None:
@@ -90,7 +138,11 @@ def score_ready_paper(
             raise ValueError("completed paper job has no valid gateway cost")
     input_sha256 = canonical_sha256({
         "round_id": round_id, "stage": stage, "paper_id": paper_id,
+        **({"rules_revision": int(round_record["rules_revision"]),
+            "rules_revision_sha256": round_record.get("rules_revision_sha256")}
+           if int(round_record.get("rules_revision", 1)) > 1 else {}),
         "configuration_sha256": round_record["configuration_sha256"],
+        **({"scoring_provenance": scoring_provenance} if scoring_provenance is not None else {}),
         "source_sha256": paper["source_sha256"], "judge_id": paper["judge_id"],
         "bronze_sha256": canonical_sha256(bronze_artifact),
         "jobs": [{"job_id": job["job_id"], "hotkey": job["hotkey"],
@@ -99,8 +151,12 @@ def score_ready_paper(
                  for job in sorted(jobs, key=lambda item: item["hotkey"])],
     })
     frozen = backend.get_paper_evaluation(round_id, stage, paper_id)
+    continued_jobs = None
     if frozen is not None:
-        if frozen["input_sha256"] != input_sha256:
+        continued_jobs = _continued_score_jobs(frozen, round_record, jobs)
+        if continued_jobs is not None:
+            input_sha256 = frozen["input_sha256"]
+        elif frozen["input_sha256"] != input_sha256:
             raise ValueError("frozen paper evaluation inputs changed")
         result = frozen["result_private"]
     else:
@@ -182,18 +238,26 @@ def score_ready_paper(
                 },
             }})
         result = {"scores": scores, "pairs": pairs, "silver": silver,
+                  **({"scoring_provenance": scoring_provenance} if scoring_provenance is not None else {}),
                   "resources": (getattr(evaluation, "resources", None)
                                 if not infrastructure_fault else None),
                   "judge_usage": (list(getattr(evaluation, "judge_usage_events", None))
                                   if not infrastructure_fault
                                   and getattr(evaluation, "judge_usage_events", None) is not None else None)}
+    generation = ({"expected_configuration_sha256": expected_configuration_sha256 or round_record["configuration_sha256"],
+                   "expected_rules_revision": expected_rules_revision or round_record.get("rules_revision", 1)}
+                  if getattr(backend, "supports_rules_revisions", False)
+                  or round_record.get("rules_revision", 1) > 1 else {})
     frozen = backend.freeze_paper_evaluation(
         round_id, stage, paper_id, input_sha256=input_sha256, result_private=result,
+        **generation,
     )
     result = frozen["result_private"]
+    continued_jobs = _continued_score_jobs(frozen, round_record, jobs) or continued_jobs
     for item in result["scores"]:
-        backend.record_score(item["job_id"], item["score"])
+        job_id = continued_jobs[item["job_id"]] if continued_jobs is not None else item["job_id"]
+        backend.record_score(job_id, {**item["score"], **generation})
     for pair in result["pairs"]:
-        backend.record_pair_score(round_id, stage, pair)
+        backend.record_pair_score(round_id, stage, {**pair, **generation})
     return {"status": "scored", "paper_id": paper_id,
             "score_count": len(result["scores"]), "pair_count": len(result["pairs"])}

@@ -2,6 +2,7 @@ import hashlib
 import io
 import json
 import zipfile
+from types import SimpleNamespace
 
 import pytest
 
@@ -77,3 +78,41 @@ def test_post_lock_candidate_report_checks_sealed_intake_and_is_write_once(tmp_p
         prepare_candidate_report(
             "week1", backend=backend, storage=storage, directory=tmp_path,
         )
+
+
+def test_candidate_setup_reuses_original_report_after_approved_scoring_amendment(tmp_path):
+    body = _wheel("def run(paper): return paper")
+    package_hash = hashlib.sha256(body).hexdigest()
+    original = {"worker_policy": {"allowed_models": ["extraction"]}, "judge": "old"}
+    baseline = {"hotkey": "reference", "team_id": "claims", "package_sha256": "a" * 64}
+    private = {"round_id": "week1", "configuration": original,
+               "configuration_sha256": canonical_sha256(original), "baseline_upload": baseline}
+    (tmp_path / "week1.json").write_text(json.dumps(private))
+    (tmp_path / "week1.json").chmod(0o600)
+    record = {"round_id": "week1", "network": "testnet", "status": "locked",
+              "archive_block_hash": "0x" + "b" * 64, "incumbent_hotkey": None,
+              "configuration_sha256": canonical_sha256(original), "baseline_package_sha256": "a" * 64}
+    submission = {"hotkey": "miner", "team_id": "declared-team", "package_sha256": package_hash,
+                  "status": "accepted", "qualified": True}
+    backend = SimpleNamespace(get_round=lambda _: record, list_submissions=lambda _: [submission])
+    storage = SimpleNamespace(package_for_submission=lambda _: body)
+    first = prepare_candidate_report("week1", backend=backend, storage=storage, directory=tmp_path)
+    path = tmp_path / "week1.duplicate-candidates.json"
+    frozen = path.read_bytes()
+    changed = {**original, "judge": "new"}
+    rules = {"round_id": "week1", "network": "testnet", "configuration": changed,
+             "configuration_sha256": canonical_sha256(changed)}
+    record.update(rules_revision=2, rules_revision_sha256="d" * 64, rules_public=rules,
+                  rules_sha256=canonical_sha256(rules), configuration_sha256=canonical_sha256(changed),
+                  status="revealed")
+    backend.list_rule_amendments = lambda *a, **k: {
+        "round_id": "week1", "rules_revision": 2, "amendments": [{
+            "from_revision": 1, "to_revision": 2, "configuration_sha256": canonical_sha256(changed),
+            "previous_configuration_sha256": canonical_sha256(original)}]}
+    submission.update(status="finished", declared_team_id="declared-team", team_id="canonical-team")
+    assert prepare_candidate_report("week1", backend=backend, storage=storage, directory=tmp_path) == first
+    assert path.read_bytes() == frozen
+    assert (tmp_path / "week1.r2.json").exists()
+    submission["package_sha256"] = "f" * 64
+    with pytest.raises(ValueError, match="locked intake"):
+        prepare_candidate_report("week1", backend=backend, storage=storage, directory=tmp_path)

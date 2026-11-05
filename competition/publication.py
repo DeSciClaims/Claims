@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any, Mapping
 
 
@@ -30,9 +31,19 @@ def publication_bundle(
         raise ValueError("round is missing frozen publication fields")
     if not results or not weights:
         raise ValueError("publication requires results and weights")
+    revision = round_record.get("rules_revision", 1)
+    if type(revision) is not int or revision < 1:
+        raise ValueError("publication rules revision is invalid")
+    amendment = {}
+    if revision > 1:
+        digest = round_record.get("rules_revision_sha256")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("amended publication requires its revision digest")
+        amendment = {"rules_revision": revision, "rules_revision_sha256": digest}
     return {
         "schema_version": PUBLICATION_SCHEMA,
         **{field: round_record[field] for field in FROZEN_FIELDS},
+        **amendment,
         **({"evaluation_binding": round_record["evaluation_binding"]}
            if round_record.get("evaluation_binding") is not None else {}),
         "results": dict(results), "weights": dict(weights),

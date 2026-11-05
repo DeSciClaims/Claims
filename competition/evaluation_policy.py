@@ -83,9 +83,11 @@ class FrozenEvaluationPolicy:
     decision_usage_sink: Callable | None = field(default=None, repr=False)
     judge_request_gate: Any = field(default=None, repr=False)
     decision_rate_limiter: Any = field(default=None, repr=False)
+    rules_revision: int = 1
 
     def __post_init__(self) -> None:
-        if (not self.round_id or not re.fullmatch(r"[0-9a-f]{64}", self.configuration_sha256)
+        if (type(self.rules_revision) is not int or self.rules_revision < 1
+            or not self.round_id or not re.fullmatch(r"[0-9a-f]{64}", self.configuration_sha256)
             or set(self.adjudication_passes_by_judge) != {"J1", "J2"}
             or any(len(passes) != 2 for passes in self.adjudication_passes_by_judge.values())
             or not 0 <= self.prescreen_fraction <= 1
@@ -121,7 +123,8 @@ class FrozenEvaluationPolicy:
             return tuple((row.get("model"), row["adjudication_profile_id"],
                           row["model_runtime_id"]) for row in panels[judge_id])
 
-        if model_signature("J1") == model_signature("J2"):
+        if (model_signature("J1") == model_signature("J2")
+            and not self.configuration.get("judge_specs", {}).get("single_model_rehearsal", False)):
             raise ValueError("J1 and J2 must be distinct frozen judge configurations")
 
     def public_routing_config(self) -> dict[str, object]:
@@ -160,9 +163,11 @@ class FrozenEvaluationPolicy:
                 for key, value in context.items()
             ):
                 raise ValueError("paper source context is malformed")
+            identity = [self.round_id, stage, paper_id, self.configuration_sha256]
+            if self.rules_revision > 1:
+                identity.extend(["rules_revision", str(self.rules_revision)])
             silver_record_id = "competition_silver_" + hashlib.sha256(
-                "\0".join((self.round_id, stage, paper_id,
-                           self.configuration_sha256)).encode(),
+                "\0".join(identity).encode(),
             ).hexdigest()[:32]
             return evaluate_weekly_paper(
                 file_agent_workflow=build_validator_workflow(

@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Protocol
 
 from .bifrost import PaperKey, PaperUsage
-from .worker_contract import build_worker_contract
+from .worker_contract import InvalidPackageManifest, build_worker_contract
 from .worker_errors import WorkerTransportError
 from miner.agent_v1.artifact_models import Artifact
 from miner.agent_v1.artifact_validator import validate_agent_artifact
@@ -165,13 +165,36 @@ def run_claimed_job(
     paper_limit, cap_source = paper_token_cap(
         job, backend=backend, published_ceiling=published_token_ceiling,
     )
-    token_limit, attempt_dollars, stop_reason = remaining_attempt_budget(
-        job, paper_token_limit=paper_limit, dollar_limit=dollar_limit,
-    )
     log_key = (
         f"logs/{network}/{job['round_id']}/{job['hotkey']}/"
         f"{hashlib.sha256(job['paper_id'].encode()).hexdigest()}/"
         f"{job['job_id']}-attempt-{attempt}.txt"
+    )
+    # Reject miner manifest errors before key creation or retry
+    # accounting. These are package faults, never infrastructure failures.
+    try:
+        contract = build_worker_contract(
+            job, allowed_models=allowed_models,
+            max_output_tokens=max_inference_output_tokens,
+            paper_token_limit=paper_limit, dollar_limit_usd=dollar_limit,
+        )
+    except InvalidPackageManifest as exc:
+        result = {
+            "status": "invalid_output", "artifact": None,
+            "prompt_and_completion_tokens": 0, "inference_cost_usd": 0.0,
+            "vm_elapsed_seconds": None, "vm_cost_estimate_usd": None,
+            "denied_egress_packets": 0, "token_limit": 0,
+            "paper_token_limit": paper_limit, "cap_source": cap_source,
+            "detail": f"invalid_manifest: {exc}",
+        }
+        logs.put(log_key, f"[trusted-manifest] {exc}\n".encode())
+        backend.complete_job(
+            job["job_id"], worker_id=worker_id, lease_token=job["lease_token"],
+            result=result, log_object_key=log_key,
+        )
+        return result
+    token_limit, attempt_dollars, stop_reason = remaining_attempt_budget(
+        job, paper_token_limit=paper_limit, dollar_limit=dollar_limit,
     )
     if stop_reason is not None:
         status = ("cap_exceeded" if stop_reason == "prior_attempt_exhausted_budget"
@@ -190,10 +213,7 @@ def run_claimed_job(
             result=result, log_object_key=log_key,
         )
         return result
-    contract = build_worker_contract(
-        job, allowed_models=allowed_models,
-        max_output_tokens=max_inference_output_tokens,
-        paper_token_limit=paper_limit, dollar_limit_usd=dollar_limit,
+    contract["request"]["inference"]["budget"].update(
         remaining_tokens=token_limit, remaining_dollar_limit_usd=attempt_dollars,
     )
     key = keys.create_paper_key(
@@ -302,13 +322,22 @@ def run_next_claimed_job(
     published_token_ceiling: int, dollar_limit: float,
     lease_seconds: int = 3600, max_inference_output_tokens: int = 8192,
     claimed_job: dict[str, Any] | None = None,
+    expected_configuration_sha256: str | None = None,
+    expected_rules_revision: int | None = None,
 ) -> dict[str, Any] | None:
     """Lease one job and stage only its frozen PDF bytes on the worker."""
-    job = claimed_job or backend.claim_job(round_id, worker_id=worker_id, lease_seconds=lease_seconds)
+    claim_options = {"worker_id": worker_id, "lease_seconds": lease_seconds}
+    if expected_configuration_sha256 is not None and getattr(backend, "supports_rules_revisions", False):
+        claim_options["expected_configuration_sha256"] = expected_configuration_sha256
+        claim_options["expected_rules_revision"] = expected_rules_revision
+    job = claimed_job or backend.claim_job(round_id, **claim_options)
     if job is None:
         return None
     if job.get("round_id") != round_id or job.get("status") != "leased":
         raise ValueError("backend returned a job outside the requested lease")
+    if (expected_configuration_sha256 is not None
+        and job.get("configuration_sha256") != expected_configuration_sha256):
+        raise ValueError("claimed job differs from the worker's scoring rules revision")
     source_url, source_sha256 = paper_sources.pdf_source_for_paper(
         str(job["stage"]), str(job["paper_id"]),
     )

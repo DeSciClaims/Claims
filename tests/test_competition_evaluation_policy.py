@@ -8,6 +8,8 @@ from competition.publication import canonical_sha256
 from competition.policy_runtime import policy_runtime_config
 from competition.silver_runtime import silver_runtime_config
 from competition.validator_workflow import validated_workflow_spec
+from competition.validator_workflow import build_validator_workflow
+from types import SimpleNamespace
 
 
 ROUTING = {
@@ -36,6 +38,21 @@ def _configuration(tiebreak=None):
 
 
 CONFIGURATION = _configuration()
+
+
+def test_fixed_comparison_models_do_not_follow_judge_rotation_and_resume_stages():
+    descriptor = {"model": "deepseek/deepseek-v4-flash-0731", "provider_slug": "deepinfra/fp8"}
+    config = {**CONFIGURATION, "workflow_specs": validated_workflow_spec({
+        "fixed_models": {name: descriptor for name in ("comparison", "canonicalization", "canonical_audit")},
+        "resume_existing_stages": True,
+    })}
+    workflow = build_validator_workflow(SimpleNamespace(configuration=config,
+                                        decision_usage_sink=None, judge_request_gate=None),
+                                        stage="final", judge_id="J2", decision_max_workers=1)
+    assert workflow.config.comparison_model == descriptor["model"]
+    assert workflow.config.canonicalization_model == descriptor["model"]
+    assert workflow.config.canonical_audit_model == descriptor["model"]
+    assert workflow.config.resume_existing_stages
 
 
 def test_stage_factory_freezes_routing_and_never_uses_decisions_in_final(monkeypatch):
@@ -68,6 +85,21 @@ def test_stage_factory_freezes_routing_and_never_uses_decisions_in_final(monkeyp
     assert len({call["silver_record_id"] for call in calls}) == 4
     with pytest.raises(ValueError, match="differs"):
         policy.evaluate_for_stage("final")(stage="screen", paper_id="paper-1")
+
+
+def test_amended_rules_get_distinct_workspaces_even_when_models_revert(monkeypatch):
+    calls = []
+    monkeypatch.setattr("competition.evaluation_policy.evaluate_weekly_paper",
+                        lambda **kwargs: calls.append(kwargs) or "evaluated")
+    for revision in (1, 2, 3):
+        policy = FrozenEvaluationPolicy(
+            round_id="round", configuration_sha256=canonical_sha256(CONFIGURATION),
+            configuration=CONFIGURATION, adjudication_passes_by_judge=PANELS,
+            source_context_for_paper=lambda _: {}, decision_api_key="key",
+            rules_revision=revision,
+        )
+        policy.evaluate_for_stage("final")(stage="final", paper_id="paper", judge_id="J1")
+    assert len({row["silver_record_id"] for row in calls}) == 3
 
 
 def test_week_one_full_judges_do_not_require_decisions_credential():

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from itertools import combinations
+import re
 from typing import Any, Mapping
 
 from .publication import canonical_sha256
@@ -10,13 +11,66 @@ from .round_controller import _review_links
 
 
 REVIEW_SCHEMA = "claims_duplicate_review_v1"
+ADMITTED_STATUSES = frozenset({"accepted", "duplicate", "evaluating", "finished"})
+MAX_RULE_HISTORY_PAGES = 32
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def duplicate_admission_record(
+    backend: Any, round_record: Mapping[str, Any], candidate_report: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Authorize the report's scoring hash without changing admission inputs.
+
+    Scoring-only amendments preserve the locked intake and duplicate verdicts.
+    Their original reports remain immutable, but an old configuration must be
+    linked to the captured current generation by authoritative audit history.
+    Callers still verify every archive, baseline and package receipt normally.
+    """
+    captured = dict(round_record)
+    report_hash = candidate_report.get("configuration_sha256")
+    current_hash = captured.get("configuration_sha256")
+    if report_hash == current_hash:
+        return captured
+    revision = captured.get("rules_revision", 1)
+    if (type(revision) is not int or revision < 2
+        or not _SHA256.fullmatch(str(report_hash))
+        or not _SHA256.fullmatch(str(current_hash))):
+        raise ValueError("duplicate report configuration is absent from the approved rules history")
+    before = None
+    expected_revision, expected_hash = revision, current_hash
+    for _ in range(MAX_RULE_HISTORY_PAGES):
+        page = backend.list_rule_amendments(captured["round_id"], limit=100, before_revision=before)
+        if (not isinstance(page, dict) or page.get("round_id") != captured["round_id"]
+            or type(page.get("rules_revision")) is not int
+            or page["rules_revision"] != revision
+            or not isinstance(page.get("amendments"), list)
+            or not 1 <= len(page["amendments"]) <= 100):
+            raise ValueError("backend returned invalid rules history")
+        for item in page["amendments"]:
+            if (not isinstance(item, dict)
+                or type(item.get("from_revision")) is not int
+                or type(item.get("to_revision")) is not int
+                or item["to_revision"] != expected_revision
+                or item["from_revision"] != expected_revision - 1
+                or item["from_revision"] < 1
+                or item.get("configuration_sha256") != expected_hash
+                or not _SHA256.fullmatch(str(item.get("previous_configuration_sha256")))):
+                raise ValueError("backend rules history is not continuous")
+            expected_revision = item["from_revision"]
+            expected_hash = item["previous_configuration_sha256"]
+            if report_hash == expected_hash:
+                return {**captured, "configuration_sha256": report_hash}
+        if expected_revision == 1:
+            break
+        before = expected_revision + 1
+    raise ValueError("duplicate report configuration is absent from the approved rules history")
 
 
 def accepted_snapshot(submissions: list[Mapping[str, Any]]) -> tuple[list[dict[str, str]], str]:
     rows = sorted(({
         "hotkey": row["hotkey"], "team_id": row["team_id"],
         "package_sha256": row["package_sha256"],
-    } for row in submissions if row["status"] in {"accepted", "duplicate"}
+    } for row in submissions if row["status"] in ADMITTED_STATUSES
         and row["qualified"]), key=lambda row: row["hotkey"])
     if len({row["hotkey"] for row in rows}) != len(rows):
         raise ValueError("locked duplicate review has repeated hotkeys")

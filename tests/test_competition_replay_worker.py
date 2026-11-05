@@ -4,6 +4,9 @@ import hashlib
 import io
 import json
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+
+import pytest
 
 from competition.bifrost import PaperKey, PaperUsage
 from competition.jobs import build_jobs
@@ -94,6 +97,38 @@ def _replay():
     return snapshot, baseline, ReplayInitialPlan(
         "round-1", "week_one", ("challenger",), (), tuple(entries), tuple(jobs),
     )
+
+
+def test_amended_replay_validates_generation_and_keeps_request_metadata_out_of_local_rows():
+    snapshot, _, _ = _replay()
+    snapshot.update(rules_revision=2, rules_revision_sha256="e" * 64,
+                    rules_revisions=[{"rules_revision": 2, "rules_revision_sha256": "e" * 64,
+                        "rules_sha256": snapshot["rules_sha256"],
+                        "configuration_sha256": snapshot["configuration_sha256"],
+                        "configuration": snapshot["rules_public"]["configuration"]}],
+                    paper_evaluations=[])
+    calls = []
+    store = SimpleNamespace(
+        get_round=lambda _: {"configuration_sha256": snapshot["configuration_sha256"], "network": "testnet"},
+        freeze_paper_evaluation=lambda *a, **k: calls.append((a, k)) or {},
+        record_score=lambda *a: calls.append(a) or {},
+        record_pair_score=lambda *a: calls.append(a) or {},
+    )
+    backend = ReplayRuntimeBackend(store, object(), snapshot,
+        (PaperRecord("paper-1", hashlib.sha256(PDF).hexdigest()),))
+    fence = {"expected_configuration_sha256": snapshot["configuration_sha256"], "expected_rules_revision": 2}
+    backend.freeze_paper_evaluation("round-1", "week_one", "paper-1", input_sha256="a" * 64,
+                                    result_private={}, **fence)
+    backend.record_score("job", {"score": 0.5, **fence})
+    backend.record_pair_score("round-1", "week_one", {"paper_id": "paper-1", **fence})
+    assert calls[0][1] == {"input_sha256": "a" * 64, "result_private": {}}
+    assert calls[1][1] == {"score": 0.5}
+    assert calls[2][2] == {"paper_id": "paper-1"}
+    assert backend.get_round("round-1")["rules_revision"] == 2
+    with pytest.raises(ValueError, match="immutable rules generation"):
+        backend.record_score("job", {"score": 0.5, **fence, "expected_rules_revision": 1})
+    with pytest.raises(ValueError, match="immutable rules generation"):
+        backend.record_pair_score("round-1", "week_one", {"paper_id": "paper-1"})
 
 
 def test_replay_worker_executes_sealed_paper_and_scores_locally(tmp_path):

@@ -29,8 +29,11 @@ PROVISIONAL_MODEL_ALLOWLIST = frozenset({
 })
 
 
-def require_provisional_provider_pins(configuration: Mapping[str, Any]) -> None:
+def require_provisional_provider_pins(configuration: Mapping[str, Any], *, network: str | None = None) -> None:
     """Reject a paid pilot whose OpenRouter endpoint could silently change."""
+    if (configuration.get("judge_specs", {}).get("single_model_rehearsal", False)
+        and network != "testnet"):
+        raise ValueError("single-model rehearsal is restricted to testnet")
     panels = configuration.get("judge_panels")
     tie = configuration.get("tiebreak_pass")
     if (not isinstance(panels, dict) or set(panels) != {"J1", "J2"}
@@ -53,13 +56,15 @@ def provisional_judge_configs(
 ) -> tuple[SilverAdjudicationConfig, SilverAdjudicationConfig]:
     """Return the named pilot configurations without reading a credential."""
     if specs is not None:
-        if (not isinstance(specs, dict) or set(specs) != {
+        if (not isinstance(specs, dict) or set(specs) - {"single_model_rehearsal"} != {
             "J1", "J2", "tiebreak", "api_base", "temperature",
             "max_tokens", "timeout_seconds", "max_in_flight",
         } or specs["api_base"] != "https://openrouter.ai/api/v1"
             or any(not isinstance(specs.get(panel), list) or len(specs[panel]) != 2
                    for panel in ("J1", "J2"))):
             raise ValueError("frozen judge specifications are invalid")
+        if type(specs.get("single_model_rehearsal", False)) is not bool:
+            raise ValueError("single-model rehearsal flag must be boolean")
         descriptors = [*specs["J1"], *specs["J2"], specs["tiebreak"]]
         if any(not isinstance(item, dict) or set(item) != {"model", "provider_slug"}
                or not isinstance(item["model"], str) or not item["model"]
@@ -132,4 +137,5 @@ def build_provisional_judges(
     return build_weekly_judges(
         j1=j1, j2=j2, allowed_models=allowed,
         usage_sink=usage_sink,
+        single_model_rehearsal=bool(specs and specs.get("single_model_rehearsal", False)),
     )

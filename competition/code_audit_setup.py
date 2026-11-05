@@ -30,8 +30,16 @@ def prepare_code_audit(
 ) -> dict[str, str]:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,120}", round_id) or not directory.is_dir():
         raise ValueError("code audit round or private directory is invalid")
-    document = _read_json(directory / f"{round_id}.json")
     row = backend.get_round(round_id)
+    revision = int(row.get("rules_revision", 1))
+    if revision > 1:
+        from .rule_amendments import read_private_round, sync_current_rules
+        row = sync_current_rules(backend, row, directory=directory)
+        revision = int(row["rules_revision"])
+        document = read_private_round(directory, round_id)
+    else:
+        document = _read_json(directory / f"{round_id}.json")
+    prefix = f"{round_id}.r{revision}" if revision > 1 else round_id
     if (document.get("round_id") != round_id or row.get("round_id") != round_id
         or not isinstance(document.get("configuration"), dict)
         or canonical_sha256(document["configuration"]) != row.get("configuration_sha256")
@@ -46,7 +54,7 @@ def prepare_code_audit(
     )
     evidence = collect_final_code_evidence(round_id, backend=backend, fetch_package=packages)
     digest = canonical_sha256(evidence)
-    _write_once(directory / f"{round_id}.audit-evidence.json", _canonical_bytes(evidence), 0o600)
+    _write_once(directory / f"{prefix}.audit-evidence.json", _canonical_bytes(evidence), 0o600)
     policy = (row.get("rules_public") or {}).get("policy", {}).get("code_audit")
     if row.get("network") == "mainnet" and policy is None:
         raise ValueError("mainnet code audit has no frozen automatic thresholds")
@@ -54,10 +62,10 @@ def prepare_code_audit(
         if review is not None:
             raise ValueError("automatic code audit does not accept manual review")
         receipt = automatic_code_audit(evidence, policy)
-        _write_once(directory / f"{round_id}.audit.json", _canonical_bytes(receipt), 0o600)
+        _write_once(directory / f"{prefix}.audit.json", _canonical_bytes(receipt), 0o600)
         return {"round_id": round_id, "evidence_sha256": digest, "status": "receipt_ready"}
     if review is None:
         return {"round_id": round_id, "evidence_sha256": digest, "status": "evidence_ready"}
     receipt = finalize_code_audit(evidence, review)
-    _write_once(directory / f"{round_id}.audit.json", _canonical_bytes(receipt), 0o600)
+    _write_once(directory / f"{prefix}.audit.json", _canonical_bytes(receipt), 0o600)
     return {"round_id": round_id, "evidence_sha256": digest, "status": "receipt_ready"}

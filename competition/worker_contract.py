@@ -15,6 +15,10 @@ _PAPER_METADATA_FIELDS = frozenset({
 })
 
 
+class InvalidPackageManifest(ValueError):
+    """Miner-controlled manifest fields do not satisfy the execution contract."""
+
+
 def validated_package_filename(filename: Any, package_format: Any) -> str:
     """Keep pip's wheel name while refusing paths or surprising archive names."""
     if (not isinstance(filename, str) or len(filename) > 200
@@ -47,26 +51,31 @@ def build_worker_contract(
     """
     manifest = job.get("manifest")
     paper = job.get("paper")
-    if not isinstance(manifest, dict) or not isinstance(paper, dict):
-        raise ValueError("worker job needs a selected manifest and pinned paper metadata")
+    if not isinstance(manifest, dict):
+        raise InvalidPackageManifest("worker job needs a selected manifest")
+    if not isinstance(paper, dict):
+        raise ValueError("worker job needs pinned paper metadata")
     if (manifest.get("schema_version") != "claims_competition_manifest_v1"
         or manifest.get("language") != "python"
         or manifest.get("package_format") not in {"wheel", "tar.gz"}
         or manifest.get("source_included") is not True
         or manifest.get("license_production_use") is not True):
-        raise ValueError("selected package manifest violates the worker contract")
+        raise InvalidPackageManifest("selected package manifest violates the worker contract")
     entrypoint = manifest.get("entrypoint")
     if not isinstance(entrypoint, str) or _ENTRYPOINT.fullmatch(entrypoint) is None:
-        raise ValueError("selected package has an invalid entrypoint")
-    package_filename = validated_package_filename(
-        manifest.get("package_filename"), manifest["package_format"],
-    )
+        raise InvalidPackageManifest("selected package has an invalid entrypoint")
+    try:
+        package_filename = validated_package_filename(
+            manifest.get("package_filename"), manifest["package_format"],
+        )
+    except ValueError as exc:
+        raise InvalidPackageManifest(str(exc)) from exc
     models = manifest.get("models")
     if (not isinstance(models, list) or not models
         or any(not isinstance(model, str) or not model or len(model) > 200 for model in models)
         or len(set(models)) != len(models)
         or not allowed_models or not set(models) <= set(allowed_models)):
-        raise ValueError("selected package declares a model outside the frozen whitelist")
+        raise InvalidPackageManifest("selected package declares a model outside the frozen whitelist")
     if paper.get("paper_id") != job.get("paper_id") or not isinstance(paper.get("paper_id"), str):
         raise ValueError("pinned paper metadata differs from the leased paper")
     if isinstance(max_output_tokens, bool) or not isinstance(max_output_tokens, int) or not 1 <= max_output_tokens <= 32768:

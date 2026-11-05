@@ -15,6 +15,13 @@ from .stages import StageCandidate, advance
 from .round_evaluation import round_evaluation, stages_for_round
 
 
+def _generation(backend, record):
+    if not getattr(backend, "supports_rules_revisions", False):
+        return {}
+    return {"expected_configuration_sha256": record["configuration_sha256"],
+            "expected_rules_revision": int(record.get("rules_revision", 1))}
+
+
 def _enqueue_current_stage(
     round_id: str, *, backend: CompetitionBackend,
     round_record: Mapping[str, Any], receipt: Mapping[str, Any],
@@ -25,7 +32,7 @@ def _enqueue_current_stage(
         stage=receipt["stage"],
         configuration_sha256=round_record["configuration_sha256"],
     )
-    backend.enqueue_jobs(round_id, jobs)
+    backend.enqueue_jobs(round_id, jobs, **_generation(backend, round_record))
 
 
 def start_initial_stage(
@@ -59,7 +66,7 @@ def start_initial_stage(
             "team_id": str(challenger["team_id"]),
             "role": "challenger", "position": position, "paired_gain": None,
         })
-    backend.start_stage(round_id, stage, entries)
+    backend.start_stage(round_id, stage, entries, **_generation(backend, round_record))
     receipt = {"stage": stage, "entries": entries}
     _enqueue_current_stage(round_id, backend=backend, round_record=round_record,
                            receipt=receipt, sample=sample)
@@ -80,7 +87,7 @@ def start_failed_incumbent_reference_rerun(
         failure=failure, round_record=round_record,
         source_receipt=ledger[-1], sample=sample, reference=reference,
     )
-    started = backend.start_reference_rerun(round_id, reference)
+    started = backend.start_reference_rerun(round_id, reference, **_generation(backend, round_record))
     if started["stage"] != "rerun" or started["source_stage"] != plan.source_stage:
         raise ValueError("stored reference rerun differs from failed stage")
     frozen = backend.list_stages(round_id)[-1]
@@ -221,7 +228,7 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend, identity_
                for key in ("hotkey", "package_sha256", "team_id", "role")},
             "position": position, "paired_gain": winner.paired_gain,
         })
-    backend.start_stage(round_id, next_stage, next_entries)
+    backend.start_stage(round_id, next_stage, next_entries, **_generation(backend, round_record))
     receipt = {"stage": next_stage, "entries": next_entries}
     _enqueue_current_stage(round_id, backend=backend, round_record=round_record,
                            receipt=receipt, sample=sample)

@@ -144,6 +144,9 @@ class ReplayStore:
                 "baseline_package_sha256", "reference_package_sha256",
             )
         }
+        if int(snapshot.get("rules_revision", 1)) > 1:
+            inputs.update(rules_revision=snapshot["rules_revision"],
+                          rules_revision_sha256=snapshot["rules_revision_sha256"])
         inputs["uploads"] = frozen_uploads
         inputs["sample"] = [row for row in snapshot["sample"] if row["stage"] != "rerun"]
         digest = canonical_sha256(inputs)

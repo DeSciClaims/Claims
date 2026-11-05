@@ -80,6 +80,9 @@ def replay_publication_bundle(
         "schema_version": REPLAY_PUBLICATION_SCHEMA,
         "round_id": round_id,
         **{key: snapshot[key] for key in frozen},
+        **({"rules_revision": snapshot["rules_revision"],
+            "rules_revision_sha256": snapshot["rules_revision_sha256"]}
+           if int(snapshot.get("rules_revision", 1)) > 1 else {}),
         "local_stage": stage,
         "local_sample_sha256": canonical_sha256(backend.list_sample(round_id)),
         "local_pairs_sha256": canonical_sha256(local_pairs),

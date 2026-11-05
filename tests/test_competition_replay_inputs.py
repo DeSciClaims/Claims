@@ -10,7 +10,7 @@ from competition.publication import canonical_sha256
 from competition.drand import VerifiedBeacon
 from competition.replay_inputs import (
     CompetitionReplayInputs, _gold_vote_message, validate_replay_snapshot,
-    verify_replay_sample,
+    replay_paper_revisions, replay_rule_configurations, verify_replay_sample,
 )
 from competition.sample_release import PaperRecord, frozen_pool_hash, sample_receipt
 
@@ -57,6 +57,34 @@ def _snapshot():
     return snapshot
 
 
+def _amended_snapshot():
+    snapshot = _snapshot()
+    old_rules = dict(snapshot["rules_public"])
+    old_configuration = old_rules["configuration"]
+    configuration = {**old_configuration, "judge": "replacement"}
+    rules = {**old_rules, "configuration": configuration,
+             "configuration_sha256": canonical_sha256(configuration)}
+    snapshot.update(rules_revision=2, rules_revision_sha256="a" * 64,
+                    rules_public=rules, rules_sha256=canonical_sha256(rules),
+                    configuration_sha256=canonical_sha256(configuration))
+    snapshot["rules_revisions"] = [{
+        "rules_revision": revision, "rules_revision_sha256": digest,
+        "rules_sha256": canonical_sha256(document),
+        "configuration_sha256": canonical_sha256(document["configuration"]),
+        "configuration": document["configuration"],
+    } for revision, digest, document in [(1, None, old_rules), (2, "a" * 64, rules)]]
+    snapshot["stages"][0].update(produced_rules_revision=1,
+                                 configuration_sha256=canonical_sha256(old_configuration))
+    snapshot["paper_evaluations"] = [{
+        "stage": "week_one", "paper_id": "paper-1", "produced_rules_revision": 1,
+        "configuration_sha256": canonical_sha256(old_configuration), "input_sha256": "b" * 64,
+        "carried_forward": {"to_revision": 2, "from_revision": 1,
+                            "configuration_sha256": canonical_sha256(old_configuration),
+                            "input_sha256": "b" * 64, "job_id_map": {"old": "new"}},
+    }]
+    return snapshot
+
+
 def test_replay_client_uses_get_only_and_validates_frozen_inputs():
     requests = []
 
@@ -72,6 +100,49 @@ def test_replay_client_uses_get_only_and_validates_frozen_inputs():
     assert client.snapshot("week-1")["uploads"][0]["package_object_key"] == "sealed/miner-1"
     assert requests[0][0].full_url.endswith("/replay/rounds/week-1/snapshot")
     assert requests[0][1] == 30
+
+
+@pytest.mark.parametrize("revision,digest", [(True, None), (0, None), ("2", "a" * 64),
+                                             (2, None), (2, "invalid"), (1, "a" * 64)])
+def test_replay_snapshot_rejects_invalid_rules_revision_evidence(revision, digest):
+    snapshot = _snapshot()
+    snapshot.update(rules_revision=revision, rules_revision_sha256=digest)
+    with pytest.raises(ValueError, match="rules revision evidence"):
+        validate_replay_snapshot(snapshot, "week-1")
+
+
+def test_replay_snapshot_accepts_amended_generation_with_audit_digest():
+    snapshot = _amended_snapshot()
+    assert validate_replay_snapshot(snapshot, "week-1")["rules_revision"] == 2
+    policies = replay_rule_configurations(snapshot)
+    assert policies[1] != policies[2]
+    assert replay_paper_revisions(snapshot) == {("week_one", "paper-1"): 1}
+    snapshot["paper_evaluations"][0]["carried_forward"] = {}
+    assert replay_paper_revisions(snapshot) == {("week_one", "paper-1"): 1}
+
+
+@pytest.mark.parametrize("damage", ["missing_history", "missing_papers", "missing_historical_policy",
+                                    "changed_policy", "changed_paper", "changed_stage", "changed_carry", "changed_input"])
+def test_replay_snapshot_rejects_unavailable_or_changed_historical_scoring_provenance(damage):
+    snapshot = _amended_snapshot()
+    if damage == "missing_history":
+        snapshot.pop("rules_revisions")
+    elif damage == "missing_papers":
+        snapshot.pop("paper_evaluations")
+    elif damage == "missing_historical_policy":
+        snapshot["rules_revisions"] = snapshot["rules_revisions"][1:]
+    elif damage == "changed_policy":
+        snapshot["rules_revisions"][0]["configuration"] = {"worker_policy": {"allowed_models": ["unapproved"]}}
+    elif damage == "changed_paper":
+        snapshot["paper_evaluations"][0]["configuration_sha256"] = snapshot["configuration_sha256"]
+    elif damage == "changed_stage":
+        snapshot["stages"][0]["produced_rules_revision"] = 9
+    elif damage == "changed_carry":
+        snapshot["paper_evaluations"][0]["carried_forward"]["from_revision"] = 2
+    else:
+        snapshot["paper_evaluations"][0]["carried_forward"]["input_sha256"] = "f" * 64
+    with pytest.raises(ValueError, match="replay"):
+        validate_replay_snapshot(snapshot, "week-1")
 
 
 def test_replay_client_checks_entire_released_pool_hash():

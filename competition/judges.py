@@ -14,6 +14,7 @@ from .evaluation_policy import judge_runtime_config
 def build_weekly_judges(
     *, j1: SilverAdjudicationConfig, j2: SilverAdjudicationConfig,
     allowed_models: set[str], usage_sink: UsageSink | None = None,
+    single_model_rehearsal: bool = False,
 ) -> tuple[dict[str, tuple[AdjudicationPass, AdjudicationPass]], AdjudicationPass]:
     """Resolve J1/J2 and one common tiebreak without exposing provider keys.
 
@@ -28,9 +29,10 @@ def build_weekly_judges(
         if config.mode.strip().lower().replace("_", "-") not in {"openai-compatible", "model", "dspy"}:
             raise ValueError(f"{judge_id} needs a model-backed Silver configuration")
         models = {config.model_a, config.model_b, config.tiebreak_model}
-        if ("" in models or not models <= allowed_models or config.model_a == config.model_b):
+        if ("" in models or not models <= allowed_models
+            or (config.model_a == config.model_b and not single_model_rehearsal)):
             raise ValueError(f"{judge_id} uses a missing, repeated or non-allowlisted model")
-    if (j1.model_a, j1.model_b) == (j2.model_a, j2.model_b):
+    if not single_model_rehearsal and (j1.model_a, j1.model_b) == (j2.model_a, j2.model_b):
         raise ValueError("J1 and J2 must use different primary model configurations")
     if j1.api_key_env != j2.api_key_env:
         raise ValueError("J1 and J2 must use the same trusted tiebreak credential source")

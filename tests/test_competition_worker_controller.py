@@ -106,7 +106,7 @@ class Backend:
 
 
 def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False, execution=None,
-        attempt=1, hotkey=None):
+        attempt=1, hotkey=None, manifest_updates=None):
     signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
     job = {
         "job_id": "a" * 64, "round_id": "week2", "hotkey": hotkey or signer.ss58_address,
@@ -122,6 +122,7 @@ def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False, ex
             "models": ["example/model"],
         },
     }
+    job["manifest"].update(manifest_updates or {})
     keys, logs, backend = Keys(over, expected_cap=525 if challenger else 1000), Logs(), Backend(job, challenger=challenger)
     result = run_claimed_job(
         job, backend=backend, worker_id="worker-1", network="testnet",
@@ -132,6 +133,31 @@ def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False, ex
         allowed_models=("example/model",), published_token_ceiling=1000, dollar_limit=1.0,
     )
     return result, keys, logs, backend, job
+
+
+@pytest.mark.parametrize("attempt", [1, 2])
+@pytest.mark.parametrize("manifest_updates", [
+    {"models": ["example/allowed-model"]},
+    {"entrypoint": "invalid entrypoint"},
+    {"package_filename": "../unsafe.whl"},
+    {"license_production_use": False},
+])
+def test_invalid_manifest_is_terminal_package_fault_before_inference(attempt, manifest_updates):
+    class NeverExecute:
+        def run(self, **kwargs):
+            pytest.fail("an invalid manifest must not execute miner code")
+
+    result, keys, logs, backend, job = run(
+        attempt=attempt, execution=NeverExecute(), manifest_updates=manifest_updates,
+    )
+    assert result["status"] == "invalid_output"
+    assert result["detail"].startswith("invalid_manifest:")
+    assert result["prompt_and_completion_tokens"] == 0
+    assert result["inference_cost_usd"] == 0
+    assert not keys.created
+    assert not keys.revoked
+    assert backend.receipt[0] == job["job_id"]
+    assert b"[trusted-manifest]" in logs.content
 
 
 def test_worker_controller_revokes_key_before_private_log_and_completion():

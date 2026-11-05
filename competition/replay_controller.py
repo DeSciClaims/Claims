@@ -14,6 +14,8 @@ def tick_replay(
     bronze_for_paper: Callable[[str, str], Mapping[str, Any]],
     evaluate_for_stage: Callable[[str], Callable[..., Any]],
     reference_for_round: Callable[[str], Mapping[str, Any]] | None = None,
+    evaluate_for_paper: Callable[[str, str, str], Callable[..., Any]] | None = None,
+    scoring_provenance_for_paper: Callable[[str, str], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Score completed local jobs and select the next stage from local pairs.
 
@@ -58,7 +60,10 @@ def tick_replay(
         score_ready_paper(
             round_id, stage, paper_id, backend=backend,
             bronze_artifact=bronze_for_paper(stage, paper_id),
-            evaluate=evaluate_for_stage(source_stage),
+            evaluate=(evaluate_for_paper(stage, paper_id, source_stage)
+                      if evaluate_for_paper else evaluate_for_stage(source_stage)),
+            **({"scoring_provenance": dict(scoring_provenance_for_paper(stage, paper_id))}
+               if scoring_provenance_for_paper else {}),
         )
         attempted += 1
     if source_stage in {"prescreen", "screen"}:

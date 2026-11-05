@@ -19,6 +19,11 @@ def deferred(record):
 
 def prepare_evaluation(row, backend, *, now=None):
     """Return a wait receipt, or durably bind this queue head's signed baseline."""
+    revision = int(row.get("rules_revision", 1))
+    if revision > 1:
+        from .rule_amendments import sync_current_rules
+        row = sync_current_rules(backend, row)
+        revision = int(row["rules_revision"])
     if not deferred(row):
         return {"status": "evaluation_ready"}
     gate = backend.evaluation_gate(row["round_id"])
@@ -32,8 +37,14 @@ def prepare_evaluation(row, backend, *, now=None):
         if previous["round_id"] != profile.get("acknowledged_failed_round_id"):
             return {"status": "waiting_for_preceding_failure_review"}
     root = Path(os.environ["CLAIMS_COMPETITION_ROUNDS_DIR"])
-    path = root / f"{row['round_id']}.evaluation.json"
+    suffix = f"evaluation-r{revision}" if revision > 1 else "evaluation"
+    path = root / f"{row['round_id']}.{suffix}.json"
     if row.get("evaluation_binding") is not None:
+        if revision > 1:
+            from .pilot_worker_factory import _round_file
+            if _round_file(row["round_id"]).get("binding") != row["evaluation_binding"]:
+                raise ValueError("private revised evaluation receipt differs from backend binding")
+            return {"status": "evaluation_ready"}
         if not path.is_file() or json.loads(path.read_text()).get("binding") != row["evaluation_binding"]:
             raise ValueError("private evaluation receipt differs from backend binding")
         return {"status": "evaluation_ready"}
@@ -63,8 +74,8 @@ def prepare_evaluation(row, backend, *, now=None):
                 "round_id", "receipt_sha256", "hotkey", "package_sha256"))
             or active.latest_activation_at != plan.activate_at):
             return {"status": "waiting_for_preceding_handoff"}
-    document = json.loads((root / f"{row['round_id']}.json").read_text())
     from .pilot_worker_factory import _round_file
+    document = _round_file(row["round_id"])
     resolved = resolve_baseline(
         {**document, "network": row["network"], "deadline_at": row["deadline_at"],
          "baseline_selection": "active_production"},

@@ -30,6 +30,8 @@ DEFAULT_WORKFLOW_SPEC = {
     "max_tokens": 81920,
     "timeout_seconds": 1800,
     "equivalence_group_bypass": True,
+    "resume_existing_stages": False,
+    "fixed_models": None,
 }
 
 
@@ -53,7 +55,7 @@ def validated_workflow_spec(value: Mapping[str, Any] | None) -> dict[str, Any]:
         or spec["canonicalization_harness"] not in {"file-agent", "dspy"}
         or type(spec["max_turns"]) is not int or not 1 <= spec["max_turns"] <= 100
         or any(type(spec[key]) is not bool for key in (
-            "strict_comparison", "fallback_to_legacy", "require_distinct_direct_judges"))
+            "strict_comparison", "fallback_to_legacy", "require_distinct_direct_judges", "resume_existing_stages"))
         or not isinstance(spec["eligibility_output_contract"], str)
         or spec["eligibility_output_contract"] not in {"compact", "verbose"}
         or type(spec["max_tokens"]) is not int
@@ -64,6 +66,15 @@ def validated_workflow_spec(value: Mapping[str, Any] | None) -> dict[str, Any]:
         or type(spec["equivalence_group_bypass"]) is not bool
     ):
         raise ValueError("competition validator workflow spec is invalid")
+    fixed = spec["fixed_models"]
+    if fixed is not None and (
+        not isinstance(fixed, dict)
+        or set(fixed) != {"comparison", "canonicalization", "canonical_audit"}
+        or any(not isinstance(d, dict) or set(d) != {"model", "provider_slug"}
+               or any(not isinstance(d[k], str) or not d[k] for k in ("model", "provider_slug"))
+               for d in fixed.values())
+    ):
+        raise ValueError("fixed validator model descriptors are invalid")
     return spec
 
 
@@ -86,7 +97,8 @@ def build_validator_workflow(
     def model(descriptor):
         return descriptor.get("model") or descriptor["model_runtime_id"]
 
-    models = [*panels["J1"], *panels["J2"], tie]
+    fixed = spec["fixed_models"] or {}
+    models = [*panels["J1"], *panels["J2"], tie, *fixed.values()]
     provider_slugs = {}
     for descriptor in models:
         name, slug = model(descriptor), descriptor.get("provider_slug")
@@ -108,9 +120,9 @@ def build_validator_workflow(
         root=root,
         harness=spec["harness"],
         provider="openrouter",
-        comparison_model=model(resolve(spec["comparison_model_ref"])),
-        canonicalization_model=model(resolve(spec["canonicalization_model_ref"])),
-        canonical_audit_model=model(resolve(spec["canonical_audit_model_ref"])),
+        comparison_model=model(fixed.get("comparison") or resolve(spec["comparison_model_ref"])),
+        canonicalization_model=model(fixed.get("canonicalization") or resolve(spec["canonicalization_model_ref"])),
+        canonical_audit_model=model(fixed.get("canonical_audit") or resolve(spec["canonical_audit_model_ref"])),
         comparison_harness=spec["comparison_harness"],
         canonicalization_harness=spec["canonicalization_harness"],
         strict_comparison=spec["strict_comparison"],
@@ -137,6 +149,7 @@ def build_validator_workflow(
         timeout_seconds=float(spec["timeout_seconds"]),
         fallback_to_legacy=spec["fallback_to_legacy"],
         require_distinct_direct_judges=spec["require_distinct_direct_judges"],
+        resume_existing_stages=spec["resume_existing_stages"],
     )
     decision_policy = None
     if stage in {"prescreen", "screen"}:

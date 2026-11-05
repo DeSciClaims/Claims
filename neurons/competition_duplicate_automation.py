@@ -16,7 +16,10 @@ from typing import Any
 
 from competition.duplicate_candidates import MAX_ARCHIVE_BYTES, candidate_review_report
 from competition.duplicate_candidate_setup import load_candidate_report
-from competition.duplicate_review import accepted_snapshot, _candidate_report_hash, make_duplicate_review, verify_duplicate_review
+from competition.duplicate_review import (
+    ADMITTED_STATUSES, accepted_snapshot, _candidate_report_hash, duplicate_admission_record,
+    make_duplicate_review, verify_duplicate_review,
+)
 from competition.duplicates import python_source_fingerprint
 from competition.hippius import HippiusPrivateStorage, hippius_s3_client
 from competition.pilot_worker_factory import _required, _round_file
@@ -77,7 +80,7 @@ def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
     # Team resolution must not change the signed declarations in the evidence.
     submissions = [{**item, "team_id": item.get("declared_team_id", item["team_id"])}
                    for item in backend.list_submissions(rid)]
-    accepted = [item for item in submissions if item["qualified"] and item["status"] == "accepted"]
+    accepted = [item for item in submissions if item["qualified"] and item["status"] in ADMITTED_STATUSES]
     incumbent = baseline if row.get("incumbent_hotkey") else None
     identities = {item["hotkey"]: item for item in accepted}
     if incumbent is not None:
@@ -139,13 +142,14 @@ def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
                     "configuration_sha256": row["configuration_sha256"]}
                 _write_once(report_path, _canonical_bytes(report), 0o600)
             rows, digest = accepted_snapshot(submissions)
-            report_hash = _candidate_report_hash(report, round_id=rid, round_record=row,
+            admission = duplicate_admission_record(backend, row, report)
+            report_hash = _candidate_report_hash(report, round_id=rid, round_record=admission,
                 accepted_rows=rows, accepted_sha256=digest)
             state.update(report_sha256=report_hash, comparison_count=len(report["comparisons"]),
                          scan_error_count=len(report["scan_errors"]))
             if review_path.exists():
                 review = load_candidate_report(review_path)
-                verify_duplicate_review(review, round_id=rid, round_record=row,
+                verify_duplicate_review(review, round_id=rid, round_record=admission,
                     submissions=submissions, candidate_report=report)
                 # The receipt itself records whether this coordinator wrote it.
                 origin = review.get("automation", {})
@@ -174,7 +178,7 @@ def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
                 state["status"] = "review_required"
                 publish()
                 return {"status": "waiting_for_duplicate_review"}
-            review = make_duplicate_review(rid, round_record=row, submissions=submissions,
+            review = make_duplicate_review(rid, round_record=admission, submissions=submissions,
                 linked_pairs=[], candidate_report=report)
             review["automation"] = {"schema_version": policy["schema_version"],
                 "policy_sha256": policy_hash,

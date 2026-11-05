@@ -25,6 +25,8 @@ class ArchiveReader(Protocol):
 
 
 class CompetitionBackend:
+    supports_rules_revisions = True
+
     def __init__(self, *, base_url: str, controller_token: str) -> None:
         parsed = urllib.parse.urlparse(base_url)
         if parsed.scheme != "https" and parsed.hostname not in {"localhost", "127.0.0.1"}:
@@ -63,6 +65,17 @@ class CompetitionBackend:
 
     def get_round(self, round_id: str) -> dict[str, Any]:
         return self._request("GET", "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe=""))
+
+    def list_rule_amendments(self, round_id: str, *, limit: int = 25,
+                             before_revision: int | None = None) -> dict[str, Any]:
+        if not 1 <= limit <= 100:
+            raise ValueError("invalid rule amendment page size")
+        query = {"limit": limit}
+        if before_revision is not None:
+            query["before_revision"] = before_revision
+        return self._request("GET", "/public/competition/rounds/"
+            + urllib.parse.quote(round_id, safe="") + "/rules/amendments?"
+            + urllib.parse.urlencode(query))
 
     def list_pending_rounds(self, network: str) -> list[dict[str, Any]]:
         if network not in {"mainnet", "testnet"}:
@@ -244,9 +257,16 @@ class CompetitionBackend:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/duplicates"
         return self._request("POST", path, {"verdicts": verdicts})
 
-    def enqueue_jobs(self, round_id: str, jobs: list[dict[str, Any]]) -> dict[str, Any]:
+    def enqueue_jobs(self, round_id: str, jobs: list[dict[str, Any]], *,
+                     expected_configuration_sha256: str | None = None,
+                     expected_rules_revision: int | None = None) -> dict[str, Any]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/jobs"
-        return self._request("POST", path, {"jobs": jobs})
+        payload = {"jobs": jobs}
+        if expected_configuration_sha256 is not None:
+            payload["expected_configuration_sha256"] = expected_configuration_sha256
+        if expected_rules_revision is not None:
+            payload["expected_rules_revision"] = expected_rules_revision
+        return self._request("POST", path, payload)
 
     def list_stages(self, round_id: str) -> list[dict[str, Any]]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/stages"
@@ -254,20 +274,33 @@ class CompetitionBackend:
 
     def start_stage(
         self, round_id: str, stage: str, entries: list[dict[str, Any]],
+        *, expected_configuration_sha256: str | None = None,
+        expected_rules_revision: int | None = None,
     ) -> dict[str, Any]:
         if stage not in {"prescreen", "screen", "final", "week_one"}:
             raise ValueError("unknown competition stage")
         path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
                 + "/stages/" + stage)
-        return self._request("POST", path, {"entries": entries})
+        payload = {"entries": entries}
+        if expected_configuration_sha256 is not None:
+            payload["expected_configuration_sha256"] = expected_configuration_sha256
+        if expected_rules_revision is not None:
+            payload["expected_rules_revision"] = expected_rules_revision
+        return self._request("POST", path, payload)
 
     def start_reference_rerun(
         self, round_id: str, reference: Mapping[str, Any],
+        *, expected_configuration_sha256: str | None = None,
+        expected_rules_revision: int | None = None,
     ) -> dict[str, Any]:
         path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
                 + "/reference-rerun")
-        return self._request("POST", path, {key: reference[key]
-                                           for key in ("hotkey", "package_sha256", "team_id")})
+        payload = {key: reference[key] for key in ("hotkey", "package_sha256", "team_id")}
+        if expected_configuration_sha256 is not None:
+            payload["expected_configuration_sha256"] = expected_configuration_sha256
+        if expected_rules_revision is not None:
+            payload["expected_rules_revision"] = expected_rules_revision
+        return self._request("POST", path, payload)
 
     def list_stage_scores(self, round_id: str, stage: str) -> list[dict[str, Any]]:
         if stage not in {"prescreen", "screen", "final", "week_one", "rerun"}:
@@ -341,13 +374,19 @@ class CompetitionBackend:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/gold/close"
         return self._request("POST", path)
 
-    def claim_job(self, round_id: str, *, worker_id: str, lease_seconds: int, hotkey: str | None = None, stage: str | None = None) -> dict[str, Any] | None:
+    def claim_job(self, round_id: str, *, worker_id: str, lease_seconds: int, hotkey: str | None = None, stage: str | None = None,
+                  expected_configuration_sha256: str | None = None,
+                  expected_rules_revision: int | None = None) -> dict[str, Any] | None:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/jobs/claim"
         payload = {"worker_id": worker_id, "lease_seconds": lease_seconds}
         if hotkey is not None:
             payload["hotkey"] = hotkey
         if stage is not None:
             payload["stage"] = stage
+        if expected_configuration_sha256 is not None:
+            payload["expected_configuration_sha256"] = expected_configuration_sha256
+        if expected_rules_revision is not None:
+            payload["expected_rules_revision"] = expected_rules_revision
         return self._request("POST", path, payload)
 
     def defer_job(self, job_id: str, *, worker_id: str, lease_token: str) -> bool:
@@ -376,13 +415,20 @@ class CompetitionBackend:
     def freeze_paper_evaluation(
         self, round_id: str, stage: str, paper_id: str,
         *, input_sha256: str, result_private: dict[str, Any],
+        expected_configuration_sha256: str | None = None,
+        expected_rules_revision: int | None = None,
     ) -> dict[str, Any]:
         path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
                 + "/stages/" + urllib.parse.quote(stage, safe="")
                 + "/papers/" + urllib.parse.quote(paper_id, safe="") + "/evaluation")
-        return self._request("POST", path, {
+        payload = {
             "input_sha256": input_sha256, "result_private": result_private,
-        })
+        }
+        if expected_configuration_sha256 is not None:
+            payload["expected_configuration_sha256"] = expected_configuration_sha256
+        if expected_rules_revision is not None:
+            payload["expected_rules_revision"] = expected_rules_revision
+        return self._request("POST", path, payload)
 
     def complete_job(
         self, job_id: str, *, worker_id: str, lease_token: str,

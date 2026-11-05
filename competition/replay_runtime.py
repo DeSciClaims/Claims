@@ -46,7 +46,37 @@ class ReplayRuntimeBackend:
             raise ValueError("replay round differs from frozen snapshot")
         return {**self.store.get_round(round_id),
                 **{key: self.snapshot[key] for key in ("deadline_at", "rules_public")
-                   if key in self.snapshot}}
+                   if key in self.snapshot},
+                "rules_revision": self.snapshot.get("rules_revision", 1),
+                "rules_revision_sha256": self.snapshot.get("rules_revision_sha256")}
+
+    def _scoring_generation(self, round_id, configuration_sha256, rules_revision):
+        if (round_id != self.snapshot["round_id"]
+            or configuration_sha256 is not None and configuration_sha256 != self.snapshot["configuration_sha256"]
+            or rules_revision is not None and (type(rules_revision) is not int
+                or rules_revision != self.snapshot.get("rules_revision", 1))
+            or self.snapshot.get("rules_revision", 1) > 1
+               and (configuration_sha256 is None or rules_revision is None)):
+            raise ValueError("replay scoring request differs from its immutable rules generation")
+
+    def freeze_paper_evaluation(self, round_id, stage, paper_id, *, input_sha256,
+                                result_private, expected_configuration_sha256=None,
+                                expected_rules_revision=None):
+        self._scoring_generation(round_id, expected_configuration_sha256, expected_rules_revision)
+        return self.store.freeze_paper_evaluation(round_id, stage, paper_id,
+            input_sha256=input_sha256, result_private=result_private)
+
+    def record_score(self, job_id, score):
+        score = dict(score)
+        self._scoring_generation(self.snapshot["round_id"],
+            score.pop("expected_configuration_sha256", None), score.pop("expected_rules_revision", None))
+        return self.store.record_score(job_id, score)
+
+    def record_pair_score(self, round_id, stage, payload):
+        payload = dict(payload)
+        self._scoring_generation(round_id, payload.pop("expected_configuration_sha256", None),
+                                 payload.pop("expected_rules_revision", None))
+        return self.store.record_pair_score(round_id, stage, payload)
 
     def list_paper_pool(self, round_id: str, *, reference_release_id: str) -> list[dict[str, str]]:
         if (round_id != self.snapshot["round_id"]
@@ -122,6 +152,7 @@ def create_replay_worker_coordinator(
     configuration = snapshot["rules_public"]["configuration"]
     rules = FrozenWorkerRules(
         round_id, snapshot["configuration_sha256"], configuration,
+        rules_revision=int(snapshot.get("rules_revision", 1)),
     )
     if canonical_sha256(configuration) != snapshot["configuration_sha256"]:
         raise ValueError("replay worker configuration differs from frozen rules")

@@ -22,6 +22,7 @@ from miner.agent_v1.runtime.usage import empty_usage, usage_from_cli_process, us
 
 from .comparison_models import CandidatePairEdge, ComparisonCandidate, RelationType
 from .model_usage import UsageSink, provider_from_model_or_base
+from .dspy_resources import close_dspy_lm as _close_dspy_lm
 
 
 ALLOWED_RELATIONS: set[str] = {
@@ -476,9 +477,11 @@ class DSPyRelationClassifier:
             )
             raise
         finally:
-            if lm is not None:
-                usage = usage_from_dspy_lm(lm)
-                _close_dspy_lm(lm)
+            try:
+                if lm is not None:
+                    usage = usage_from_dspy_lm(lm)
+            finally:
+                _close_dspy_lm(lm, dspy_module=self._dspy_module)
             if self.usage_sink is not None:
                 pair_ids = [f"{left.candidate_id}::{right.candidate_id}" for left, right in pairs]
                 digest = hashlib.sha256("|".join(pair_ids).encode("utf-8")).hexdigest()[:16]
@@ -557,9 +560,11 @@ class DSPyRelationClassifier:
             )
             raise
         finally:
-            if lm is not None:
-                usage = usage_from_dspy_lm(lm)
-                _close_dspy_lm(lm)
+            try:
+                if lm is not None:
+                    usage = usage_from_dspy_lm(lm)
+            finally:
+                _close_dspy_lm(lm, dspy_module=self._dspy_module)
             if self.usage_sink is not None:
                 paper_id = left.paper_id or right.paper_id
                 edge_id = f"{left.candidate_id}::{right.candidate_id}"
@@ -1276,19 +1281,6 @@ def _write_relation_failure(
         encoding="utf-8",
     )
     path.chmod(0o600)
-
-
-def _close_dspy_lm(lm: Any) -> None:
-    for target in (
-        lm,
-        getattr(lm, "client", None),
-    ):
-        close = getattr(target, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception:
-                continue
 
 
 @contextmanager

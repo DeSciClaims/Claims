@@ -26,6 +26,7 @@ from miner.agent_v1.runtime.usage import empty_usage, usage_from_cli_process, us
 
 from .adjudication_models import AdjudicationContextBundle, AdjudicationDisposition, AdjudicationVote
 from .model_usage import UsageSink, provider_from_model_or_base
+from .dspy_resources import close_dspy_lm as _close_dspy_lm
 
 
 ALLOWED_DISPOSITIONS: set[str] = {
@@ -865,9 +866,11 @@ class DSPyAdjudicationPass:
             )
             raise
         finally:
-            if lm is not None:
-                usage = usage_from_dspy_lm(lm)
-                _close_dspy_lm(lm)
+            try:
+                if lm is not None:
+                    usage = usage_from_dspy_lm(lm)
+            finally:
+                _close_dspy_lm(lm, dspy_module=self.dspy_module)
             _emit_adjudication_batch_usage(
                 self.usage_sink,
                 contexts=contexts,
@@ -934,9 +937,11 @@ class DSPyAdjudicationPass:
             )
             raise
         finally:
-            if lm is not None:
-                usage = usage_from_dspy_lm(lm)
-                _close_dspy_lm(lm)
+            try:
+                if lm is not None:
+                    usage = usage_from_dspy_lm(lm)
+            finally:
+                _close_dspy_lm(lm, dspy_module=self.dspy_module)
             _emit_adjudication_usage(
                 self.usage_sink,
                 context=context,
@@ -1957,16 +1962,6 @@ def _redact_command(command: list[str]) -> list[str]:
             continue
         redacted.append(argument)
     return redacted
-
-
-def _close_dspy_lm(lm: Any) -> None:
-    for target in (lm, getattr(lm, "client", None)):
-        close = getattr(target, "close", None)
-        if callable(close):
-            try:
-                close()
-            except Exception:
-                continue
 
 
 def _coerce_disposition(value: Any) -> AdjudicationDisposition:

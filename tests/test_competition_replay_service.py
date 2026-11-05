@@ -219,6 +219,29 @@ def test_replay_controller_runs_final_audit_once_after_local_grid(monkeypatch):
     assert state["calls"] == 1
 
 
+def test_replay_builds_historical_paper_policies_and_rejects_unavailable_runtime(monkeypatch):
+    from test_competition_replay_inputs import _amended_snapshot
+    from competition.publication import canonical_sha256
+    snapshot = _amended_snapshot()
+    backend = SimpleNamespace(snapshot=snapshot)
+    built = []
+    def build(_, papers, configuration, revision):
+        built.append(revision)
+        return SimpleNamespace(configuration_sha256=canonical_sha256(configuration),
+                               evaluate_for_stage=lambda stage: (revision, stage))
+    monkeypatch.setattr(replay_pilot_factory, "_replay_evaluation_policy", build)
+    policies = replay_pilot_factory._replay_scoring_policies(backend, object())
+    assert built == [1, 2]
+    assert policies.evaluate_for_paper("week_one", "paper-1", "week_one") == (1, "week_one")
+    assert policies.evaluate_for_paper("final", "future-paper", "final") == (2, "final")
+    assert policies.provenance_for_paper("week_one", "paper-1")["rules_revision"] == 1
+    def unavailable(*_):
+        raise ValueError("source fingerprint does not match")
+    monkeypatch.setattr(replay_pilot_factory, "_replay_evaluation_policy", unavailable)
+    with pytest.raises(ValueError, match="scoring revision 1 requires its matching controller runtime"):
+        replay_pilot_factory._replay_scoring_policies(backend, object())
+
+
 def test_replay_controller_opens_own_gold_only_with_certified_bank(monkeypatch):
     state = {"review": None, "fetches": 0}
     backend = SimpleNamespace(

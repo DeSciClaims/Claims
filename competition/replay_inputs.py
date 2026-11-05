@@ -48,6 +48,84 @@ def _verify_gold_signature(hotkey: str, message: bytes, signature: bytes) -> boo
     return bool(Keypair(ss58_address=hotkey).verify(message, signature))
 
 
+def replay_rule_configurations(snapshot: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    """Read approved historical policies without assigning current rules to old work."""
+    current = snapshot.get("rules_revision", 1)
+    configuration = snapshot["rules_public"]["configuration"]
+    if current == 1 and "rules_revisions" not in snapshot:
+        return {1: configuration}
+    rows = snapshot.get("rules_revisions")
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 1000:
+        raise ValueError("replay snapshot lacks rules revision provenance")
+    policies = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("replay historical scoring policy is malformed")
+        revision = row.get("rules_revision")
+        digest = row.get("rules_revision_sha256")
+        policy = row.get("configuration")
+        if (type(revision) is not int or not 1 <= revision <= current or revision in policies
+            or not _SHA256.fullmatch(str(row.get("rules_sha256")))
+            or revision == 1 and digest is not None
+            or revision > 1 and not _SHA256.fullmatch(str(digest))
+            or not isinstance(policy, dict)
+            or canonical_sha256(policy) != row.get("configuration_sha256")
+            or policy.get("worker_policy") != configuration.get("worker_policy")):
+            raise ValueError("replay historical scoring policy differs from approved rules")
+        if revision == current and (
+            row.get("rules_sha256") != snapshot["rules_sha256"]
+            or row.get("configuration_sha256") != snapshot["configuration_sha256"]
+            or digest != snapshot.get("rules_revision_sha256")
+            or policy != configuration
+        ):
+            raise ValueError("replay current scoring revision differs from its snapshot")
+        policies[revision] = policy
+    if current not in policies:
+        raise ValueError("replay snapshot omits its current scoring revision")
+    return policies
+
+
+def replay_paper_revisions(snapshot: dict[str, Any]) -> dict[tuple[str, str], int]:
+    """Return producing revisions only for preserved, already-scored papers."""
+    policies = replay_rule_configurations(snapshot)
+    current = snapshot.get("rules_revision", 1)
+    rows = snapshot.get("paper_evaluations", [])
+    if not isinstance(rows, list) or current > 1 and "paper_evaluations" not in snapshot:
+        raise ValueError("replay snapshot lacks paper scoring provenance")
+    sample = {(row["stage"], row["paper_id"]) for row in snapshot.get("sample", [])}
+    result = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("replay paper scoring provenance is malformed")
+        identity = (row.get("stage"), row.get("paper_id"))
+        revision = row.get("produced_rules_revision")
+        if (identity not in sample or identity in result
+            or type(revision) is not int or revision not in policies
+            or row.get("configuration_sha256") != canonical_sha256(policies[revision])
+            or not _SHA256.fullmatch(str(row.get("input_sha256")))):
+            raise ValueError("replay paper scoring provenance differs from approved rules")
+        carried = row.get("carried_forward")
+        if carried not in (None, {}) and (
+            not isinstance(carried, dict) or carried.get("to_revision") != current
+            or carried.get("from_revision") != revision
+            or carried.get("configuration_sha256") != row["configuration_sha256"]
+            or carried.get("input_sha256") != row["input_sha256"]
+            or not isinstance(carried.get("job_id_map"), dict)
+            or any(not isinstance(old, str) or not isinstance(new, str)
+                   for old, new in carried["job_id_map"].items())
+        ):
+            raise ValueError("replay carried paper has invalid scoring provenance")
+        result[identity] = revision
+    for stage in snapshot.get("stages", []):
+        if current == 1 and "produced_rules_revision" not in stage:
+            continue
+        revision = stage.get("produced_rules_revision")
+        if (type(revision) is not int or revision not in policies
+            or stage.get("configuration_sha256") != canonical_sha256(policies[revision])):
+            raise ValueError("replay stage scoring provenance differs from approved rules")
+    return result
+
+
 def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[str, Any]:
     """Reject a changed rules file, sample identity, or selected package receipt."""
     if (snapshot.get("schema_version") != "claims_competition_replay_snapshot_v1"
@@ -64,6 +142,12 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
             != snapshot.get("duplicate_review_sha256")):
         raise ValueError("replay snapshot differs from frozen round rules")
     rules = snapshot["rules_public"]
+    revision = snapshot.get("rules_revision", 1)
+    digest = snapshot.get("rules_revision_sha256")
+    if (type(revision) is not int or revision < 1
+        or revision > 1 and not _SHA256.fullmatch(str(digest))
+        or revision == 1 and digest is not None):
+        raise ValueError("replay snapshot has invalid rules revision evidence")
     required_consensus_rounds(snapshot.get("qualification_policy"), snapshot["network"])
     review_policy(snapshot)
     profile = smoke_profile(snapshot)
@@ -150,6 +234,7 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
             if (entry["role"] == "challenger"
                 and packages[(entry["hotkey"], entry["package_sha256"])]["status"] == "duplicate"):
                 raise ValueError("replay stage includes an excluded duplicate")
+    replay_paper_revisions(snapshot)
     return snapshot
 
 

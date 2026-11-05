@@ -130,6 +130,33 @@ def test_replay_tick_scores_completed_papers_and_waits_for_independent_final_rev
     assert final["status"] == "waiting_for_scores" and final["expected"] == 3
 
 
+def test_replay_uses_the_preserved_papers_original_policy_and_records_provenance(tmp_path):
+    snapshot, plan = _screen_inputs()
+    store = ReplayStore(tmp_path / "replay.sqlite")
+    store.initialize(snapshot, plan)
+    for _ in plan.jobs:
+        job = store.claim_job("round-2", worker_id="replay", lease_seconds=60)
+        store.complete_job(job["job_id"], worker_id="replay", lease_token=job["lease_token"],
+                           result={"status": "completed", "artifact": {"paper": {"paper_id": "screen-paper"}},
+                                   "inference_cost_usd": 0.1, "prompt_and_completion_tokens": 100},
+                           log_object_key="logs/replay")
+    selected = []
+    def historical(stage, paper, source_stage):
+        selected.append((stage, paper, source_stage))
+        return _evaluation
+    def wrong_policy(_):
+        raise AssertionError("current policy must not score a preserved historical paper")
+    provenance = {"rules_revision": 1, "configuration_sha256": "9" * 64}
+    result = tick_replay("round-2", backend=store,
+                         bronze_for_paper=lambda stage, paper: {"paper": {"paper_id": paper}},
+                         evaluate_for_stage=wrong_policy, evaluate_for_paper=historical,
+                         scoring_provenance_for_paper=lambda *_: provenance)
+    assert result["stage"] == "final"
+    assert selected == [("screen", "screen-paper", "screen")]
+    frozen = store.get_paper_evaluation("round-2", "screen", "screen-paper")
+    assert frozen["result_private"]["scoring_provenance"] == provenance
+
+
 def test_replay_starts_reference_rerun_from_its_own_failed_incumbent(tmp_path):
     snapshot, plan = _screen_inputs()
     snapshot["reference_package_sha256"] = "a" * 64

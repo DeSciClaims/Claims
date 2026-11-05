@@ -77,6 +77,7 @@ class CompetitionWorkerCoordinator:
         record = self.backend.get_round(self.round_id)
         if (
             record.get("round_id") != self.round_id
+            or int(record.get("rules_revision", 1)) != getattr(self.evaluation, "rules_revision", 1)
             or record.get("network") != self.network
             or record.get("configuration_sha256")
             != self.evaluation.configuration_sha256
@@ -111,6 +112,8 @@ class CompetitionWorkerCoordinator:
             dollar_limit=float(policy["dollar_limit_usd"]),
             lease_seconds=policy["lease_seconds"],
             max_inference_output_tokens=policy["max_inference_output_tokens"],
+            expected_configuration_sha256=self.evaluation.configuration_sha256,
+            expected_rules_revision=getattr(self.evaluation, "rules_revision", 1),
             **({"claimed_job": claimed_job} if claimed_job is not None else {}),
         )
 
@@ -163,6 +166,9 @@ class CompetitionWorkerCoordinator:
                 )
                 for _ in range(available):
                     kwargs = {"worker_id": self.worker_id, "lease_seconds": lease}
+                    if getattr(self.backend, "supports_rules_revisions", False):
+                        kwargs["expected_configuration_sha256"] = self.evaluation.configuration_sha256
+                        kwargs["expected_rules_revision"] = getattr(self.evaluation, "rules_revision", 1)
                     if package is not None:
                         kwargs.update(hotkey=package[0], stage=package[2])
                     job = self.backend.claim_job(self.round_id, **kwargs)

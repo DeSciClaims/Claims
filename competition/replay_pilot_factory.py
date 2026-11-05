@@ -26,7 +26,7 @@ from .replay_final_audit import audit_replay_final
 from .replay_gold_review import prepare_replay_gold_review, replay_known_answer_challenges
 from .replay_gold_client import ReplayGoldClient
 from .replay_finalizer import finalize_replay
-from .replay_inputs import CompetitionReplayInputs
+from .replay_inputs import CompetitionReplayInputs, replay_paper_revisions, replay_rule_configurations
 from .replay_publication_client import ReplayPublicationClient
 from .replay_runtime import (
     ReplayRuntimeBackend, create_replay_worker_coordinator,
@@ -109,6 +109,7 @@ class ReplayController:
     certified_gold_source: Callable[[str], list[dict[str, Any]]] | None = None
     gold_client_factory: Callable[[], ReplayGoldClient] | None = None
     finalizer: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None
+    scoring_policies: Any | None = None
 
     def _complete_gold(self, round_id: str, stage: str,
                        tally: dict[str, Any]) -> dict[str, Any]:
@@ -124,6 +125,9 @@ class ReplayController:
             bronze_for_paper=self.paper_inputs.bronze_for_paper,
             evaluate_for_stage=self.evaluation.evaluate_for_stage,
             reference_for_round=lambda _: self.reference_upload,
+            **({"evaluate_for_paper": self.scoring_policies.evaluate_for_paper,
+                "scoring_provenance_for_paper": self.scoring_policies.provenance_for_paper}
+               if self.scoring_policies is not None else {}),
         )
         if result["status"] != "ready_for_independent_final_review":
             return result
@@ -226,16 +230,8 @@ def _finish_replay(
     )
 
 
-def create_replay_controller(
-    round_id: str, backend_url: str, db_path: Path,
-) -> ReplayController:
-    backend, storage, baseline, reference = _bootstrap(round_id, backend_url, db_path)
-    configuration = backend.snapshot["rules_public"]["configuration"]
-    require_provisional_provider_pins(configuration)
-    papers = CompetitionPaperInputs(
-        backend, round_id, backend.snapshot["reference_release_id"],
-        expected_pool_sha256=backend.snapshot["paper_pool_sha256"],
-    )
+def _replay_evaluation_policy(backend, papers, configuration, revision):
+    require_provisional_provider_pins(configuration, network=str(backend.snapshot["network"]))
     routing = configuration.get("decision_routing")
     if not isinstance(routing, dict):
         raise ValueError("replay Decisions routing is missing from frozen rules")
@@ -253,10 +249,56 @@ def create_replay_controller(
         decision_model=str(routing.get("model", "gpt-6-luna")),
         judge_specs=configuration.get("judge_specs"),
         workflow_specs=configuration.get("workflow_specs"),
+        rules_revision=revision,
     )
-    if (evaluation.configuration_sha256 != backend.snapshot["configuration_sha256"]
+    if (evaluation.configuration_sha256 != canonical_sha256(configuration)
         or evaluation.configuration != configuration):
         raise ValueError("replay judge runtime differs from frozen rules")
+    return evaluation
+
+
+@dataclass(frozen=True)
+class ReplayScoringPolicies:
+    current_revision: int
+    evaluations: dict[int, Any]
+    paper_revisions: dict[tuple[str, str], int]
+
+    def revision_for_paper(self, stage, paper_id):
+        return self.paper_revisions.get((stage, paper_id), self.current_revision)
+
+    def evaluate_for_paper(self, stage, paper_id, scoring_stage):
+        revision = self.revision_for_paper(stage, paper_id)
+        return self.evaluations[revision].evaluate_for_stage(scoring_stage)
+
+    def provenance_for_paper(self, stage, paper_id):
+        revision = self.revision_for_paper(stage, paper_id)
+        return {"rules_revision": revision,
+                "configuration_sha256": self.evaluations[revision].configuration_sha256}
+
+
+def _replay_scoring_policies(backend, papers):
+    revisions = replay_paper_revisions(backend.snapshot)
+    configurations = replay_rule_configurations(backend.snapshot)
+    current = int(backend.snapshot.get("rules_revision", 1))
+    evaluations = {}
+    for revision in sorted({current, *revisions.values()}):
+        try:
+            evaluations[revision] = _replay_evaluation_policy(backend, papers, configurations[revision], revision)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ValueError(f"replay scoring revision {revision} requires its matching controller runtime") from exc
+    return ReplayScoringPolicies(current, evaluations, revisions)
+
+
+def create_replay_controller(
+    round_id: str, backend_url: str, db_path: Path,
+) -> ReplayController:
+    backend, storage, baseline, reference = _bootstrap(round_id, backend_url, db_path)
+    papers = CompetitionPaperInputs(
+        backend, round_id, backend.snapshot["reference_release_id"],
+        expected_pool_sha256=backend.snapshot["paper_pool_sha256"],
+    )
+    scoring_policies = _replay_scoring_policies(backend, papers)
+    evaluation = scoring_policies.evaluations[scoring_policies.current_revision]
     policy = backend.snapshot["rules_public"].get("policy", {}).get("code_audit")
     if policy is not None and not isinstance(policy, dict):
         raise ValueError("replay code audit policy is malformed")
@@ -266,7 +308,7 @@ def create_replay_controller(
                             lambda: _gold_client(backend_url),
                             lambda rid, tally: _finish_replay(
                                 rid, tally, backend=backend, backend_url=backend_url,
-                            ))
+                            ), scoring_policies=scoring_policies)
 
 
 def create_replay_worker(

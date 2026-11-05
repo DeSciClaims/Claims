@@ -31,6 +31,7 @@ def build_provisional_evaluation_policy(
     decision_provider: str = "openai", decision_model: str = "gpt-6-luna",
     judge_specs: Mapping[str, Any] | None = None,
     workflow_specs: Mapping[str, Any] | None = None,
+    rules_revision: int = 1,
 ) -> FrozenEvaluationPolicy:
     """Bind the pilot judges, Bronze source, and budget into one rules hash."""
     if not decision_api_key:
@@ -116,6 +117,7 @@ def build_provisional_evaluation_policy(
         decision_api_base=decision_api_base,
         decision_provider=decision_provider, decision_model=decision_model,
         decision_usage_sink=judge_usage_sink,
+        rules_revision=rules_revision,
     )
 
 
@@ -145,6 +147,7 @@ class CompetitionControllerInputs:
     bronze_preparer: Callable[[str], dict] | None = None
     identity_preparer: Callable[[str], dict] | None = None
     consensus_runner: Any = None
+    rules_revision: int = 1
 
     def close(self) -> None:
         close = getattr(getattr(self.archive, "subtensor", None), "close", None)
@@ -175,7 +178,9 @@ class CompetitionControllerInputs:
             supplied_budget = Decimal(str(self.weekly_budget_usd))
         except (KeyError, InvalidOperation, TypeError, ValueError) as exc:
             raise ValueError("weekly budget is missing from frozen configuration") from exc
-        if (self.netuid < 0 or not self.operator_hotkey
+        if (type(self.rules_revision) is not int or self.rules_revision < 1
+            or getattr(self.evaluation, "rules_revision", self.rules_revision) != self.rules_revision
+            or self.netuid < 0 or not self.operator_hotkey
             or not supplied_budget.is_finite() or supplied_budget <= 0
             or configured_budget != supplied_budget
             or self.paper_inputs.round_id != self.evaluation.round_id
@@ -187,6 +192,7 @@ class CompetitionControllerInputs:
             raise ValueError("controller input belongs to another round")
         record = self.paper_inputs.backend.get_round(round_id)
         if (record.get("round_id") != round_id
+            or int(record.get("rules_revision", 1)) != self.rules_revision
             or record.get("configuration_sha256") != self.evaluation.configuration_sha256
             or record.get("reference_release_id") != self.paper_inputs.reference_release_id):
             raise ValueError("controller input differs from the frozen round")

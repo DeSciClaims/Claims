@@ -1,3 +1,4 @@
+import copy
 from types import SimpleNamespace
 
 import pytest
@@ -44,7 +45,7 @@ class Backend:
     def get_paper_evaluation(self, *_):
         return self.frozen
 
-    def freeze_paper_evaluation(self, _, stage, paper_id, *, input_sha256, result_private):
+    def freeze_paper_evaluation(self, _, stage, paper_id, *, input_sha256, result_private, **_generation):
         assert stage == "week_one" and paper_id == "paper-1"
         self.frozen = {"input_sha256": input_sha256, "result_private": result_private}
         return self.frozen
@@ -59,6 +60,50 @@ class Backend:
         existing = self.pairs.setdefault(pair["challenger_hotkey"], pair)
         assert existing == pair
         return pair
+
+
+def test_revision_aware_scoring_carries_configuration_fence_to_every_write():
+    class RevisionBackend(Backend):
+        supports_rules_revisions = True
+
+        def freeze_paper_evaluation(self, *args, expected_configuration_sha256,
+                                    expected_rules_revision, **kwargs):
+            assert expected_configuration_sha256 == "b" * 64
+            assert expected_rules_revision == 1
+            self.freeze_fence = expected_configuration_sha256
+            return super().freeze_paper_evaluation(*args, **kwargs)
+
+        def record_pair_score(self, rid, stage, pair):
+            assert pair["expected_configuration_sha256"] == "b" * 64
+            assert pair["expected_rules_revision"] == 1
+            self.pair_fence = pair["expected_configuration_sha256"]
+            return super().record_pair_score(rid, stage,
+                {key: value for key, value in pair.items() if not key.startswith("expected_")})
+
+        def record_score(self, job_id, score):
+            assert score["expected_configuration_sha256"] == "b" * 64
+            assert score["expected_rules_revision"] == 1
+            return super().record_score(job_id,
+                {key: value for key, value in score.items() if not key.startswith("expected_")})
+
+    backend = RevisionBackend()
+    backend.jobs[1]["status"] = "completed"
+    assert score_ready_paper("round-1", "week_one", "paper-1", backend=backend,
+                            bronze_artifact={}, evaluate=_evaluation)["status"] == "scored"
+    assert backend.freeze_fence == backend.pair_fence == "b" * 64
+
+
+@pytest.mark.parametrize("options", [
+    {"expected_configuration_sha256": "old"},
+    {"expected_rules_revision": 2},
+])
+def test_a_stale_evaluator_is_rejected_before_any_paper_work(options):
+    backend = Backend()
+    with pytest.raises(ValueError, match="stale"):
+        score_ready_paper("round-1", "week_one", "paper-1", backend=backend,
+                          bronze_artifact={}, evaluate=lambda **_: pytest.fail("must not judge"),
+                          **options)
+    assert backend.frozen is None and not backend.scores and not backend.pairs
 
 
 def _evaluation(**kwargs):
@@ -98,6 +143,7 @@ def test_paper_waits_for_complete_grid_then_replays_frozen_adjudication():
     assert backend.scores["challenger-job"]["details_public"]["inference_cost_usd"] == 0.12
     assert backend.pairs["challenger"]["baseline_score"] == 0.6
     assert backend.frozen["result_private"]["judge_usage"][0]["cost_usd"] == 0.02
+    backend.frozen["carried_forward"] = {}  # PostgreSQL's unamended-receipt default.
     assert call(lambda **_: pytest.fail("adjudication must not rerun"))["status"] == "scored"
     backend.jobs[1]["result_private"] = {"status": "invalid_output", "inference_cost_usd": 0.12}
     with pytest.raises(ValueError, match="inputs changed"):
@@ -141,3 +187,61 @@ def test_reference_rerun_uses_original_stage_scoring_policy():
         "round-1", "rerun", "paper-1", backend=backend,
         bronze_artifact={"paper": {"paper_id": "paper-1"}}, evaluate=evaluate,
     )["status"] == "scored"
+
+
+def test_resume_publishes_saved_paper_scores_without_rejudging_after_amendment():
+    backend = Backend()
+    for job in backend.jobs:
+        job["status"] = "completed"
+    score_ready_paper("round-1", "week_one", "paper-1", backend=backend,
+                      bronze_artifact={}, evaluate=_evaluation)
+    original = copy.deepcopy(backend.frozen)
+    mapping = {job["job_id"]: job["job_id"] + "-r2" for job in backend.jobs}
+    for job in backend.jobs:
+        job["job_id"] = mapping[job["job_id"]]
+        job["configuration_sha256"] = "f" * 64
+        job["result_private"]["reused_execution"] = {"new_inference_calls": 0}
+    backend.get_round = lambda _: {"configuration_sha256": "f" * 64,
+                                   "rules_revision": 2, "rules_revision_sha256": "a" * 64}
+    backend.frozen["carried_forward"] = {
+        "to_revision": 2, "from_revision": 1, "configuration_sha256": "b" * 64,
+        "input_sha256": original["input_sha256"], "job_id_map": mapping,
+    }
+    backend.scores, backend.pairs = {}, {}
+    backend.supports_rules_revisions = True
+
+    def freeze(_, stage, paper_id, *, input_sha256, result_private,
+               expected_configuration_sha256, expected_rules_revision):
+        assert input_sha256 == original["input_sha256"]
+        assert result_private == original["result_private"]
+        assert expected_configuration_sha256 == "f" * 64 and expected_rules_revision == 2
+        return backend.frozen
+
+    backend.freeze_paper_evaluation = freeze
+    for _ in range(2):
+        result = score_ready_paper("round-1", "week_one", "paper-1", backend=backend,
+            bronze_artifact={}, evaluate=lambda **_: pytest.fail("saved paper must not be judged again"))
+        assert result["status"] == "scored"
+    assert set(backend.scores) == set(mapping.values())
+    assert backend.scores["challenger-job-r2"]["score"] == 0.7
+    assert backend.scores["challenger-job-r2"]["expected_rules_revision"] == 2
+    assert backend.frozen["result_private"] == original["result_private"]
+
+    backend.frozen["carried_forward"]["to_revision"] = 1
+    with pytest.raises(ValueError, match="revision provenance"):
+        score_ready_paper("round-1", "week_one", "paper-1", backend=backend,
+            bronze_artifact={}, evaluate=lambda **_: pytest.fail("must not judge"))
+
+
+def test_independent_replay_binds_saved_result_to_the_actual_judging_revision():
+    backend = Backend()
+    for job in backend.jobs:
+        job["status"] = "completed"
+    backend.get_round = lambda _: {"configuration_sha256": "b" * 64, "rules_revision": 2}
+    origin = {"rules_revision": 1, "configuration_sha256": "a" * 64}
+    args = dict(backend=backend, bronze_artifact={}, evaluate=_evaluation)
+    score_ready_paper("round-1", "week_one", "paper-1", **args, scoring_provenance=origin)
+    assert backend.frozen["result_private"]["scoring_provenance"] == origin
+    with pytest.raises(ValueError, match="inputs changed"):
+        score_ready_paper("round-1", "week_one", "paper-1", **args,
+                          scoring_provenance={"rules_revision": 2, "configuration_sha256": "b" * 64})

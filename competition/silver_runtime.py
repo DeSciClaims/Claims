@@ -22,6 +22,7 @@ SILVER_SOURCE_FILES = (
     "comparison_dspy.py",
     "canonicalization_dspy.py",
     "model_usage.py",
+    "dspy_resources.py",
     "equivalence.py",
     "file_agent_workflow.py",
     "orchestrator.py",

@@ -102,13 +102,16 @@ def _voters(backend: Any, round_id: str) -> list[dict[str, str]]:
 
 def _duplicate_links(backend: Any, round_id: str) -> list[tuple[str, str, str]]:
     root = Path(_required("CLAIMS_COMPETITION_ROUNDS_DIR"))
+    record = backend.get_round(round_id)
+    report = load_candidate_report(root / f"{round_id}.duplicate-candidates.json")
+    from .duplicate_review import duplicate_admission_record
+    record = duplicate_admission_record(backend, record, report)
     return verify_duplicate_review(
         _late_receipt(round_id, "duplicates"), round_id=round_id,
-        round_record=backend.get_round(round_id),
+        round_record=record,
         submissions=[{**row, "team_id": row.get("declared_team_id", row["team_id"])}
                      for row in backend.list_submissions(round_id)],
-        candidate_report=load_candidate_report(
-            root / f"{round_id}.duplicate-candidates.json"),
+        candidate_report=report,
     )
 
 
@@ -129,16 +132,18 @@ def _final_audit(
         round_id, backend=backend, fetch_package=fetch_package,
     )
     round_record = backend.get_round(round_id)
+    revision = int(round_record.get("rules_revision", 1))
+    audit_prefix = f"{round_id}.r{revision}" if revision > 1 else round_id
     policy = (round_record.get("rules_public") or {}).get("policy", {}).get("code_audit")
     if round_record.get("network") == "mainnet" and policy is None:
         raise ValueError("mainnet code audit has no frozen automatic thresholds")
     if policy is not None:
         directory = Path(_required("CLAIMS_COMPETITION_ROUNDS_DIR"))
-        _write_once(directory / f"{round_id}.audit-evidence.json",
+        _write_once(directory / f"{audit_prefix}.audit-evidence.json",
                     _canonical_bytes(evidence), 0o600)
-        _write_once(directory / f"{round_id}.audit.json",
+        _write_once(directory / f"{audit_prefix}.audit.json",
                     _canonical_bytes(automatic_code_audit(evidence, policy)), 0o600)
-    record = _late_receipt(round_id, "audit")
+    record = _late_receipt(round_id, f"r{revision}.audit" if revision > 1 else "audit")
     code_passed = verify_code_audit_receipt(record, evidence, policy=policy)
     if set(code_passed) != set(finalists):
         raise ValueError("final code audit omits a finalist")
@@ -171,6 +176,10 @@ def create_bronze_inputs(row: Mapping[str, Any], backend: Any) -> Any:
     from .policy_runtime import policy_runtime_config
     from .silver_runtime import silver_runtime_config
 
+    if int(row.get("rules_revision", 1)) > 1:
+        from .rule_amendments import sync_current_rules
+        row = sync_current_rules(backend, row)
+
     round_id = str(row["round_id"])
     document = _round_file(round_id)
     if row.get("evaluation_binding") is not None and document.get("binding") != row["evaluation_binding"]:
@@ -198,13 +207,17 @@ def create_bronze_inputs(row: Mapping[str, Any], backend: Any) -> Any:
 
 def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> CompetitionControllerInputs:
     """Bind archive, signer, provisional judges and late-stage trusted receipts."""
+    if int(row.get("rules_revision", 1)) > 1:
+        from .rule_amendments import sync_current_rules
+        row = sync_current_rules(backend, row)
     round_id = str(row["round_id"])
     document = _round_file(round_id)
     configuration = document.get("configuration")
     if not isinstance(configuration, dict):
         raise ValueError("trusted round file has no frozen configuration")
-    require_provisional_provider_pins(configuration)
-    rules = FrozenWorkerRules(round_id, str(row["configuration_sha256"]), configuration)
+    require_provisional_provider_pins(configuration, network=str(row["network"]))
+    rules = FrozenWorkerRules(round_id, str(row["configuration_sha256"]), configuration,
+                              rules_revision=int(row.get("rules_revision", 1)))
     if document.get("configuration_sha256") != rules.configuration_sha256:
         raise ValueError("trusted round file differs from frozen configuration")
     baseline = document.get("baseline_upload")
@@ -269,6 +282,7 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         judge_specs=configuration.get("judge_specs"),
         workflow_specs=configuration.get("workflow_specs"),
         judge_usage_sink=judge_usage_capture.record,
+        rules_revision=int(row.get("rules_revision", 1)),
     )
     if policy.configuration_sha256 != rules.configuration_sha256 or policy.configuration != configuration:
         raise ValueError("controller model runtime differs from frozen round")
@@ -300,6 +314,7 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         evaluation=policy, weekly_budget_usd=float(configuration["weekly_budget_usd"]),
         judge_usage_capture=judge_usage_capture,
         identity_preparer=resolve_teams, consensus_runner=consensus,
+        rules_revision=int(row.get("rules_revision", 1)),
         bronze_preparer=bronze,
         linked_pairs=(), duplicate_review_reader=lambda rid: _duplicate_links(backend, rid),
         qualified_voters=lambda rid: _voters(backend, rid),

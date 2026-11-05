@@ -3,7 +3,7 @@ import json
 import pytest
 
 from competition.duplicate_review import (
-    accepted_snapshot, make_duplicate_review, verify_duplicate_review,
+    accepted_snapshot, duplicate_admission_record, make_duplicate_review, verify_duplicate_review,
 )
 from competition.duplicate_review_setup import prepare_duplicate_review
 from competition.publication import canonical_sha256
@@ -153,3 +153,64 @@ def test_review_rejects_candidate_report_missing_pair():
             "week1", round_record=backend.record, submissions=backend.submissions,
             linked_pairs=[], candidate_report=candidate,
         )
+
+
+def test_amendment_history_authorizes_an_immutable_report_without_waiving_intake_checks(tmp_path):
+    backend = Backend()
+    candidate = _candidate(backend)
+    (tmp_path / "week1.duplicate-candidates.json").write_text(json.dumps(candidate))
+    original = prepare_duplicate_review("week1", backend=backend, directory=tmp_path, links=[])
+    receipt = (tmp_path / "week1.duplicates.json").read_bytes()
+    backend.record.update(rules_revision=2, configuration_sha256="d" * 64)
+    backend.list_rule_amendments = lambda *a, **k: {
+        "round_id": "week1", "rules_revision": 2, "amendments": [{
+            "from_revision": 1, "to_revision": 2,
+            "previous_configuration_sha256": "c" * 64, "configuration_sha256": "d" * 64}]}
+    backend.submissions[0]["status"] = "finished"
+    backend.submissions[1]["status"] = "evaluating"
+    assert prepare_duplicate_review("week1", backend=backend, directory=tmp_path, links=[]) == original
+    assert (tmp_path / "week1.duplicates.json").read_bytes() == receipt
+    backend.record["archive_block_hash"] = "changed"
+    with pytest.raises(ValueError, match="locked intake"):
+        prepare_duplicate_review("week1", backend=backend, directory=tmp_path, links=[])
+
+
+def test_historical_duplicate_config_follows_bounded_continuous_pages():
+    backend = Backend()
+    old = _candidate(backend)
+    backend.record.update(rules_revision=4, configuration_sha256="f" * 64)
+    calls = []
+    def history(rid, *, limit, before_revision):
+        calls.append((rid, limit, before_revision))
+        rows = [{"from_revision": n - 1, "to_revision": n,
+                 "configuration_sha256": current * 64, "previous_configuration_sha256": previous * 64}
+                for n, current, previous in [(4, "f", "e"), (3, "e", "d"), (2, "d", "c")]]
+        return {"round_id": rid, "rules_revision": 4,
+                "amendments": rows[:2] if before_revision is None else rows[2:]}
+    backend.list_rule_amendments = history
+    admission = duplicate_admission_record(backend, backend.record, old)
+    assert admission["configuration_sha256"] == "c" * 64
+    assert backend.record["configuration_sha256"] == "f" * 64
+    assert calls == [("week1", 100, None), ("week1", 100, 3)]
+    old["configuration_sha256"] = "9" * 64
+    with pytest.raises(ValueError, match="absent from the approved"):
+        duplicate_admission_record(backend, backend.record, old)
+
+
+@pytest.mark.parametrize("damage", ["round_id", "rules_revision", "gap", "config"])
+def test_historical_duplicate_config_rejects_changed_or_malformed_history(damage):
+    backend = Backend()
+    old = _candidate(backend)
+    backend.record.update(rules_revision=2, configuration_sha256="d" * 64)
+    page = {"round_id": "week1", "rules_revision": 2, "amendments": [{
+        "from_revision": 1, "to_revision": 2,
+        "previous_configuration_sha256": "c" * 64, "configuration_sha256": "d" * 64}]}
+    if damage in {"round_id", "rules_revision"}:
+        page[damage] = "different"
+    elif damage == "gap":
+        page["amendments"][0]["from_revision"] = 0
+    else:
+        page["amendments"][0]["configuration_sha256"] = "e" * 64
+    backend.list_rule_amendments = lambda *a, **k: page
+    with pytest.raises(ValueError, match="history"):
+        duplicate_admission_record(backend, backend.record, old)

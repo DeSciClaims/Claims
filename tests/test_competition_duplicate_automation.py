@@ -54,7 +54,7 @@ def setup(tmp_path):
         return prepare_review(record, backend, policy_path=policy_path, directory=tmp_path,
                               document=document, storage=SimpleNamespace(package_for_submission=read))
     return SimpleNamespace(root=tmp_path, policy=policy, policy_path=policy_path, states=states,
-        rows=rows, record=record, document=document, packages=packages, reads=reads, add=add, run=run)
+        backend=backend, rows=rows, record=record, document=document, packages=packages, reads=reads, add=add, run=run)
 
 
 def test_clear_comparisons_generate_verified_receipt_and_reuse_it(setup):
@@ -200,3 +200,27 @@ def test_v2_still_groups_exact_copies_using_existing_seeded_selection(setup):
         package_for_submission=lambda row: s.packages[row['package_sha256']])
     assert len(selection.selected_hotkeys) == 1
     assert len(selection.excluded_hotkeys) == 1
+
+
+def test_scoring_amendment_reuses_approved_duplicate_report_and_receipt(setup):
+    s = setup
+    s.add('a', wheel('def extract(paper): return paper'))
+    s.add('b', wheel('class Parser: pass'))
+    assert s.run() == {'status': 'evaluation_ready'}
+    original = {name: (s.root / name).read_bytes() for name in
+                ('round.duplicate-candidates.json', 'round.duplicates.json')}
+    s.record.update(rules_revision=2, configuration_sha256='e' * 64)
+    s.document['configuration_sha256'] = 'e' * 64
+    s.rows[0]['status'] = 'finished'
+    s.rows[1]['status'] = 'evaluating'
+    s.backend.list_rule_amendments = lambda *a, **k: {
+        'round_id': 'round', 'rules_revision': 2, 'amendments': [{
+            'from_revision': 1, 'to_revision': 2,
+            'previous_configuration_sha256': 'c' * 64, 'configuration_sha256': 'e' * 64}]}
+    s.reads.clear()
+    assert s.run() == {'status': 'evaluation_ready'}
+    assert s.reads == []
+    assert all((s.root / name).read_bytes() == body for name, body in original.items())
+    s.rows[0]['package_sha256'] = 'f' * 64
+    with pytest.raises(ValueError, match='locked intake'):
+        s.run()
