@@ -1,13 +1,11 @@
 """Explicit open-weight Silver judges for the competition pilot.
 
-These model IDs are a pilot choice. A paid round must freeze and cost its
-resolved provider endpoints before intake opens.
+Each round freezes its model IDs and any optional provider restrictions.
 """
 
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import replace
 from typing import Any, Mapping
 
@@ -16,6 +14,7 @@ from validator.agent_v1.adjudication_runner import AdjudicationPass
 from validator.agent_v1.model_usage import UsageSink
 
 from .judges import build_weekly_judges
+from .model_routes import validate_model_route, validated_provider_slug
 
 
 PROVISIONAL_JUDGE_MODELS = {
@@ -29,8 +28,8 @@ PROVISIONAL_MODEL_ALLOWLIST = frozenset({
 })
 
 
-def require_provisional_provider_pins(configuration: Mapping[str, Any], *, network: str | None = None) -> None:
-    """Reject a paid pilot whose OpenRouter endpoint could silently change."""
+def validate_provisional_judge_routes(configuration: Mapping[str, Any], *, network: str | None = None) -> None:
+    """Validate frozen model routes, retaining optional historical provider pins."""
     if (configuration.get("judge_specs", {}).get("single_model_rehearsal", False)
         and network != "testnet"):
         raise ValueError("single-model rehearsal is restricted to testnet")
@@ -42,13 +41,16 @@ def require_provisional_provider_pins(configuration: Mapping[str, Any], *, netwo
         or not isinstance(tie, dict)):
         raise ValueError("pilot judge provider configuration is incomplete")
     descriptors = [*panels["J1"], *panels["J2"], tie]
-    if any(not isinstance(descriptor, dict)
-           or descriptor.get("api_base") != "https://openrouter.ai/api/v1"
-           or not isinstance(descriptor.get("provider_slug"), str)
-           or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,127}",
-                               descriptor["provider_slug"])
-           for descriptor in descriptors):
-        raise ValueError("pilot judges need pinned OpenRouter providers before intake")
+    for descriptor in descriptors:
+        if (not isinstance(descriptor, dict)
+            or descriptor.get("api_base") != "https://openrouter.ai/api/v1"
+            or not isinstance(descriptor.get("model"), str) or not descriptor["model"]):
+            raise ValueError("pilot judges need concrete OpenRouter model routes")
+        validated_provider_slug(descriptor.get("provider_slug", ""))
+
+
+# Retain imports used by older operator scripts without requiring provider pins.
+require_provisional_provider_pins = validate_provisional_judge_routes
 
 
 def provisional_judge_configs(
@@ -66,12 +68,8 @@ def provisional_judge_configs(
         if type(specs.get("single_model_rehearsal", False)) is not bool:
             raise ValueError("single-model rehearsal flag must be boolean")
         descriptors = [*specs["J1"], *specs["J2"], specs["tiebreak"]]
-        if any(not isinstance(item, dict) or set(item) != {"model", "provider_slug"}
-               or not isinstance(item["model"], str) or not item["model"]
-               or not isinstance(item["provider_slug"], str)
-               or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,127}", item["provider_slug"])
-               for item in descriptors):
-            raise ValueError("frozen judge model or provider is invalid")
+        for item in descriptors:
+            validate_model_route(item)
         if (isinstance(specs["temperature"], bool)
             or not isinstance(specs["temperature"], (int, float))
             or not 0 <= specs["temperature"] <= 2
@@ -89,9 +87,9 @@ def provisional_judge_configs(
             model_a=specs["J1"][0]["model"],
             model_b=specs["J1"][1]["model"],
             tiebreak_model=specs["tiebreak"]["model"],
-            provider_slug_a=specs["J1"][0]["provider_slug"],
-            provider_slug_b=specs["J1"][1]["provider_slug"],
-            provider_slug_tiebreak=specs["tiebreak"]["provider_slug"],
+            provider_slug_a=specs["J1"][0].get("provider_slug", ""),
+            provider_slug_b=specs["J1"][1].get("provider_slug", ""),
+            provider_slug_tiebreak=specs["tiebreak"].get("provider_slug", ""),
             temperature=float(specs["temperature"]),
             max_tokens=specs["max_tokens"],
             timeout_seconds=float(specs["timeout_seconds"]),
@@ -100,8 +98,8 @@ def provisional_judge_configs(
         return j1, replace(
             j1, model_a=specs["J2"][0]["model"],
             model_b=specs["J2"][1]["model"],
-            provider_slug_a=specs["J2"][0]["provider_slug"],
-            provider_slug_b=specs["J2"][1]["provider_slug"],
+            provider_slug_a=specs["J2"][0].get("provider_slug", ""),
+            provider_slug_b=specs["J2"][1].get("provider_slug", ""),
         )
     j1 = SilverAdjudicationConfig(
         mode="openai-compatible", api_base="https://openrouter.ai/api/v1",

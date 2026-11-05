@@ -83,27 +83,22 @@
       "max_in_flight": 16,
       "J1": [
         {
-          "model": "qwen/qwen3-32b",
-          "provider_slug": "REPLACE_PROVIDER_A"
+          "model": "qwen/qwen3-32b"
         },
         {
-          "model": "openai/gpt-oss-120b",
-          "provider_slug": "REPLACE_PROVIDER_B"
+          "model": "openai/gpt-oss-120b"
         }
       ],
       "J2": [
         {
-          "model": "deepseek/deepseek-v3.2",
-          "provider_slug": "REPLACE_PROVIDER_C"
+          "model": "deepseek/deepseek-v3.2"
         },
         {
-          "model": "meta-llama/llama-4-maverick",
-          "provider_slug": "REPLACE_PROVIDER_D"
+          "model": "meta-llama/llama-4-maverick"
         }
       ],
       "tiebreak": {
-        "model": "qwen/qwen3-235b-a22b-2507",
-        "provider_slug": "REPLACE_PROVIDER_TIEBREAK"
+        "model": "qwen/qwen3-235b-a22b-2507"
       }
     },
     "worker_policy": {

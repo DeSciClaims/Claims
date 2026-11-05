@@ -13,6 +13,7 @@ from validator.agent_v1.file_agent_workflow import (
 )
 from validator.agent_v1.eligibility_decision_policy import EligibilityDecisionPolicy
 from validator.agent_v1.eligibility_decisions import DecisionsEligibilityRuntime
+from .model_routes import validate_model_route, validated_provider_slug
 
 
 DEFAULT_WORKFLOW_SPEC = {
@@ -70,11 +71,11 @@ def validated_workflow_spec(value: Mapping[str, Any] | None) -> dict[str, Any]:
     if fixed is not None and (
         not isinstance(fixed, dict)
         or set(fixed) != {"comparison", "canonicalization", "canonical_audit"}
-        or any(not isinstance(d, dict) or set(d) != {"model", "provider_slug"}
-               or any(not isinstance(d[k], str) or not d[k] for k in ("model", "provider_slug"))
-               for d in fixed.values())
     ):
         raise ValueError("fixed validator model descriptors are invalid")
+    if fixed is not None:
+        for descriptor in fixed.values():
+            validate_model_route(descriptor)
     return spec
 
 
@@ -100,11 +101,14 @@ def build_validator_workflow(
     fixed = spec["fixed_models"] or {}
     models = [*panels["J1"], *panels["J2"], tie, *fixed.values()]
     provider_slugs = {}
+    routes = {}
     for descriptor in models:
-        name, slug = model(descriptor), descriptor.get("provider_slug")
-        if name and slug:
-            if name in provider_slugs and provider_slugs[name] != slug:
-                raise ValueError("one model has inconsistent frozen provider pins")
+        name = model(descriptor)
+        slug = validated_provider_slug(descriptor.get("provider_slug", ""))
+        if name:
+            if name in routes and routes[name] != slug:
+                raise ValueError("one model has inconsistent frozen provider routes")
+            routes[name] = slug
             provider_slugs[name] = slug
     settings = policy.configuration["silver_runtime"]["settings"]
     judge_spec = policy.configuration.get("judge_specs") or {}

@@ -1377,3 +1377,27 @@ def test_hermes_file_stage_uses_private_frozen_provider_profile(tmp_path, monkey
     assert json.loads((home / "config.yaml").read_text())["provider_routing"] == {
         "only": ["siliconflow/fp8"],
     }
+
+
+def test_hermes_automatic_route_uses_neutral_profile_instead_of_inherited_pin(tmp_path, monkeypatch):
+    session = _session(tmp_path, [])
+    session.config = replace(session.config, harness="hermes-cli",
+                             model_provider_slugs={"deepseek/deepseek-v4-flash-0731": ""})
+    inherited = tmp_path / "inherited-hermes"
+    inherited.mkdir()
+    (inherited / "config.yaml").write_text('{"provider_routing":{"only":["unwanted-provider"]}}')
+    monkeypatch.setenv("HERMES_HOME", str(inherited))
+    seen = {}
+    def fake_run(command, **kwargs):
+        seen.update(kwargs)
+        kwargs["output_path"].write_text('{"submission_reviews":[],"equivalence_groups":[]}')
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+    monkeypatch.setattr(file_agent_workflow_module, "_run_until_valid_output", fake_run)
+    monkeypatch.setattr(file_agent_workflow_module, "usage_from_cli_process", lambda *a, **kw: {})
+    session._run_stage(stage_key="comparison", stage_label="Comparison", model="deepseek/deepseek-v4-flash-0731",
+                       task={}, output_model=ComparisonAgentOutput,
+                       skill_path=file_agent_workflow_module._skill_path("claims-silver-comparator"))
+    home = Path(seen["env"]["HERMES_HOME"])
+    assert home != inherited and home.is_relative_to(session.root)
+    assert json.loads((home / "config.yaml").read_text())["provider_routing"] == {}
+    assert json.loads((inherited / "config.yaml").read_text())["provider_routing"]["only"] == ["unwanted-provider"]

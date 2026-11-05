@@ -55,6 +55,25 @@ def test_fixed_comparison_models_do_not_follow_judge_rotation_and_resume_stages(
     assert workflow.config.resume_existing_stages
 
 
+def test_fixed_models_allow_auto_routing_and_reject_ambiguous_shared_model_routes():
+    descriptor = {"model": "deepseek/deepseek-v4-flash-0731"}
+    config = {**CONFIGURATION, "workflow_specs": validated_workflow_spec({
+        "fixed_models": {name: descriptor for name in ("comparison", "canonicalization", "canonical_audit")}})}
+    policy = SimpleNamespace(configuration=config, decision_usage_sink=None, judge_request_gate=None)
+    workflow = build_validator_workflow(policy, stage="final", judge_id="J1", decision_max_workers=1)
+    assert workflow.config.model_provider_slugs[descriptor["model"]] == ""
+    config["workflow_specs"]["fixed_models"]["canonical_audit"] = {**descriptor, "provider_slug": "deepinfra/fp8"}
+    with pytest.raises(ValueError, match="inconsistent frozen provider routes"):
+        build_validator_workflow(policy, stage="final", judge_id="J1", decision_max_workers=1)
+
+
+@pytest.mark.parametrize("descriptor", [{"model": "model", "provider_slug": None},
+    {"model": "model", "provider_slug": "bad slug"}, {"model": "model", "extra": True}])
+def test_fixed_model_auto_descriptors_still_validate_optional_provider_and_unknown_fields(descriptor):
+    with pytest.raises(ValueError, match="invalid"):
+        validated_workflow_spec({"fixed_models": {name: descriptor for name in ("comparison", "canonicalization", "canonical_audit")}})
+
+
 def test_stage_factory_freezes_routing_and_never_uses_decisions_in_final(monkeypatch):
     calls = []
     monkeypatch.setattr("competition.evaluation_policy.evaluate_weekly_paper",

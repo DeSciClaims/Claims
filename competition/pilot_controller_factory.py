@@ -21,7 +21,7 @@ from .judge_usage import JudgeUsageCapture
 from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
 from .pilot_worker_factory import FrozenWorkerRules, _required, _round_file
-from .provisional_judges import require_provisional_provider_pins
+from .provisional_judges import validate_provisional_judge_routes
 from .publication import canonical_sha256
 from .round_setup import _canonical_bytes, _write_once
 from .weekly_automation import FinalAudit
@@ -215,7 +215,7 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
     configuration = document.get("configuration")
     if not isinstance(configuration, dict):
         raise ValueError("trusted round file has no frozen configuration")
-    require_provisional_provider_pins(configuration, network=str(row["network"]))
+    validate_provisional_judge_routes(configuration, network=str(row["network"]))
     rules = FrozenWorkerRules(round_id, str(row["configuration_sha256"]), configuration,
                               rules_revision=int(row.get("rules_revision", 1)))
     if document.get("configuration_sha256") != rules.configuration_sha256:

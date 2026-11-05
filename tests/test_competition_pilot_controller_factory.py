@@ -184,11 +184,11 @@ def test_controller_factory_rejects_runtime_that_differs_from_frozen_rules(monke
                          "api_base": "https://api.openai.com/v1",
                      },
                      "judge_panels": {
-                         judge: [{"api_base": "https://openrouter.ai/api/v1",
+                judge: [{"api_base": "https://openrouter.ai/api/v1", "model": "frozen-model",
                                   "provider_slug": "pinned-provider"} for _ in range(2)]
                          for judge in ("J1", "J2")
                      },
-                     "tiebreak_pass": {"api_base": "https://openrouter.ai/api/v1",
+            "tiebreak_pass": {"api_base": "https://openrouter.ai/api/v1", "model": "frozen-model",
                                        "provider_slug": "pinned-provider"}}
     digest = canonical_sha256(configuration)
     document = {"round_id": "week1", "configuration": configuration,

@@ -13,7 +13,7 @@ from typing import Any, Mapping
 
 from .controller_inputs import build_provisional_evaluation_policy
 from .code_audit import validated_audit_policy
-from .provisional_judges import require_provisional_provider_pins
+from .provisional_judges import validate_provisional_judge_routes
 from .publication import canonical_sha256
 from .round_schedule import schedule_for_round, validate_dispute_window
 from .smoke_profile import smoke_profile
@@ -317,7 +317,7 @@ def prepare_pilot_round(
     )
     if policy.configuration != configuration:
         raise ValueError("pilot judge runtime differs from proposed frozen rules")
-    require_provisional_provider_pins(configuration, network=str(draft.get("network")))
+    validate_provisional_judge_routes(configuration, network=str(draft.get("network")))
     for upload in (draft.get("baseline_upload"), draft.get("reference_upload")):
         if upload is not None:
             storage.package_for_submission(upload)

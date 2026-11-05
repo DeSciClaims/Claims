@@ -20,7 +20,7 @@ from .package_inputs import CompetitionPackageResolver
 from .paper_inputs import CompetitionPaperInputs
 from .pdf_fetch import TrustedPdfFetcher
 from .pilot_worker_factory import _bifrost_admin_client, _csv, _required, _worker_execution
-from .provisional_judges import require_provisional_provider_pins
+from .provisional_judges import validate_provisional_judge_routes
 from .replay_controller import tick_replay
 from .replay_final_audit import audit_replay_final
 from .replay_gold_review import prepare_replay_gold_review, replay_known_answer_challenges
@@ -231,7 +231,7 @@ def _finish_replay(
 
 
 def _replay_evaluation_policy(backend, papers, configuration, revision):
-    require_provisional_provider_pins(configuration, network=str(backend.snapshot["network"]))
+    validate_provisional_judge_routes(configuration, network=str(backend.snapshot["network"]))
     routing = configuration.get("decision_routing")
     if not isinstance(routing, dict):
         raise ValueError("replay Decisions routing is missing from frozen rules")

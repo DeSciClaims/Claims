@@ -2656,13 +2656,13 @@ class FileAgentWorkflowSession:
         if resolved_harness == "hermes-cli":
             agent_env = {**os.environ, "HERMES_MAX_TOKENS": str(self.config.max_tokens)}
             provider_slug = self.config.model_provider_slugs.get(model)
-            if provider_slug:
+            if model in self.config.model_provider_slugs:
                 # A private per-stage profile avoids changing global Hermes
                 # settings while enforcing the round's frozen provider route.
                 hermes_home = stage_dir / "hermes-home"
                 hermes_home.mkdir(mode=0o700, exist_ok=True)
                 self._atomic_json(hermes_home / "config.yaml", {
-                    "provider_routing": {"only": [provider_slug]},
+                    "provider_routing": {"only": [provider_slug]} if provider_slug else {},
                 })
                 agent_env["HERMES_HOME"] = str(hermes_home)
         try:

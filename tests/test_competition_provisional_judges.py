@@ -7,6 +7,7 @@ from competition.provisional_judges import (
     PROVISIONAL_TIEBREAK_MODEL, build_provisional_judges,
     provisional_judge_configs,
     require_provisional_provider_pins,
+    validate_provisional_judge_routes,
 )
 
 
@@ -61,3 +62,33 @@ def test_pilot_models_are_distinct_and_frozen_without_credential(monkeypatch):
                for passes in panels.values() for adjudication_pass in passes)
     assert tie.usage_sink is sink
     assert "pilot-secret" not in repr(frozen)
+
+
+@pytest.mark.parametrize("slug", [None, ""])
+def test_model_only_and_explicit_empty_routes_are_frozen_as_automatic(slug, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "offline-fixture")
+    descriptor = {"model": "deepseek/deepseek-v4-flash-0731"}
+    if slug is not None:
+        descriptor["provider_slug"] = slug
+    specs = {"J1": [descriptor, descriptor], "J2": [descriptor, descriptor],
+             "tiebreak": descriptor, "api_base": "https://openrouter.ai/api/v1",
+             "temperature": 0, "max_tokens": 32768, "timeout_seconds": 120,
+             "max_in_flight": 4, "single_model_rehearsal": True}
+    panels, tie = build_provisional_judges(specs=specs)
+    configuration = {**judge_runtime_config(panels, tie), "judge_specs": specs}
+    validate_provisional_judge_routes(configuration, network="testnet")
+    require_provisional_provider_pins(configuration, network="testnet")
+    assert all(pass_["provider_slug"] == "" for panel in configuration["judge_panels"].values() for pass_ in panel)
+    assert configuration["tiebreak_pass"]["provider_slug"] == ""
+
+
+@pytest.mark.parametrize("descriptor", [{"model": "model", "provider_slug": None},
+    {"model": "model", "provider_slug": 5}, {"model": "model", "provider_slug": "bad slug"},
+    {"model": "model", "unexpected": True}, {"model": ""}, {"model": 4}])
+def test_optional_provider_routes_do_not_accept_invalid_or_unknown_fields(descriptor):
+    specs = {"J1": [descriptor, descriptor], "J2": [descriptor, descriptor],
+             "tiebreak": descriptor, "api_base": "https://openrouter.ai/api/v1",
+             "temperature": 0, "max_tokens": 32768, "timeout_seconds": 120,
+             "max_in_flight": 4, "single_model_rehearsal": True}
+    with pytest.raises(ValueError, match="invalid"):
+        provisional_judge_configs(specs)
