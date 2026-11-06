@@ -10,7 +10,7 @@ from competition.intake_lock import CompetitionBackend
 from competition.publication import FROZEN_FIELDS, canonical_sha256, publication_bundle
 from competition.rule_amendments import (
     RulesAmendmentClient, active_round_file, configuration_changes,
-    read_private_round, sync_current_rules,
+    read_private_round, require_round_directory_owner, sync_current_rules,
 )
 from neurons import competition_round_amend as cli
 
@@ -64,6 +64,62 @@ def test_reconcile_preserves_original_and_trusted_receipts(tmp_path, revision):
     before = (tmp_path / "round-1.r2.json").stat().st_mtime_ns
     sync_current_rules(backend, row, directory=tmp_path)
     assert (tmp_path / "round-1.r2.json").stat().st_mtime_ns == before
+
+
+def test_reconcile_keeps_an_identical_valid_pointer_inode_owner_and_mtime(tmp_path, revision):
+    backend, _ = revision
+    sync_current_rules(backend, backend.row, directory=tmp_path)
+    pointer = tmp_path / "round-1.active.json"
+    before = pointer.stat()
+    original = pointer.read_bytes()
+    sync_current_rules(backend, backend.row, directory=tmp_path)
+    after = pointer.stat()
+    assert (after.st_ino, after.st_uid, after.st_gid, after.st_mtime_ns, after.st_mode) == (
+        before.st_ino, before.st_uid, before.st_gid, before.st_mtime_ns, before.st_mode)
+    assert pointer.read_bytes() == original
+
+
+@pytest.mark.parametrize("effective_uid", [0, 1234])
+def test_wrong_owner_is_rejected_before_backend_read_lock_or_temporary_writes(tmp_path, revision, monkeypatch, effective_uid):
+    from types import SimpleNamespace
+    backend, _ = revision
+    original = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    real_stat = Path.stat
+    def stat(path, *args, **kwargs):
+        info = real_stat(path, *args, **kwargs)
+        return SimpleNamespace(st_mode=info.st_mode, st_uid=4321) if path == tmp_path else info
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "stat", stat)
+        patch.setattr(amendments.os, "geteuid", lambda: effective_uid)
+        patch.setattr(amendments, "_revision_lock", lambda *_: pytest.fail("writer lock reached before owner check"))
+        patch.setattr(amendments.tempfile, "mkstemp", lambda *a, **k: pytest.fail("temporary file reached before owner check"))
+        with pytest.raises(ValueError, match="owned by the current service user"):
+            sync_current_rules(backend, backend.row, directory=tmp_path)
+    assert backend.calls == 0
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == original
+
+
+def test_directory_owner_preflight_rejects_a_symlink(tmp_path):
+    target = tmp_path / "rounds"
+    target.mkdir()
+    link = tmp_path / "rounds-link"
+    link.symlink_to(target, target_is_directory=True)
+    with pytest.raises(ValueError, match="owned by the current service user"):
+        require_round_directory_owner(link)
+
+
+def test_identical_pointer_is_validated_before_noop(tmp_path, revision, monkeypatch):
+    backend, _ = revision
+    sync_current_rules(backend, backend.row, directory=tmp_path)
+    pointer = tmp_path / "round-1.active.json"
+    document = json.loads(pointer.read_text())
+    original_inode = pointer.stat().st_ino
+    private = tmp_path / "round-1.r2.json"
+    private.unlink()
+    monkeypatch.setattr(amendments.tempfile, "mkstemp", lambda *a, **k: pytest.fail("invalid pointer must not be rewritten"))
+    with pytest.raises(FileNotFoundError):
+        amendments._activate(pointer, document)
+    assert pointer.stat().st_ino == original_inode
 
 
 def test_reconcile_resumes_after_crash_before_pointer_activation(tmp_path, revision, monkeypatch):

@@ -77,9 +77,29 @@ def _write_revision(path: Path, content: bytes, *, mode: int) -> None:
         os.unlink(temporary)
 
 
+def require_round_directory_owner(directory: Path) -> None:
+    """Reconciliation writes must run as the account owning private round state."""
+    info = directory.stat(follow_symlinks=False)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid():
+        raise ValueError("rounds directory must be owned by the current service user")
+
+
 def _activate(path: Path, document: Mapping[str, Any]) -> None:
     if path.is_symlink():
         raise ValueError("round revision pointer cannot be a symlink")
+    try:
+        existing = _read_json(path)
+    except FileNotFoundError:
+        pass
+    else:
+        # An already active revision is a read-only reconciliation. Validate
+        # its referenced private document before preserving the pointer.
+        round_id = _round_id(document.get("round_id"))
+        if path.name != f"{round_id}.active.json":
+            raise ValueError("round revision pointer has another round identity")
+        active_round_file(path.parent, round_id)
+        if existing == document:
+            return
     descriptor, temporary = tempfile.mkstemp(prefix=".claims-rules-active-", dir=path.parent)
     try:
         os.fchmod(descriptor, 0o600)
@@ -256,6 +276,7 @@ def sync_current_rules(backend: Any, row: Mapping[str, Any], *,
     """Reconcile approved rules under a per-round filesystem writer lock."""
     round_id = _round_id(row.get("round_id"))
     directory = Path(directory or os.environ["CLAIMS_COMPETITION_ROUNDS_DIR"])
+    require_round_directory_owner(directory)
     if row.get("rules_revision", 1) == 1 and not (directory / f"{round_id}.active.json").exists():
         return dict(row)
     # A worker and controller may start together. Fetch authority inside the

@@ -12,7 +12,8 @@ from types import SimpleNamespace
 
 from competition.publication import canonical_sha256
 from competition.rule_amendments import (
-    RulesAmendmentClient, configuration_changes, sync_current_rules,
+    RulesAmendmentClient, configuration_changes, require_round_directory_owner,
+    sync_current_rules,
 )
 
 
@@ -68,6 +69,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="Submit through the admin API; otherwise print a preview")
     args = parser.parse_args(argv)
     try:
+        if args.apply and args.rounds_dir is not None:
+            # Reject the wrong local account before changing backend authority.
+            # Running as root would otherwise strand private pointer files.
+            require_round_directory_owner(args.rounds_dir)
+            if not os.environ.get("CLAIMS_COMPETITION_CONTROLLER_TOKEN"):
+                raise ValueError("controller credential is required to install approved private inputs")
         configuration = configuration_from_file(args.config, args.round_id)
         client = RulesAmendmentClient(base_url=args.backend_url,
                                       admin_token=os.environ.get("CLAIMS_ADMIN_TOKEN"))
@@ -95,8 +102,6 @@ def main(argv: list[str] | None = None) -> int:
         if not args.apply:
             print(json.dumps({"status": "preview", **preview}, sort_keys=True), flush=True)
             return 0
-        if args.rounds_dir is not None and not os.environ.get("CLAIMS_COMPETITION_CONTROLLER_TOKEN"):
-            raise ValueError("controller credential is required to install approved private inputs")
         if not changes and expected == canonical_sha256(current) and resume_mode == "resume":
             if args.rounds_dir is not None:
                 from competition.intake_lock import CompetitionBackend
