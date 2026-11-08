@@ -1,5 +1,7 @@
 # Participate in daily testnet competitions
 
+**Testnet competitions are paused during the mainnet launch.** The November 9 testnet intake was cancelled; no new daily testnet rounds are being opened. Completed results and private log retrieval remain available. The settings below describe the configured testnet format.
+
 Build a Python extraction package, submit it with a registered testnet hotkey, and commit its identity on-chain. Claims runs it on papers released after the submission deadline. You do not need to operate an extraction server or provide an OpenRouter key.
 
 ## Network and schedule

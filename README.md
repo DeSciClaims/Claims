@@ -4,7 +4,7 @@ Claims is a Bittensor competition for extracting scientific claims and their sup
 
 ## Enter the competition
 
-**Joining the daily testnet rounds? Start with the [testnet participation guide](./docs/0020-testnet-competition-participation.md)** for subnet 530, the intake schedule, submission examples and log retrieval.
+Mainnet competitions use subnet **111**, with a submission deadline of **Monday, 12:00 UTC**. The first intake opens **9 November 2026 at 00:00 UTC**. See the [submission guide](./docs/submission.md) to prepare your package. Daily testnet competitions are paused during the mainnet launch; completed results and private logs remain available.
 
 1. Read the [current round rules](https://dashboard.claims111.ai/competition) for the submission deadline, permitted models, budgets, evaluation stages, and reward policy.
 2. Build a Python wheel or source archive with an entrypoint that accepts `--request` and `--output` and writes an `agent_v1` artifact. The [sample miner package](https://github.com/DeSciClaims/claims-miner-package) provides a working extraction pipeline and manifest.
