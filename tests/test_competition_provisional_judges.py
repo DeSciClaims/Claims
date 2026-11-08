@@ -21,6 +21,21 @@ def _repeated_model_specs(**flags):
     }
 
 
+@pytest.mark.parametrize("workers", [1, 50, 64, 200])
+def test_judge_concurrency_uses_configured_positive_limit(workers):
+    specs = {**_repeated_model_specs(allow_repeated_models=True), "max_in_flight": workers}
+    j1, j2 = provisional_judge_configs(specs)
+    assert j1.max_in_flight == workers
+    assert j2.max_in_flight == workers
+
+
+@pytest.mark.parametrize("workers", [True, False, 0, -1, 1.0, "50", None])
+def test_judge_concurrency_rejects_invalid_limits(workers):
+    specs = {**_repeated_model_specs(allow_repeated_models=True), "max_in_flight": workers}
+    with pytest.raises(ValueError, match="inference settings"):
+        provisional_judge_configs(specs)
+
+
 @pytest.mark.parametrize("network", ["mainnet", "testnet"])
 def test_explicit_repeated_model_policy_is_frozen_for_each_network(network, monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")

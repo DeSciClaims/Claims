@@ -90,6 +90,23 @@ def decision_policy(post, *, mode="top_fraction", cutoff=0.8, workers=2, usage=N
     )
 
 
+@pytest.mark.parametrize("workers", [1, 32, 50, 200])
+def test_decision_concurrency_accepts_configured_positive_worker_counts(workers):
+    # Constructing the policy must not reject the controller's approved limit.
+    # HTTP is forbidden here: this is configuration validation only.
+    def no_requests(*args, **kwargs):
+        pytest.fail("validating concurrency must not make an API request")
+
+    policy = decision_policy(no_requests, workers=workers)
+    assert policy.max_workers == workers
+
+
+@pytest.mark.parametrize("workers", [0, -1, True, False, 1.0, 50.5, "50", None])
+def test_decision_concurrency_rejects_non_positive_or_non_integer_counts(workers):
+    with pytest.raises(ValueError, match="routing policy is invalid"):
+        decision_policy(None, workers=workers)
+
+
 def attach_full_judge_spy(session, monkeypatch):
     seen = []
 

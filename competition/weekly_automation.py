@@ -128,7 +128,9 @@ def _score_active_stage(
     submitted = set()
     paper_ids = {paper['paper_id'] for paper in papers}
     def discover():
-        candidates = (ready_projection(round_id, stage, limit=limits.scoring_max_workers * 2)
+        # Readiness returns IDs only. Respect the API's bounded response size
+        # independently of the configured number of scoring threads.
+        candidates = (ready_projection(round_id, stage, limit=min(64, limits.scoring_max_workers * 2))
                       if callable(ready_projection) else ready)
         if not isinstance(candidates, list) or not set(candidates) <= paper_ids:
             raise ValueError("ready-paper projection differs from the frozen sample")

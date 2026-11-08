@@ -428,3 +428,62 @@ def test_empty_recurring_intake_closes_before_chain_or_paid_work():
         close_empty_round=lambda rid: calls.append(rid) or {"status":"no_contest"})
     assert tick_round("week",backend=backend,inputs=object(),now=DEADLINE)["status"] == "no_contest"
     assert calls == ["week"]
+
+
+def test_fifty_scoring_workers_keep_readiness_requests_bounded(monkeypatch):
+    from threading import Barrier, Lock
+    from competition.weekly_automation import _score_active_stage
+
+    first_wave = Barrier(50, timeout=10)
+    lock = Lock()
+    papers = [f"p{index:03}" for index in range(75)]
+    done, request_limits = set(), []
+    running = peak = 0
+    record = {**_round("screening"), "rules_public": {"policy": {"execution": {
+        "schema_version": "claims_competition_execution_v1",
+        "bronze_max_workers": 6, "scoring_max_workers": 50, "decision_max_workers": 8,
+    }}}}
+
+    def ready(*_, limit):
+        assert 1 <= limit <= 64, "ready-paper API rejects larger requests"
+        with lock:
+            request_limits.append(limit)
+            return [paper for paper in papers if paper not in done][:limit]
+
+    def pairs(*_):
+        with lock:
+            return [{"paper_id": paper, "challenger_hotkey": "miner"} for paper in done]
+
+    def score(_, stage, paper_id, **kwargs):
+        nonlocal running, peak
+        with lock:
+            running += 1
+            peak = max(peak, running)
+        if int(paper_id[1:]) < 50:
+            first_wave.wait()
+        with lock:
+            done.add(paper_id)
+            running -= 1
+
+    backend = SimpleNamespace(
+        get_round=lambda _: record,
+        list_stages=lambda _: [{"stage": "prescreen", "entries": [
+            {"hotkey": "ref", "role": "reference"},
+            {"hotkey": "miner", "role": "challenger"},
+        ]}],
+        list_sample=lambda _: [{"stage": "prescreen", "paper_id": paper} for paper in papers],
+        list_stage_pairs=pairs, ready_papers=ready,
+        list_paper_jobs=lambda *_: pytest.fail("readiness must not fetch raw worker artifacts"),
+    )
+    monkeypatch.setattr("competition.weekly_automation.advance_ready_stage",
+                        lambda *_, **__: {"status": "waiting_for_scores"})
+    monkeypatch.setattr("competition.weekly_automation.score_ready_paper", score)
+    result = _score_active_stage(
+        "round", backend=backend,
+        inputs=SimpleNamespace(bronze_for_paper=lambda *_: {}, evaluate_for_stage=lambda _: object()),
+        now=DEADLINE, gold_close=DEADLINE,
+    )
+    assert result["scored_papers_this_tick"] == 75
+    assert done == set(papers)
+    assert peak == 50
+    assert set(request_limits) == {64}

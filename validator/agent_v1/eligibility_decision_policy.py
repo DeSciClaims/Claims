@@ -33,7 +33,7 @@ class EligibilityDecisionPolicy:
             or not math.isfinite(self.cutoff)
             or not 0 <= self.cutoff <= 1
             or type(self.max_workers) is not int
-            or not 1 <= self.max_workers <= 32
+            or self.max_workers < 1
         ):
             raise ValueError("Decision eligibility routing policy is invalid")
 

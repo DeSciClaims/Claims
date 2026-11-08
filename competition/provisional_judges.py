@@ -81,7 +81,7 @@ def provisional_judge_configs(
             or not isinstance(specs["timeout_seconds"], (int, float))
             or not 1 <= specs["timeout_seconds"] <= 600
             or type(specs["max_in_flight"]) is not int
-            or not 1 <= specs["max_in_flight"] <= 64):
+            or specs["max_in_flight"] < 1):
             raise ValueError("frozen judge inference settings are invalid")
         j1 = SilverAdjudicationConfig(
             mode="openai-compatible", api_base=specs["api_base"],

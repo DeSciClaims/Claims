@@ -1,7 +1,8 @@
 """Concurrency limits frozen before intake, independent of host credentials."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -19,8 +20,8 @@ def execution_policy(record: Mapping[str, Any]) -> ExecutionPolicy:
     if (not isinstance(raw, dict)
         or set(raw) != fields | {"schema_version"}
         or raw["schema_version"] != "claims_competition_execution_v1"
-        or any(type(raw[key]) is not int or not 1 <= raw[key] <= 32 for key in fields)):
-        raise ValueError("competition execution needs integer concurrency limits in [1,32]")
+        or any(type(raw[key]) is not int or raw[key] < 1 for key in fields)):
+        raise ValueError("competition execution needs positive integer concurrency limits")
     return ExecutionPolicy(**{key: raw[key] for key in fields})
 
 
