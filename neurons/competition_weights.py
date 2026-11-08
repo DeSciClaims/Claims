@@ -1,8 +1,8 @@
 """Submit the latest signed weekly competition weights from the validator wallet.
 
-Run as a separate process while the consensus validator has
-``--claims.external-competition-weights`` enabled. No miner package or
-infrastructure secret enters this process beyond its validator wallet.
+Run as a separate process after disabling the legacy extraction weight writer.
+A signed legacy allocation can bridge the first competition publication.
+No miner package or provider credential enters this process.
 """
 
 from __future__ import annotations
@@ -29,6 +29,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cache-path", type=Path, required=True)
     parser.add_argument("--poll-seconds", type=int, default=60)
     parser.add_argument("--weight-period", type=int, default=16)
+    parser.add_argument("--submission-interval-seconds", type=int, default=21600,
+                        help="Seconds between refreshes; independent of chain tempo")
+    parser.add_argument("--legacy-receipt", type=Path,
+                        help="Signed last-extraction allocation used before the first competition result")
+    parser.add_argument("--state-path", type=Path)
     parser.add_argument("--audit-only", action="store_true")
     parser.add_argument("--independent", action="store_true",
                         help="Read the second validator's signed independent result")
@@ -36,6 +41,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not 10 <= args.poll_seconds <= 600:
         parser.error("--poll-seconds must be between 10 and 600")
+    if args.submission_interval_seconds < 1:
+        parser.error("--submission-interval-seconds must be positive")
+    if args.independent and args.legacy_receipt:
+        parser.error("--legacy-receipt is only supported by the primary heartbeat")
     # Import only after argument validation so --help works without chain setup.
     import bittensor as bt
 
@@ -49,6 +58,9 @@ def main(argv: list[str] | None = None) -> int:
         operator_hotkey=args.operator_hotkey, wallet=wallet, subtensor=subtensor,
         cache_path=args.cache_path.expanduser(), weight_period=args.weight_period,
         independent=args.independent,
+        submission_interval_seconds=args.submission_interval_seconds,
+        legacy_receipt_path=args.legacy_receipt.expanduser() if args.legacy_receipt else None,
+        state_path=args.state_path.expanduser() if args.state_path else None,
     )
     while True:
         try:
