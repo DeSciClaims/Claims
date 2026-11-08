@@ -15,6 +15,7 @@ def build_weekly_judges(
     *, j1: SilverAdjudicationConfig, j2: SilverAdjudicationConfig,
     allowed_models: set[str], usage_sink: UsageSink | None = None,
     single_model_rehearsal: bool = False,
+    allow_repeated_models: bool = False,
 ) -> tuple[dict[str, tuple[AdjudicationPass, AdjudicationPass]], AdjudicationPass]:
     """Resolve J1/J2 and one common tiebreak without exposing provider keys.
 
@@ -22,6 +23,11 @@ def build_weekly_judges(
     supplied model allowlist is the frozen week's open-weight model policy.
     Static/replay passes cannot be used for a paid competition round.
     """
+    if type(allow_repeated_models) is not bool or type(single_model_rehearsal) is not bool:
+        raise ValueError("judge model diversity flags must be boolean")
+    if allow_repeated_models and single_model_rehearsal:
+        raise ValueError("judge model diversity flags cannot be combined")
+    allow_repeated = allow_repeated_models or single_model_rehearsal
     if not allowed_models or any(not model for model in allowed_models):
         raise ValueError("weekly judge model allowlist is empty")
     configurations = {"J1": j1, "J2": j2}
@@ -30,9 +36,9 @@ def build_weekly_judges(
             raise ValueError(f"{judge_id} needs a model-backed Silver configuration")
         models = {config.model_a, config.model_b, config.tiebreak_model}
         if ("" in models or not models <= allowed_models
-            or (config.model_a == config.model_b and not single_model_rehearsal)):
+            or (config.model_a == config.model_b and not allow_repeated)):
             raise ValueError(f"{judge_id} uses a missing, repeated or non-allowlisted model")
-    if not single_model_rehearsal and (j1.model_a, j1.model_b) == (j2.model_a, j2.model_b):
+    if not allow_repeated and (j1.model_a, j1.model_b) == (j2.model_a, j2.model_b):
         raise ValueError("J1 and J2 must use different primary model configurations")
     if j1.api_key_env != j2.api_key_env:
         raise ValueError("J1 and J2 must use the same trusted tiebreak credential source")

@@ -77,3 +77,43 @@ def test_requires_one_shared_tiebreak_configuration(monkeypatch):
     with pytest.raises(ValueError, match="credential source"):
         build_weekly_judges(j1=j1, j2=replace(j2, api_key_env="OTHER_KEY"),
                             allowed_models=allowed)
+
+
+def test_generic_repeated_model_permission_keeps_allowlist_and_tiebreak_guards(monkeypatch):
+    monkeypatch.setenv("COMPETITION_TEST_JUDGE_KEY", "private-judge-credential")
+    config, _ = _configs()
+    config = replace(config, model_b=config.model_a, tiebreak_model=config.model_a)
+    panels, tie = build_weekly_judges(
+        j1=config, j2=config, allowed_models={config.model_a}, allow_repeated_models=True,
+    )
+    assert all(adjudicator.model == config.model_a for panel in panels.values() for adjudicator in panel)
+    assert tie.model == config.model_a
+    with pytest.raises(ValueError, match="non-allowlisted"):
+        build_weekly_judges(j1=config, j2=config, allowed_models={"org/other"},
+                            allow_repeated_models=True)
+    with pytest.raises(ValueError, match="tiebreak"):
+        build_weekly_judges(j1=config, j2=replace(config, tiebreak_model="org/other"),
+                            allowed_models={config.model_a, "org/other"}, allow_repeated_models=True)
+
+
+@pytest.mark.parametrize("flag", ["allow_repeated_models", "single_model_rehearsal"])
+@pytest.mark.parametrize("value", [1, "true", None])
+def test_weekly_judge_builder_rejects_nonboolean_diversity_flags(flag, value):
+    config, _ = _configs()
+    with pytest.raises(ValueError, match="boolean"):
+        build_weekly_judges(j1=config, j2=config, allowed_models={"org/model-a"}, **{flag: value})
+
+
+def test_weekly_judge_builder_rejects_two_enabled_diversity_flags():
+    config, _ = _configs()
+    with pytest.raises(ValueError, match="cannot be combined"):
+        build_weekly_judges(j1=config, j2=config, allowed_models={"org/model-a"},
+                            allow_repeated_models=True, single_model_rehearsal=True)
+
+
+def test_weekly_judges_remain_distinct_by_default(monkeypatch):
+    monkeypatch.setenv("COMPETITION_TEST_JUDGE_KEY", "private-judge-credential")
+    config, _ = _configs()
+    with pytest.raises(ValueError, match="different primary"):
+        build_weekly_judges(j1=config, j2=config,
+                            allowed_models={config.model_a, config.model_b, config.tiebreak_model})

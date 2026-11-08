@@ -11,6 +11,63 @@ from competition.provisional_judges import (
 )
 
 
+def _repeated_model_specs(**flags):
+    descriptor = {"model": "org/open-weight-model"}
+    return {
+        "J1": [descriptor, descriptor], "J2": [descriptor, descriptor],
+        "tiebreak": descriptor, "api_base": "https://openrouter.ai/api/v1",
+        "max_tokens": 32768, "timeout_seconds": 120, "max_in_flight": 4,
+        "temperature": 0.0, **flags,
+    }
+
+
+@pytest.mark.parametrize("network", ["mainnet", "testnet"])
+def test_explicit_repeated_model_policy_is_frozen_for_each_network(network, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")
+    specs = _repeated_model_specs(allow_repeated_models=True)
+    panels, tie = build_provisional_judges(specs=specs)
+    configuration = {**judge_runtime_config(panels, tie), "judge_specs": specs}
+    validate_provisional_judge_routes(configuration, network=network)
+    policy = build_provisional_evaluation_policy(
+        paper_inputs=SimpleNamespace(round_id=network + "-round", source_context_for_paper=lambda _: {}),
+        decision_api_key="test-decision", weekly_budget_usd=10, judge_specs=specs,
+        worker_policy={"allowed_models": ["org/open-weight-model"], "published_token_ceiling": 800000,
+                       "max_inference_output_tokens": 8192, "lease_seconds": 3600,
+                       "dollar_limit_usd": "0.10", "inference_base_url": "https://gateway.example/v1"},
+    )
+    assert policy.configuration["judge_specs"] == specs
+    assert "single_model_rehearsal" not in policy.configuration["judge_specs"]
+    assert all(row["model"] == "org/open-weight-model"
+               for panel in configuration["judge_panels"].values() for row in panel)
+    assert configuration["tiebreak_pass"]["model"] == "org/open-weight-model"
+    policy._verify_frozen_runtime()
+
+
+@pytest.mark.parametrize("flag", ["allow_repeated_models", "single_model_rehearsal"])
+@pytest.mark.parametrize("value", [0, 1, "true", "false", None, [], {}])
+def test_model_diversity_flags_require_actual_booleans(flag, value):
+    specs = _repeated_model_specs(**{flag: value})
+    with pytest.raises(ValueError, match="boolean"):
+        provisional_judge_configs(specs)
+    with pytest.raises(ValueError, match="boolean"):
+        validate_provisional_judge_routes({"judge_specs": specs}, network="testnet")
+
+
+@pytest.mark.parametrize("generic,legacy", [(True, True), (True, False), (False, True), (False, False)])
+def test_model_diversity_flags_cannot_be_combined(generic, legacy):
+    specs = _repeated_model_specs(allow_repeated_models=generic, single_model_rehearsal=legacy)
+    with pytest.raises(ValueError, match="cannot be combined"):
+        provisional_judge_configs(specs)
+    with pytest.raises(ValueError, match="cannot be combined"):
+        validate_provisional_judge_routes({"judge_specs": specs}, network="mainnet")
+
+
+@pytest.mark.parametrize("flags", [{}, {"allow_repeated_models": False}, {"single_model_rehearsal": False}])
+def test_repeated_models_still_require_explicit_permission(flags):
+    with pytest.raises(ValueError, match="repeated"):
+        build_provisional_judges(specs=_repeated_model_specs(**flags))
+
+
 def test_explicit_single_model_rehearsal_is_testnet_only(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-secret")
     descriptor = {"model": "deepseek/deepseek-v4-flash-0731", "provider_slug": "deepinfra/fp8"}

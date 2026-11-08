@@ -65,6 +65,21 @@ def judge_runtime_config(
     }
 
 
+def allows_repeated_judge_models(specs: Mapping[str, Any] | None) -> bool:
+    """Read the explicit frozen diversity policy, including legacy testnet rules."""
+    if specs is None:
+        return False
+    if not isinstance(specs, Mapping):
+        raise ValueError("frozen judge specifications are invalid")
+    flags = ("allow_repeated_models", "single_model_rehearsal")
+    for name in flags:
+        if name in specs and type(specs[name]) is not bool:
+            raise ValueError(f"{name} must be boolean")
+    if all(name in specs for name in flags):
+        raise ValueError("judge model diversity flags cannot be combined")
+    return specs.get("allow_repeated_models", specs.get("single_model_rehearsal", False))
+
+
 @dataclass(frozen=True)
 class FrozenEvaluationPolicy:
     round_id: str
@@ -103,6 +118,7 @@ class FrozenEvaluationPolicy:
             object.__setattr__(self, "decision_rate_limiter", InputTokenRateLimiter(int(rate)))
 
     def _verify_frozen_runtime(self) -> None:
+        allow_repeated = allows_repeated_judge_models(self.configuration.get("judge_specs"))
         frozen = judge_runtime_config(self.adjudication_passes_by_judge, self.tiebreak_pass)
         panels = frozen["judge_panels"]
         silver = silver_runtime_config()
@@ -124,7 +140,7 @@ class FrozenEvaluationPolicy:
                           row["model_runtime_id"]) for row in panels[judge_id])
 
         if (model_signature("J1") == model_signature("J2")
-            and not self.configuration.get("judge_specs", {}).get("single_model_rehearsal", False)):
+            and not allow_repeated):
             raise ValueError("J1 and J2 must be distinct frozen judge configurations")
 
     def public_routing_config(self) -> dict[str, object]:

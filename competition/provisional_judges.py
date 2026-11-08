@@ -14,6 +14,7 @@ from validator.agent_v1.adjudication_runner import AdjudicationPass
 from validator.agent_v1.model_usage import UsageSink
 
 from .judges import build_weekly_judges
+from .evaluation_policy import allows_repeated_judge_models
 from .model_routes import validate_model_route, validated_provider_slug
 
 
@@ -30,7 +31,9 @@ PROVISIONAL_MODEL_ALLOWLIST = frozenset({
 
 def validate_provisional_judge_routes(configuration: Mapping[str, Any], *, network: str | None = None) -> None:
     """Validate frozen model routes, retaining optional historical provider pins."""
-    if (configuration.get("judge_specs", {}).get("single_model_rehearsal", False)
+    specs = configuration.get("judge_specs")
+    allows_repeated_judge_models(specs)
+    if (specs and specs.get("single_model_rehearsal", False)
         and network != "testnet"):
         raise ValueError("single-model rehearsal is restricted to testnet")
     panels = configuration.get("judge_panels")
@@ -58,15 +61,14 @@ def provisional_judge_configs(
 ) -> tuple[SilverAdjudicationConfig, SilverAdjudicationConfig]:
     """Return the named pilot configurations without reading a credential."""
     if specs is not None:
-        if (not isinstance(specs, dict) or set(specs) - {"single_model_rehearsal"} != {
+        if (not isinstance(specs, dict) or set(specs) - {"single_model_rehearsal", "allow_repeated_models"} != {
             "J1", "J2", "tiebreak", "api_base", "temperature",
             "max_tokens", "timeout_seconds", "max_in_flight",
         } or specs["api_base"] != "https://openrouter.ai/api/v1"
             or any(not isinstance(specs.get(panel), list) or len(specs[panel]) != 2
                    for panel in ("J1", "J2"))):
             raise ValueError("frozen judge specifications are invalid")
-        if type(specs.get("single_model_rehearsal", False)) is not bool:
-            raise ValueError("single-model rehearsal flag must be boolean")
+        allows_repeated_judge_models(specs)
         descriptors = [*specs["J1"], *specs["J2"], specs["tiebreak"]]
         for item in descriptors:
             validate_model_route(item)
@@ -136,4 +138,5 @@ def build_provisional_judges(
         j1=j1, j2=j2, allowed_models=allowed,
         usage_sink=usage_sink,
         single_model_rehearsal=bool(specs and specs.get("single_model_rehearsal", False)),
+        allow_repeated_models=bool(specs and specs.get("allow_repeated_models", False)),
     )
