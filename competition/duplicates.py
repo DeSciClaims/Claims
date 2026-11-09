@@ -11,6 +11,7 @@ import ast
 import hashlib
 import io
 import json
+import lzma
 import tarfile
 import zipfile
 import zlib
@@ -164,10 +165,12 @@ def python_source_fingerprint(package: bytes, *, max_source_bytes: int = 5_000_0
                     if source is None:
                         raise ValueError("unreadable Python source")
                     sources.append(source.read(max_source_bytes + 1))
-    except (zipfile.BadZipFile, tarfile.TarError, zlib.error, OSError, EOFError,
-            UnicodeError, RuntimeError, NotImplementedError) as exc:
+    except (zipfile.BadZipFile, tarfile.TarError, zlib.error, lzma.LZMAError,
+            OSError, EOFError, UnicodeError, RuntimeError, NotImplementedError,
+            TypeError) as exc:
         # Corrupt streams, encrypted or unsupported members and runaway
         # nesting are all miner faults; keep them out of the controller loop.
+        # tarfile's streaming gzip reader raises TypeError on a truncated header.
         raise ValueError("invalid package archive") from exc
     if not sources:
         return None
