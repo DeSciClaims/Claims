@@ -61,8 +61,10 @@ def test_worker_installs_and_runs_wheel_with_phase_logs(tmp_path):
     assert "sk-bf-test" not in record
 
 
-@pytest.mark.parametrize("text", ['{"a": NaN}', '{"a": Infinity}', '{"a": -Infinity}', "[" * 100_000],
-                         ids=["nan", "infinity", "negative-infinity", "deep-nesting"])
+@pytest.mark.parametrize("text", ['{"a": NaN}', '{"a": Infinity}', '{"a": -Infinity}',
+                                  '{"a": 1e400}', '{"a": -1e400}', "[" * 100_000],
+                         ids=["nan", "infinity", "negative-infinity", "overflow",
+                              "negative-overflow", "deep-nesting"])
 def test_miner_output_json_must_be_strict_and_bounded(tmp_path, text):
     path = tmp_path / "output.json"
     path.write_text(text, encoding="utf-8")

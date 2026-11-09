@@ -9,6 +9,7 @@ and host firewall, not by this Python process.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shlex
@@ -35,15 +36,24 @@ def _reject_constant(name: str):
     raise ValueError(f"output JSON contains {name}")
 
 
+def _finite_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError("output JSON contains a number outside the float range")
+    return value
+
+
 def read_output_json(path: Path):
     """Parse miner output strictly: finite numbers only and bounded nesting.
 
-    ``json.loads`` accepts NaN and Infinity, which the guest cannot serialise
-    back for the control side, and it raises RecursionError on deeply nested
-    input. Both are package faults, so they surface here as ValueError.
+    ``json.loads`` accepts NaN and Infinity, and turns literals such as 1e400
+    into infinity; the guest cannot serialise any of these back for the
+    control side. It also raises RecursionError on deeply nested input. All
+    are package faults, so they surface here as ValueError.
     """
     try:
-        return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_constant)
+        return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_constant,
+                          parse_float=_finite_float)
     except RecursionError as exc:
         raise ValueError("output JSON nests too deeply") from exc
 
