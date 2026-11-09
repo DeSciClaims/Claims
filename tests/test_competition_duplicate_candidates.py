@@ -111,3 +111,28 @@ def test_malformed_archive_yields_per_package_error_without_aborting_report(monk
     monkeypatch.setattr("competition.duplicate_candidates.MAX_EXPANDED_BYTES", 100)
     with pytest.raises(ValueError, match="expanded limits"):
         scan_candidate_source(_wheel("def run(x): return x", prompt="x" * 101))
+
+
+def _corrupt_deflate_wheel() -> bytes:
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("miner/pipeline.py", "x = 1\n" * 200)
+    data = bytearray(stream.getvalue())
+    info = zipfile.ZipFile(io.BytesIO(bytes(data))).infolist()[0]
+    start = info.header_offset + zipfile.sizeFileHeader + len(info.filename) + len(info.extra)
+    for index in range(start, start + 6):
+        data[index] ^= 0xFF
+    return bytes(data)
+
+
+def test_corrupt_compressed_stream_is_a_scan_error_not_a_report_crash():
+    valid = _wheel("def run(paper): return paper")
+    bad = _corrupt_deflate_wheel()
+    with pytest.raises(ValueError, match="not a readable wheel"):
+        scan_candidate_source(bad)
+    report = candidate_review_report(
+        [_entry("good", valid, "good-team"), _entry("bad", bad, "bad-team")],
+        packages={"good": valid, "bad": bad},
+    )
+    assert "bad" in report["scan_errors"]
+    assert report["comparisons"] == []

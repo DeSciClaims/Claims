@@ -13,6 +13,7 @@ import io
 import json
 import tarfile
 import zipfile
+import zlib
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
@@ -63,7 +64,8 @@ def _archive_members(package: bytes) -> Iterable[tuple[str, bytes]]:
                         if source is None:
                             raise ValueError("candidate archive has unreadable member")
                         yield member.name, source.read(member.size + 1)
-    except (zipfile.BadZipFile, tarfile.TarError, OSError, EOFError) as exc:
+    except (zipfile.BadZipFile, tarfile.TarError, zlib.error, OSError, EOFError,
+            RuntimeError, NotImplementedError) as exc:
         raise ValueError("candidate package is not a readable wheel or sdist") from exc
 
 
