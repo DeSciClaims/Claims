@@ -40,6 +40,10 @@ class DspyReActRuntime:
             api_base=self.config.api_base,
             temperature=self.config.temperature,
             max_tokens=self.config.max_tokens,
+            # DSPy caches raw completions before ReAct parses them. A truncated or
+            # malformed response can otherwise be replayed on every repair attempt
+            # and across process restarts from its disk cache.
+            cache=False,
         )
 
         class CompileSignature(dspy_module.Signature):
