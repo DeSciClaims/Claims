@@ -29,7 +29,10 @@ from .weekly_automation import FinalAudit
 
 
 _MINER_ONLY_CUTOVER_ROUND = "round_20261109T120000Z_mainnet"
-_MINER_ONLY_CUTOVER_CONFIGURATION_SHA256 = "b3afcaba4014102cc85f90d33ab3898e77971d73d670fe9f927eeb7517b94de1"
+_PAYOUT_CUTOVER_CONFIGURATION_SHA256 = frozenset({
+    "b3afcaba4014102cc85f90d33ab3898e77971d73d670fe9f927eeb7517b94de1",
+    "eb76780bfe0ce0ca08863d0ad46873c78ace4592942bf417c51adfc970d70349",
+})
 _PAYOUT_ONLY_SOURCE_FILES = frozenset({
     "legacy_weight_carry.py", "replay_publication.py", "replay_weights.py",
     "result_controller.py", "weight_heartbeat.py", "weights.py",
@@ -46,7 +49,7 @@ def _payout_only_runtime_cutover(
     exception does not accept changes to any scorer, judge, model, or budget.
     """
     if (round_id != _MINER_ONLY_CUTOVER_ROUND
-        or canonical_sha256(configuration) != _MINER_ONLY_CUTOVER_CONFIGURATION_SHA256):
+        or canonical_sha256(configuration) not in _PAYOUT_CUTOVER_CONFIGURATION_SHA256):
         return False
     if any(configuration.get(key) != runtime.get(key)
            for key in set(configuration) | set(runtime)

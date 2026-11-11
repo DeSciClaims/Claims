@@ -307,8 +307,8 @@ def test_current_round_accepts_only_payout_source_changes(monkeypatch):
                "competition_policy_runtime": {"source_sha256": {
                    "weights.py": "new", "result_controller.py": "new",
                    "pilot_controller_factory.py": "new", "pair_evaluator.py": "same"}}}
-    monkeypatch.setattr(factory, "_MINER_ONLY_CUTOVER_CONFIGURATION_SHA256",
-                        canonical_sha256(frozen))
+    monkeypatch.setattr(factory, "_PAYOUT_CUTOVER_CONFIGURATION_SHA256",
+                        frozenset({canonical_sha256(frozen)}))
     round_id = factory._MINER_ONLY_CUTOVER_ROUND
     assert factory._payout_only_runtime_cutover(round_id, frozen, runtime)
     assert not factory._payout_only_runtime_cutover("another-round", frozen, runtime)
