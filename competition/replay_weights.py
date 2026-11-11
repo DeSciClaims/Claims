@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Mapping
 
 from .final_selection import FinalSelection
-from .weights import Payee, WeightPlan, weekly_weight_plan
+from .weights import MINER_ONLY_POLICY, Payee, WeightPlan, weekly_weight_plan
 
 
 def replay_weight_plan(
@@ -53,4 +53,5 @@ def replay_weight_plan(
         operator_hotkey=operator_hotkey, production=production,
         finalists=finalists, uid_by_hotkey=uid_by_hotkey,
         burn_uid=burn_uid, winner_gain=selection.winner_gain,
+        allocation_policy=MINER_ONLY_POLICY,
     )

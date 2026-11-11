@@ -1,4 +1,4 @@
-"""Pure weekly 90/10 weight allocation; chain submission is a separate step."""
+"""Pure weekly weight allocation; chain submission is a separate step."""
 
 from __future__ import annotations
 
@@ -22,12 +22,18 @@ class WeightPlan:
     weights_by_uid: dict[int, float]
     roles: tuple[tuple[str, str, float], ...]
     burned_fraction: float
+    allocation_policy: str = "operator_90_miner_10_v1"
+
+
+MINER_ONLY_POLICY = "miner_only_70_20_10_v1"
+LEGACY_POLICY = "operator_90_miner_10_v1"
 
 
 def weekly_weight_plan(
     *, operator_hotkey: str, production: Payee | None,
     finalists: list[Payee], uid_by_hotkey: Mapping[str, int],
     burn_uid: int = 0, winner_gain: float = 0.0,
+    allocation_policy: str = LEGACY_POLICY,
 ) -> WeightPlan:
     """Allocate 70/20/10 of the miner pool; never reassign vacant slots.
 
@@ -35,8 +41,11 @@ def weekly_weight_plan(
     burn and must re-resolve all hotkeys to UIDs at every weight heartbeat.
     A missing/unqualified production payee burns its 70% miner slot.
     """
+    if allocation_policy not in {LEGACY_POLICY, MINER_ONLY_POLICY}:
+        raise ValueError("unknown weekly allocation policy")
     operator_uid = uid_by_hotkey.get(operator_hotkey)
-    if operator_uid is None or operator_uid == burn_uid or operator_uid < 0 or burn_uid < 0:
+    if burn_uid < 0 or (allocation_policy == LEGACY_POLICY and
+                        (operator_uid is None or operator_uid == burn_uid or operator_uid < 0)):
         raise ValueError("operator and burn UIDs must be distinct registered UIDs")
     if not math.isfinite(winner_gain):
         raise ValueError("winner gain must be finite")
@@ -46,8 +55,10 @@ def weekly_weight_plan(
     for item in finalists + ([production] if production else []):
         if not item.hotkey or not item.team_id or not math.isfinite(item.gain):
             raise ValueError("payee has invalid identity or gain")
-    weights: dict[int, float] = {operator_uid: 0.90}
-    roles: list[tuple[str, str, float]] = [(operator_hotkey, "operator", 0.90)]
+    weights: dict[int, float] = {operator_uid: 0.90} if allocation_policy == LEGACY_POLICY else {}
+    roles: list[tuple[str, str, float]] = (
+        [(operator_hotkey, "operator", 0.90)] if allocation_policy == LEGACY_POLICY else []
+    )
     burned = 0.0
 
     def assign(role: str, item: Payee | None, share: float) -> None:
@@ -64,7 +75,8 @@ def weekly_weight_plan(
 
     if production and (production.copy or not production.code_passed):
         raise ValueError("production package must pass copy and code checks")
-    assign("production", production, 0.07)
+    shares = (0.07, 0.02, 0.01) if allocation_policy == LEGACY_POLICY else (0.7, 0.2, 0.1)
+    assign("production", production, shares[0])
     eligible = sorted(
         (
             item for item in finalists
@@ -84,10 +96,10 @@ def weekly_weight_plan(
         paid_teams.add(item.team_id)
         if len(runners) == 2:
             break
-    for index, share in enumerate((0.02, 0.01)):
+    for index, share in enumerate(shares[1:]):
         assign(f"runner_up_{index + 1}", runners[index] if index < len(runners) else None, share)
     if burned:
         weights[burn_uid] = burned
     if abs(sum(weights.values()) - 1.0) > 1e-12:
         raise AssertionError("weekly weight vector does not sum to one")
-    return WeightPlan(dict(sorted(weights.items())), tuple(roles), burned)
+    return WeightPlan(dict(sorted(weights.items())), tuple(roles), burned, allocation_policy)

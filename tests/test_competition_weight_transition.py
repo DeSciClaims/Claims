@@ -114,6 +114,18 @@ def test_legacy_waits_six_hours_and_restores_cadence_after_restart(tmp_path):
     assert len(chain.calls) == 2
 
 
+def test_miner_only_cutover_reweights_signed_legacy_miners_immediately(tmp_path):
+    _, clock, chain, _, make = setup(tmp_path)
+    assert make().step()["status"] == "submitted"
+    assert chain.calls[-1]["uids"] == [2, 3]
+    clock[0] += timedelta(minutes=1)
+    chain.block += 5
+    switched = make(legacy_miner_only=True).step()
+    assert switched["status"] == "submitted"
+    assert switched["weights"] == {3: pytest.approx(1.0)}
+    assert chain.calls[-1]["uids"] == [3]
+
+
 def test_first_competition_result_replaces_legacy_then_repeats_six_hourly(tmp_path):
     signer, clock, chain, fetch, make = setup(tmp_path)
     heartbeat = make()

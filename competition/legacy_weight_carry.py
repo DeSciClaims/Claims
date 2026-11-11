@@ -169,8 +169,9 @@ def verify_legacy_weights(
 
 def project_legacy_weights(
     bundle: dict, *, hotkeys_by_uid: list[str], owner_hotkey: str, burn_uid: int = 0,
+    operator_hotkey: str | None = None, miner_only: bool = False,
 ) -> dict[int, float]:
-    """Preserve legacy shares, re-resolving payees and burning pruned identities."""
+    """Project signed historical shares; optionally remove and normalize the operator."""
     validated = _validated_bundle(bundle)
     if (not isinstance(hotkeys_by_uid, list) or not hotkeys_by_uid
         or type(burn_uid) is not int or not 0 <= burn_uid < len(hotkeys_by_uid)
@@ -181,9 +182,23 @@ def project_legacy_weights(
         raise ValueError("legacy carry metagraph contains duplicate hotkeys")
     uid_by_hotkey = {hotkey: uid for uid, hotkey in enumerate(hotkeys)}
     shares: dict[int, list[float]] = {}
-    for entry in validated["entries"]:
+    entries = validated["entries"]
+    if miner_only:
+        if not operator_hotkey:
+            raise ValueError("miner-only legacy carry requires the operator hotkey")
+        _hotkey(operator_hotkey)
+        operator_rows = [entry for entry in entries if entry["hotkey"] == operator_hotkey]
+        if len(operator_rows) != 1:
+            raise ValueError("signed legacy carry must identify exactly one operator")
+        entries = [entry for entry in entries if entry["hotkey"] != operator_hotkey]
+        miner_total = math.fsum(entry["weight"] for entry in entries)
+        if miner_total <= 0:
+            raise ValueError("signed legacy carry has no miner allocation")
+    else:
+        miner_total = 1.0
+    for entry in entries:
         uid = uid_by_hotkey.get(entry["hotkey"], burn_uid)
-        shares.setdefault(uid, []).append(float(entry["weight"]))
+        shares.setdefault(uid, []).append(float(entry["weight"]) / miner_total)
     result = {uid: math.fsum(weights) for uid, weights in sorted(shares.items())}
     if not math.isclose(math.fsum(result.values()), 1.0, rel_tol=0, abs_tol=_SUM_TOLERANCE):
         raise ValueError("projected legacy carry weights do not sum to one")

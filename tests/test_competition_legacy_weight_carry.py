@@ -67,6 +67,19 @@ def test_projection_uses_current_hotkeys_instead_of_historical_uids(bundle, keys
         }
 
 
+def test_miner_only_carry_preserves_relative_miner_shares(bundle, keys):
+    _, owner, operator, miner, other, _ = keys
+    result = project_legacy_weights(
+        bundle, owner_hotkey=owner.ss58_address,
+        hotkeys_by_uid=[owner.ss58_address, operator.ss58_address,
+                        miner.ss58_address, other.ss58_address],
+        operator_hotkey=operator.ss58_address, miner_only=True,
+    )
+    assert result == pytest.approx({0: 0.13 / 0.49, 2: 0.125 / 0.49,
+                                    3: 0.235 / 0.49})
+    assert 1 not in result
+
+
 @pytest.mark.parametrize("change", ["network", "netuid", "signer"])
 def test_receipt_is_bound_to_the_validator_network_and_subnet(bundle, keys, change):
     receipt = seal_legacy_weights(bundle, keys[0])

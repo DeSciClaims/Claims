@@ -70,6 +70,7 @@ def replay_publication_bundle(
     if any(snapshot.get(key) is None for key in frozen):
         raise ValueError("replay publication lacks frozen input identity")
     weights = {
+        "allocation_policy": weight_plan.allocation_policy,
         "vector": [{"uid": uid, "weight": weight}
                    for uid, weight in sorted(weight_plan.weights_by_uid.items())],
         "roles": [{"hotkey": hotkey, "role": role, "share": share}

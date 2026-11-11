@@ -1,4 +1,5 @@
 from bittensor_wallet import Keypair
+import pytest
 
 from competition.final_selection import FinalSelection, FinalistVerdict
 from competition.gold import GoldResult
@@ -130,7 +131,7 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
     assert bundle["results"]["worker_security_audit"]["winner"]["passed"] is True
     assert bundle["results"]["code_audit"]["failed_checks"] == {"winner": 0, "runner": 0}
     assert {row["uid"]: row["weight"] for row in bundle["weights"]["vector"]} == {
-        0: 0.01, 1: 0.07, 2: 0.02, 9: 0.90,
+        0: 0.1, 1: 0.7, 2: 0.2,
     }
 
 
@@ -185,5 +186,5 @@ def test_signed_reference_fallback_burns_all_miner_shares():
     assert bundle["results"]["fallback_reference_hotkey"] == "reference"
     assert bundle["results"]["production_hotkey"] is None
     assert bundle["weights"]["vector"] == [
-        {"uid": 0, "weight": 0.1}, {"uid": 9, "weight": 0.9},
+        {"uid": 0, "weight": pytest.approx(1.0)},
     ]

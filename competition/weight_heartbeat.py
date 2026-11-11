@@ -19,13 +19,24 @@ from bittensor_wallet import Keypair
 from .publication import FROZEN_FIELDS, PUBLICATION_SCHEMA, canonical_sha256
 from .replay_publication import REPLAY_PUBLICATION_SCHEMA
 from .legacy_weight_carry import verify_legacy_weights, project_legacy_weights
+from .weights import LEGACY_POLICY, MINER_ONLY_POLICY
 
-ROLE_SHARES = {
+LEGACY_ROLE_SHARES = {
     "operator": 0.90,
     "production": 0.07,
     "runner_up_1": 0.02,
     "runner_up_2": 0.01,
 }
+MINER_ROLE_SHARES = {"production": 0.7, "runner_up_1": 0.2, "runner_up_2": 0.1}
+
+
+def _role_shares(weights: Mapping[str, Any]) -> dict[str, float]:
+    policy = weights.get("allocation_policy", LEGACY_POLICY)
+    if policy == LEGACY_POLICY:
+        return LEGACY_ROLE_SHARES
+    if policy == MINER_ONLY_POLICY:
+        return MINER_ROLE_SHARES
+    raise ValueError("unknown weekly allocation policy")
 
 
 def verify_weekly_receipt(
@@ -86,16 +97,17 @@ def verify_weekly_receipt(
                or not math.isfinite(weight) or weight <= 0
                for uid, weight in vector_rows)
         or not math.isclose(sum(weight for _, weight in vector_rows), 1.0, abs_tol=1e-9)
-        or sum(math.isclose(weight, 0.90, abs_tol=1e-9)
-               for _, weight in vector_rows) != 1):
+        or (weights.get("allocation_policy", LEGACY_POLICY) == LEGACY_POLICY
+            and sum(math.isclose(weight, 0.90, abs_tol=1e-9)
+                    for _, weight in vector_rows) != 1)):
         raise ValueError("weekly publication weight vector is invalid")
-    _validated_roles(weights.get("roles"))
+    _validated_roles(weights.get("roles"), _role_shares(weights))
     return bundle
 
 
-def _validated_roles(value: Any) -> dict[str, tuple[str, bool]]:
-    if not isinstance(value, list) or len(value) != len(ROLE_SHARES):
-        raise ValueError("weekly publication must name four payout roles")
+def _validated_roles(value: Any, role_shares: Mapping[str, float]) -> dict[str, tuple[str, bool]]:
+    if not isinstance(value, list) or len(value) != len(role_shares):
+        raise ValueError("weekly publication payout role count differs from policy")
     roles: dict[str, tuple[str, bool]] = {}
     for row in value:
         if not isinstance(row, dict):
@@ -105,14 +117,14 @@ def _validated_roles(value: Any) -> dict[str, tuple[str, bool]]:
             raise ValueError("weekly payout role identity is malformed")
         burned = raw_role.endswith("_burned")
         role = raw_role.removesuffix("_burned")
-        if (role not in ROLE_SHARES or role in roles
+        if (role not in role_shares or role in roles
             or isinstance(share, bool) or not isinstance(share, int | float)
-            or not math.isclose(share, ROLE_SHARES[role], abs_tol=1e-12)
+            or not math.isclose(share, role_shares[role], abs_tol=1e-12)
             or (role == "operator" and (burned or not hotkey))
             or (not burned and not hotkey)):
             raise ValueError("weekly payout role or share is invalid")
         roles[role] = (hotkey, burned)
-    if set(roles) != set(ROLE_SHARES):
+    if set(roles) != set(role_shares):
         raise ValueError("weekly payout roles are incomplete")
     active_hotkeys = [hotkey for hotkey, burned in roles.values() if not burned]
     if len(active_hotkeys) != len(set(active_hotkeys)):
@@ -133,15 +145,16 @@ def project_weekly_weights(
     weights = bundle.get("weights")
     if not isinstance(weights, Mapping):
         raise ValueError("weekly publication has no weights")
-    roles = _validated_roles(weights.get("roles"))
-    if roles["operator"] != (operator_hotkey, False):
+    role_shares = _role_shares(weights)
+    roles = _validated_roles(weights.get("roles"), role_shares)
+    if "operator" in roles and roles["operator"] != (operator_hotkey, False):
         raise ValueError("weekly operator differs from configured operator")
     uid_by_hotkey = {hotkey: uid for uid, hotkey in enumerate(hotkeys_by_uid)}
     operator_uid = uid_by_hotkey.get(operator_hotkey)
-    if operator_uid is None or operator_uid == burn_uid:
+    if "operator" in roles and (operator_uid is None or operator_uid == burn_uid):
         raise ValueError("weekly operator is not registered as a receiving UID")
     result: dict[int, float] = {}
-    for role, share in ROLE_SHARES.items():
+    for role, share in role_shares.items():
         hotkey, burned = roles[role]
         uid = burn_uid if burned else uid_by_hotkey.get(hotkey, burn_uid)
         if uid == operator_uid and role != "operator":
@@ -201,6 +214,7 @@ class WeeklyWeightHeartbeat:
         independent: bool = False,
         submission_interval_seconds: int | None = None,
         legacy_receipt_path: Path | None = None,
+        legacy_miner_only: bool = False,
         state_path: Path | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
@@ -221,6 +235,7 @@ class WeeklyWeightHeartbeat:
             raise ValueError("legacy carry-forward is only supported by the primary heartbeat")
         self.submission_interval_seconds = submission_interval_seconds
         self.legacy_receipt_path = legacy_receipt_path
+        self.legacy_miner_only = legacy_miner_only
         self.state_path = state_path or cache_path.with_name(cache_path.name + ".state.json")
         self.now = now or (lambda: datetime.now(UTC))
         self.expected_signer = wallet.hotkey.ss58_address
@@ -414,13 +429,19 @@ class WeeklyWeightHeartbeat:
                 raise ValueError("chain submission changed after legacy capture; reconcile before starting")
             weights_by_uid = project_legacy_weights(
                 bundle, hotkeys_by_uid=hotkeys, owner_hotkey=str(info.owner_hotkey),
+                operator_hotkey=self.operator_hotkey, miner_only=self.legacy_miner_only,
             )
         else:
             weights_by_uid = project_weekly_weights(
                 bundle, hotkeys_by_uid=hotkeys, owner_hotkey=str(info.owner_hotkey),
                 operator_hotkey=self.operator_hotkey,
             )
-        allocation_id = receipt["bundle_sha256"]
+        allocation_id = (
+            canonical_sha256({"receipt_sha256": receipt["bundle_sha256"],
+                              "policy": "legacy_miner_only_proportional_v1"})
+            if legacy_bundle is not None and self.legacy_miner_only
+            else receipt["bundle_sha256"]
+        )
         result = {"allocation_kind": kind, "source": source, "current_block": block,
                   "weights": weights_by_uid}
         if kind == "competition":
@@ -473,7 +494,10 @@ class WeeklyWeightHeartbeat:
             # Apply a newly published allocation promptly without depending on
             # historical state availability. The SDK still enforces chain rate
             # limits and commit/reveal rules for the actual transaction.
-            new_competition = kind == "competition" and state.get("allocation_id") != allocation_id
+            new_competition = (
+                (kind == "competition" or self.legacy_miner_only)
+                and state.get("allocation_id") != allocation_id
+            )
             anchors = []
             if legacy_bundle is not None:
                 anchors.append(_utc_time(legacy_bundle["last_update_at"]))

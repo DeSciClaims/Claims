@@ -19,6 +19,10 @@ Declare the same `team_id` for pipelines controlled by the same operator or team
 
 Required funding evidence is checked per entry. An unresolved entry may run prescreen but cannot advance; if prescreen is skipped, it is held before evaluation. Other eligible entries continue. The backend records the decision with the round's immutable team evidence, and the public submission list shows the hold reason. Later funding resolution applies to subsequent rounds. If no eligible field remains, the round closes without a contest or new rewards.
 
+## Competition weights
+
+Effective 11 November 2026, competition weights allocate the full vector to the selected production pipeline (70%), the first eligible runner-up (20%), and the second eligible runner-up (10%). Runner-ups must meet the published score band and team rules. A vacant or unqualified slot is burned; its share is not redistributed. The operator receives no competition weight. Published results include the allocation policy and signed weight vector. Before the first competition result, the last signed extraction vector is carried forward with its operator entry removed and the remaining miner shares scaled proportionally to sum to one. Historical scores and already accepted chain weights are unchanged.
+
 ## Worker inference
 
 The sample package and the reference pipeline are separate implementations. The generated `claims_reference_competition-0.1.0` wheel is built from the public [reference adapter and build guide](https://github.com/DeSciClaims/claims-reference-miner#competition-baseline-package), using the round's pinned extraction source and reference profile.

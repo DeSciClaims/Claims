@@ -1,6 +1,19 @@
 import pytest
 
-from competition.weights import Payee, weekly_weight_plan
+from competition.weights import MINER_ONLY_POLICY, Payee, weekly_weight_plan
+
+
+def test_miner_only_policy_pays_full_slots_and_burns_vacancies():
+    king = Payee("king", "king-team", True, gain=0.04)
+    plan = weekly_weight_plan(
+        operator_hotkey="operator", production=king,
+        finalists=[king, Payee("runner", "other-team", True, gain=0.02)],
+        uid_by_hotkey={"operator": 9, "king": 1, "runner": 2},
+        winner_gain=king.gain, allocation_policy=MINER_ONLY_POLICY,
+    )
+    assert plan.weights_by_uid == pytest.approx({0: 0.1, 1: 0.7, 2: 0.2})
+    assert plan.burned_fraction == pytest.approx(0.1)
+    assert all(role != "operator" for _, role, _ in plan.roles)
 
 
 def test_weight_plan_pays_distinct_qualified_teams_in_band():

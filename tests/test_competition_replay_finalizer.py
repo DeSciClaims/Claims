@@ -100,8 +100,8 @@ def test_replay_finalizer_waits_then_signs_own_gold_and_vector(monkeypatch, revi
         assert seen["selected"]["gold_by_hotkey"] == {}
         assert seen["receipt"]["bundle"]["gold_policy_id"] == "silver-tiebreak-v1"
     assert seen["receipt"]["bundle"]["weights"]["vector"] == [
-        {"uid": 0, "weight": 0.03}, {"uid": 1, "weight": 0.9},
-        {"uid": 2, "weight": 0.07},
+        {"uid": 0, "weight": pytest.approx(0.3)},
+        {"uid": 2, "weight": 0.7},
     ]
     assert seen["receipt"]["bundle"]["gold_adjusted_pairs_sha256"] == canonical_sha256(pairs)
     if reviewed:
