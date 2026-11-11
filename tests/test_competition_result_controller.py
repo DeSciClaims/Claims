@@ -130,9 +130,10 @@ def test_signed_publication_contains_crown_gold_and_70_20_10_weights():
     assert bundle["results"]["copy_audit"]["winner"]["jaccard"] == 0.4
     assert bundle["results"]["worker_security_audit"]["winner"]["passed"] is True
     assert bundle["results"]["code_audit"]["failed_checks"] == {"winner": 0, "runner": 0}
-    assert {row["uid"]: row["weight"] for row in bundle["weights"]["vector"]} == {
-        0: 0.1, 1: 0.7, 2: 0.2,
-    }
+    assert {row["uid"]: row["weight"] for row in bundle["weights"]["vector"]} == pytest.approx({
+        0: 0.875758 + 0.1 * (1 - 0.875758),
+        1: 0.7 * (1 - 0.875758), 2: 0.2 * (1 - 0.875758),
+    })
 
 
 def test_signed_reference_fallback_burns_all_miner_shares():

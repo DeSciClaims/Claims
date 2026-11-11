@@ -1,6 +1,19 @@
 import pytest
 
-from competition.weights import MINER_ONLY_POLICY, Payee, weekly_weight_plan
+from competition.weights import BURN_POLICY, MINER_ONLY_POLICY, Payee, weekly_weight_plan
+
+
+def test_burn_policy_reserves_base_burn_and_vacant_share():
+    king = Payee("king", "king-team", True, gain=0.04)
+    plan = weekly_weight_plan(
+        operator_hotkey="operator", production=king, finalists=[king],
+        uid_by_hotkey={"operator": 9, "king": 1},
+        allocation_policy=BURN_POLICY,
+    )
+    residual = 1 - 0.875758
+    assert plan.weights_by_uid == pytest.approx({0: 0.875758 + 0.3 * residual,
+                                                 1: 0.7 * residual})
+    assert plan.roles[0] == ("", "base_burn_burned", 0.875758)
 
 
 def test_miner_only_policy_pays_full_slots_and_burns_vacancies():

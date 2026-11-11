@@ -11,7 +11,7 @@ from .final_stage import effective_final_stage
 from .gold import GoldResult
 from .judge_diagnostics import final_judge_diagnostics
 from .publication import publication_bundle, sign_publication
-from .weights import MINER_ONLY_POLICY, Payee, weekly_weight_plan
+from .weights import BURN_POLICY, Payee, weekly_weight_plan
 
 
 class PublicationBackend(Protocol):
@@ -116,7 +116,7 @@ def publish_selected_round(
         operator_hotkey=operator_hotkey, production=production,
         finalists=finalists, uid_by_hotkey=uid_by_hotkey,
         burn_uid=burn_uid, winner_gain=selection.winner_gain,
-        allocation_policy=MINER_ONLY_POLICY,
+        allocation_policy=BURN_POLICY,
     )
     judge_diagnostics = final_judge_diagnostics(
         sample=backend.list_sample(round_id), pair_rows=list(selection.final_pair_rows),
@@ -157,7 +157,7 @@ def publish_selected_round(
         "cost_ledger": backend.worker_cost_ledger(round_id),
     }
     weights = {
-        "allocation_policy": MINER_ONLY_POLICY,
+        "allocation_policy": BURN_POLICY,
         "vector": [{"uid": uid, "weight": weight} for uid, weight in plan.weights_by_uid.items()],
         "roles": [{"hotkey": hotkey, "role": role, "share": share}
                   for hotkey, role, share in plan.roles],

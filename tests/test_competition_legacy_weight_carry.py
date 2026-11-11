@@ -80,6 +80,21 @@ def test_miner_only_carry_preserves_relative_miner_shares(bundle, keys):
     assert 1 not in result
 
 
+def test_miner_only_carry_applies_base_burn(bundle, keys):
+    _, owner, operator, miner, other, _ = keys
+    result = project_legacy_weights(
+        bundle, owner_hotkey=owner.ss58_address,
+        hotkeys_by_uid=[owner.ss58_address, operator.ss58_address,
+                        miner.ss58_address, other.ss58_address],
+        operator_hotkey=operator.ss58_address, miner_only=True,
+        base_burn=0.875758,
+    )
+    residual = 1 - 0.875758
+    assert result == pytest.approx({0: 0.875758 + residual * 0.13 / 0.49,
+                                    2: residual * 0.125 / 0.49,
+                                    3: residual * 0.235 / 0.49})
+
+
 @pytest.mark.parametrize("change", ["network", "netuid", "signer"])
 def test_receipt_is_bound_to_the_validator_network_and_subnet(bundle, keys, change):
     receipt = seal_legacy_weights(bundle, keys[0])

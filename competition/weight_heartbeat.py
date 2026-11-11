@@ -19,7 +19,7 @@ from bittensor_wallet import Keypair
 from .publication import FROZEN_FIELDS, PUBLICATION_SCHEMA, canonical_sha256
 from .replay_publication import REPLAY_PUBLICATION_SCHEMA
 from .legacy_weight_carry import verify_legacy_weights, project_legacy_weights
-from .weights import LEGACY_POLICY, MINER_ONLY_POLICY
+from .weights import BASE_BURN, BURN_POLICY, LEGACY_POLICY, MINER_ONLY_POLICY
 
 LEGACY_ROLE_SHARES = {
     "operator": 0.90,
@@ -36,6 +36,10 @@ def _role_shares(weights: Mapping[str, Any]) -> dict[str, float]:
         return LEGACY_ROLE_SHARES
     if policy == MINER_ONLY_POLICY:
         return MINER_ROLE_SHARES
+    if policy == BURN_POLICY:
+        return {"base_burn": BASE_BURN, **{
+            role: (1 - BASE_BURN) * share for role, share in MINER_ROLE_SHARES.items()
+        }}
     raise ValueError("unknown weekly allocation policy")
 
 
@@ -121,6 +125,7 @@ def _validated_roles(value: Any, role_shares: Mapping[str, float]) -> dict[str, 
             or isinstance(share, bool) or not isinstance(share, int | float)
             or not math.isclose(share, role_shares[role], abs_tol=1e-12)
             or (role == "operator" and (burned or not hotkey))
+            or (role == "base_burn" and (not burned or hotkey))
             or (not burned and not hotkey)):
             raise ValueError("weekly payout role or share is invalid")
         roles[role] = (hotkey, burned)
@@ -215,6 +220,7 @@ class WeeklyWeightHeartbeat:
         submission_interval_seconds: int | None = None,
         legacy_receipt_path: Path | None = None,
         legacy_miner_only: bool = False,
+        legacy_base_burn: float = 0.0,
         state_path: Path | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
@@ -236,6 +242,10 @@ class WeeklyWeightHeartbeat:
         self.submission_interval_seconds = submission_interval_seconds
         self.legacy_receipt_path = legacy_receipt_path
         self.legacy_miner_only = legacy_miner_only
+        if (not math.isfinite(legacy_base_burn) or not 0 <= legacy_base_burn < 1
+            or (legacy_base_burn and not legacy_miner_only)):
+            raise ValueError("legacy base burn requires miner-only carry-forward")
+        self.legacy_base_burn = legacy_base_burn
         self.state_path = state_path or cache_path.with_name(cache_path.name + ".state.json")
         self.now = now or (lambda: datetime.now(UTC))
         self.expected_signer = wallet.hotkey.ss58_address
@@ -430,6 +440,7 @@ class WeeklyWeightHeartbeat:
             weights_by_uid = project_legacy_weights(
                 bundle, hotkeys_by_uid=hotkeys, owner_hotkey=str(info.owner_hotkey),
                 operator_hotkey=self.operator_hotkey, miner_only=self.legacy_miner_only,
+                base_burn=self.legacy_base_burn,
             )
         else:
             weights_by_uid = project_weekly_weights(
@@ -438,7 +449,8 @@ class WeeklyWeightHeartbeat:
             )
         allocation_id = (
             canonical_sha256({"receipt_sha256": receipt["bundle_sha256"],
-                              "policy": "legacy_miner_only_proportional_v1"})
+                              "policy": "legacy_miner_only_proportional_v1",
+                              "base_burn": self.legacy_base_burn})
             if legacy_bundle is not None and self.legacy_miner_only
             else receipt["bundle_sha256"]
         )

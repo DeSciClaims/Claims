@@ -35,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Signed last-extraction allocation used before the first competition result")
     parser.add_argument("--legacy-miner-only", action="store_true",
                         help="Remove the operator from the signed legacy vector and normalize miner shares")
+    parser.add_argument("--legacy-base-burn", type=float, default=0.0,
+                        help="Fraction of miner-only carry-forward directed to owner burn UID")
     parser.add_argument("--state-path", type=Path)
     parser.add_argument("--audit-only", action="store_true")
     parser.add_argument("--independent", action="store_true",
@@ -63,6 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         submission_interval_seconds=args.submission_interval_seconds,
         legacy_receipt_path=args.legacy_receipt.expanduser() if args.legacy_receipt else None,
         legacy_miner_only=args.legacy_miner_only,
+        legacy_base_burn=args.legacy_base_burn,
         state_path=args.state_path.expanduser() if args.state_path else None,
     )
     while True:

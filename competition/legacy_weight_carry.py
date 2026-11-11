@@ -170,9 +170,13 @@ def verify_legacy_weights(
 def project_legacy_weights(
     bundle: dict, *, hotkeys_by_uid: list[str], owner_hotkey: str, burn_uid: int = 0,
     operator_hotkey: str | None = None, miner_only: bool = False,
+    base_burn: float = 0.0,
 ) -> dict[int, float]:
     """Project signed historical shares; optionally remove and normalize the operator."""
     validated = _validated_bundle(bundle)
+    if (not math.isfinite(base_burn) or not 0 <= base_burn < 1
+        or (base_burn and not miner_only)):
+        raise ValueError("base burn requires miner-only carry-forward")
     if (not isinstance(hotkeys_by_uid, list) or not hotkeys_by_uid
         or type(burn_uid) is not int or not 0 <= burn_uid < len(hotkeys_by_uid)
         or _hotkey(owner_hotkey) != hotkeys_by_uid[burn_uid]):
@@ -198,7 +202,9 @@ def project_legacy_weights(
         miner_total = 1.0
     for entry in entries:
         uid = uid_by_hotkey.get(entry["hotkey"], burn_uid)
-        shares.setdefault(uid, []).append(float(entry["weight"]) / miner_total)
+        shares.setdefault(uid, []).append(float(entry["weight"]) / miner_total * (1 - base_burn))
+    if base_burn:
+        shares.setdefault(burn_uid, []).append(base_burn)
     result = {uid: math.fsum(weights) for uid, weights in sorted(shares.items())}
     if not math.isclose(math.fsum(result.values()), 1.0, rel_tol=0, abs_tol=_SUM_TOLERANCE):
         raise ValueError("projected legacy carry weights do not sum to one")

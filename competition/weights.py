@@ -27,6 +27,8 @@ class WeightPlan:
 
 MINER_ONLY_POLICY = "miner_only_70_20_10_v1"
 LEGACY_POLICY = "operator_90_miner_10_v1"
+BURN_POLICY = "burn_875758_miner_70_20_10_v1"
+BASE_BURN = 0.875758
 
 
 def weekly_weight_plan(
@@ -41,7 +43,7 @@ def weekly_weight_plan(
     burn and must re-resolve all hotkeys to UIDs at every weight heartbeat.
     A missing/unqualified production payee burns its 70% miner slot.
     """
-    if allocation_policy not in {LEGACY_POLICY, MINER_ONLY_POLICY}:
+    if allocation_policy not in {LEGACY_POLICY, MINER_ONLY_POLICY, BURN_POLICY}:
         raise ValueError("unknown weekly allocation policy")
     operator_uid = uid_by_hotkey.get(operator_hotkey)
     if burn_uid < 0 or (allocation_policy == LEGACY_POLICY and
@@ -59,7 +61,9 @@ def weekly_weight_plan(
     roles: list[tuple[str, str, float]] = (
         [(operator_hotkey, "operator", 0.90)] if allocation_policy == LEGACY_POLICY else []
     )
-    burned = 0.0
+    burned = BASE_BURN if allocation_policy == BURN_POLICY else 0.0
+    if allocation_policy == BURN_POLICY:
+        roles.append(("", "base_burn_burned", BASE_BURN))
 
     def assign(role: str, item: Payee | None, share: float) -> None:
         nonlocal burned
@@ -75,7 +79,9 @@ def weekly_weight_plan(
 
     if production and (production.copy or not production.code_passed):
         raise ValueError("production package must pass copy and code checks")
-    shares = (0.07, 0.02, 0.01) if allocation_policy == LEGACY_POLICY else (0.7, 0.2, 0.1)
+    shares = ((0.07, 0.02, 0.01) if allocation_policy == LEGACY_POLICY else
+              tuple((1 - BASE_BURN) * share for share in (0.7, 0.2, 0.1))
+              if allocation_policy == BURN_POLICY else (0.7, 0.2, 0.1))
     assign("production", production, shares[0])
     eligible = sorted(
         (

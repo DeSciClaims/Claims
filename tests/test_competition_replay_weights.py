@@ -21,8 +21,11 @@ def test_replay_builds_weekly_vector_from_local_winner():
         qualified_by_hotkey={"miner-1": True},
         uid_by_hotkey={"operator": 1, "miner-1": 2},
     )
-    assert plan.weights_by_uid == pytest.approx({0: 0.3, 2: 0.7})
-    assert plan.burned_fraction == pytest.approx(0.3)
+    assert plan.weights_by_uid == pytest.approx({
+        0: 0.875758 + 0.3 * (1 - 0.875758),
+        2: 0.7 * (1 - 0.875758),
+    })
+    assert plan.burned_fraction == pytest.approx(0.875758 + 0.3 * (1 - 0.875758))
 
 
 def test_replay_burns_unqualified_incumbent_share():
