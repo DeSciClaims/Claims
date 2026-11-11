@@ -8,6 +8,7 @@ an implicit code pass or invents a qualified voter.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -25,6 +26,39 @@ from .provisional_judges import validate_provisional_judge_routes
 from .publication import canonical_sha256
 from .round_setup import _canonical_bytes, _write_once
 from .weekly_automation import FinalAudit
+
+
+_MINER_ONLY_CUTOVER_ROUND = "round_20261109T120000Z_mainnet"
+_MINER_ONLY_CUTOVER_CONFIGURATION_SHA256 = "b3afcaba4014102cc85f90d33ab3898e77971d73d670fe9f927eeb7517b94de1"
+_PAYOUT_ONLY_SOURCE_FILES = frozenset({
+    "legacy_weight_carry.py", "replay_publication.py", "replay_weights.py",
+    "result_controller.py", "weight_heartbeat.py", "weights.py",
+    "pilot_controller_factory.py",
+})
+
+
+def _payout_only_runtime_cutover(
+    round_id: str, configuration: Mapping[str, Any], runtime: Mapping[str, Any],
+) -> bool:
+    """Allow this already-scored round to change only payout source files.
+
+    The original source hashes remain in the frozen round. This explicit
+    exception does not accept changes to any scorer, judge, model, or budget.
+    """
+    if (round_id != _MINER_ONLY_CUTOVER_ROUND
+        or canonical_sha256(configuration) != _MINER_ONLY_CUTOVER_CONFIGURATION_SHA256):
+        return False
+    if any(configuration.get(key) != runtime.get(key)
+           for key in set(configuration) | set(runtime)
+           if key != "competition_policy_runtime"):
+        return False
+    original = configuration.get("competition_policy_runtime", {}).get("source_sha256")
+    current = runtime.get("competition_policy_runtime", {}).get("source_sha256")
+    if not isinstance(original, dict) or not isinstance(current, dict):
+        return False
+    changed = {name for name in set(original) | set(current)
+               if original.get(name) != current.get(name)}
+    return {"weights.py", "result_controller.py"} <= changed <= _PAYOUT_ONLY_SOURCE_FILES
 
 
 def prepare_evaluation(row, backend):
@@ -188,7 +222,11 @@ def create_bronze_inputs(row: Mapping[str, Any], backend: Any) -> Any:
     if (not isinstance(configuration, dict)
         or canonical_sha256(configuration) != row["configuration_sha256"]
         or document.get("configuration_sha256") != row["configuration_sha256"]
-        or configuration.get("competition_policy_runtime") != policy_runtime_config()
+        or (configuration.get("competition_policy_runtime") != policy_runtime_config()
+            and not _payout_only_runtime_cutover(
+                round_id, configuration,
+                {**configuration, "competition_policy_runtime": policy_runtime_config()},
+            ))
         or configuration.get("silver_runtime") != silver_runtime_config()):
         raise ValueError("Bronze preparation runtime differs from frozen round")
     wallet = bt.Wallet(name=_required("CLAIMS_COMPETITION_WALLET_NAME"),
@@ -285,7 +323,10 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         rules_revision=int(row.get("rules_revision", 1)),
     )
     if policy.configuration_sha256 != rules.configuration_sha256 or policy.configuration != configuration:
-        raise ValueError("controller model runtime differs from frozen round")
+        if not _payout_only_runtime_cutover(round_id, configuration, policy.configuration):
+            raise ValueError("controller model runtime differs from frozen round")
+        policy = replace(policy, configuration=configuration,
+                         configuration_sha256=rules.configuration_sha256)
     netuid = int(_required("CLAIMS_COMPETITION_NETUID"))
     from neurons.backend_client import ClaimsBackendClient
     from .bronze_generation import configured_bronze_preparer

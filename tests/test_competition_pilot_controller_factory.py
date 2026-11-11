@@ -295,3 +295,25 @@ def test_controller_factory_reconstructs_real_provisional_judges(tmp_path, monke
     inputs = create_controller_inputs(row, object())
     assert inputs.evaluation.configuration_sha256 == policy.configuration_sha256
     assert inputs.evaluation.public_judge_config() == policy.public_judge_config()
+def test_current_round_accepts_only_payout_source_changes(monkeypatch):
+    from competition import pilot_controller_factory as factory
+    from competition.publication import canonical_sha256
+
+    frozen = {"judge_specs": {"model": "unchanged"},
+              "competition_policy_runtime": {"source_sha256": {
+                  "weights.py": "old", "result_controller.py": "old",
+                  "pilot_controller_factory.py": "old", "pair_evaluator.py": "same"}}}
+    runtime = {"judge_specs": {"model": "unchanged"},
+               "competition_policy_runtime": {"source_sha256": {
+                   "weights.py": "new", "result_controller.py": "new",
+                   "pilot_controller_factory.py": "new", "pair_evaluator.py": "same"}}}
+    monkeypatch.setattr(factory, "_MINER_ONLY_CUTOVER_CONFIGURATION_SHA256",
+                        canonical_sha256(frozen))
+    round_id = factory._MINER_ONLY_CUTOVER_ROUND
+    assert factory._payout_only_runtime_cutover(round_id, frozen, runtime)
+    assert not factory._payout_only_runtime_cutover("another-round", frozen, runtime)
+    runtime["judge_specs"]["model"] = "changed"
+    assert not factory._payout_only_runtime_cutover(round_id, frozen, runtime)
+    runtime["judge_specs"]["model"] = "unchanged"
+    runtime["competition_policy_runtime"]["source_sha256"]["pair_evaluator.py"] = "changed"
+    assert not factory._payout_only_runtime_cutover(round_id, frozen, runtime)
