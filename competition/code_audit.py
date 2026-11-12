@@ -167,8 +167,13 @@ def collect_final_code_evidence(
             limit = result.get("token_limit")
             tokens = result.get("prompt_and_completion_tokens")
             packets = result.get("denied_egress_packets")
+            no_key_retry = (
+                status == "infrastructure_fault"
+                and result.get("detail") == "unmetered_prior_attempt"
+                and limit == 0 and tokens == 0 and packets == 0
+            )
             if (not isinstance(status, str)
-                or type(limit) is not int or limit < 1
+                or type(limit) is not int or (limit < 1 and not no_key_retry)
                 or type(tokens) is not int or tokens < 0
                 or type(packets) is not int or packets < 0):
                 raise ValueError("code audit job lacks trusted gateway or firewall usage")
