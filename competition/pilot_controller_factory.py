@@ -35,7 +35,7 @@ _PAYOUT_CUTOVER_CONFIGURATION_SHA256 = frozenset({
 _PAYOUT_ONLY_SOURCE_FILES = frozenset({
     "legacy_weight_carry.py", "replay_publication.py", "replay_weights.py",
     "result_controller.py", "weight_heartbeat.py", "weights.py",
-    "pilot_controller_factory.py",
+    "pilot_controller_factory.py", "intake_lock.py",
 })
 
 

@@ -302,11 +302,13 @@ def test_current_round_accepts_only_payout_source_changes(monkeypatch):
     frozen = {"judge_specs": {"model": "unchanged"},
               "competition_policy_runtime": {"source_sha256": {
                   "weights.py": "old", "result_controller.py": "old",
-                  "pilot_controller_factory.py": "old", "pair_evaluator.py": "same"}}}
+                  "pilot_controller_factory.py": "old", "intake_lock.py": "old",
+                  "pair_evaluator.py": "same"}}}
     runtime = {"judge_specs": {"model": "unchanged"},
                "competition_policy_runtime": {"source_sha256": {
                    "weights.py": "new", "result_controller.py": "new",
-                   "pilot_controller_factory.py": "new", "pair_evaluator.py": "same"}}}
+                   "pilot_controller_factory.py": "new", "intake_lock.py": "new",
+                   "pair_evaluator.py": "same"}}}
     monkeypatch.setattr(factory, "_PAYOUT_CUTOVER_CONFIGURATION_SHA256",
                         frozenset({canonical_sha256(frozen)}))
     round_id = factory._MINER_ONLY_CUTOVER_ROUND
