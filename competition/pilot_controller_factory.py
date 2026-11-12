@@ -31,6 +31,7 @@ _MINER_ONLY_CUTOVER_ROUND = "round_20261109T120000Z_mainnet"
 _PAYOUT_CUTOVER_CONFIGURATION_SHA256 = frozenset({
     "b3afcaba4014102cc85f90d33ab3898e77971d73d670fe9f927eeb7517b94de1",
     "eb76780bfe0ce0ca08863d0ad46873c78ace4592942bf417c51adfc970d70349",
+    "47f637e58a67d7e23130869b24f03d4e306d8529e0c67cbb84fd2493025aa949",
 })
 _PAYOUT_ONLY_SOURCE_FILES = frozenset({
     "legacy_weight_carry.py", "replay_publication.py", "replay_weights.py",
