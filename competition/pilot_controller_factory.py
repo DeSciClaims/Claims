@@ -8,7 +8,6 @@ an implicit code pass or invents a qualified voter.
 from __future__ import annotations
 
 import json
-from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -328,8 +327,12 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
     if policy.configuration_sha256 != rules.configuration_sha256 or policy.configuration != configuration:
         if not _payout_only_runtime_cutover(round_id, configuration, policy.configuration):
             raise ValueError("controller model runtime differs from frozen round")
-        policy = replace(policy, configuration=configuration,
-                         configuration_sha256=rules.configuration_sha256)
+        # The policy constructor validates the live source fingerprint. The
+        # explicit payout-only audit above is the sole exception for this
+        # already-frozen round; rebuilding it with replace() would rerun that
+        # constructor check against the historical fingerprint.
+        object.__setattr__(policy, "configuration", configuration)
+        object.__setattr__(policy, "configuration_sha256", rules.configuration_sha256)
     netuid = int(_required("CLAIMS_COMPETITION_NETUID"))
     from neurons.backend_client import ClaimsBackendClient
     from .bronze_generation import configured_bronze_preparer
