@@ -70,6 +70,40 @@ def test_bundle_guest_verifies_inputs_before_starting_miner(tmp_path, monkeypatc
     assert not calls
 
 
+@pytest.mark.parametrize("output", [
+    '{"paper": {"paper_id": "paper-1"}, "metadata": {"score": NaN}}',
+    json.dumps({"paper": {"paper_id": "paper-1"}, "metadata": {"blob": "x" * 12_000_000}}),
+], ids=["nan", "oversize"])
+def test_guest_reports_unserializable_or_oversized_artifacts_as_invalid_output(tmp_path, monkeypatch, output):
+    package, pdf = b"wheel-bytes", b"%PDF-1.4\n"
+    bundle = build_worker_bundle(job=_job(package, pdf), package=package, pdf=pdf)
+    inputs, results, wheelhouse = (tmp_path / name for name in ("inputs", "results", "wheelhouse"))
+    inputs.mkdir()
+    wheelhouse.mkdir()
+    for name, content in bundle.items():
+        (inputs / name).write_bytes(content)
+    key_file = tmp_path / "paper-key"
+    key_file.write_text("scoped-key", encoding="utf-8")
+
+    def fake_run_one_paper(**kwargs):
+        kwargs["output_path"].write_text(output, encoding="utf-8")
+        kwargs["log_path"].write_bytes(b"install and execution log")
+        return WorkerResult("completed", kwargs["output_path"], kwargs["log_path"], 1.5)
+
+    monkeypatch.setattr("competition.worker_guest.run_one_paper", fake_run_one_paper)
+    summary = run_bundle(
+        input_dir=inputs, result_dir=results, wheelhouse=wheelhouse,
+        inference_base_url="https://gateway.example/v1", paper_key_file=key_file,
+    )
+    # The miner owns its output. The control side reads at most 10 MB of
+    # result.json, so the guest must always leave a readable verdict behind.
+    assert summary["status"] == "invalid_output"
+    assert summary["artifact"] is None
+    written = results / "result.json"
+    assert written.stat().st_size <= 10_000_000
+    assert json.loads(written.read_text())["status"] == "invalid_output"
+
+
 def test_bundle_refuses_unverified_package_bytes():
     job = _job(b"expected", b"%PDF")
     with pytest.raises(ValueError, match="verified inputs"):

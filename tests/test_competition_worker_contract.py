@@ -1,6 +1,7 @@
 import pytest
 
-from competition.worker_contract import build_worker_contract
+from competition.ssh_worker import _tar_bytes
+from competition.worker_contract import InvalidPackageManifest, build_worker_contract, validated_package_filename
 
 
 def job():
@@ -85,3 +86,35 @@ def test_contract_rejects_misleading_or_invalid_budget(changes):
     with pytest.raises(ValueError, match="inference budget"):
         build_worker_contract(job(), allowed_models=("example/model-a", "example/model-b"),
                               max_output_tokens=8192, **budget)
+
+
+def _wheel_name(length: int) -> str:
+    suffix = "-1.0-py3-none-any.whl"
+    return "a" * (length - len(suffix)) + suffix
+
+
+def test_accepted_package_filenames_fit_the_transport_archive():
+    longest = _wheel_name(100)
+    assert validated_package_filename(longest, "wheel") == longest
+    # The SSH transport stages the package under its own name in a ustar
+    # archive, whose member names stop at 100 characters.
+    _tar_bytes({longest: b"wheel"})
+    with pytest.raises(ValueError, match="unsafe filename"):
+        validated_package_filename(_wheel_name(101), "wheel")
+
+
+def test_overlong_filename_is_a_manifest_fault_not_an_infrastructure_fault():
+    job = {
+        "paper_id": "paper-1", "paper": {"paper_id": "paper-1", "title": "Study"},
+        "manifest": {
+            "schema_version": "claims_competition_manifest_v1", "language": "python",
+            "package_format": "wheel", "package_filename": _wheel_name(101),
+            "source_included": True, "license_production_use": True,
+            "entrypoint": "miner.cli:main", "models": ["allowed/model"],
+        },
+    }
+    with pytest.raises(InvalidPackageManifest, match="unsafe filename"):
+        build_worker_contract(
+            job, allowed_models=("allowed/model",), max_output_tokens=8192,
+            paper_token_limit=1000, dollar_limit_usd=0.10,
+        )

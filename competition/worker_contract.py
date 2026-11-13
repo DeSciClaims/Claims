@@ -20,8 +20,13 @@ class InvalidPackageManifest(ValueError):
 
 
 def validated_package_filename(filename: Any, package_format: Any) -> str:
-    """Keep pip's wheel name while refusing paths or surprising archive names."""
-    if (not isinstance(filename, str) or len(filename) > 200
+    """Keep pip's wheel name while refusing paths or surprising archive names.
+
+    The transport stages the package under this name as a ustar member, and
+    ustar names stop at 100 characters, so longer names are refused here as a
+    manifest fault instead of failing later inside the worker transport.
+    """
+    if (not isinstance(filename, str) or len(filename) > 100
         or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.+-]*", filename)
         or ".." in filename):
         raise ValueError("selected package has an unsafe filename")

@@ -111,3 +111,37 @@ def test_malformed_archive_yields_per_package_error_without_aborting_report(monk
     monkeypatch.setattr("competition.duplicate_candidates.MAX_EXPANDED_BYTES", 100)
     with pytest.raises(ValueError, match="expanded limits"):
         scan_candidate_source(_wheel("def run(x): return x", prompt="x" * 101))
+
+
+def _corrupt_wheel(compression: int) -> bytes:
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", compression) as archive:
+        archive.writestr("miner/pipeline.py", "x = 1\n" * 200)
+    data = bytearray(stream.getvalue())
+    info = zipfile.ZipFile(io.BytesIO(bytes(data))).infolist()[0]
+    start = info.header_offset + zipfile.sizeFileHeader + len(info.filename) + len(info.extra)
+    if compression == zipfile.ZIP_LZMA:
+        start += 9  # skip the LZMA properties header so the damage hits the stream
+    for index in range(start, start + 6):
+        data[index] ^= 0xFF
+    return bytes(data)
+
+
+@pytest.mark.parametrize("compression", [zipfile.ZIP_DEFLATED, zipfile.ZIP_LZMA],
+                         ids=["deflate", "lzma"])
+def test_corrupt_compressed_stream_is_a_scan_error_not_a_report_crash(compression):
+    valid = _wheel("def run(paper): return paper")
+    bad = _corrupt_wheel(compression)
+    with pytest.raises(ValueError, match="not a readable wheel"):
+        scan_candidate_source(bad)
+    report = candidate_review_report(
+        [_entry("good", valid, "good-team"), _entry("bad", bad, "bad-team")],
+        packages={"good": valid, "bad": bad},
+    )
+    assert "bad" in report["scan_errors"]
+    assert report["comparisons"] == []
+
+
+def test_truncated_gzip_header_is_a_scan_error_not_a_crash():
+    with pytest.raises(ValueError, match="not a readable wheel"):
+        scan_candidate_source(b"\x1f\x8b\x08")
