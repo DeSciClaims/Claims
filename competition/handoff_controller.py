@@ -61,6 +61,7 @@ def activate_published_round(
     plan = planned_production_handoff(
         receipt=receipt, round_record=round_record, final_stage=final,
         expected_signer_hotkey=expected_signer_hotkey, network=network, now=now,
+        backend=backend,
     )
     if plan is None:
         return None

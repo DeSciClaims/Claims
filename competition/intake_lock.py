@@ -420,6 +420,33 @@ class CompetitionBackend:
                 + "/papers/" + urllib.parse.quote(paper_id, safe="") + "/evaluation")
         return self._request("GET", path, not_found_none=True)
 
+    def list_evaluation_provenance(self, round_id: str, stage: str) -> list[dict[str, Any]]:
+        path = ("/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="")
+                + "/stages/" + urllib.parse.quote(stage, safe="") + "/evaluation-provenance")
+        rows = []
+        while True:
+            page = self._request("GET", path + "?limit=1000&offset=" + str(len(rows)))
+            if not isinstance(page, list) or len(rows) + len(page) > 100_000:
+                raise ValueError("invalid evaluation provenance page")
+            rows.extend(page)
+            if len(page) < 1000:
+                return rows
+
+    def rules_snapshot(self, round_id: str, revision: int) -> dict[str, Any]:
+        path = "/public/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/rules"
+        return self._request("GET", path + "?revision=" + str(revision))
+
+    def rules_amendments(self, round_id: str) -> dict[str, Any]:
+        path = "/public/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/rules/amendments?limit=100"
+        result = self._request("GET", path)
+        rows = list(result["amendments"])
+        while len(result["amendments"]) == 100:
+            result = self._request("GET", path + "&before_revision=" + str(rows[-1]["to_revision"]))
+            rows.extend(result["amendments"])
+            if len(rows) > 1000:
+                raise ValueError("rules amendment history exceeds limit")
+        return {**result, "amendments": rows}
+
     def freeze_paper_evaluation(
         self, round_id: str, stage: str, paper_id: str,
         *, input_sha256: str, result_private: dict[str, Any],

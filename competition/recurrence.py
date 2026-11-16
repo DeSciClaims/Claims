@@ -160,6 +160,7 @@ class RecurringRounds:
                 receipt=self.publication_for_round(rid), round_record=record,
                 final_stage=stages[-1], expected_signer_hotkey=self.expected_signer,
                 network=self.network, now=datetime.max.replace(tzinfo=UTC),
+                backend=self.backend,
             )
             if plan is None:
                 raise ValueError("published predecessor has no handoff plan")

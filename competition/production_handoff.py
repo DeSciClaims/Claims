@@ -183,11 +183,13 @@ def activate_verified_handoff(
     network: str, now: datetime,
     fetch_package: Callable[[ProductionHandoffPlan], bytes],
     releases: FilesystemProductionReleaseStore,
+    backend: Any = None,
 ) -> dict[str, Any] | None:
     """Fetch exactly the selected sealed package, then move the local pointer."""
     plan = planned_production_handoff(
         receipt=receipt, round_record=round_record, final_stage=final_stage,
         expected_signer_hotkey=expected_signer_hotkey, network=network, now=now,
+        backend=backend,
     )
     if plan is None:
         return None
@@ -197,7 +199,7 @@ def activate_verified_handoff(
 def planned_production_handoff(
     *, receipt: Mapping[str, Any], round_record: Mapping[str, Any],
     final_stage: Mapping[str, Any], expected_signer_hotkey: str,
-    network: str, now: datetime,
+    network: str, now: datetime, backend: Any = None,
 ) -> ProductionHandoffPlan | None:
     """Return the exact winning package once its activation gate is due.
 
@@ -232,6 +234,12 @@ def planned_production_handoff(
     if now.astimezone(UTC) < activate_at:
         return None
     results = bundle["results"]
+    signed_pairs = results.get("final_pair_scores")
+    if (results.get("decision") in {"new_crown", "incumbent_version_swap"}
+        and isinstance(signed_pairs, list) and all(isinstance(row, dict) for row in signed_pairs)):
+        if any(row.get("configuration_sha256") != bundle["configuration_sha256"] for row in signed_pairs):
+            from .handoff_provenance import verify_preserved_scores
+            verify_preserved_scores(backend, round_record, bundle, signed_pairs)
     decision = results.get("decision")
     if decision == "incumbent_continues":
         expected_hotkey = round_record.get("incumbent_hotkey")
@@ -340,7 +348,6 @@ def planned_production_handoff(
     if (not rows or any(row.get("round_id") != bundle["round_id"]
                         or row.get("stage") != stage
                         or row.get("challenger_package_sha256") != package_sha256
-                        or row.get("configuration_sha256") != bundle["configuration_sha256"]
                         for row in rows)):
         raise ValueError("handoff package differs from signed final paper grid")
     return ProductionHandoffPlan(

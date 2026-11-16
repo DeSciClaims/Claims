@@ -68,6 +68,7 @@ def prepare_evaluation(row, backend, *, now=None):
             receipt=receipt, round_record=prior, final_stage=stages[-1],
             expected_signer_hotkey=os.environ["CLAIMS_COMPETITION_PUBLISHER_HOTKEY"],
             network=row["network"], now=datetime.max.replace(tzinfo=UTC),
+            backend=backend,
         )
         if (plan is None or active is None or clock < plan.activate_at
             or any(getattr(active, k) != getattr(plan, k) for k in (
