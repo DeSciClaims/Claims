@@ -9,6 +9,7 @@ and host firewall, not by this Python process.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shlex
@@ -29,6 +30,32 @@ class WorkerResult:
     log_path: Path
     elapsed_seconds: float
     detail: str = ""
+
+
+def _reject_constant(name: str):
+    raise ValueError(f"output JSON contains {name}")
+
+
+def _finite_float(text: str) -> float:
+    value = float(text)
+    if not math.isfinite(value):
+        raise ValueError("output JSON contains a number outside the float range")
+    return value
+
+
+def read_output_json(path: Path):
+    """Parse miner output strictly: finite numbers only and bounded nesting.
+
+    ``json.loads`` accepts NaN and Infinity, and turns literals such as 1e400
+    into infinity; the guest cannot serialise any of these back for the
+    control side. It also raises RecursionError on deeply nested input. All
+    are package faults, so they surface here as ValueError.
+    """
+    try:
+        return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_constant,
+                          parse_float=_finite_float)
+    except RecursionError as exc:
+        raise ValueError("output JSON nests too deeply") from exc
 
 
 def _phase(
@@ -151,7 +178,7 @@ def run_one_paper(
             status = "timeout" if code is None else "package_failed"
             return WorkerResult(status, output_path, log_path, time.monotonic() - started, "miner execution failed")
         try:
-            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            payload = read_output_json(output_path)
             artifact = Artifact.model_validate(payload)
             request = json.loads(request_path.read_text(encoding="utf-8"))
             issues = validate_agent_artifact(artifact)
@@ -159,7 +186,7 @@ def run_one_paper(
                 issues.append({"message": "output paper ID differs from request"})
             if issues:
                 raise ValueError("; ".join(item["message"] for item in issues))
-        except (OSError, ValueError, KeyError, TypeError) as exc:
+        except (OSError, ValueError, KeyError, TypeError, RecursionError) as exc:
             log.write(f"\n[validate] invalid output: {exc}\n".encode())
             return WorkerResult("invalid_output", output_path, log_path, time.monotonic() - started, "output schema invalid")
         log.write(b"\n[validate] agent_v1 output accepted\n")

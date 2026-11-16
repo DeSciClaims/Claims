@@ -29,6 +29,56 @@ def _entry(hotkey: str, team: str, digest: str) -> dict:
     }
 
 
+def _corrupt_wheel(compression: int) -> bytes:
+    target = io.BytesIO()
+    with zipfile.ZipFile(target, "w", compression) as archive:
+        archive.writestr("miner/pipeline.py", "x = 1\n" * 200)
+    data = bytearray(target.getvalue())
+    info = zipfile.ZipFile(io.BytesIO(bytes(data))).infolist()[0]
+    start = info.header_offset + zipfile.sizeFileHeader + len(info.filename) + len(info.extra)
+    if compression == zipfile.ZIP_LZMA:
+        start += 9  # skip the LZMA properties header so the damage hits the stream
+    for index in range(start, start + 6):
+        data[index] ^= 0xFF
+    return bytes(data)
+
+
+def _encrypted_wheel() -> bytes:
+    data = bytearray(_wheel("x = 1\n"))
+    data[6] |= 1  # local file header: encryption flag
+    data[data.index(b"PK\x01\x02") + 8] |= 1  # central directory: encryption flag
+    return bytes(data)
+
+
+@pytest.mark.parametrize("package", [_corrupt_wheel(zipfile.ZIP_DEFLATED),
+                                     _corrupt_wheel(zipfile.ZIP_LZMA), _encrypted_wheel(),
+                                     b"\x1f\x8b\x08"],
+                         ids=["corrupt-deflate", "corrupt-lzma", "encrypted",
+                              "truncated-gzip-header"])
+def test_unreadable_archives_are_invalid_packages_not_scanner_crashes(package):
+    with pytest.raises(ValueError, match="invalid package archive"):
+        python_source_fingerprint(package)
+
+
+def test_pathologically_deep_source_is_invalid_python_not_a_scanner_crash():
+    with pytest.raises(ValueError, match="invalid Python source"):
+        python_source_fingerprint(_wheel("x = " + "+".join(["1"] * 3000) + "\n"))
+
+
+@pytest.mark.parametrize("compression", [zipfile.ZIP_DEFLATED, zipfile.ZIP_LZMA],
+                         ids=["deflate", "lzma"])
+def test_one_unreadable_package_does_not_abort_the_distinct_draw(compression):
+    packages = {"a": _corrupt_wheel(compression), "b": _wheel("def run(x): return x\n")}
+    entries = [{"hotkey": hotkey, "team_id": f"team-{hotkey}",
+                "package_sha256": hashlib.sha256(package).hexdigest()}
+               for hotkey, package in packages.items()]
+    selection = select_distinct_submissions(
+        entries, seed=b"s" * 32,
+        package_for_submission=lambda item: packages[item["hotkey"]],
+    )
+    assert set(selection.selected_hotkeys) == {"a", "b"}
+
+
 def test_python_fingerprint_ignores_formatting_comments_and_docstrings():
     a = _wheel('"""description"""\ndef run(x):\n    # comment\n    return x + 1\n')
     b = _wheel('def run( x ):\n  """doc"""\n  return x+1\n')

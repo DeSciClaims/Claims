@@ -7,7 +7,7 @@ from competition import worker
 from competition.worker import run_one_paper
 
 
-def make_wheel(path):
+def make_wheel(path, extra=""):
     code = '''import json,sys,os
 def main():
     assert os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] == "True"
@@ -24,6 +24,7 @@ def main():
         "summary":"Result","linked_claim_ids":["C1"]}]},
       "trace":{"node_id":"root","node_type":"extraction","summary":"Result"},
       "src":{"environment":["smoke"],"artifacts":[]}}
+    ''' + extra + '''
     with open(sys.argv[4],"w") as output: json.dump(artifact,output)
     print("smoke miner ran")
 '''
@@ -58,6 +59,35 @@ def test_worker_installs_and_runs_wheel_with_phase_logs(tmp_path):
     assert "[venv]" in record and "[install]" in record and "[execute]" in record
     assert "[validate] agent_v1 output accepted" in record
     assert "sk-bf-test" not in record
+
+
+@pytest.mark.parametrize("text", ['{"a": NaN}', '{"a": Infinity}', '{"a": -Infinity}',
+                                  '{"a": 1e400}', '{"a": -1e400}', "[" * 100_000],
+                         ids=["nan", "infinity", "negative-infinity", "overflow",
+                              "negative-overflow", "deep-nesting"])
+def test_miner_output_json_must_be_strict_and_bounded(tmp_path, text):
+    path = tmp_path / "output.json"
+    path.write_text(text, encoding="utf-8")
+    with pytest.raises(ValueError):
+        worker.read_output_json(path)
+
+
+def test_non_finite_numbers_in_output_are_a_miner_fault(tmp_path):
+    package = tmp_path / "smoke_miner-0.1.0-py3-none-any.whl"
+    make_wheel(package, extra='artifact["metadata"]={"score":float("nan")}')
+    request = tmp_path / "request.json"
+    request.write_text(json.dumps({"paper": {"paper_id": "paper-1", "title": "Test paper"}}))
+    wheelhouse = tmp_path / "wheelhouse"
+    wheelhouse.mkdir()
+    log = tmp_path / "log.txt"
+    result = run_one_paper(
+        package_path=package, entrypoint="smoke_miner:main",
+        request_path=request, output_path=tmp_path / "result.json",
+        work_dir=tmp_path / "work", log_path=log, wheelhouse=wheelhouse,
+        inference_base_url="http://gateway.internal:8080/v1", paper_key="sk-bf-test",
+    )
+    assert result.status == "invalid_output", log.read_text()
+    assert "[validate] invalid output" in log.read_text()
 
 
 def test_worker_rejects_entrypoint_injection(tmp_path):
