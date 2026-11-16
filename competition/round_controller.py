@@ -87,14 +87,17 @@ def _admitted_duplicate_selection(round_record, submissions, **kwargs):
     Draw again with the same seed and duplicate groups when a held representative
     must be replaced. A funding hold must not eliminate an eligible group mate.
     """
-    selection = select_distinct_submissions(submissions, **kwargs)
+    code_held = {row["hotkey"] for row in submissions if row.get("code_eligible") is False}
+    selection = select_distinct_submissions(submissions, ineligible_hotkeys=code_held, **kwargs)
     held = {row["hotkey"] for row in submissions if row.get("funding_eligible") is False}
     if held and "prescreen" not in stages_for_round(round_record, len(selection.selected_hotkeys)):
-        selection = select_distinct_submissions(submissions, ineligible_hotkeys=held, **kwargs)
+        selection = select_distinct_submissions(submissions, ineligible_hotkeys=held | code_held, **kwargs)
     return selection
 
 
 def _no_admitted_entrants(round_id, backend, submissions):
+    if any(row.get("code_eligible") is False for row in submissions):
+        return backend.runtime_request(round_id, "/code/no-eligible-entries", {})
     if any(row.get("funding_eligible") is False for row in submissions):
         return backend.runtime_request(round_id, "/funding/no-eligible-entries", {})
     return {"status": "waiting_for_entrants"}
@@ -137,7 +140,7 @@ def reveal_selected_sample(
         # A nonheld entry may still be an incumbent copy. Release the original
         # plan so start_revealed_round can persist its duplicate verdict before
         # the backend determines that no admitted challenger remains.
-        if selection.held_hotkeys and any(row.get("funding_eligible") is not False for row in submissions):
+        if selection.held_hotkeys and any(row.get("funding_eligible") is not False and row.get("code_eligible") is not False for row in submissions):
             original = select_distinct_submissions(
                 submissions, seed=beacon.seed,
                 incumbent=baseline if round_record["incumbent_hotkey"] else None,

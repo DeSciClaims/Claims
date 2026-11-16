@@ -124,3 +124,13 @@ def test_duplicate_selection_produces_public_exclusion_receipts():
     receipts = duplicate_verdicts(incumbent_copy, seed=seed, incumbent_hotkey="incumbent")
     assert receipts[0]["duplicate_of_hotkey"] == "incumbent"
     assert receipts[0]["reason"] == "incumbent_copy"
+
+
+def test_code_only_incumbent_copy_is_excluded_even_with_same_resolved_team():
+    incumbent = _entry("king", "family", "1")
+    copied = {**_entry("copy", "family", "1"), "incumbent_version_eligible": False}
+    result = select_distinct_submissions([copied], seed=b"s" * 32, incumbent=incumbent)
+    assert result.selected_hotkeys == ()
+    assert result.excluded_hotkeys == ("copy",)
+    owned = {**copied, "incumbent_version_eligible": True}
+    assert select_distinct_submissions([owned], seed=b"s" * 32, incumbent=incumbent).selected_hotkeys == ("copy",)

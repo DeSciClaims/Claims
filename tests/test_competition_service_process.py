@@ -111,3 +111,24 @@ def test_production_cli_keeps_private_extraction_out_of_journal(monkeypatch, cap
     output = capsys.readouterr()
     assert '"job_status": "completed"' in output.out
     assert "do not log this" not in output.out + output.err
+
+
+def test_schedule_only_never_locks_or_evaluates_frozen_rounds(monkeypatch, tmp_path):
+    import json
+    module = ModuleType("competition.fake_schedule_only")
+    module.create_controller_inputs = lambda *_: None
+    module.create_intake_inputs = lambda *_: None
+    module.prepare_evaluation = lambda *_: None
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setenv("CLAIMS_COMPETITION_CONTROLLER_TOKEN", "private")
+    monkeypatch.setattr(competition_service, "CompetitionBackend", lambda **_: object())
+    scheduler = SimpleNamespace(tick=lambda: {"status": "recurrence_opened", "round_id": "future"})
+    monkeypatch.setattr("competition.pilot_recurrence_factory.create_round_scheduler", lambda *a, **k: scheduler)
+    def forbidden(**kwargs):
+        raise AssertionError("scheduler must not evaluate or lock rounds")
+    monkeypatch.setattr(competition_service, "run_controller_cycle", forbidden)
+    monkeypatch.setattr(competition_service, "run_intake_cycle", forbidden)
+    path = tmp_path / "recurrence.json"
+    path.write_text(json.dumps({"independent_intake": True}))
+    assert competition_service.main(["--role", "controller", "--network", "mainnet", "--backend-url", "https://backend.example",
+        "--factory-module", module.__name__, "--recurrence-config", str(path), "--schedule-only", "--once"]) == 0

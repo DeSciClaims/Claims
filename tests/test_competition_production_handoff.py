@@ -354,3 +354,11 @@ def test_week_one_no_crown_activates_reference_package(tmp_path):
                           "manifest": MANIFEST},
     )
     assert active["hotkey"] == "reference"
+
+
+def test_handoff_uses_affiliation_verdict_instead_of_code_family_for_version_swap():
+    signer, record, stage, receipt = _fixture()
+    stage["entries"][0]["team_id"] = stage["entries"][1]["team_id"]
+    stage["entries"][0]["incumbent_version_eligible"] = False
+    plan = _plan(signer, record, stage, receipt, datetime(2026, 11, 9, 9, 0, tzinfo=UTC))
+    assert plan.hotkey == "winner"

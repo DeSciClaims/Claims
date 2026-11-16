@@ -154,6 +154,18 @@ def _duplicate_links(backend: Any, round_id: str) -> list[tuple[str, str, str]]:
     )
 
 
+def _team_code_links(backend: Any, round_id: str) -> list[list[str]]:
+    """Family links restrict slots; only duplicate links restrict execution."""
+    record = backend.get_round(round_id)
+    policy_hash = record.get("rules_public", {}).get("policy", {}).get("code_grouping_policy_sha256")
+    if policy_hash is None:
+        return [list(link) for link in _duplicate_links(backend, round_id)]
+    receipt = backend.runtime_request(round_id, "/code-review")
+    if not receipt or receipt["policy_sha256"] != policy_hash:
+        raise ValueError("backend code-family review is missing or uses a different policy")
+    return [[item["left"], item["right"], item["reason"]] for item in receipt["team_links"]]
+
+
 def _final_audit(
     backend: Any, chain: BittensorArchive, round_id: str,
     *, owner_hotkey: str, operator_hotkey: str,
@@ -357,7 +369,7 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         graph = chain.subtensor.metagraph(netuid=netuid, block=int(backend.get_round(rid)["deadline_block"]))
         return backend.runtime_request(rid, "/teams", {"netuid": netuid,
             "members": [{"hotkey": str(n.hotkey), "coldkey": str(n.coldkey)} for n in graph.neurons],
-            "reviewed_code_links": [list(link) for link in _duplicate_links(backend, rid)]})
+            "reviewed_code_links": _team_code_links(backend, rid)})
     return CompetitionControllerInputs(
         archive=chain, chain=chain, netuid=netuid, signer=signer,
         operator_hotkey=operator, paper_inputs=papers, packages=packages,

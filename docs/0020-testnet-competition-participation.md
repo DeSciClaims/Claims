@@ -276,7 +276,16 @@ for file in export["files"]:
 
 ## 7. Duplicate verdicts and appeals
 
-Identical package hashes and identical Python syntax fingerprints are grouped automatically, with one seeded selection per duplicate group and one ticket per resolved team. Shared public starter code is accounted for in the broader similarity report. Broader similarity and scanner errors are saved for follow-up; they do not create a manual review gate.
+Identical package hashes and identical Python syntax fingerprints are grouped automatically, with one seeded selection per duplicate group and one ticket per resolved team. Shared public starter code is subtracted from the similarity comparison.
+
+Rounds that publish `policy.code_grouping_policy_sha256` also apply the approved
+near-copy criteria: code-family links share team advancement/reward limits, while
+stricter duplicate links enter the seeded draw. Read that round's criteria at
+`GET /public/competition/rounds/{round_id}/code-grouping-policy` and its released
+verdicts at `GET /public/competition/rounds/{round_id}/code-review`. Source-scan
+failures hold the affected entry; other entries continue. Rounds without that hash
+retain the previous policy, which records broader similarities for follow-up.
+Neither path introduces a round-wide manual review gate. See [team identity](./submission.md#team-identity).
 
 An excluded miner can submit one appeal per resolved team during the advertised `duplicate_dispute_window` in the round rules. Use the same hotkey-signed client:
 

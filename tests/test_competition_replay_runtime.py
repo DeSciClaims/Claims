@@ -149,3 +149,13 @@ def test_replay_bootstrap_verifies_inputs_before_writing_local_jobs(tmp_path):
     assert backend.list_stages("week-1")[0]["stage"] == "week_one"
     assert len(backend.list_paper_jobs("week-1", "week_one", "paper-1")) == 3
     assert initialize_replay_runtime("week-1", **args).store is store
+
+
+def test_replay_preserves_backend_affiliation_flags_separately_from_team_ids():
+    from types import SimpleNamespace
+    runtime = SimpleNamespace(snapshot={"rules_public": {"policy": {"code_grouping_policy_sha256": "policy"}},
+        "uploads": [{"hotkey": "variant", "incumbent_version_eligible": False}]},
+        store=SimpleNamespace(list_stages=lambda _: [{"stage": "final", "entries": [
+            {"hotkey": "variant", "team_id": "incumbent-family", "role": "challenger"}]}]))
+    stages = ReplayRuntimeBackend.list_stages(runtime, "round")
+    assert stages[0]["entries"][0]["incumbent_version_eligible"] is False

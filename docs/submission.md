@@ -17,6 +17,27 @@ The controller reads the historical commitment at the deadline block and matches
 
 Declare the same `team_id` for pipelines controlled by the same operator or team. The manifest records declared affiliation; it does not establish independence. The backend merges entries using shared declarations, shared coldkeys, resolved funding lineage and reviewed code links, even when their declared IDs differ. Advancement and reward limits use these resolved teams: at most two entries per team advance to screen, and one reaches final under the standard stage plan. Code duplicate checks also apply before execution, independently of the declared IDs.
 
+Rounds that publish `policy.code_grouping_policy_sha256` use automatic code-family
+grouping. Read the criteria before submission at
+`GET /public/competition/rounds/{round_id}/code-grouping-policy`. After subtracting
+the listed public starter code and dependencies, sufficient structural overlap
+and substantive shared source create a family link. Meaningful variants can still
+run, but share one resolved team's advancement and reward allowance. A stricter
+duplicate threshold, with matching string literals and supporting resources,
+creates a duplicate link for the seeded selection. Similarity percentages alone
+are not proof of common ownership or identical behavior. Shared interfaces or
+public starter code alone do not establish a family link.
+
+Code-only grouping does not grant the incumbent’s own-version replacement
+exemption; that requires declared affiliation, shared coldkeys or resolved funding
+links.
+
+The backend derives and freezes these decisions from sealed-package evidence and
+its approved policy; a validator cannot choose unpublished thresholds or override
+the verdict. Published code verdicts and safe metrics are available at
+`GET /public/competition/rounds/{round_id}/code-review` after the verdict release
+time. Existing rounds without the policy hash retain their original rules.
+
 Required funding evidence is checked per entry. An unresolved entry may run prescreen but cannot advance; if prescreen is skipped, it is held before evaluation. Other eligible entries continue. The backend records the decision with the round's immutable team evidence, and the public submission list shows the hold reason. Later funding resolution applies to subsequent rounds. If no eligible field remains, the round closes without a contest or new rewards.
 
 ## Competition weights

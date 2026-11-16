@@ -204,6 +204,9 @@ def validate_replay_snapshot(snapshot: dict[str, Any], round_id: str) -> dict[st
         paper_versions.add(key)
     packages = {}
     for row in uploads:
+        if (snapshot.get("rules_public", {}).get("policy", {}).get("code_grouping_policy_sha256")
+            and (type(row.get("incumbent_version_eligible")) is not bool or type(row.get("code_eligible")) is not bool)):
+            raise ValueError("replay upload lacks backend incumbent affiliation verdict")
         if (not isinstance(row, dict) or not isinstance(row.get("hotkey"), str)
             or not row["hotkey"] or not isinstance(row.get("package_object_key"), str)
             or not row["package_object_key"]

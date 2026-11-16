@@ -120,6 +120,9 @@ def select_ready_final(
     finalists: list[Finalist] = []
     for row in challengers:
         hotkey = row["hotkey"]
+        if (round_record.get("rules_public", {}).get("policy", {}).get("code_grouping_policy_sha256")
+            and type(row.get("incumbent_version_eligible")) is not bool):
+            raise ValueError("finalist lacks backend incumbent affiliation verdict")
         if hotkey not in committed:
             raise ValueError("finalist commitment is missing")
         papers = tuple(PaperPairScore(
@@ -130,6 +133,7 @@ def select_ready_final(
             hotkey, row["team_id"], int(committed[hotkey]), papers,
             code_passed_by_hotkey[hotkey], copy_by_hotkey[hotkey],
             gold_by_hotkey[hotkey].refusal if hotkey in gold_by_hotkey else False,
+            row.get("incumbent_version_eligible"),
         ))
     selection = select_final_production(
         finalists,

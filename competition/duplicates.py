@@ -251,6 +251,10 @@ def select_distinct_submissions(
     incumbent_team = str(incumbent["team_id"]) if incumbent else None
     incumbent_hash = str(incumbent["package_sha256"]) if incumbent else None
     incumbent_hotkey = str(incumbent["hotkey"]) if incumbent else None
+    def incumbent_affiliation(hotkey):
+        item = by_hotkey[hotkey]
+        return (item["incumbent_version_eligible"] if type(item.get("incumbent_version_eligible")) is bool
+                else str(item["team_id"]) == incumbent_team)
     if incumbent_hotkey in by_hotkey:
         raise ValueError("incumbent version needs a distinct qualified hotkey")
     reviewed_incumbent_copies: set[str] = set()
@@ -262,7 +266,7 @@ def select_distinct_submissions(
             if other not in by_hotkey or other == incumbent_hotkey:
                 raise ValueError("duplicate link has unknown challenger")
             evidence.append((*sorted((left, right)), reason))
-            if str(by_hotkey[other]["team_id"]) != incumbent_team:
+            if not incumbent_affiliation(other):
                 reviewed_incumbent_copies.add(other)
         else:
             link(left, right, reason)
@@ -277,7 +281,7 @@ def select_distinct_submissions(
             incumbent_source = ""
     copied_incumbent = reviewed_incumbent_copies | {
         hotkey for hotkey, item in by_hotkey.items()
-        if incumbent and str(item["team_id"]) != incumbent_team
+        if incumbent and not incumbent_affiliation(hotkey)
         and (str(item["package_sha256"]) == incumbent_hash or (incumbent_source and fingerprints.get(hotkey) == incumbent_source))
     }
     groups_by_root: dict[str, list[str]] = {}
@@ -292,7 +296,7 @@ def select_distinct_submissions(
         eligible = [
             hotkey for hotkey in members
             if hotkey not in ineligible
-            and (not touches_incumbent or str(by_hotkey[hotkey]["team_id"]) == incumbent_team)
+            and (not touches_incumbent or incumbent_affiliation(hotkey))
         ]
         if eligible:
             teams = sorted({str(by_hotkey[hotkey]["team_id"]) for hotkey in eligible})

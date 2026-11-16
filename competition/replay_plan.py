@@ -112,6 +112,7 @@ def build_replay_initial_plan(
         linked_pairs=linked_pairs,
         package_for_submission=lambda row: packages[row["hotkey"]],
         incumbent_package=baseline_bytes if incumbent_hotkey else None,
+        ineligible_hotkeys={row["hotkey"] for row in uploads if row.get("code_eligible") is False},
     )
     verdicts = duplicate_verdicts(
         selection, seed=seed, incumbent_hotkey=incumbent_hotkey,

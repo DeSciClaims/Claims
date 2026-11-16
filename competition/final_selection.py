@@ -18,6 +18,7 @@ class Finalist:
     code_passed: bool
     copy: bool
     gold_refused: bool
+    incumbent_version_eligible: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +66,12 @@ def select_final_production(
         raise ValueError("incumbent hotkey and team must be supplied together")
     if len({row.hotkey for row in finalists}) != len(finalists):
         raise ValueError("finalists must have distinct hotkeys")
+    def own_version(row):
+        if row.incumbent_version_eligible is not None and type(row.incumbent_version_eligible) is not bool:
+            raise ValueError("incumbent version eligibility must be boolean")
+        return incumbent_hotkey is not None and (
+            row.incumbent_version_eligible if row.incumbent_version_eligible is not None
+            else row.team_id == incumbent_team_id)
     expected: tuple[tuple[str, bool], ...] | None = None
     for row in finalists:
         if not row.hotkey or not row.team_id or row.commit_block < 0:
@@ -79,12 +86,12 @@ def select_final_production(
     clearers: list[Finalist] = []
     for row in finalists:
         result = scored[row.hotkey]
-        own_version = incumbent_team_id is not None and row.team_id == incumbent_team_id
+        own = own_version(row)
         if not row.code_passed:
             reason = "code_failed"
-        elif row.copy and not own_version:
+        elif row.copy and not own:
             reason = "copy"
-        elif own_version:
+        elif own:
             reason = "cleared_own_version" if result.mean_gain >= 0 else "negative_own_version"
         elif row.gold_refused:
             reason = "gold_refused"
@@ -110,7 +117,7 @@ def select_final_production(
                      scored[leader.hotkey].mean_gain - scored[row.hotkey].mean_gain
                      <= _difference_se(scored[leader.hotkey], scored[row.hotkey])]
     winner = min(within_one_se, key=lambda row: (row.commit_block, row.hotkey))
-    own = incumbent_team_id is not None and winner.team_id == incumbent_team_id
+    own = own_version(winner)
     return FinalSelection(
         winner.hotkey, "incumbent_version_swap" if own else "new_crown",
         scored[winner.hotkey].mean_gain, tuple(verdicts),

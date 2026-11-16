@@ -156,6 +156,7 @@ def select_replay_final(
             ) for paper_id in papers),
             code[hotkey] and security[hotkey]["passed"],
             copy[hotkey]["is_copy"], (gold_by_hotkey[hotkey].refusal if hotkey in gold_by_hotkey else False),
+            entry.get("incumbent_version_eligible"),
         ))
     selection = select_final_production(
         finalists,

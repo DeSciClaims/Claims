@@ -198,3 +198,12 @@ def test_only_pending_challenger_and_incumbent_copy_close_after_duplicate_receip
         )["status"]
         == "no_contest"
     )
+
+
+def test_source_scan_hold_applies_even_when_prescreen_is_available():
+    rows = [entry("miner" + str(i)) for i in range(15)]
+    rows[0]["code_eligible"] = False
+    result = _admitted_duplicate_selection({"incumbent_hotkey": "incumbent"}, rows, seed=b"a" * 32)
+    assert len(result.selected_hotkeys) == 14
+    assert result.held_hotkeys == ("miner0",)
+    assert duplicate_verdicts(result, seed=b"a" * 32) == []
