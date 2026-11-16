@@ -40,9 +40,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="Primary controller recurrence profile installed by infra")
     parser.add_argument("--duplicate-review-policy", type=Path,
                         help="Trusted automatic package preflight and review policy installed by infra")
+    parser.add_argument("--schedule-only", action="store_true",
+                        help="Create future intakes without locking or evaluating existing rounds")
     args = parser.parse_args(argv)
     if not 1 <= args.poll_seconds <= 600:
         parser.error("--poll-seconds must be between 1 and 600")
+    if args.schedule_only and (args.role != "controller" or args.recurrence_config is None):
+        parser.error("schedule-only requires the primary controller recurrence profile")
     if args.role in {"worker", "production"} and not args.worker_id:
         parser.error("worker and production modes need --worker-id")
     if args.role not in {"worker", "production"} and args.worker_id:
@@ -59,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.duplicate_review_policy is not None:
             from neurons.competition_duplicate_automation import read_policy
             duplicate_policy = read_policy(args.duplicate_review_policy)
-            if duplicate_policy['enabled'] and duplicate_policy['schema_version'] == 'claims_duplicate_automation_v2':
+            if duplicate_policy['enabled'] and duplicate_policy['schema_version'] in {'claims_duplicate_automation_v2', 'claims_duplicate_automation_v3'}:
                 from neurons.competition_duplicate_appeals import NonBlockingAppealsBackend
                 backend_type = NonBlockingAppealsBackend
         backend = backend_type(base_url=args.backend_url, controller_token=token)
@@ -94,11 +98,14 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "startup_error", "error_type": type(exc).__name__}),
               file=sys.stderr, flush=True)
         return 1
-    evaluation_pool = ThreadPoolExecutor(max_workers=1) if independent_intake and not args.once else None
+    evaluation_pool = ThreadPoolExecutor(max_workers=1) if independent_intake and not args.once and not args.schedule_only else None
     evaluation_future = None
     while True:
         try:
-            if args.role in {"controller", "bronze"}:
+            if args.schedule_only:
+                scheduled = recurrence.tick()
+                results = [scheduled] if scheduled is not None else []
+            elif args.role in {"controller", "bronze"}:
                 recurring_results = []
                 intake_results = (run_intake_cycle(backend=backend, network=args.network,
                     inputs_for_round=lambda row: factory.create_intake_inputs(row, backend))

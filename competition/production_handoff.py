@@ -322,6 +322,11 @@ def planned_production_handoff(
             and baseline[0].get("hotkey") != round_record["incumbent_hotkey"])):
         raise ValueError("handoff baseline differs from signed round")
     same_team = entries[0].get("team_id") == baseline[0].get("team_id")
+    if (round_record.get("rules_public", {}).get("policy", {}).get("code_grouping_policy_sha256")
+        and type(entries[0].get("incumbent_version_eligible")) is not bool):
+        raise ValueError("handoff lacks backend incumbent affiliation verdict")
+    if "incumbent_version_eligible" in entries[0]:
+        same_team = entries[0]["incumbent_version_eligible"]
     if not entries[0].get("team_id") or not baseline[0].get("team_id") or same_team != (decision == "incumbent_version_swap"):
         raise ValueError("handoff decision differs from frozen team relationship")
     package_sha256 = entries[0].get("package_sha256")

@@ -202,6 +202,61 @@ def test_v2_still_groups_exact_copies_using_existing_seeded_selection(setup):
     assert len(selection.excluded_hotkeys) == 1
 
 
+@pytest.mark.parametrize("duplicate", [True, False])
+def test_v3_uses_backend_decisions_and_freezes_duplicate_links_separately(setup, duplicate):
+    from competition.duplicate_review import verify_duplicate_review
+    from competition.publication import canonical_sha256
+    s = setup
+    s.policy.update(schema_version="claims_duplicate_automation_v3", grouping_policy_sha256="9" * 64)
+    s.policy_path.write_text(json.dumps(s.policy))
+    s.record["rules_public"] = {"policy": {"code_grouping_policy_sha256": "9" * 64}}
+    s.add('a', wheel('def extract(paper): return paper', 'First prompt'))
+    s.add('b', wheel('def extract(paper): return paper', 'Changed prompt'))
+    sent = []
+    link = {"left": "a", "right": "b", "reason": "automatic_code_duplicate"}
+    def runtime(rid, suffix, payload):
+        if suffix == "/code-review":
+            sent.append(payload["report"])
+            return {"policy_sha256": "9" * 64, "report_sha256": canonical_sha256(payload["report"]),
+                    "duplicate_links": [link] if duplicate else [], "team_links": [link]}
+        s.states.append(dict(payload))
+    s.backend.runtime_request = runtime
+    assert s.run()["status"] == "evaluation_ready"
+    review = json.loads((s.root / "round.duplicates.json").read_text())
+    assert review["links"] == ([link] if duplicate else [])
+    assert sent[0]["schema_version"] == "claims_duplicate_candidates_v2"
+    assert sent[0]["comparisons"][0]["resources_equal"] is False
+    verify_duplicate_review(review, round_id="round", round_record=s.record, submissions=s.rows, candidate_report=sent[0])
+    s.reads.clear()
+    assert s.run()["status"] == "evaluation_ready"
+    assert s.reads == [] and len(sent) == 2
+
+
+def test_v3_refuses_unpublished_policy_before_scanning(setup):
+    s = setup
+    s.policy.update(schema_version="claims_duplicate_automation_v3", grouping_policy_sha256="9" * 64)
+    s.policy_path.write_text(json.dumps(s.policy))
+    with pytest.raises(ValueError, match="published round"):
+        s.run()
+    assert s.reads == []
+
+
+def test_v3_configuration_preserves_older_open_rounds_v2_contract(setup):
+    s = setup
+    legacy = dict(s.policy)
+    s.policy.update(schema_version="claims_duplicate_automation_v3", grouping_policy_sha256="9" * 64,
+                    legacy_policy=legacy)
+    s.policy_path.write_text(json.dumps(s.policy))
+    s.add('a', wheel('def extract(paper): return [x for x in paper if x.valid]'))
+    s.add('b', wheel('def harvest(document): return [item for item in document if item.ok]'))
+    assert s.run()["status"] == "evaluation_ready"
+    frozen = json.loads((s.root / 'round.duplicate-policy.json').read_text())
+    assert frozen == legacy
+    review = json.loads((s.root / 'round.duplicates.json').read_text())
+    assert review['links'] == []
+    assert review['automation']['schema_version'] == 'claims_duplicate_automation_v2'
+
+
 def test_scoring_amendment_reuses_approved_duplicate_report_and_receipt(setup):
     s = setup
     s.add('a', wheel('def extract(paper): return paper'))

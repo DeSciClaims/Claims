@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import gzip
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -38,15 +39,22 @@ class CompetitionBackend:
 
     def _request(
         self, method: str, path: str, payload: dict[str, Any] | None = None,
-        *, not_found_none: bool = False,
+        *, not_found_none: bool = False, compress: bool = False,
     ) -> Any:
+        body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode()
+        headers = {
+            "Authorization": "Bearer " + self.controller_token,
+            "Content-Type": "application/json",
+        }
+        if compress:
+            if body is None:
+                raise ValueError("compressed request needs a body")
+            body = gzip.compress(body, compresslevel=6, mtime=0)
+            headers["Content-Encoding"] = "gzip"
         request = urllib.request.Request(
             self.base_url + path,
-            data=None if payload is None else json.dumps(payload, separators=(",", ":")).encode(),
-            headers={
-                "Authorization": "Bearer " + self.controller_token,
-                "Content-Type": "application/json",
-            },
+            data=body,
+            headers=headers,
             method=method,
         )
         try:
@@ -446,7 +454,7 @@ class CompetitionBackend:
 
     def publish_round(self, round_id: str, signed_receipt: dict[str, Any]) -> dict[str, Any]:
         path = "/internal/competition/rounds/" + urllib.parse.quote(round_id, safe="") + "/publish"
-        return self._request("POST", path, signed_receipt)
+        return self._request("POST", path, signed_receipt, compress=True)
 
 
 def read_sealed_package(

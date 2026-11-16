@@ -264,9 +264,28 @@ PY
 
 Each log belongs to one package–paper execution attempt, including failed attempts, and is uploaded after that attempt finishes. Download URLs expire after **10 minutes**; request fresh links when needed. Keep them private. A new daily round requires a fresh round-specific upload, salt and commitment, even if you reuse the same package.
 
+After publication, request the round evaluation archive through the same signed client:
+
+```python
+export = client.get(f"/miner/competition/rounds/{os.environ['ROUND_ID']}/evaluation-export")
+for file in export["files"]:
+    print(file["scope"], file["download_url"], file["sha256"])
+```
+
+`status: "preparing"` means the background archive is still being built. A ready response contains one compressed JSONL file with all miners' per-paper scores, paired comparisons, frozen eligibility decisions, Silver units, reference and miner candidates, adjudication outcomes, and candidate-to-unit coverage matches. Filter by your hotkey locally. Package wheels, execution logs, Gold answer keys, and credentials are excluded. Verify the downloaded file against its SHA-256. The link expires after **10 minutes**.
+
 ## 7. Duplicate verdicts and appeals
 
-Identical package hashes and identical Python syntax fingerprints are grouped automatically, with one seeded selection per duplicate group and one ticket per resolved team. Shared public starter code is accounted for in the broader similarity report. Broader similarity and scanner errors are saved for follow-up; they do not create a manual review gate.
+Identical package hashes and identical Python syntax fingerprints are grouped automatically, with one seeded selection per duplicate group and one ticket per resolved team. Shared public starter code is subtracted from the similarity comparison.
+
+Rounds that publish `policy.code_grouping_policy_sha256` also apply the approved
+near-copy criteria: code-family links share team advancement/reward limits, while
+stricter duplicate links enter the seeded draw. Read that round's criteria at
+`GET /public/competition/rounds/{round_id}/code-grouping-policy` and its released
+verdicts at `GET /public/competition/rounds/{round_id}/code-review`. Source-scan
+failures hold the affected entry; other entries continue. Rounds without that hash
+retain the previous policy, which records broader similarities for follow-up.
+Neither path introduces a round-wide manual review gate. See [team identity](./submission.md#team-identity).
 
 An excluded miner can submit one appeal per resolved team during the advertised `duplicate_dispute_window` in the round rules. Use the same hotkey-signed client:
 

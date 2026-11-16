@@ -145,3 +145,35 @@ def test_corrupt_compressed_stream_is_a_scan_error_not_a_report_crash(compressio
 def test_truncated_gzip_header_is_a_scan_error_not_a_crash():
     with pytest.raises(ValueError, match="not a readable wheel"):
         scan_candidate_source(b"\x1f\x8b\x08")
+
+
+def test_grouping_metrics_preserve_inline_and_external_prompt_changes():
+    def report(a, b):
+        return candidate_review_report([_entry("a", a, "a"), _entry("b", b, "b")],
+            packages={"a": a, "b": b}, include_grouping_metrics=True)["comparisons"][0]
+    inline_a = _wheel('PROMPT="Extract supported claims"\ndef extract(x): return x')
+    inline_b = _wheel('PROMPT="Extract every possible claim"\ndef extract(x): return x')
+    result = report(inline_a, inline_b)
+    assert result["structural_similarity"] == 1
+    assert result["literal_similarity"] < 1
+    external = report(_wheel('def extract(x): return x', prompt="One prompt"),
+                      _wheel('def extract(x): return x', prompt="Other prompt"))
+    assert external["resources_equal"] is False
+
+
+def test_grouping_metrics_subtract_public_code_and_resources():
+    base = _wheel('def parse(x): return x', prompt="public prompt")
+    report = candidate_review_report([_entry("a", base, "a"), _entry("b", base, "b")],
+        packages={"a": base, "b": base}, public_base_packages=[base], include_grouping_metrics=True)
+    assert report["schema_version"] == "claims_duplicate_candidates_v2"
+    pair = report["comparisons"][0]
+    assert pair["structural_similarity"] is None
+    assert pair["shared_structural_nodes"] == 0
+
+
+def test_valid_python_surrogate_literals_do_not_become_source_scan_errors():
+    body = _wheel('BOUNDARY="\\ud800"\nPROMPT="\\ud800" * 90\ndef extract(x): return x')
+    report = candidate_review_report([_entry("a", body, "a"), _entry("b", body, "b")],
+        packages={"a": body, "b": body}, include_grouping_metrics=True)
+    assert report["scan_errors"] == {}
+    assert report["comparisons"][0]["literal_similarity"] == 1

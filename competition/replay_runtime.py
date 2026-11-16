@@ -50,6 +50,16 @@ class ReplayRuntimeBackend:
                 "rules_revision": self.snapshot.get("rules_revision", 1),
                 "rules_revision_sha256": self.snapshot.get("rules_revision_sha256")}
 
+    def list_stages(self, round_id: str) -> list[dict[str, Any]]:
+        stages = self.store.list_stages(round_id)
+        if self.snapshot.get("rules_public", {}).get("policy", {}).get("code_grouping_policy_sha256"):
+            versions = {row["hotkey"]: row["incumbent_version_eligible"] for row in self.snapshot["uploads"]}
+            return [{**stage, "entries": [
+                {**entry, "incumbent_version_eligible": versions[entry["hotkey"]]}
+                if entry["role"] == "challenger" else entry for entry in stage["entries"]
+            ]} for stage in stages]
+        return stages
+
     def _scoring_generation(self, round_id, configuration_sha256, rules_revision):
         if (round_id != self.snapshot["round_id"]
             or configuration_sha256 is not None and configuration_sha256 != self.snapshot["configuration_sha256"]

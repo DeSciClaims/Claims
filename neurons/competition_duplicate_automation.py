@@ -1,8 +1,8 @@
-"""Controller preflight for existing exact-copy rules and bounded review queues.
+"""Freeze code review before execution without importing miner source.
 
-Similarity is retained for follow-up without delaying v2 rounds. Exact hash/AST
-grouping and its seeded draw remain in competition.duplicates; no miner code is
-imported or executed here. Frozen v1 policies retain their original behavior.
+Legacy v1/v2 rounds retain their original contracts. V3 sends bounded scanner
+metrics to the backend, whose approved policy derives separate duplicate and
+family links; a saved similarity flag can no longer silently replace a verdict.
 """
 from __future__ import annotations
 
@@ -30,16 +30,29 @@ from competition.round_setup import _canonical_bytes, _write_once
 def read_policy(path: Path) -> dict:
     if path.stat().st_size > 100_000:
         raise ValueError("duplicate automation policy exceeds size limit")
-    policy = json.loads(path.read_text())
-    if (not isinstance(policy, dict) or set(policy) != {
+    return validate_policy(json.loads(path.read_text()))
+
+
+def validate_policy(policy: dict) -> dict:
+    v3 = isinstance(policy, dict) and policy.get("schema_version") == "claims_duplicate_automation_v3"
+    if (not isinstance(policy, dict) or set(policy) != ({
         "schema_version", "enabled", "review_similarity_threshold", "public_base_archives",
-    } or policy["schema_version"] not in {"claims_duplicate_automation_v1", "claims_duplicate_automation_v2"}
+    } | ({"grouping_policy_sha256"} if v3 else set())
+      | ({"legacy_policy"} if v3 and "legacy_policy" in policy else set()))
+        or policy["schema_version"] not in {"claims_duplicate_automation_v1", "claims_duplicate_automation_v2", "claims_duplicate_automation_v3"}
         or type(policy["enabled"]) is not bool
         or type(policy["review_similarity_threshold"]) not in {float, int}
         or not 0 < policy["review_similarity_threshold"] <= 1
         or not isinstance(policy["public_base_archives"], list)
         or not 1 <= len(policy["public_base_archives"]) <= 16):
         raise ValueError("duplicate automation policy is invalid")
+    if v3 and not re.fullmatch(r"[0-9a-f]{64}", str(policy["grouping_policy_sha256"])):
+        raise ValueError("backend grouping policy hash is invalid")
+    if v3 and "legacy_policy" in policy:
+        legacy = policy["legacy_policy"]
+        if not isinstance(legacy, dict) or legacy.get("schema_version") not in {"claims_duplicate_automation_v1", "claims_duplicate_automation_v2"}:
+            raise ValueError("legacy duplicate policy must retain a v1/v2 contract")
+        validate_policy(legacy)
     for item in policy["public_base_archives"]:
         if (not isinstance(item, dict) or set(item) != {"filename", "sha256"}
             or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,199}", str(item["filename"]))
@@ -64,8 +77,12 @@ def _base_packages(path: Path, policy: dict) -> list[bytes]:
 
 def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
                    directory: Path, document: dict, storage: Any) -> dict:
-    """Freeze automatic decisions; v2 similarity evidence never gates a round."""
+    """Freeze policy-bound decisions; v3 criteria are owned by the backend."""
     policy = read_policy(policy_path)
+    if (policy["schema_version"] == "claims_duplicate_automation_v3"
+        and not row.get("rules_public", {}).get("policy", {}).get("code_grouping_policy_sha256")
+        and "legacy_policy" in policy):
+        policy = policy["legacy_policy"]
     if not policy["enabled"]:
         return {"status": "evaluation_ready"}
     rid = row["round_id"]
@@ -106,6 +123,10 @@ def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
             _write_once(frozen_policy, _canonical_bytes(policy), 0o600)
         policy_hash = canonical_sha256(policy)
         state["policy_sha256"] = policy_hash
+        v3 = policy["schema_version"] == "claims_duplicate_automation_v3"
+        published_grouping = row.get("rules_public", {}).get("policy", {}).get("code_grouping_policy_sha256")
+        if (published_grouping is not None) != v3 or v3 and published_grouping != policy["grouping_policy_sha256"]:
+            raise ValueError("duplicate grouping policy differs from published round rules")
         fingerprints: dict[str, str | None] = {}
 
         def package(hotkey):
@@ -136,7 +157,8 @@ def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
                 report = {**candidate_review_report(accepted, packages=Packages(),
                     incumbent=incumbent,
                     incumbent_package=package(incumbent["hotkey"]) if incumbent else None,
-                    public_base_packages=_base_packages(policy_path, policy)),
+                    public_base_packages=_base_packages(policy_path, policy),
+                    include_grouping_metrics=v3),
                     "round_id": rid, "archive_block_hash": row["archive_block_hash"],
                     "baseline_package_sha256": row["baseline_package_sha256"],
                     "configuration_sha256": row["configuration_sha256"]}
@@ -151,6 +173,12 @@ def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
                 review = load_candidate_report(review_path)
                 verify_duplicate_review(review, round_id=rid, round_record=admission,
                     submissions=submissions, candidate_report=report)
+                if v3:
+                    receipt = backend.runtime_request(rid, "/code-review", {"report": report})
+                    if (receipt["policy_sha256"] != policy["grouping_policy_sha256"]
+                        or receipt["report_sha256"] != report_hash
+                        or review["links"] != receipt["duplicate_links"]):
+                        raise ValueError("local duplicate review differs from backend verdict")
                 # The receipt itself records whether this coordinator wrote it.
                 origin = review.get("automation", {})
                 state.update(status="complete", decision="automatic" if origin.get("policy_sha256") else "operator",
@@ -178,11 +206,18 @@ def prepare_review(row: Mapping[str, Any], backend: Any, *, policy_path: Path,
                 state["status"] = "review_required"
                 publish()
                 return {"status": "waiting_for_duplicate_review"}
+            links = []
+            if v3:
+                receipt = backend.runtime_request(rid, "/code-review", {"report": report})
+                if (receipt["policy_sha256"] != policy["grouping_policy_sha256"]
+                    or receipt["report_sha256"] != report_hash):
+                    raise ValueError("backend code review differs from frozen policy or evidence")
+                links = [(item["left"], item["right"], item["reason"]) for item in receipt["duplicate_links"]]
             review = make_duplicate_review(rid, round_record=admission, submissions=submissions,
-                linked_pairs=[], candidate_report=report)
+                linked_pairs=links, candidate_report=report)
             review["automation"] = {"schema_version": policy["schema_version"],
                 "policy_sha256": policy_hash,
-                "uncertain_matches": "evaluate" if policy["schema_version"] == "claims_duplicate_automation_v2" else "review",
+                "uncertain_matches": "backend_classified" if v3 else "evaluate" if policy["schema_version"] == "claims_duplicate_automation_v2" else "review",
                 "follow_up_review_pair_count": len(flagged),
                 "coordinator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
             _write_once(review_path, _canonical_bytes(review), 0o600)

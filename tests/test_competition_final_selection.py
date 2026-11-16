@@ -53,3 +53,19 @@ def test_week_one_needs_positive_gain_and_shared_grid():
     mismatched = finalist("b", "b-team", [0.01] * 4)
     with pytest.raises(ValueError, match="same ordered paper"):
         select_final_production([finalist("a", "a-team", [0.01] * 5), mismatched], incumbent_hotkey=None)
+
+
+def test_code_only_family_does_not_get_incumbent_update_exemption():
+    from dataclasses import replace
+    variant = replace(finalist("variant", "old-team", [0.0] * 5), incumbent_version_eligible=False)
+    result = select_final_production([variant], incumbent_hotkey="old", incumbent_team_id="old-team")
+    assert result.decision == "incumbent_continues"
+    assert result.verdicts[0].reason == "below_crown_bar"
+    affiliated = replace(variant, incumbent_version_eligible=True)
+    assert select_final_production([affiliated], incumbent_hotkey="old", incumbent_team_id="old-team").decision == "incumbent_version_swap"
+
+
+def test_code_only_family_that_clears_bar_is_a_new_crown():
+    from dataclasses import replace
+    variant = replace(finalist("variant", "old-team", [0.1] * 5), incumbent_version_eligible=False)
+    assert select_final_production([variant], incumbent_hotkey="old", incumbent_team_id="old-team").decision == "new_crown"

@@ -22,6 +22,7 @@ from miner.agent_v1.ingest import (
 from miner.agent_v1.provider import dspy_model_id
 from miner.agent_v1.runner import AgentV1Runner, _runtime_source_payload_path
 from miner.agent_v1.runtime.base import AgentRequest, AgentResult
+from miner.agent_v1.runtime.dspy_react import DspyReActRuntime
 from miner.agent_v1.runtime.langchain_agent import (
     _structured_payload,
     _validation_status,
@@ -41,6 +42,61 @@ from neurons.harness_profiles import resolve_agent_harness
 from neurons.miner import ClaimsMiner
 from neurons.protocol import ClaimExtractionSynapse
 from neurons.tasks import ClaimsTask
+
+
+def test_dspy_react_does_not_cache_unparsed_model_responses(monkeypatch, tmp_path: Path) -> None:
+    """A failed parse must not poison DSPy's persistent LM response cache."""
+    import dspy
+
+    created_lms = []
+
+    class FakeLM:
+        def __init__(self, **kwargs):
+            created_lms.append(kwargs)
+            self.history = []
+
+    class FakeReAct:
+        def __init__(self, signature, *, tools, max_iters):
+            pass
+
+        def __call__(self, **kwargs):
+            return SimpleNamespace(final_json="{}")
+
+    monkeypatch.setattr(dspy, "LM", FakeLM)
+    monkeypatch.setattr(dspy, "ReAct", FakeReAct)
+    monkeypatch.setattr(dspy, "context", lambda **kwargs: __import__("contextlib").nullcontext())
+
+    config = AgentV1Config.from_env(Path.cwd())
+    config.api_key = "test-key"
+    config.max_agent_iters = 1
+    skill_pack = load_skill_pack(Path("miner/agent_v1/skills/compiler"))
+    (tmp_path / "source.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "schema.json").write_text("{}", encoding="utf-8")
+    request = AgentRequest(paper={}, source_payload_path="source.json", output_schema_path="schema.json")
+
+    DspyReActRuntime(config).run_skill(skill_pack=skill_pack, run_dir=tmp_path, request=request)
+
+    assert len(created_lms) == 1
+    assert created_lms[0]["cache"] is False
+    assert created_lms[0]["max_tokens"] == config.max_tokens
+
+
+def test_dspy_lm_cache_false_bypasses_dspy_and_litellm_response_caches(monkeypatch) -> None:
+    import dspy
+    import dspy.clients.lm as dspy_lm
+
+    monkeypatch.setattr(
+        dspy_lm,
+        "request_cache",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("DSPy response cache was enabled")),
+    )
+    lm = dspy.LM("openrouter/deepseek/deepseek-v4-flash-0731", cache=False)
+    completion = lambda **kwargs: None
+
+    selected, cache_args = lm._get_cached_completion_fn(completion, lm.cache)
+
+    assert selected is completion
+    assert cache_args == {"no-cache": True, "no-store": True}
 
 
 def test_signed_miner_upload_network_is_independent_of_rpc_endpoint():

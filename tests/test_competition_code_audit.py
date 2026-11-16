@@ -319,3 +319,36 @@ def test_audit_setup_writes_automatic_receipt_without_review(tmp_path):
     with pytest.raises(ValueError, match="does not accept manual review"):
         prepare_code_audit("week1", backend=backend, storage=Storage(), directory=tmp_path,
                            review={"round_id": "week1"})
+
+
+def test_code_audit_accepts_only_trusted_zero_allowance_retry_fault():
+    package = _wheel()
+    package_hash = hashlib.sha256(package).hexdigest()
+
+    class RetryBackend(Backend):
+        def list_paper_jobs(self, round_id, stage, paper_id):
+            jobs = super().list_paper_jobs(round_id, stage, paper_id)
+            if paper_id == "paper-2":
+                result = jobs[1]["result_private"]
+                result.update(status="infrastructure_fault", artifact=None,
+                              token_limit=0, prompt_and_completion_tokens=0,
+                              detail="unmetered_prior_attempt")
+            return jobs
+
+    backend = RetryBackend(package_hash)
+    evidence = collect_final_code_evidence("week1", backend=backend,
+                                           fetch_package=lambda _: package)
+    row = evidence["packages"][0]
+    assert row["status_counts"] == {"completed": 1, "infrastructure_fault": 1}
+    assert row["measured_worker_tokens"] == 100
+
+    original = backend.list_paper_jobs
+    def wrong_status(round_id, stage, paper_id):
+        jobs = original(round_id, stage, paper_id)
+        if paper_id == "paper-2":
+            jobs[1]["result_private"]["status"] = "completed"
+        return jobs
+    backend.list_paper_jobs = wrong_status
+    with pytest.raises(ValueError, match="trusted gateway or firewall usage"):
+        collect_final_code_evidence("week1", backend=backend,
+                                    fetch_package=lambda _: package)

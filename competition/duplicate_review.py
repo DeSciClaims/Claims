@@ -82,7 +82,7 @@ def _candidate_report_hash(
     round_record: Mapping[str, Any], accepted_rows: list[dict[str, str]],
     accepted_sha256: str,
 ) -> str:
-    if (report.get("schema_version") != "claims_duplicate_candidates_v1"
+    if (report.get("schema_version") not in {"claims_duplicate_candidates_v1", "claims_duplicate_candidates_v2"}
         or report.get("round_id") != round_id
         or report.get("archive_block_hash") != round_record.get("archive_block_hash")
         or report.get("baseline_package_sha256") != round_record.get("baseline_package_sha256")
@@ -143,6 +143,11 @@ def _candidate_report_hash(
             or any(not isinstance(value, int) or isinstance(value, bool) or value < 0
                    for value in counts)):
             raise ValueError("duplicate candidate comparison metrics are malformed")
+        if report["schema_version"] == "claims_duplicate_candidates_v2":
+            literal = item.get("literal_similarity")
+            if (type(literal) not in {float, int} or not 0 <= literal <= 1
+                or type(item.get("resources_equal")) is not bool):
+                raise ValueError("duplicate candidate literal metrics are malformed")
         actual.add((left, right))
     if actual != expected:
         raise ValueError("duplicate candidate report omits eligible comparisons")

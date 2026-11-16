@@ -34,6 +34,9 @@ class SourceFeatures:
     source_files: tuple[tuple[str, str, Counter[str]], ...]
     resource_hashes: frozenset[str]
     prompt_hashes: frozenset[str]
+    # Keep literal-bearing ASTs separately: structural normalization deliberately
+    # erases string values, which must not erase prompt differences for exclusion.
+    literal_files: tuple[tuple[str, str, frozenset[str]], ...] = ()
 
 
 def _archive_members(package: bytes) -> Iterable[tuple[str, bytes]]:
@@ -106,7 +109,7 @@ def _node_features(root: ast.AST) -> tuple[str, Counter[str], frozenset[str]]:
                 parts.append((field, children))
             elif field == "value":
                 if isinstance(value, str) and len(value) >= 80:
-                    prompts.add(hashlib.sha256(value.encode()).hexdigest())
+                    prompts.add(hashlib.sha256(value.encode("utf-8", errors="surrogatepass")).hexdigest())
                 parts.append((field, type(value).__name__))
             elif field in {"id", "arg", "name", "attr", "asname", "module", "type_comment"}:
                 parts.append((field, "_"))
@@ -130,6 +133,7 @@ def scan_candidate_source(package: bytes) -> SourceFeatures:
     resources: set[str] = set()
     prompts: set[str] = set()
     source_bytes = 0
+    literal_files = []
     try:
         for name, body in _archive_members(package):
             path_parts = {part.lower() for part in name.replace("\\", "/").split("/")}
@@ -143,6 +147,11 @@ def scan_candidate_source(package: bytes) -> SourceFeatures:
                 digest, features, strings = _node_features(tree)
                 files.append((name, digest, features))
                 prompts.update(strings)
+                literal_files.append((name, digest, frozenset(
+                    hashlib.sha256(node.value.encode("utf-8", errors="surrogatepass")).hexdigest()
+                    for node in ast.walk(tree)
+                    if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                )))
             else:
                 resources.add(hashlib.sha256(body).hexdigest())
     except (SyntaxError, UnicodeError, RecursionError) as exc:
@@ -150,7 +159,7 @@ def scan_candidate_source(package: bytes) -> SourceFeatures:
     if not files:
         raise ValueError("candidate package has no first-party Python source")
     return SourceFeatures(tuple(sorted(files, key=lambda row: row[0])),
-                          frozenset(resources), frozenset(prompts))
+                          frozenset(resources), frozenset(prompts), tuple(literal_files))
 
 
 def _effective_features(
@@ -203,6 +212,7 @@ def candidate_review_report(
     submissions: list[Mapping[str, Any]], *,
     packages: Mapping[str, bytes], public_base_packages: Iterable[bytes] = (),
     incumbent: Mapping[str, Any] | None = None, incumbent_package: bytes | None = None,
+    include_grouping_metrics: bool = False,
 ) -> dict[str, Any]:
     """Compare every locked eligible package and the incumbent, without deciding links."""
     by_hotkey = {row["hotkey"]: row for row in submissions
@@ -247,13 +257,27 @@ def candidate_review_report(
                 **compare_candidate_sources(sources[left], sources[right],
                                              public_bases=bases),
             })
+            if include_grouping_metrics:
+                base_hashes = {digest for base in bases for _, digest, _ in base.source_files}
+                base_resources = {value for base in bases for value in base.resource_hashes}
+                def literals(source):
+                    return set().union(*(values for _, digest, values in source.literal_files
+                                         if digest not in base_hashes))
+                a, b = literals(sources[left]), literals(sources[right])
+                ar = sources[left].resource_hashes - base_resources
+                br = sources[right].resource_hashes - base_resources
+                comparisons[-1].update(
+                    literal_similarity=round(len(a & b) / len(a | b), 6) if a | b else 1.0,
+                    resources_equal=ar == br,
+                )
     comparisons.sort(key=lambda row: (
         -(row["structural_similarity"] if row["structural_similarity"] is not None else -1),
         -row["shared_resource_hashes"],
         row["left"], row["right"],
     ))
     return {
-        "schema_version": "claims_duplicate_candidates_v1",
+        "schema_version": ("claims_duplicate_candidates_v2" if include_grouping_metrics
+                           else "claims_duplicate_candidates_v1"),
         "accepted_submissions_sha256": canonical_sha256([
             {"hotkey": key, "package_sha256": row["package_sha256"], "team_id": row["team_id"]}
             for key, row in sorted(by_hotkey.items())

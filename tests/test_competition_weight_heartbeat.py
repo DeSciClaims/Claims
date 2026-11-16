@@ -79,6 +79,63 @@ def test_signed_roles_reproject_after_uid_change_and_burn_unregistered_miner():
     ) == {0: 0.03, 1: 0.90, 2: 0.07}
 
 
+def test_miner_only_receipt_reprojects_without_operator_share():
+    signer, old = receipt()
+    bundle = copy.deepcopy(old["bundle"])
+    bundle["weights"] = {
+        "allocation_policy": "miner_only_70_20_10_v1",
+        "vector": [{"uid": 0, "weight": 0.1}, {"uid": 1, "weight": 0.7},
+                   {"uid": 2, "weight": 0.2}],
+        "roles": [
+            {"hotkey": "king", "role": "production", "share": 0.7},
+            {"hotkey": "runner", "role": "runner_up_1", "share": 0.2},
+            {"hotkey": "", "role": "runner_up_2_burned", "share": 0.1},
+        ],
+        "burned_fraction": 0.1,
+    }
+    signed = sign_publication(bundle, signer)
+    verified = verify_weekly_receipt(
+        signed, expected_signer_hotkey=signer.ss58_address, network="testnet",
+    )
+    assert project_weekly_weights(
+        verified, hotkeys_by_uid=["owner", "king", "runner", "operator"],
+        owner_hotkey="owner", operator_hotkey="operator",
+    ) == pytest.approx({0: 0.1, 1: 0.7, 2: 0.2})
+
+
+def test_base_burn_receipt_reprojects_to_owner_uid():
+    signer, old = receipt()
+    bundle = copy.deepcopy(old["bundle"])
+    residual = 1 - 0.875758
+    bundle["weights"] = {
+        "allocation_policy": "burn_875758_miner_70_20_10_v1",
+        "vector": [{"uid": 0, "weight": 0.875758 + 0.1 * residual},
+                   {"uid": 1, "weight": 0.7 * residual},
+                   {"uid": 2, "weight": 0.2 * residual}],
+        "roles": [
+            {"hotkey": "", "role": "base_burn_burned", "share": 0.875758},
+            {"hotkey": "king", "role": "production", "share": 0.7 * residual},
+            {"hotkey": "runner", "role": "runner_up_1", "share": 0.2 * residual},
+            {"hotkey": "", "role": "runner_up_2_burned", "share": 0.1 * residual},
+        ],
+        "burned_fraction": 0.875758 + 0.1 * residual,
+    }
+    signed = sign_publication(bundle, signer)
+    verified = verify_weekly_receipt(
+        signed, expected_signer_hotkey=signer.ss58_address, network="testnet",
+    )
+    assert project_weekly_weights(
+        verified, hotkeys_by_uid=["owner", "king", "runner", "operator"],
+        owner_hotkey="owner", operator_hotkey="operator",
+    ) == pytest.approx({0: 0.875758 + 0.1 * residual,
+                        1: 0.7 * residual, 2: 0.2 * residual})
+    bad = copy.deepcopy(bundle)
+    bad["weights"]["roles"][0]["role"] = "base_burn"
+    with pytest.raises(ValueError, match="role or share"):
+        verify_weekly_receipt(sign_publication(bad, signer),
+            expected_signer_hotkey=signer.ss58_address, network="testnet")
+
+
 def test_tampering_cross_network_and_unsafe_burn_fail_closed():
     signer, signed = receipt()
     with pytest.raises(ValueError, match="another network"):
