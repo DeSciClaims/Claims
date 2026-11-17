@@ -66,6 +66,13 @@ def main(argv: list[str] | None = None) -> int:
             if duplicate_policy['enabled'] and duplicate_policy['schema_version'] in {'claims_duplicate_automation_v2', 'claims_duplicate_automation_v3'}:
                 from neurons.competition_duplicate_appeals import NonBlockingAppealsBackend
                 backend_type = NonBlockingAppealsBackend
+        if args.role == "controller" and isinstance(backend_type, type):
+            from neurons.competition_evaluation_transport import CompressedEvaluationTransport
+            backend_type = type(
+                "EvaluationTransportBackend",
+                (CompressedEvaluationTransport, backend_type),
+                {},
+            )
         backend = backend_type(base_url=args.backend_url, controller_token=token)
         factory = _factory(args.factory_module)
         callback_name = {"controller": "create_controller_inputs", "bronze": "create_bronze_inputs",
