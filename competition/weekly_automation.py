@@ -114,9 +114,25 @@ def _score_active_stage(
             ready.append(paper_id)
 
     def score(paper_id):
+        try:
+            bronze_artifact = inputs.bronze_for_paper(stage, paper_id)
+        except (KeyError, ValueError):
+            # Only an audited, uniform source fault can score without Bronze.
+            # Keep the normal path free of an extra raw-job API request.
+            jobs = backend.list_paper_jobs(round_id, stage, paper_id)
+            if (len(jobs) != len(entries)
+                or {job.get("hotkey") for job in jobs} != entries
+                or not all(job.get("status") == "completed"
+                           and isinstance(job.get("result_private"), dict)
+                           and job["result_private"].get("status") == "infrastructure_fault"
+                           and job["result_private"].get("detail") == "bronze_source_excluded"
+                           for job in jobs)):
+                raise
+            bronze_artifact = {"paper": {"paper_id": paper_id},
+                               "source_fault": "bronze_source_excluded"}
         return score_ready_paper(
             round_id, stage, paper_id, backend=backend,
-            bronze_artifact=inputs.bronze_for_paper(stage, paper_id),
+            bronze_artifact=bronze_artifact,
             evaluate=inputs.evaluate_for_stage(scoring_stage),
             expected_configuration_sha256=getattr(
                 getattr(inputs, "evaluation", None), "configuration_sha256", None),
