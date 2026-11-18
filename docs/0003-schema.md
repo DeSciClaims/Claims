@@ -1,5 +1,17 @@
 # Schema
 
+## Draft scientific result extraction schema 1.1
+
+The new scientific result extraction format is under development. Its versioned
+specification and field guide live together in `schemas/`:
+
+- [JSON Schema 1.1](../schemas/scientific-result-extraction/v1.1/schema.json)
+- [Quick reference](../schemas/scientific-result-extraction/v1.1/QUICK_REFERENCE.md)
+
+This draft describes scientific result objects, relationships, result groups,
+and numerical source tables. It does not replace the existing extraction bundle
+described below.
+
 ## Core Objects
 
 This repo uses the canonical object names from the prototype claim graph schema.

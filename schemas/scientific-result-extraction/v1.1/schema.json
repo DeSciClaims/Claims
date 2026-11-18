@@ -1,0 +1,3841 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Claims scientific result extraction schema 1.1",
+  "description": "Self-contained specification for extracting scientific result objects, their relationships, locally closed result sets, result families, and numerical source tables with accompanying CSV files. Includes field definitions, IDs, controlled vocabularies, extraction and export instructions, and validation checks.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Version of this extraction data format.",
+      "const": "1.1"
+    },
+    "paper": {
+      "$ref": "#/$defs/Paper",
+      "description": "The paper being extracted and its available bibliographic metadata."
+    },
+    "extraction": {
+      "$ref": "#/$defs/Extraction",
+      "description": "Extraction identity, scope, and optional revision metadata."
+    },
+    "sources": {
+      "type": "array",
+      "description": "Main paper and any consulted supplements, corrections, or cited sources.",
+      "items": {
+        "$ref": "#/$defs/Source",
+        "description": "One consulted source document."
+      },
+      "minItems": 1
+    },
+    "tables": {
+      "type": "array",
+      "description": "Distinct numerical source tables, each stored once and exported as one CSV. Include descriptive and supplementary tables. An empty array certifies absence only when extraction.table_coverage.status is complete; an incomplete extraction must explain omitted exports.",
+      "items": {
+        "$ref": "#/$defs/TableObject",
+        "description": "One complete numerical source table and its CSV metadata."
+      }
+    },
+    "result_groups": {
+      "type": "array",
+      "description": "Result families formed after local closures have been derived from object relationships. Family membership is not an input to local closure.",
+      "items": {
+        "$ref": "#/$defs/ResultGroup",
+        "description": "One substantive result group."
+      }
+    },
+    "results": {
+      "type": "array",
+      "description": "Comparisons, estimates, descriptive summaries, equations, and series, each assigned to one primary group.",
+      "items": {
+        "$ref": "#/$defs/ResultRecord",
+        "description": "One ordinary result record."
+      }
+    },
+    "shared_context": {
+      "type": "array",
+      "description": "Optional reusable samples, parameters, or other context. Omit or use an empty list when none is needed.",
+      "items": {
+        "$ref": "#/$defs/SharedContext",
+        "description": "One shared context record."
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "description": "Explicit scientific relationships. Review closure_direction before using them for local grouping. A missing closure_direction is unreviewed, not an assertion that the relationship does not participate.",
+      "items": {
+        "$ref": "#/$defs/Relationship",
+        "description": "One explicit scientific connection."
+      }
+    },
+    "cross_group_summaries": {
+      "type": "array",
+      "description": "Optional summaries across groups, without counting the same evidence as a new independent group.",
+      "items": {
+        "$ref": "#/$defs/CrossGroupSummary",
+        "description": "One summary spanning existing groups."
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Document-level qualifications or extraction explanations."
+    },
+    "closure_review": {
+      "type": "array",
+      "description": "Optional object-level explanations for contextual, unassigned, or unresolved material. Use where an object is not already accounted for by a local closure, a reference, or a clear contextual record.",
+      "items": {
+        "$ref": "#/$defs/ClosureReviewItem",
+        "description": "One object and its grouping or coverage disposition."
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "paper",
+    "extraction",
+    "sources",
+    "result_groups",
+    "results",
+    "tables"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "tables": {
+            "minItems": 1
+          }
+        },
+        "required": [
+          "tables"
+        ]
+      },
+      "then": {
+        "required": [
+          "relationships"
+        ],
+        "properties": {
+          "relationships": {
+            "minItems": 1,
+            "contains": {
+              "properties": {
+                "relation": {
+                  "const": "table_for"
+                }
+              },
+              "required": [
+                "relation"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "PaperId": {
+      "type": "string",
+      "description": "The assigned paper key.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "ExtractionId": {
+      "type": "string",
+      "description": "The independently assigned extraction key within a paper.",
+      "pattern": "^E(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})$"
+    },
+    "ResultId": {
+      "type": "string",
+      "description": "A fully qualified identifier following the embedded ID convention.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*\\.E(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.R(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})$"
+    },
+    "ContextId": {
+      "type": "string",
+      "description": "A fully qualified identifier following the embedded ID convention.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*\\.E(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.C(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})$"
+    },
+    "GroupId": {
+      "type": "string",
+      "description": "A fully qualified identifier following the embedded ID convention.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*\\.E(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.G(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})$"
+    },
+    "SourceId": {
+      "type": "string",
+      "description": "A fully qualified identifier following the embedded ID convention.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*\\.E(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.S(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})$"
+    },
+    "FieldId": {
+      "type": "string",
+      "description": "A fully qualified identifier following the embedded ID convention.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*\\.E(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.[RC](?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.F(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})$"
+    },
+    "ReferenceId": {
+      "type": "string",
+      "description": "A fully qualified result, shared-context, field, group, or table ID. Source-document IDs use SourceId separately.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*\\.E(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.(?:[GT](?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})|[RC](?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})(?:\\.F(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,}))?)$"
+    },
+    "Paper": {
+      "type": "object",
+      "description": "Available bibliographic metadata for the paper being extracted. Other source documents are listed in sources.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/PaperId",
+          "description": "Project-unique paper key, reused across independent extractions."
+        },
+        "title": {
+          "type": "string",
+          "description": "Paper title as reported.",
+          "minLength": 1
+        },
+        "authors": {
+          "type": "array",
+          "description": "Authors in source order, when available.",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "year": {
+          "type": "integer",
+          "description": "Publication year when established."
+        },
+        "journal": {
+          "type": "string",
+          "description": "Journal or publication venue when available."
+        },
+        "doi": {
+          "type": "string",
+          "description": "DOI as reported, without requiring a DOI when none is available."
+        },
+        "url": {
+          "type": "string",
+          "description": "Stable URL for the paper when available."
+        },
+        "citation": {
+          "type": "string",
+          "description": "Additional bibliographic text, such as volume, issue, and pages."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Bibliographic qualifications or unresolved source-version details."
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "Extraction": {
+      "type": "object",
+      "description": "Identity and scope of this extraction. An ordinary revision retains the extraction ID.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ExtractionId",
+          "description": "Assigned E key; independent submissions for the same paper receive different keys."
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Revision of this extraction record; changing it does not change existing field IDs."
+        },
+        "date": {
+          "type": "string",
+          "description": "Date of this extraction or revision, in YYYY-MM-DD form.",
+          "format": "date"
+        },
+        "scope": {
+          "type": "string",
+          "description": "What was actually included: article version, supplements, tables, figures, and any partial coverage. A selected result or supplementary-document subset does not narrow the numerical-table export obligation for the main source version and all associated supplements supplied or identified by that source. Cited works are included only when explicitly part of the extraction scope; disclose unavailable required sources in table_coverage and mark coverage incomplete.",
+          "minLength": 1
+        },
+        "notes": {
+          "type": "string",
+          "description": "Extraction-level explanations, including whether this is an illustrative subset or a full extraction."
+        },
+        "table_coverage": {
+          "$ref": "#/$defs/TableCoverage",
+          "description": "Coverage of all numerical tables, independently of which scientific fields were selected for detailed extraction."
+        }
+      },
+      "required": [
+        "id",
+        "scope",
+        "table_coverage"
+      ],
+      "additionalProperties": false
+    },
+    "Source": {
+      "type": "object",
+      "description": "A document actually consulted, such as the main paper, a supplement, a correction, or a cited source.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/SourceId",
+          "description": "Unique source-document ID in this extraction, using S001, S002, and so on."
+        },
+        "title": {
+          "type": "string",
+          "description": "Human-readable source title or document description.",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "description": "Ordinary source description, for example main_article, supplement, correction, or cited_source."
+        },
+        "doi": {
+          "type": "string",
+          "description": "Source DOI when available."
+        },
+        "url": {
+          "type": "string",
+          "description": "Source URL when available."
+        },
+        "version": {
+          "type": "string",
+          "description": "Source version, date, or edition needed to distinguish original and corrected material."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Access, page-numbering, or source-reading qualifications."
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "additionalProperties": false
+    },
+    "SourceSnippet": {
+      "type": "object",
+      "description": "A verbatim excerpt, including table or equation text, attached where it supplies evidence. Do not duplicate it at every level.",
+      "properties": {
+        "source_id": {
+          "$ref": "#/$defs/SourceId",
+          "description": "ID of a document defined in sources."
+        },
+        "locator": {
+          "type": "string",
+          "description": "Location within that source: page, section, table row, figure panel, equation number, or a useful combination.",
+          "minLength": 1
+        },
+        "text": {
+          "type": "string",
+          "description": "Verbatim source text or table/equation excerpt. Keep paraphrases in summary or description fields.",
+          "minLength": 1
+        },
+        "note": {
+          "type": "string",
+          "description": "Explanation of transcription, OCR, graphical reading, or a source discrepancy; this is not part of the quotation."
+        }
+      },
+      "required": [
+        "source_id",
+        "locator",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "Reference": {
+      "type": "object",
+      "description": "A named reference to an existing field or record. It permits reuse without creating a second definition of the same item.",
+      "properties": {
+        "field": {
+          "type": "string",
+          "description": "The local field or role filled by the referenced item, such as n, sample, w, or comparison.",
+          "minLength": 1
+        },
+        "target_id": {
+          "$ref": "#/$defs/ReferenceId",
+          "description": "ID of a field, result, shared context, group, or numerical table defined in this extraction. A table reference provides provenance or context without importing table cells into local closure."
+        },
+        "note": {
+          "type": "string",
+          "description": "Brief explanation when the field name and target do not make the use clear."
+        }
+      },
+      "required": [
+        "field",
+        "target_id"
+      ],
+      "additionalProperties": false
+    },
+    "FieldEntry": {
+      "type": "object",
+      "description": "The common entry format. Four fields are required: id, field, label, and value. Optional metadata preserves meaning without requiring an exhaustive classification.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/FieldId",
+          "description": "Permanent ID of this particular entry. Its allocation prefix does not change when the entry is moved or relabeled."
+        },
+        "field": {
+          "type": "string",
+          "description": "Existing or plainly descriptive field name, such as cf_mean, estimate, ci_lower, p, n, or equation. Names need not come from a closed vocabulary.",
+          "minLength": 1
+        },
+        "field_group": {
+          "type": "string",
+          "description": "Optional pointer to the most relevant field-vocabulary list. These lists describe typical choices and are not separate mandatory containers.",
+          "enum": [
+            "result_estimate",
+            "descriptive_value",
+            "effect_measure",
+            "uncertainty_variation",
+            "test_result",
+            "sample_evidence_count",
+            "outcome_field",
+            "intervention_exposure_comparator",
+            "time",
+            "numerical_context",
+            "mathematics",
+            "other"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "description": "Shared object label. Use other when no common label fits or the classification is not established; retain the meaning in the existing value, description, or context.",
+          "enum": [
+            "mean",
+            "count",
+            "proportion",
+            "probability",
+            "sample_size",
+            "treatment_effect",
+            "association",
+            "standard_error",
+            "standard_deviation",
+            "confidence_interval",
+            "confidence_limit",
+            "p_value",
+            "outcome",
+            "intervention",
+            "exposure",
+            "group",
+            "time_point",
+            "time_interval",
+            "parameter",
+            "threshold",
+            "increment",
+            "equation",
+            "assumption",
+            "condition",
+            "absolute_change",
+            "relative_change",
+            "odds_ratio",
+            "other"
+          ]
+        },
+        "value": {
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "array",
+            "object",
+            "null"
+          ],
+          "description": "The extracted content. Use a JSON number for an established scalar; a string for text or an equation; an object or array for intervals, curves, or interpreted collections of table values. A collection in value does not replace a required TableObject and complete CSV export. Preserve bounds, signs, and approximations. Explicit null means no supplied value, never zero."
+        },
+        "units": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Reported units or display scale, including percent or the counted entity when useful. Preserve source conventions; this field alone does not establish the statistic."
+        },
+        "value_operator": {
+          "type": "string",
+          "description": "Reported comparison or approximation for a numerical value, for example =, <, <=, >, >=, approximately, or nearly. If omitted, no additional comparison operator is asserted."
+        },
+        "measure": {
+          "type": "string",
+          "description": "Optional numerical form of an estimate, using the effect-measure vocabulary. For example label=treatment_effect and measure=odds_ratio. Other measures can use other with their original meaning retained in description or context.",
+          "enum": [
+            "absolute_change",
+            "relative_change",
+            "odds_ratio",
+            "proportion",
+            "other"
+          ]
+        },
+        "confidence_level": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "Optional confidence probability for a confidence interval or limit, stored here as a fraction such as 0.95. Convert a reported 95% only when the scale is established; retain the original display in the snippet or context."
+        },
+        "description": {
+          "type": "string",
+          "description": "Plain-language explanation of the entry. Especially useful for other, unusual measures, and ambiguous source wording."
+        },
+        "context": {
+          "type": [
+            "string",
+            "object"
+          ],
+          "description": "Local context, such as group, outcome, time, test, parameter definition, adjustment, or comparison direction. Use ordinary text or named properties; a full taxonomy is not required.",
+          "additionalProperties": true
+        },
+        "references": {
+          "type": "array",
+          "description": "Named references used specifically by this field, such as a sample or parameter stored elsewhere.",
+          "items": {
+            "$ref": "#/$defs/Reference",
+            "description": "A named reference to an already defined item or record."
+          }
+        },
+        "parent_field_id": {
+          "$ref": "#/$defs/FieldId",
+          "description": "Optional F ID of a whole interval, interpreted collection of table values, curve, or expression containing this independently addressed member. This implies the specified child-field to parent-field closure edge. A source T object is not a parent field; use table_references for its cells. A parent and member are not independent observations."
+        },
+        "field_path": {
+          "type": "string",
+          "description": "Current location of a nested entry. With parent_field_id, this path is relative to the parent's value, for example [0].rho_C_digitized; otherwise it can describe its current extraction location. Use dot-separated keys and zero-based bracket indexes; keys containing dots or brackets can use JSON-quoted bracket notation such as [\"a.b\"]. Paths can change without changing IDs."
+        },
+        "origin": {
+          "type": "string",
+          "description": "How this content was obtained, using ordinary descriptions such as source_reported, source_calculated, extractor_calculated, or digitized. Distinguish a source result from a calculation added during extraction."
+        },
+        "value_status": {
+          "type": "string",
+          "description": "Relevant precision, approximation, transcription, or source-consistency note. For example, digitized values are approximate; reported_exact denotes transcription fidelity."
+        },
+        "source_snippets": {
+          "type": "array",
+          "description": "More specific source excerpts when record-level excerpts do not adequately identify this field.",
+          "items": {
+            "$ref": "#/$defs/SourceSnippet",
+            "description": "One source excerpt and its location."
+          },
+          "minItems": 0
+        },
+        "notes": {
+          "type": "string",
+          "description": "Qualifications, uncertainty about classification, source conflicts, or other explanation that should remain available."
+        },
+        "table_references": {
+          "type": "array",
+          "description": "Cell provenance for separately extracted table entries. Repeated reporting may cite multiple tables or cells under one scientific field ID. Required by semantic validation for directly cell-reported fields when table coverage is complete; omit for quantities supplied only by headers, captions, or footnotes and identify those locations through snippets and named table references.",
+          "items": {
+            "$ref": "#/$defs/TableCellReference",
+            "description": "One directly reported source cell, with the relevant component when needed."
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "field",
+        "label",
+        "value"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "parent_field_id": [
+          "field_path"
+        ]
+      }
+    },
+    "ResultGroup": {
+      "type": "object",
+      "description": "A result family formed from locally closed result records answering one substantive question within one identifiable investigation, review, or generating mechanism. Membership is stored only on results[].group_id. The family is not itself a local closure or an automatic connected component.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/GroupId",
+          "description": "Stable group ID, using G001, G002, and so on. Group hierarchy is not encoded in field IDs."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short human-readable name for the result group.",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "description": "The substantive scientific question answered by this group.",
+          "minLength": 1
+        },
+        "investigation": {
+          "type": "string",
+          "description": "The experiment, observational investigation, evidence review, analytical mechanism, or numerical study at the level used for grouping.",
+          "minLength": 1
+        },
+        "grouping_reason": {
+          "type": "string",
+          "description": "Explain why the already derived local results answer one question in one investigation, and why they are separate from neighboring families. Record boundary judgments without using family membership to determine local closures.",
+          "minLength": 1
+        },
+        "core_result_ids": {
+          "type": "array",
+          "description": "Main local result record or records within this family. Each must belong to the family. This designation follows grouping and is distinct from each record closure.core_ids, which identifies its graph-terminal objects.",
+          "items": {
+            "$ref": "#/$defs/ResultId",
+            "description": "ID of an explicitly designated main result record."
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "summary": {
+          "type": "string",
+          "description": "Optional plain-language account of the group's result. Preserve the scope and qualifications of the source."
+        },
+        "context": {
+          "type": [
+            "string",
+            "object"
+          ],
+          "description": "Context common to this group. Specific result or field context may narrow it; resolve contradictions explicitly rather than silently overwriting meaning.",
+          "additionalProperties": true
+        },
+        "references": {
+          "type": "array",
+          "description": "Shared context used by the group, such as a sample, intervention, method description, or parameter record.",
+          "items": {
+            "$ref": "#/$defs/Reference",
+            "description": "A named reference to an already defined item or record."
+          }
+        },
+        "related_group_ids": {
+          "type": "array",
+          "description": "Optional cross-group associations, such as an analytical group and a numerical study evaluating it. These do not merge group membership.",
+          "items": {
+            "$ref": "#/$defs/GroupId",
+            "description": "ID of a scientifically related group."
+          },
+          "uniqueItems": true
+        },
+        "source_snippets": {
+          "type": "array",
+          "description": "Source excerpts supporting the group-level question or summary, when useful beyond the result excerpts.",
+          "items": {
+            "$ref": "#/$defs/SourceSnippet",
+            "description": "One source excerpt and its location."
+          },
+          "minItems": 0
+        },
+        "notes": {
+          "type": "string",
+          "description": "Boundary qualifications, unresolved grouping choices, or display notes."
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "question",
+        "investigation",
+        "grouping_reason",
+        "core_result_ids"
+      ],
+      "additionalProperties": false
+    },
+    "ResultRecord": {
+      "type": "object",
+      "description": "A locally closed comparison, estimate, descriptive result, mathematical result, or series. Its closure is derived from reviewed relationships before it is assigned to a result family. The physical fields array is storage, not evidence of graph membership.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ResultId",
+          "description": "Permanent R-record ID, independent of its current result-group membership."
+        },
+        "group_id": {
+          "$ref": "#/$defs/GroupId",
+          "description": "The one primary result family assigned after local closure. Do not use this value, prior family IDs, or family-membership edges to construct the local closure."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short description of the particular record.",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "description": "Optional paraphrase of what this record establishes. Verbatim wording belongs in source_snippets."
+        },
+        "fields": {
+          "type": "array",
+          "description": "Addressable entries physically stored in this record. Storage and allocation prefixes do not establish closure membership. An entry referenced by several closures has one definition, not duplicated definitions in each record.",
+          "items": {
+            "$ref": "#/$defs/FieldEntry",
+            "description": "One addressable field entry."
+          },
+          "minItems": 1
+        },
+        "context": {
+          "type": [
+            "string",
+            "object"
+          ],
+          "description": "Plain text or an open object containing the needed outcome, population, treatment, comparator, time, method, model, adjustment, assumptions, and other context. Preserve details relevant to the stated result.",
+          "additionalProperties": true
+        },
+        "references": {
+          "type": "array",
+          "description": "Named references to already stored shared or reused information. The target retains its ID and label.",
+          "items": {
+            "$ref": "#/$defs/Reference",
+            "description": "A named reference to an already defined item or record."
+          }
+        },
+        "source_snippets": {
+          "type": "array",
+          "description": "Source excerpts locating and describing this record. Field-specific excerpts can supplement these.",
+          "items": {
+            "$ref": "#/$defs/SourceSnippet",
+            "description": "One source excerpt and its location."
+          },
+          "minItems": 1
+        },
+        "notes": {
+          "type": "string",
+          "description": "Limitations, source discrepancies, interpretation notes, or extraction explanations."
+        },
+        "closure": {
+          "$ref": "#/$defs/LocalClosure",
+          "description": "Computed local graph closure and its review status."
+        }
+      },
+      "required": [
+        "id",
+        "group_id",
+        "title",
+        "fields",
+        "source_snippets",
+        "closure"
+      ],
+      "additionalProperties": false
+    },
+    "SharedContext": {
+      "type": "object",
+      "description": "A reusable context record, such as a participant sample or simulation settings. Use one definition and references when the same identified information applies to multiple records.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ContextId",
+          "description": "Permanent C-record ID for shared context."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short description of the particular record.",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "description": "Optional paraphrase of what this record establishes. Verbatim wording belongs in source_snippets."
+        },
+        "fields": {
+          "type": "array",
+          "description": "Addressable entries belonging to or currently stored in this record.",
+          "items": {
+            "$ref": "#/$defs/FieldEntry",
+            "description": "One addressable field entry."
+          },
+          "minItems": 1
+        },
+        "context": {
+          "type": [
+            "string",
+            "object"
+          ],
+          "description": "Plain text or an open object containing the needed outcome, population, treatment, comparator, time, method, model, adjustment, assumptions, and other context. Preserve details relevant to the stated result.",
+          "additionalProperties": true
+        },
+        "references": {
+          "type": "array",
+          "description": "Named references to already stored shared or reused information. The target retains its ID and label.",
+          "items": {
+            "$ref": "#/$defs/Reference",
+            "description": "A named reference to an already defined item or record."
+          }
+        },
+        "source_snippets": {
+          "type": "array",
+          "description": "Source excerpts locating and describing this record. Field-specific excerpts can supplement these.",
+          "items": {
+            "$ref": "#/$defs/SourceSnippet",
+            "description": "One source excerpt and its location."
+          },
+          "minItems": 1
+        },
+        "notes": {
+          "type": "string",
+          "description": "Limitations, source discrepancies, interpretation notes, or extraction explanations."
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "fields",
+        "source_snippets"
+      ],
+      "additionalProperties": false
+    },
+    "CrossGroupSummary": {
+      "type": "object",
+      "description": "An optional summary across existing groups, as in Perel's comparison across six intervention domains. It is not assigned a primary group and does not duplicate the underlying evidence.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ResultId",
+          "description": "R-record ID allocated from the same extraction-wide R sequence as ordinary results."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short description of the particular record.",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "description": "Plain-language synthesis across the named groups, preserving its evidence level and scope.",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "array",
+          "description": "Addressable values in the cross-group summary, such as a reported number of concordant intervention domains. Use an empty array when no addressable values are needed.",
+          "items": {
+            "$ref": "#/$defs/FieldEntry",
+            "description": "One addressable field entry."
+          },
+          "minItems": 0
+        },
+        "context": {
+          "type": [
+            "string",
+            "object"
+          ],
+          "description": "Plain text or an open object containing the needed outcome, population, treatment, comparator, time, method, model, adjustment, assumptions, and other context. Preserve details relevant to the stated result.",
+          "additionalProperties": true
+        },
+        "references": {
+          "type": "array",
+          "description": "Named references to already stored shared or reused information. The target retains its ID and label.",
+          "items": {
+            "$ref": "#/$defs/Reference",
+            "description": "A named reference to an already defined item or record."
+          }
+        },
+        "source_snippets": {
+          "type": "array",
+          "description": "Source excerpts locating and describing this record. Field-specific excerpts can supplement these.",
+          "items": {
+            "$ref": "#/$defs/SourceSnippet",
+            "description": "One source excerpt and its location."
+          },
+          "minItems": 1
+        },
+        "notes": {
+          "type": "string",
+          "description": "Limitations, source discrepancies, interpretation notes, or extraction explanations."
+        },
+        "group_ids": {
+          "type": "array",
+          "description": "Groups explicitly summarized by this record. This summary does not create a new independently generated result group.",
+          "items": {
+            "$ref": "#/$defs/GroupId",
+            "description": "ID of a group summarized here."
+          },
+          "minItems": 2,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "group_ids",
+        "summary",
+        "fields",
+        "source_snippets"
+      ],
+      "additionalProperties": false
+    },
+    "Relationship": {
+      "type": "object",
+      "description": "An explicit scientific connection or numerical-table provenance link between defined objects. Scientific relations retain their direction. closure_direction separately records local grouping; table links are always non-closing.",
+      "properties": {
+        "source_id": {
+          "$ref": "#/$defs/ReferenceId",
+          "description": "The source endpoint, following the direction given in the relationship vocabulary."
+        },
+        "relation": {
+          "type": "string",
+          "description": "A common relationship code, or other with a short explanation.",
+          "enum": [
+            "uncertainty_of",
+            "spread_of",
+            "p_value_of",
+            "describes",
+            "compares",
+            "derived_from",
+            "contributes_to",
+            "applies_under",
+            "table_for",
+            "other"
+          ]
+        },
+        "target_id": {
+          "$ref": "#/$defs/ReferenceId",
+          "description": "The target endpoint, defined in this extraction."
+        },
+        "role": {
+          "type": "string",
+          "description": "Endpoint role. compares requires evaluated or reference. table_for requires reports_result, describes_sample, provides_inputs, or provides_context, identifying how the table relates to the result without asserting evidential strength."
+        },
+        "context": {
+          "type": [
+            "string",
+            "object"
+          ],
+          "description": "Additional scope or logical wording needed to interpret this particular connection.",
+          "additionalProperties": true
+        },
+        "basis": {
+          "type": "string",
+          "description": "Brief basis for the connection, distinguishing an explicit source association from an extraction interpretation or calculation."
+        },
+        "note": {
+          "type": "string",
+          "description": "Short explanation, required for other so its meaning remains available.",
+          "minLength": 1
+        },
+        "source_snippets": {
+          "type": "array",
+          "description": "Specific source support for the connection when it is not apparent from its endpoints.",
+          "items": {
+            "$ref": "#/$defs/SourceSnippet",
+            "description": "One source excerpt and its location."
+          },
+          "minItems": 0
+        },
+        "closure_direction": {
+          "type": "string",
+          "enum": [
+            "source_to_target",
+            "target_to_source",
+            "none"
+          ],
+          "description": "Reviewed projection into subordinate-to-core direction for local closure. source_to_target makes the source subordinate to the target; target_to_source reverses the scientific edge for this calculation; none retains the connection without expanding local membership. Omission means unreviewed, not none. G/S metadata and family-membership links do not participate in the local graph. Every relationship with a T endpoint requires none."
+        }
+      },
+      "required": [
+        "source_id",
+        "relation",
+        "target_id"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "relation": {
+                "const": "compares"
+              }
+            },
+            "required": [
+              "relation"
+            ]
+          },
+          "then": {
+            "required": [
+              "role"
+            ],
+            "properties": {
+              "role": {
+                "enum": [
+                  "evaluated",
+                  "reference"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relation": {
+                "const": "other"
+              }
+            },
+            "required": [
+              "relation"
+            ]
+          },
+          "then": {
+            "required": [
+              "note"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "relation": {
+                "const": "table_for"
+              }
+            },
+            "required": [
+              "relation"
+            ]
+          },
+          "then": {
+            "required": [
+              "role",
+              "closure_direction"
+            ],
+            "properties": {
+              "source_id": {
+                "$ref": "#/$defs/TableId"
+              },
+              "target_id": {
+                "$ref": "#/$defs/ResultId"
+              },
+              "role": {
+                "enum": [
+                  "reports_result",
+                  "describes_sample",
+                  "provides_inputs",
+                  "provides_context"
+                ]
+              },
+              "closure_direction": {
+                "const": "none"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "anyOf": [
+              {
+                "properties": {
+                  "source_id": {
+                    "$ref": "#/$defs/TableId"
+                  }
+                },
+                "required": [
+                  "source_id"
+                ]
+              },
+              {
+                "properties": {
+                  "target_id": {
+                    "$ref": "#/$defs/TableId"
+                  }
+                },
+                "required": [
+                  "target_id"
+                ]
+              }
+            ]
+          },
+          "then": {
+            "required": [
+              "closure_direction"
+            ],
+            "properties": {
+              "closure_direction": {
+                "const": "none"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "LocalClosure": {
+      "type": "object",
+      "description": "The computed closure of a local result under selected subordinate-to-core relationships and parent-field inclusion. It is complete for the represented local inputs, not isolated from all other scientific relationships. Several closures may contain the same existing ID; the object remains stored once.",
+      "properties": {
+        "core_ids": {
+          "type": "array",
+          "description": "The eligible terminal field, known comparison anchor, or explained compound core from which this closure is calculated. These are local core objects, distinct from family-level core_result_ids. G/S metadata and T source-table objects cannot serve as local cores.",
+          "items": {
+            "$ref": "#/$defs/ClosureObjectId",
+            "description": "One existing R/C record or F field eligible for local closure; never a G, S, or T object."
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "member_ids": {
+          "type": "array",
+          "description": "Exactly the core IDs and every object that can reach them along the reviewed subordinate-to-core graph, including implicit child-field to parent-field edges. Compute this set; do not fill it from stored field ownership or family membership. Shared same-ID members may occur in more than one closure without merging those closures. T source containers and CSV coordinates never create membership or parent-field edges.",
+          "items": {
+            "$ref": "#/$defs/ClosureObjectId",
+            "description": "One existing R/C record or F field eligible for local closure; never a G, S, or T object."
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "reference_ids": {
+          "type": "array",
+          "description": "Existing external inputs, context, related results, and source tables at this boundary. Include external endpoints of reviewed non-closing relationships incident on members, named references attached to the result or its members, table_for source IDs whose target is this result record (even when the R ID is not a member), and table_ids in member fields' table_references. Exclude member IDs and deduplicate. References never import their own descendants or ancestors.",
+          "items": {
+            "$ref": "#/$defs/ReferenceId",
+            "description": "One existing field or record ID."
+          },
+          "uniqueItems": true,
+          "minItems": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "closed",
+            "review_required"
+          ],
+          "description": "closed means the represented local graph has a reviewed core, computed members, resolved references, and no unresolved incident relationship or boundary issue. It does not certify complete paper coverage. Use review_required while any such issue remains."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Explain a known comparison anchor, accepted compound core or cycle, overlap, unresolved link, or other local-boundary judgment. Required by the semantic instructions when status is review_required or a nontrivial cycle is accepted."
+        }
+      },
+      "required": [
+        "core_ids",
+        "member_ids",
+        "reference_ids",
+        "status"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "review_required"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "notes"
+            ],
+            "properties": {
+              "notes": {
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ClosureReviewItem": {
+      "type": "object",
+      "description": "A brief disposition of an object requiring an explicit coverage or grouping explanation.",
+      "properties": {
+        "object_id": {
+          "$ref": "#/$defs/ReferenceId",
+          "description": "The existing field or record requiring a disposition."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Why the object needs a review or separate contextual disposition."
+        },
+        "disposition": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Ordinary text stating how the object is handled, for example shared context, unresolved attachment, or awaiting source review. This is not a new scientific object taxonomy."
+        }
+      },
+      "required": [
+        "object_id",
+        "reason",
+        "disposition"
+      ],
+      "additionalProperties": false
+    },
+    "TableId": {
+      "type": "string",
+      "description": "Permanent ID of one source table in this extraction. T has its own positive counter; a table is independent of result allocation and family membership.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*\\.E(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.T(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})$"
+    },
+    "ClosureObjectId": {
+      "type": "string",
+      "description": "ID eligible for local scientific closure: an R or C record, or an F field allocated under R or C. G, S, and T identifiers are excluded.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*\\.E(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.[RC](?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})(?:\\.F(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,}))?$"
+    },
+    "TableColumn": {
+      "type": "object",
+      "description": "One CSV column, in CSV order. The key is a flattened machine-readable name; header_path retains the source headings and their hierarchy.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Unique column key appearing exactly in the CSV header and in this table's columns[].name.",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "header_path": {
+          "type": "array",
+          "description": "Original heading hierarchy, including units and markers printed in headings. Use [] only for an originally unheaded or extractor-added descriptor column.",
+          "items": {
+            "type": "string",
+            "description": "One source heading or subheading, transcribed as printed, from outermost to innermost."
+          }
+        },
+        "role": {
+          "type": "string",
+          "description": "Layout role of this column. data contains source values, including any retained text data; label identifies source rows; context carries panel or inherited group labels.",
+          "enum": [
+            "data",
+            "label",
+            "context"
+          ]
+        },
+        "units": {
+          "type": "string",
+          "description": "Units or display scale applicable to the entire column, when stated. Use scoped annotations when units vary by row."
+        },
+        "description": {
+          "type": "string",
+          "description": "Explanation of an unheaded column, flattened hierarchy, or extractor-added descriptor. Do not present an invented heading as source text."
+        }
+      },
+      "required": [
+        "name",
+        "header_path",
+        "role"
+      ],
+      "additionalProperties": false
+    },
+    "TableAnnotation": {
+      "type": "object",
+      "description": "An interpretive qualification or layout fact preserved outside the CSV. rows and columns delimit its scope: both select their Cartesian product; one selects those rows or columns; neither means table-wide.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "Type of qualification or layout information.",
+          "enum": [
+            "footnote",
+            "unit",
+            "statistical_convention",
+            "panel",
+            "merged_cell",
+            "missing_value",
+            "structural_blank",
+            "transcription",
+            "other"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "description": "Full source wording for a reported note, or an explicitly identified explanation of layout/transcription. Preserve uncertainty and missing-value meanings; do not infer them from typography alone.",
+          "minLength": 1
+        },
+        "marker": {
+          "type": "string",
+          "description": "Source footnote or significance marker when present, for example *, a, or †. Preserve the same marker in its source-display CSV cell or, for source headings, in the applicable column header_path."
+        },
+        "rows": {
+          "type": "array",
+          "description": "Affected CSV data-record positions; omit for all rows.",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "One-based CSV data-record position, excluding the header. Count parsed records, not physical text lines."
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "columns": {
+          "type": "array",
+          "description": "Affected CSV column keys; omit for all columns.",
+          "items": {
+            "type": "string",
+            "description": "Unique column key appearing exactly in the CSV header and in this table's columns[].name.",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "source_locator": {
+          "type": "string",
+          "description": "More specific source location for the note or layout feature, when helpful.",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "kind",
+        "text"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "merged_cell"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "rows",
+              "columns"
+            ]
+          }
+        }
+      ]
+    },
+    "TableObject": {
+      "type": "object",
+      "description": "One complete numerical source table, represented independently of scientific result boundaries. Its CSV holds the source-reported cells; metadata preserves their interpretation. Multiple panels and page continuations belong to the same object.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/TableId",
+          "description": "Permanent table ID, allocated once and retained through corrections or changes in linked results."
+        },
+        "source_id": {
+          "$ref": "#/$defs/SourceId",
+          "description": "Document containing the table; resolves in sources."
+        },
+        "locator": {
+          "type": "string",
+          "description": "Source table number or an unambiguous locator including page/panel locations when needed. Include every page of a continued table.",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "description": "Source title or a plainly descriptive title if the source has none. Do not present an extractor-supplied title as a quotation.",
+          "minLength": 1
+        },
+        "caption": {
+          "type": "string",
+          "description": "Complete source caption, transcribed as printed, when present. Footnotes and scoped qualifications belong in annotations."
+        },
+        "csv_file": {
+          "type": "string",
+          "description": "Basename of the accompanying CSV, exactly id + \".csv\". It is relative to the extraction JSON directory and must resolve to a delivered file; a filename alone is not an export.",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*\\.E(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.T(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.csv$"
+        },
+        "columns": {
+          "type": "array",
+          "description": "All exported columns. Names must be unique within the table; preserve original heading hierarchies in header_path.",
+          "items": {
+            "$ref": "#/$defs/TableColumn",
+            "description": "One column in the exact order of the CSV header."
+          },
+          "minItems": 1
+        },
+        "row_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Number of parsed CSV data records, excluding the single header record. Count records rather than physical lines, since quoted cells may contain line breaks."
+        },
+        "annotations": {
+          "type": "array",
+          "description": "Complete applicable footnotes, units, statistical conventions, missing-value explanations, and layout qualifications. Use [] only when none are present or needed.",
+          "items": {
+            "$ref": "#/$defs/TableAnnotation",
+            "description": "One scoped qualification or layout annotation."
+          }
+        },
+        "notes": {
+          "type": "string",
+          "description": "Source discrepancies, disambiguation of repeated labels, or explicit transcription decisions. Never use a note to claim that an incomplete table export is complete."
+        }
+      },
+      "required": [
+        "id",
+        "source_id",
+        "locator",
+        "title",
+        "csv_file",
+        "columns",
+        "row_count",
+        "annotations"
+      ],
+      "additionalProperties": false
+    },
+    "TableCellReference": {
+      "type": "object",
+      "description": "Provenance for a field directly reported in a numerical table cell. It identifies a location in the delivered CSV, not an additional independent observation or a local grouping edge.",
+      "properties": {
+        "table_id": {
+          "$ref": "#/$defs/TableId",
+          "description": "Existing table object whose CSV contains the source-reported entry."
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "One-based CSV data-record position, excluding the header. Count parsed records, not physical text lines."
+        },
+        "column": {
+          "type": "string",
+          "description": "Unique column key appearing exactly in the CSV header and in this table's columns[].name.",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "component": {
+          "type": "string",
+          "description": "Part of a composite source cell represented by this field, such as mean, standard_error, lower confidence limit, count, or percentage. Omit when the whole cell supplies the value.",
+          "minLength": 1
+        },
+        "note": {
+          "type": "string",
+          "description": "Explanation needed to reconcile source display, field representation, or a reported discrepancy. Do not use this to substitute a calculated value for a source-reported value."
+        }
+      },
+      "required": [
+        "table_id",
+        "row",
+        "column"
+      ],
+      "additionalProperties": false
+    },
+    "TableCoverage": {
+      "type": "object",
+      "description": "Explicit completeness declaration for the mandatory numerical-table exports. Structural validity permits an incomplete working record; completed miner delivery requires status=complete and successful source and file checks.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "complete means all qualifying tables in the required source scope have complete, delivered CSVs; incomplete means coverage or any export remains unresolved.",
+          "enum": [
+            "complete",
+            "incomplete"
+          ]
+        },
+        "reviewed_source_ids": {
+          "type": "array",
+          "description": "Documents reviewed for table coverage, including the main source version and all associated supplements supplied or identified by that source. This list must not imply that an unavailable document was read.",
+          "items": {
+            "$ref": "#/$defs/SourceId",
+            "description": "A source document actually inspected for numerical-table coverage."
+          },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string",
+          "description": "For incomplete coverage, identify missing documents, tables, unreadable regions, or deliberately omitted instructional exports. For complete coverage with no tables, record that no qualifying tables were found.",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "status",
+        "reviewed_source_ids"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "incomplete"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "notes"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "complete"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reviewed_source_ids": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "x-how_to_use": [
+    "Use this document alone as the extraction specification. It defines the JSON format, numerical-table CSV package, and application-level instructions for graph closure, family formation, and validation.",
+    "This file is both the JSON Schema and its instruction package. Ordinary validation uses properties and $defs; the x- sections define graph closure, grouping, vocabulary, and semantic checks.",
+    "Create an extraction data file with the top-level sections defined under properties. Do not copy these instruction and vocabulary sections into every extraction record.",
+    "A field entry requires only id, field, label, and value. Scientific content remains flexible through value, context, description, notes, and other labels.",
+    "Deliver the extraction JSON together with one CSV per numerical table, following x-table_extraction. Include tables[] and extraction.table_coverage even when no numerical tables are present. A completed submission requires complete table coverage; an incomplete example or working record is not a completed submission.",
+    "Review explicit scientific relationships before computing local closures. A plainly named field association can justify an edge, but it must be materialized as a reviewed relationship when the closure calculation uses it. parent_field_id is the one specified implicit grouping link.",
+    "Compute local member sets from relationships and parent-field links, then assign result families. Stored arrays, record allocation prefixes, and family-membership edges are not graph inputs.",
+    "The required closure is a computed record of the local grouping. Shared objects retain one definition and can occur by ID in several member or reference lists.",
+    "Validate the JSON structure, then apply the semantic checks. A missing closure_direction is permitted while extracting, but affected results must remain review_required until its relevance is resolved. CSV presence, source coverage, and source fidelity are application checks; JSON Schema alone cannot perform them."
+  ],
+  "x-extraction_instructions": [
+    "Read the source context and retained snippets alongside the structured fields. The objective is reliable identification and connection of common inference-relevant objects, not exhaustive classification of every detail.",
+    "Follow x-result_grouping in order: objects, reviewed scientific relationships, local closures, then result families. Use one generic fields[] format for scientific entries; the 11 vocabulary lists are guides, not mandatory containers.",
+    "Give substantive populated entries their field IDs using x-id_convention. Keep labels, units, names, and context outside IDs. Labels and source details can be corrected without renumbering the same entry.",
+    "Use the embedded shared label codes consistently. Other is valid in every field group. Explain an unusual item through its existing field name, value, description, or context; a new narrow object category is unnecessary.",
+    "Preserve a source value and its meaning. In particular retain units/display scale, inequality operators, reference conditions, exposure increments, adjustment/model information, time scope, and uncertainty type where they matter.",
+    "Use measure on the relevant estimate when the numerical form needs to be stated, for example treatment_effect with odds_ratio or relative_change. A proportion of positive studies stays proportion.",
+    "Keep standard deviation distinct from standard error and confidence intervals. Keep lower/upper confidence-limit meaning in the field name or parent interval. Confidence levels stored in the optional confidence_level property use probability scale.",
+    "Identify the actual target of each SE, CI, p-value, count, and contrast. Named fields and source context can establish the interpretation; materialize the corresponding scientific relationship with closure_direction if it participates in closure. A heterogeneity or bias p-value must stay with that diagnostic, not the treatment-effect estimate.",
+    "Use source_snippets for verbatim source text with document and locator. Use summary, description, or notes for paraphrases and extraction reasoning. A record-level excerpt can support several fields; duplicate excerpts are unnecessary.",
+    "Store each shared sample, parameter, or input once and refer to its ID. Shared inputs may occur in several local member sets without merging them. A non-closing context link instead appears in reference_ids. Equal values do not establish identity, and a group-level count must not replace a result-specific count.",
+    "Keep equations and interpreted arrays in useful existing representations. Every numerical source table also requires its distinct T object and complete CSV under x-table_extraction, regardless of which cells become F fields. Address individual scientific terms or cells as F fields when needed, and record table_references for independently extracted source cells. parent_field_id connects only F collections and members; it never links a field to a T object. A source table, its interpreted collection, and its addressed cells are not additional independent observations.",
+    "Export all numerical tables, including baseline characteristics, other descriptive summaries, diagnostic tables, null findings, and supplementary tables. Link each table to the ordinary result records it reports or contextualizes with table_for and closure_direction=none. Do not invent a treatment effect, comparison, or main finding solely to attach a table; an appropriate descriptive result is sufficient.",
+    "Distinguish reported, source-calculated, extractor-calculated, and digitized content in origin or context. A separate calculated or converted entry gets a new ID and a derived_from connection when useful; preserve the reported entry.",
+    "When context is stored at several levels, local details may narrow broader context. Conflicting bindings require an explicit note or corrected record; do not silently choose a convenient interpretation.",
+    "Do not turn every graph sink into a result. Review support-only sinks, unreviewed relationships, cycles, and disconnected quantities. Keep unresolved objects visible in closure_review or a result with closure.status=review_required; do not silently discard them.",
+    "Validate the JSON structure with this JSON Schema, then perform x-validation_checks for identity, references, local closure, families, scientific attachment, numerical-table coverage, and actual CSV files. Structural validity alone does not establish scientific correctness or delivery completeness."
+  ],
+  "x-table_extraction": {
+    "rule": "Every numerical source table in the main source version and its associated supplementary material must be represented as a distinct TableObject, linked appropriately to ordinary scientific results, and delivered as a separate CSV whose filename is recorded in that object. Descriptive tables are included regardless of whether they establish a main scientific conclusion.",
+    "qualification": [
+      "A numerical table has a substantive data region consisting of numbers, numerical expressions, or reported missing-value markers. Textual row and column labels, study identifiers, model names, panel labels, units, categorical row qualifiers, significance symbols, and footnotes do not disqualify it.",
+      "Counts, percentages, means, estimates, uncertainty intervals, thresholds, inequalities, and composite cells such as 156.8 ± 8.2 or 1.32 (1.07–1.63) all qualify. Regression, baseline-characteristic, diagnostic, parameter, and supplementary numerical tables are included.",
+      "If a mixed table has a clearly delimited numerical data region, it qualifies and the whole source table is exported, including accompanying text data columns. A purely narrative table without such a region is outside this mandatory numerical-table rule.",
+      "Tables embedded as images and tables continued across pages qualify. A graph, equation, prose list, or extractor-created numerical array is not a source table merely because it contains numbers."
+    ],
+    "identity_and_scope": [
+      "Use one T object and one CSV per source table. Combine all source panels and continuation pages. Table identity follows the source, not the number of results, closures, or families using its values.",
+      "Export the entire table once it qualifies, including numerical entries that do not receive separate F IDs. Do not omit descriptive rows, non-significant results, alternative models, totals, denominators, or uncertainty columns.",
+      "For repeated source publication of the same entry, reuse its scientific F ID when identity is established, while preserving distinct T objects for distinct source tables. A repeated page header or continuation is not a second table. Distinct source versions use separately identified Source records and table IDs.",
+      "The required table scope includes the main source version and all associated supplementary documents supplied or identified by that source. Do not narrow this obligation by selecting only certain results or supplements. If a required supplement is unavailable, disclose it and mark table coverage incomplete. Cited papers are covered when expressly included in the extraction scope."
+    ],
+    "result_links": [
+      "Add a table_for relationship from every T object to at least one appropriate ordinary R result. Its role is reports_result, describes_sample, provides_inputs, or provides_context; its closure_direction is always none. Link every directly reported result, and identify contextual uses that the extraction relies on.",
+      "A numerical table may support several results and several families. Reuse its T ID and CSV. Its layout does not decide local closures or family boundaries.",
+      "A purely descriptive table may link to a descriptive result or, when appropriate, to a result whose sample or context it describes. When a new descriptive result is needed, derive it through the ordinary field and relationship procedure. Do not invent a comparison, hypothesis test, effect, or main finding just to attach the table.",
+      "All T objects remain outside the local closure graph. The reference calculation explicitly includes table_for sources targeting an R record even when that R ID is not itself in member_ids. Table IDs in member-field cell references are also boundary references."
+    ],
+    "csv_format": {
+      "encoding": "UTF-8 without a byte-order mark (BOM).",
+      "delimiter": "Comma.",
+      "quote_character": "Double quote. Double an internal double quote to escape it. Quote cells containing commas, double quotes, carriage returns, or newlines; other cells may also be quoted.",
+      "record_separator": "LF (newline). Embedded cell line breaks remain inside a quoted cell. A final record separator is required.",
+      "header": "Exactly one header record. Keys must be unique, nonempty, lower-case snake_case, and match columns[].name in order. Derive descriptive flattened keys from source headers; add a numeric suffix if necessary for uniqueness. Store every original hierarchical heading in header_path. For a genuinely unheaded or added descriptor column, use an intelligible key and explain it in description.",
+      "location": "Each CSV is in the same directory as the extraction JSON. csv_file is exactly the full table ID followed by .csv. Deliver the actual file, not only its name, URL, or an inline string in an extraction record.",
+      "cell_type": "CSV values are source-display strings. Do not apply automatic type inference, date conversion, numerical normalization, or spreadsheet formula interpretation to the archival transcription."
+    },
+    "flattening_and_fidelity": [
+      "Retain source data-row order and every data column. Each source data row contributes one CSV data record. Pure separator rows, repeated continuation headers, caption rows, and footnote blocks are not data records; preserve their meaning through descriptor columns, caption, and annotations.",
+      "Preserve textual row labels as explicit columns. Carry hierarchical row and panel labels into separate descriptor columns so every data row is identifiable. Repeating an inherited textual label is permitted; do not fill down numerical data or statistical tests.",
+      "Flatten multi-level column headings into unique keys while retaining the complete source heading hierarchy in each column's header_path. If panels have incompatible columns, use the union of columns and explicit panel/row-label columns. Record layout-induced empty cells with structural_blank annotations so they are not mistaken for source-reported missing data.",
+      "Preserve the printed numerical string, precision, signs, inequalities, percentage symbols, significance markers, and composite expressions. Keep 156.8 ± 8.2 and 1.32 (1.07–1.63) as single CSV cells when printed as single cells. Scientific decomposition into means, uncertainty measures, and interval endpoints belongs in F entries with component-specific table_references.",
+      "Preserve reported missing markers exactly, for example NA, a dash, or a blank. Do not map all markers to an empty string, convert them to zero, or infer that a blank means zero or non-significance. Retain the source explanation of each marker in annotations; if no meaning is supplied, state that it is not specified.",
+      "For a merged numerical cell spanning several source rows or columns, place its source string once at the first covered CSV row and leftmost covered exported column, leave the remaining covered cells blank, and record the span and its meaning with a merged_cell annotation. The annotation scope lists the covered rows and columns. This is particularly important for one joint p-value spanning several categories.",
+      "Keep the complete caption and all interpretive footnotes, units, statistical conventions, and scoped qualifications in TableObject metadata. Annotation row and column lists refer to CSV positions/keys, not printed row numbers. A table-wide note omits both lists.",
+      "Transcribe source characters from the readable source rather than accepting an obvious text-extraction substitution; document nontrivial transcription decisions. Preserve genuinely printed inconsistencies and flag them in notes. Do not silently recompute a printed percentage or replace a source-reported estimate."
+    ],
+    "cell_provenance": [
+      "Separately extracted F entries reported in table data cells must identify their table_references when coverage is complete. Each reference names the T object, one-based CSV data-record position excluding the header, and exact column key. Coordinates count parsed CSV records, not physical lines.",
+      "Use component to identify the relevant part of a composite cell. Several F fields can reference different components of the same cell. A field clearly repeated in several tables may list several references while retaining one F ID.",
+      "Quantities printed only in a header, caption, or footnote use an exact source snippet and a named Reference to the T object; do not fabricate a data-row coordinate such as row 0. Extractor-calculated values instead identify input fields through derived_from and preserve the calculation basis.",
+      "For interpreted F collections, use a named table reference for the source collection and cell references on independently addressed constituent fields. parent_field_id and field_path refer only to the interpreted F representation. They never establish containment in a T object.",
+      "Update CSV coordinates after a legitimate table-transcription correction without changing scientific F IDs or the table T ID. Do not reorder the canonical CSV merely to facilitate analysis; create downstream analytical views separately."
+    ],
+    "completion": [
+      "Set extraction.table_coverage.status to complete only after reviewing the required sources, exporting every qualifying table in full, resolving each table's result links and field-cell references, and validating the actual CSV package.",
+      "If a required document or table region is unavailable, unreadable, or unresolved, use incomplete and describe the specific gap in table_coverage.notes. Never invent missing cells or describe a selected excerpt as a complete source-table export. TableObjects in tables[] describe complete exports; unfinished exports remain disclosed work rather than accepted tables.",
+      "When no qualifying table exists, use tables:[] with complete coverage, list the reviewed sources, and state in table_coverage.notes that no numerical tables were found. An empty tables array in an incomplete record makes no such claim.",
+      "A schema-valid incomplete record may be stored for review or instruction but must not be accepted as a completed miner submission. Local closure.status=closed only certifies the represented local scientific graph and does not override incomplete table coverage."
+    ],
+    "validation_boundary": "JSON Schema enforces the object shapes, required metadata, identifier patterns, table-link role/direction restrictions, and exclusion of T IDs from local cores and members. The application must additionally verify reference resolution, all-table coverage, per-table result links, filename equality, actual CSV files, dimensions, cell provenance, and faithful source reconstruction using V20–V27.",
+    "instructional_examples": "The four real-paper examples are deliberately incomplete instructional subsets and omit full table exports; their table_coverage is incomplete. They must not be treated as completed submissions. The synthetic numerical-table example demonstrates the entire table-export contract; its accompanying CSV text is supplied below for instruction and must be written as an actual CSV file when constructing that example package.",
+    "example_csv_files": [
+      {
+        "extraction_prefix": "P005.E001",
+        "table_id": "P005.E001.T001",
+        "csv_file": "P005.E001.T001.csv",
+        "content": "outcome,group_a_mean_se,group_b_mean_se,p_value\nMarker A (mg/L),12.0 ± 1.2,10.0 ± 1.1,0.04*\nMarker B (ng/mL),3.50 ± 0.20,4.10 ± 0.30,<0.001*\n",
+        "instruction": "Write this exact UTF-8 text to the named CSV alongside the synthetic extraction JSON. Inline content is provided only to make this schema example self-contained; actual miner submissions deliver the file."
+      }
+    ]
+  },
+  "x-result_grouping": {
+    "definition": "First derive each local result as a core plus its closed set of represented local inputs. Then form result families from those local results using the substantive question and generating investigation.",
+    "local_closure_definition": "Normalize selected scientific relationships to subordinate -> core. For a terminal core K, its members are K and all nodes that can reach K along these edges. The set is closed under selected local inputs. Non-closing scientific connections and external context remain references; closure does not mean isolation in the full graph.",
+    "family_definition": "A family answers one substantive question within one identifiable investigation, evidence synthesis, or generating mechanism. It can contain several local closures and several main results.",
+    "steps": [
+      {
+        "step": 1,
+        "name": "Fix scope and inventory",
+        "instruction": "Record the source version and included supplements. Identify scientific numbers, equations, arrays, and the context required to interpret them. Administrative numbers remain metadata unless scientifically used. Preserve the object inventory during regrouping so omitted objects remain detectable. Inventory every numerical source table in the main paper and included supplements, including descriptive tables, and its complete CSV export. A source table remains one T object even when its scientific entries belong to several local results or families."
+      },
+      {
+        "step": 2,
+        "name": "Assign object IDs and common labels",
+        "instruction": "Assign permanent neutral IDs and the accepted common labels. Use other when appropriate. Existing comparison or compound-result anchors may be retained when needed to identify what a joint test or set of measurements concerns. State that those anchors are supplied scientific interpretations, not findings inferred from family membership. IDs may be allocated in a staging record before closure is known. Their allocation prefix describes permanent identity, not the local membership later computed from relations. Assign T IDs to source tables separately from the R/C/F scientific-entry sequence; table identity is not a scientific core designation."
+      },
+      {
+        "step": 3,
+        "name": "Build and review scientific links",
+        "instruction": "Record the typed object relationships, using source context and existing field associations. Review closure_direction on every relationship relevant to a candidate result. Omission is unreviewed. Mark cross-result, shared-context, family-level, and other non-closing links none. Do not use prior family labels, group_id values, storage membership, or family-membership edges as closure evidence. Record table_for links from each T object to every ordinary result it directly reports or contextualizes, with the appropriate role and closure_direction=none."
+      },
+      {
+        "step": 4,
+        "name": "Project the local graph",
+        "instruction": "Create a directed subordinate-to-core graph: source_to_target adds source -> target; target_to_source adds target -> source; none adds no local edge. Every parent_field_id adds child field -> parent field. Named references add boundary references, not grouping edges. Exclude G/S metadata nodes, T source-table nodes, table_for links, CSV cell coordinates, and family-membership links. Table provenance never supplies an implicit child-to-parent edge. A self-loop is unnecessary and does not establish core status."
+      },
+      {
+        "step": 5,
+        "name": "Resolve cycles and candidate cores",
+        "instruction": "Find strongly connected components and inspect every nontrivial cycle. Correct mistaken directions or accept a scientifically meaningful compound component with an explanation. Until resolved, affected results are review_required. Condense reviewed components and find terminal components with no outgoing local edge. Check that each candidate is a meaningful reported output, comparison, or descriptive result. A support-only or context sink is a review item, not automatically a result."
+      },
+      {
+        "step": 6,
+        "name": "Compute local closed sets",
+        "instruction": "For each eligible terminal core or explained compound core, compute all reverse-reachable ancestors, including the core. Store the resulting IDs in closure.member_ids and the terminal IDs in closure.core_ids. Do not add all fields of a record merely because they share a storage container. Distinct terminal cores remain separate candidates unless an explicitly supported compound anchor connects their objects."
+      },
+      {
+        "step": 7,
+        "name": "Retain overlaps and boundary references",
+        "instruction": "If an object feeds several terminal cores, retain its same ID in each applicable member set. Do not union the closures or duplicate the stored definition. Compute reference_ids as the union of: external endpoints of reviewed none relationships incident on members; named references attached to the result or members; T source IDs of table_for relationships targeting this result, whether or not its R ID belongs to member_ids; and table_ids in member fields' table_references. Remove member IDs and duplicates. A reference never imports a neighboring result or other table cells. Keep all incident scientific links available to explain the boundary."
+      },
+      {
+        "step": 8,
+        "name": "Check local closure",
+        "instruction": "Check endpoint resolution, recomputed membership, eligible terminal cores, overlap, cycle explanations, and unreviewed incident links. Mark a closure closed only when its represented local boundary is resolved; otherwise use review_required and explain. Account for every in-scope object as a member, reference, clearly contextual item, cross-group summary, or explicit closure_review item. Closed status does not certify complete extraction of the paper. Account separately for all source tables and CSVs through table_coverage; closed local results do not certify table-export completeness."
+      },
+      {
+        "step": 9,
+        "name": "Form result families",
+        "instruction": "Only after local closure, identify the question and generating investigation for each local result. Combine local results answering that question within that investigation; retain distinct questions, generating mechanisms, reviews, and separately identified numerical investigations. Assign one group_id per ordinary result and write grouping_reason. Family decisions may use source context and scientific relationships, but must not retroactively supply unrecorded local attachment edges."
+      },
+      {
+        "step": 10,
+        "name": "Designate main results and review families",
+        "instruction": "Choose the family core_result_ids from its member result records. These are presentation and scientific-emphasis designations, distinct from local graph-terminal core_ids. Check unnecessary family splitting and merging. Cross-group summaries can describe several families without creating another independent evidence group. Record unresolved boundary judgments openly."
+      }
+    ],
+    "direction_policy": [
+      {
+        "relation": "uncertainty_of",
+        "typical_closure_direction": "source_to_target",
+        "qualification": "Attach to the particular estimate whose uncertainty is reported."
+      },
+      {
+        "relation": "spread_of",
+        "typical_closure_direction": "source_to_target",
+        "qualification": "Use locally for a particular distribution or group value; shared group identities may instead require none."
+      },
+      {
+        "relation": "p_value_of",
+        "typical_closure_direction": "source_to_target",
+        "qualification": "Use the actual test, estimate, or known comparison anchor. Do not attach a joint or diagnostic test to an arbitrary individual estimate."
+      },
+      {
+        "relation": "describes",
+        "typical_closure_direction": "source_to_target",
+        "qualification": "Use locally for result-specific characterization. Shared sample or contextual information can instead use none; its scientific connection remains recorded."
+      },
+      {
+        "relation": "compares",
+        "typical_closure_direction": "target_to_source",
+        "qualification": "Specific numeric comparison inputs feed the comparison core. Shared treatment or exposure identities may instead use none. Evaluated/reference role is still required and is independent of closure direction."
+      },
+      {
+        "relation": "derived_from",
+        "typical_closure_direction": "target_to_source",
+        "qualification": "Inputs feed an output within one local derivation. Use none when intentionally retaining an independently reported preceding result as a separate local result, and explain that boundary."
+      },
+      {
+        "relation": "contributes_to",
+        "typical_closure_direction": "source_to_target",
+        "qualification": "Use only when contributors belong to the intended local pooled component. Use none to retain separately addressed contributing results without collapsing them into the pool."
+      },
+      {
+        "relation": "applies_under",
+        "typical_closure_direction": "none",
+        "qualification": "Conditions and settings normally remain references. If a source-specific local inclusion is needed, explicitly review and explain the direction."
+      },
+      {
+        "relation": "table_for",
+        "typical_closure_direction": "none",
+        "qualification": "Mandatory non-closing provenance/context link from a T source table to an ordinary R result. The role states whether the table reports the result, describes its sample, provides inputs, or supplies context. It never establishes local membership or family boundaries."
+      },
+      {
+        "relation": "other",
+        "typical_closure_direction": null,
+        "qualification": "No automatic projection. Review source_to_target, target_to_source, or none and explain the scientific relationship in note."
+      }
+    ],
+    "direction_policy_note": "The table guides a recorded decision; it does not turn an omitted closure_direction into a default. Missing means unreviewed. Scientific predicate directions remain unchanged. For table_for and every T endpoint, none is mandatory and must be written explicitly.",
+    "overlap_rule": "Local member sets need not form a partition. One stored object may belong by ID to several closures. Shared inputs alone do not justify merging either local results or families. Shared source tables and CSV files also do not merge local results or families.",
+    "cycle_rule": "Parent-field links must be acyclic. Nontrivial cycles among scientific grouping edges require a source-supported compound interpretation and notes, or remain review_required. Condensation is a graph operation, not automatic scientific acceptance. Multiple core_ids must identify one reviewed terminal strongly connected component. For a compound result with no mutual dependency, use an explicitly supported comparison or compound anchor and link its inputs; do not join unrelated terminal cores by listing them together.",
+    "anchor_rule": "An identified comparison, joint test, or compound result may use its R-record ID as a core anchor. Its scientific role and incoming links must be explicit. A record container, component ID, or family label does not create an anchor merely by existing. A T object is a source container and cannot serve as a scientific anchor. A descriptive result may summarize table data only through its own scientifically justified fields and relationships.",
+    "usually_keep_together": [
+      "Different outcomes or measurement times within the same investigated relationship.",
+      "Alternative adjustment specifications, doses, or subgroups within an investigation.",
+      "Special cases, approximations, and supporting derivation steps within an analytical mechanism.",
+      "Graph degree, population size, or graph-class variations within an identified simulation study.",
+      "Pooled estimates, their study-level contributors, and supporting quality results within an intervention-specific evidence review."
+    ],
+    "usually_split": [
+      "A distinct substantive research question.",
+      "An independently identifiable investigation at the level being grouped.",
+      "A different generating analytical mechanism, such as a different updating process.",
+      "A separate intervention-specific evidence review.",
+      "An independently identifiable numerical evaluation of an analytical result."
+    ],
+    "boundary_note": "The keep/split guidance applies to families after local closure. Source context resolves scientific boundaries that graph structure alone cannot establish. State the decision in grouping_reason or closure.notes at the level where it is made.",
+    "cross_group_summaries": "Use cross_group_summaries for a synthesis across existing families. Such a synthesis references the underlying groups rather than being counted automatically as another independent evidence group.",
+    "family_boundary_resolution": [
+      "Keep local results in one family when they address a common substantive question within the same identifiable investigation. Split when source context establishes a distinct substantive question, an independently identifiable investigation, or a different generating mechanism.",
+      "Differences in outcomes, measurement times, subgroups, adjustments, doses, or parameter values do not by themselves justify splitting. Shared data, inputs, equations, or broad subject matter do not by themselves justify merging.",
+      "If broad and narrow boundaries remain plausible within a supported common investigation, prefer keeping the results together. Briefly record the alternative boundary and the reason for the chosen boundary in grouping_reason."
+    ],
+    "family_boundary_examples": {
+      "keep_together": [
+        "Unadjusted, adjusted, and subgroup estimates of the same association within one investigation: these are variations of the same analysis.",
+        "Several outcomes and follow-up times used to assess the same treatment comparison in one experiment: these are different measurements within the investigation.",
+        "An analytical result, its special cases, and supporting derivation steps under the same mechanism: these develop the same result."
+      ],
+      "split": [
+        "The same dataset is used to investigate two distinct substantive questions with separately stated objectives: sharing data does not make them one family.",
+        "Two analytical results arise from different updating processes: the generating mechanisms establish separate families even if the notation and outcomes are similar.",
+        "A paper contains two independently identified simulation studies using the same analytical framework: sharing a framework does not make them one investigation."
+      ]
+    }
+  },
+  "x-id_convention": {
+    "title": "Claims result-field ID convention",
+    "purpose": "A short, repeatable convention for identifying result entries while leaving their names, labels, and context flexible.",
+    "format": {
+      "field_id": "{paper_id}.{extraction_id}.{record_key}.{field_key}",
+      "record_id": "{paper_id}.{extraction_id}.{record_key}",
+      "paper_id": "An assigned project-unique paper key. Use letters, digits, underscores, or hyphens; no dots or spaces. Preserve the assigned spelling and case.",
+      "extraction_id": "E followed by a positive number assigned uniquely within that paper for an independently produced extraction.",
+      "record_key": "R followed by a positive local result number, or C followed by a positive local shared-context number.",
+      "field_key": "F followed by a positive number allocated within the record.",
+      "number_format": "Use three digits, padded on the left with zeros, for E/R/C/F/G/S/T counters below 1000. Use all digits for larger numbers: F999, F1000. Counters start at 1, not 0.",
+      "counter_scope": "E is allocated per paper; R, C, G, S, and T are separate sequences per extraction; F is allocated separately within each R or C record. T objects do not allocate F fields.",
+      "case": "Case-sensitive; copy IDs exactly. E, R, C, F, G, S, and T prefixes are uppercase.",
+      "path_convention": "Example paths use dot notation and zero-based square-bracket indexes, such as rows[0].groups[1].count. A path records current location and is not a permanent ID.",
+      "examples": [
+        "P001.E001.R002",
+        "P001.E001.R002.F003",
+        "P001.E001.C001.F001",
+        "P001.E001.T001"
+      ]
+    },
+    "instructions": [
+      {
+        "number": 1,
+        "title": "Use an assigned paper and extraction prefix",
+        "instruction": "Reuse the project's unique paper_id. Give each independently produced extraction or submission for that paper an assigned extraction_id, E001, E002, and so on. Obtain the prefix before numbering local records; different workers must not independently claim the same prefix. Corrections and continued work on the same extraction retain its extraction_id.",
+        "example": "P001.E001 and P001.E002 are two independently produced extractions of paper P001."
+      },
+      {
+        "number": 2,
+        "title": "Number result records once",
+        "instruction": "Use R001, R002, and so on for the result records already defined by the extraction procedure. Follow the supplied result-list order. If there is no supplied order, use first source appearance in the paper, then supplements in their stated order. Read tables from top to bottom and left to right. A result record can be a comparison, estimate, equation result, or series; the ID convention does not redefine its grouping. Result-family names or membership are not included in the ID.",
+        "example": "P001.E001.R002 identifies a result record, not a new object category."
+      },
+      {
+        "number": 3,
+        "title": "Number the entries that need addresses",
+        "instruction": "Assign F001, F002, and so on within a record to its result entries. An entry can be a number, text value, equation, interval, or collection. Follow the extraction template's field order. For extra fields, use initial source reading order; use alphabetical field names only as a tie-breaker if the source gives no order. The default is one ID per populated substantive field. Labels, units, source locations, and similar descriptive metadata do not need their own IDs unless they must be referenced separately. Skip empty fields unless the task explicitly requires an address for the empty entry.",
+        "example": "P001.E001.R002.F001 is one entry allocated under result R002."
+      },
+      {
+        "number": 4,
+        "title": "Give different entries different IDs",
+        "instruction": "Separate means, standard errors, confidence limits, tests, time points, or group values receive different IDs even when their values or labels are identical. A named field repeated across rows has a separate ID for each distinct addressed entry. A reference to an already identified shared item reuses that item's ID.",
+        "example": "Two arm standard deviations of 0.4 still receive different IDs because they describe different arms."
+      },
+      {
+        "number": 5,
+        "title": "Keep meaning and location alongside the ID",
+        "instruction": "Retain the existing field name, object label, value, units, and context. Record the current field path when a name alone would not identify a nested entry. Use neutral F-numbers in the permanent ID; do not include object labels, numerical values, treatment names, time values, source page numbers, or source equation numbers. An ID is assigned to the entry, not computed from its content.",
+        "example": "The field can be named cf_sem and labeled standard_error while its ID remains P001.E001.R002.F002."
+      },
+      {
+        "number": 6,
+        "title": "Give shared context its own address",
+        "instruction": "Use C001, C002, and so on for shared context records within the extraction. Number their entries with the same F001 convention. A sample size, parameter, or other context item known to be shared by several results can be stored once and referenced wherever used. Reuse requires the same identified sample or context item, not merely the same value.",
+        "example": "P001.E001.C001.F001 can identify the participant sample size shared by several comparisons."
+      },
+      {
+        "number": 7,
+        "title": "Address collections only as finely as needed",
+        "instruction": "An interval, curve, equation, or interpreted collection of table values can have one F field ID as a whole. Every numerical source table independently requires a T ID and complete CSV; a whole-table F value is not a substitute. Give a row, cell component, confidence limit, or equation term an additional F number when it needs independent scientific reference. Retain its parent F field and current field_path when appropriate; identify source cells separately through table_references. F numbers are permanent allocations, not current list indexes. Reordering changes locations, not IDs. A table, collection, and addressed members are different representations of the same source material, not independent observations.",
+        "example": "A curve can be F001 and an addressed probability at [0].rho_C_digitized within that field's value can be F002. Store F001 as parent_field_id and [0].rho_C_digitized as field_path. If that point moves, retain F002 and update the path."
+      },
+      {
+        "number": 8,
+        "title": "Reuse IDs for clear repeated reporting",
+        "instruction": "If a table, figure, and passage clearly report the same entry, retain one field ID with the relevant source locations. If the reported values conflict, preserve the distinct reported entries for resolution. When identity is uncertain, keep separate IDs and the existing explanation rather than deduplicating by value. When the same scientific entry appears in several exported tables, retain one F ID and list its source cells. Distinct source tables retain distinct T IDs even when some values repeat.",
+        "example": "An estimate repeated in an abstract and table can share one ID; two different estimates equal to 0.58 cannot be merged on that basis."
+      },
+      {
+        "number": 9,
+        "title": "Preserve IDs when editing",
+        "instruction": "Keep an ID when correcting the transcription, object label, field name, units, or description of the same entry. Keep it when reordering records or changing result-family membership. Store ordinary revision history with the data, not in the ID. If the same field is moved to another result record, it can be referenced there using its existing ID; the prefix records its original allocation, not a requirement about current placement.",
+        "example": "Correcting an entry's label from standard_error to standard_deviation leaves its ID unchanged."
+      },
+      {
+        "number": 10,
+        "title": "Append new IDs and never recycle old ones",
+        "instruction": "A newly discovered result or genuinely additional entry receives the next number never used in its applicable sequence. Preserve earlier IDs and gaps. Do not regenerate IDs from the current row order or reuse a retired ID. A separately stored calculated or converted quantity receives a new field ID and can be linked to its source with derived_from; correcting or changing the presentation of the same stored entry preserves its ID. If an entry is replaced by several genuinely distinct entries, assign new IDs and record which new entries replace the original. During record splits or merges, preserve existing field IDs where they still identify the same entries and record new group membership separately.",
+        "example": "After F001 through F008 have been allocated, a new field receives F009 even if F004 was removed."
+      },
+      {
+        "number": 11,
+        "title": "Use full IDs in relationships",
+        "instruction": "A relationship points to the full ID of the intended entry, known comparison anchor, result record, shared context, or source table. Table relationships always carry closure_direction=none. Named field associations can establish the scientific interpretation, but a link used by local closure must be recorded with reviewed closure_direction; parent_field_id has its specified implicit inclusion rule. Abbreviated IDs are for display only when the full prefix is unambiguous.",
+        "example": "uncertainty_of(P001.E001.R002.F002, P001.E001.R002.F001) identifies the particular SE and mean."
+      },
+      {
+        "number": 12,
+        "title": "Check uniqueness and references before delivery",
+        "instruction": "Ensure that each defined full ID identifies one stored entry or record, every relationship or shared-item reference resolves, and the used counters are retained for future additions. Repeated references to one ID are allowed; competing definitions under one ID are not. IDs in different extraction prefixes do not establish scientific equivalence; compare their content and sources when matching extractions.",
+        "example": "P001.E001.R002.F001 and P001.E002.R002.F001 may identify different entries despite matching local numbers."
+      },
+      {
+        "number": 13,
+        "title": "Assign one ID and CSV filename per source table",
+        "instruction": "Allocate T001, T002, and so on in first source-appearance order, then included supplements in source order. Continue the same T sequence across documents. Multi-panel and multi-page continuations retain one ID. Use the exact full T ID followed by .csv as the filename. Corrections and regrouping preserve that ID and filename; new tables take the next unused T number. Distinct tables in separately identified source versions retain distinct T IDs; document their relationship in notes.",
+        "example": "P001.E001.T001 is exported as P001.E001.T001.csv and may link to several R records."
+      }
+    ],
+    "supporting_notes": [
+      "A field ID identifies a particular stored entry, not a field name or vocabulary category. Several entries labeled mean therefore receive different IDs.",
+      "The pattern uses a record key so the same rule covers ordinary result records (R) and optional shared context records (C).",
+      "IDs are permanent allocations. Their apparent numeric order is not a claim about scientific order, priority, or current array position.",
+      "The convention can be implemented through existing per-object IDs, per-field metadata, or a lookup table from ID to current field path. It does not require restructuring the extraction.",
+      "Independent extractors can follow the same rules while assigning different local numbers if their result grouping differs. The extraction prefix prevents collision; identical scientific interpretation is assessed using content and source locations.",
+      "Local closure does not change ID identity. Member and reference lists reuse existing IDs; an object shared by closures is defined once. Group IDs and record allocation prefixes must not be used to derive closure membership."
+    ],
+    "organizational_extensions": {
+      "group_id": "{paper_id}.{extraction_id}.G001",
+      "source_id": "{paper_id}.{extraction_id}.S001",
+      "instruction": "G, S, and T are separate positive counters per extraction for result groups, source documents, and source tables. They do not change the R/C/F field-ID convention. Cross-group summaries use the same R sequence as ordinary results.",
+      "nested_location": "A field_path accompanying parent_field_id is relative to the parent F value and uses zero-based indexes. table_references.row instead uses one-based parsed CSV data-record positions, excluding the header; table_references.column uses an exact column key. Both describe current location, not permanent identity.",
+      "table_id": "{paper_id}.{extraction_id}.T001"
+    }
+  },
+  "x-controlled_vocabularies": {
+    "title": "Claims: simple controlled vocabularies",
+    "purpose": "Consistent, compact labels for common inference-relevant objects and scientific relationships. Other is an acceptable classification.",
+    "usage": [
+      "Field lists give typical choices, not an exhaustive classification of everything in a paper. Other is a normal, valid choice.",
+      "Use the same code for the same kind of object wherever it appears. Codes use lowercase words separated by underscores; readable labels are supplied.",
+      "Field groups collect equivalent existing fields for reference. They are not new required fields or instructions to rename the extraction.",
+      "The existing description, value, units, context, and source snippets remain available. A generic value field takes the label of the object it represents.",
+      "Use existing measure fields for numerical form when available: for example, treatment_effect with measure odds_ratio. No new field is required solely for this vocabulary.",
+      "A clear field association is sufficient to represent a relationship. Add an explicit link only when useful to identify its target.",
+      "Illustrative examples show label use, not a required record format. Unusual objects and relationships can retain other with their existing descriptions."
+    ],
+    "object_labels": {
+      "mean": {
+        "label": "Mean",
+        "definition": "A reported mean. The existing group, outcome, and condition information identifies what is averaged."
+      },
+      "count": {
+        "label": "Count",
+        "definition": "A number of units, events, reports, studies, comparisons, or other items. The field and context identify what is counted."
+      },
+      "proportion": {
+        "label": "Proportion",
+        "definition": "A share of a specified group or set, expressed as a fraction or percentage."
+      },
+      "probability": {
+        "label": "Probability",
+        "definition": "A probability or estimate of a probability, such as fixation probability. The event remains identified in context."
+      },
+      "sample_size": {
+        "label": "Sample size",
+        "definition": "The number of observational or experimental units in the relevant sample, group, or analysis."
+      },
+      "treatment_effect": {
+        "label": "Treatment effect",
+        "definition": "A reported outcome contrast between intervention and reference conditions. Its interpretation follows the study design and existing context."
+      },
+      "association": {
+        "label": "Association",
+        "definition": "An estimated relationship between an exposure or predictor and an outcome, including observational regression estimates."
+      },
+      "standard_error": {
+        "label": "Standard error",
+        "definition": "The reported standard error of an estimate, including the standard error of a mean."
+      },
+      "standard_deviation": {
+        "label": "Standard deviation",
+        "definition": "The reported standard deviation of observations or values in a group or distribution. Keep distinct from standard error."
+      },
+      "confidence_interval": {
+        "label": "Confidence interval",
+        "definition": "An interval reported as a confidence interval for an estimate."
+      },
+      "confidence_limit": {
+        "label": "Confidence limit",
+        "definition": "An individual lower or upper endpoint of a confidence interval. Its existing field identifies which endpoint it is."
+      },
+      "p_value": {
+        "label": "P-value",
+        "definition": "A p-value for the identified test or comparison."
+      },
+      "outcome": {
+        "label": "Outcome",
+        "definition": "The measured, modeled, or calculated outcome addressed by a result. Its substantive name remains in the existing field."
+      },
+      "intervention": {
+        "label": "Intervention",
+        "definition": "A treatment, action, or experimental condition, whether it is the evaluated intervention or the comparator."
+      },
+      "exposure": {
+        "label": "Exposure",
+        "definition": "An exposure or predictor whose relationship with an outcome is studied."
+      },
+      "group": {
+        "label": "Group",
+        "definition": "A sample, population, or group referred to by a result or comparison."
+      },
+      "time_point": {
+        "label": "Time point",
+        "definition": "A single time at which a measurement or event is located, using its existing reference event and units."
+      },
+      "time_interval": {
+        "label": "Time interval",
+        "definition": "A duration or time window, including a measurement, integration, or recall window."
+      },
+      "parameter": {
+        "label": "Parameter",
+        "definition": "A parameter or numerical setting used in an equation, model, or simulation."
+      },
+      "threshold": {
+        "label": "Threshold",
+        "definition": "A cutoff used to classify cases or identify when a condition is met."
+      },
+      "increment": {
+        "label": "Increment",
+        "definition": "The change in an exposure or input over which a reported effect or association is expressed."
+      },
+      "equation": {
+        "label": "Equation or formula",
+        "definition": "A mathematical equation, formula, or inequality. The stored expression retains its particular form."
+      },
+      "assumption": {
+        "label": "Assumption",
+        "definition": "A stated premise under which a result is derived or applied."
+      },
+      "condition": {
+        "label": "Condition",
+        "definition": "A stated requirement attached to a result or formula."
+      },
+      "absolute_change": {
+        "label": "Absolute change",
+        "definition": "A difference expressed in the outcome's units. The existing definition and context retain its direction and reference."
+      },
+      "relative_change": {
+        "label": "Relative change",
+        "definition": "A change relative to a reference quantity, often expressed as a percentage. Keep the reference and direction in existing fields."
+      },
+      "odds_ratio": {
+        "label": "Odds ratio",
+        "definition": "An odds ratio for the stated comparison or exposure increment. Keep the model and outcome coding in context."
+      },
+      "other": {
+        "label": "Other",
+        "definition": "An entry that does not fit the typical labels, or whose classification is not established. Retain its existing description, value, units, and context."
+      }
+    },
+    "field_vocabularies": [
+      {
+        "code": "result_estimate",
+        "name": "Main result or estimate",
+        "existing_field_examples": [
+          "estimate",
+          "change_pct",
+          "rho_C_digitized"
+        ],
+        "typical_labels": [
+          "treatment_effect",
+          "association",
+          "proportion",
+          "probability",
+          "other"
+        ],
+        "note": "Choose from the actual meaning. An estimate of the fraction of positive studies is a proportion."
+      },
+      {
+        "code": "descriptive_value",
+        "name": "Group values and descriptive statistics",
+        "existing_field_examples": [
+          "cf_mean",
+          "cl_mean",
+          "normal_mean",
+          "hearing_loss_mean",
+          "treated_value",
+          "control_value",
+          "count",
+          "percent"
+        ],
+        "typical_labels": [
+          "mean",
+          "count",
+          "proportion",
+          "other"
+        ],
+        "note": "A field explicitly reporting a mean uses mean. A generic treated_value or control_value can remain other if its statistic is unclear."
+      },
+      {
+        "code": "effect_measure",
+        "name": "Numerical form of an effect or estimate",
+        "existing_field_examples": [
+          "measure",
+          "estimate_type"
+        ],
+        "typical_labels": [
+          "absolute_change",
+          "relative_change",
+          "odds_ratio",
+          "proportion",
+          "other"
+        ],
+        "note": "This uses existing measure fields. For example, the result can be treatment_effect and its measure odds_ratio. A label change does not change numerical signs or reference conventions."
+      },
+      {
+        "code": "uncertainty_variation",
+        "name": "Uncertainty and variation",
+        "existing_field_examples": [
+          "cf_sem",
+          "cl_sem",
+          "treated_sd",
+          "control_sd",
+          "ci95",
+          "ci_lower",
+          "ci_upper",
+          "normal_ci_lower",
+          "normal_ci_upper",
+          "hearing_loss_ci_lower",
+          "hearing_loss_ci_upper"
+        ],
+        "typical_labels": [
+          "standard_error",
+          "standard_deviation",
+          "confidence_interval",
+          "confidence_limit",
+          "other"
+        ],
+        "note": "SEM fields use standard_error; SD fields use standard_deviation. Use confidence_interval for the whole interval and confidence_limit for a separate endpoint. Printed and figure-read values share these labels."
+      },
+      {
+        "code": "test_result",
+        "name": "Statistical test results",
+        "existing_field_examples": [
+          "p",
+          "test_p",
+          "heterogeneity_p",
+          "test.value"
+        ],
+        "typical_labels": [
+          "p_value",
+          "other"
+        ],
+        "note": "Use the same p_value label for different tests. Existing test identity or a link states what was tested."
+      },
+      {
+        "code": "sample_evidence_count",
+        "name": "Sample and evidence counts",
+        "existing_field_examples": [
+          "n",
+          "treated_n",
+          "control_n",
+          "n_treated",
+          "n_control",
+          "n_animals",
+          "n_reports",
+          "n_experiments",
+          "n_comparisons",
+          "positive_studies",
+          "available_studies",
+          "treated_events",
+          "control_events"
+        ],
+        "typical_labels": [
+          "sample_size",
+          "count",
+          "other"
+        ],
+        "note": "Use sample_size for units in the relevant sample or analysis. Other counts stay count; retain what is counted and which result or group it concerns."
+      },
+      {
+        "code": "outcome_field",
+        "name": "Outcome",
+        "existing_field_examples": [
+          "outcome",
+          "outcome_id",
+          "endpoint",
+          "measurement"
+        ],
+        "typical_labels": [
+          "outcome",
+          "other"
+        ],
+        "note": "Use outcome when the field names the studied outcome. Some measurement fields instead describe an operation such as iAUC; retain that wording rather than automatically relabeling it."
+      },
+      {
+        "code": "intervention_exposure_comparator",
+        "name": "Treatment, exposure, and comparator",
+        "existing_field_examples": [
+          "treatment",
+          "comparator",
+          "exposure_id",
+          "condition_id",
+          "hearing_groups"
+        ],
+        "typical_labels": [
+          "intervention",
+          "exposure",
+          "group",
+          "other"
+        ],
+        "note": "An intervention keeps the same label in treatment and comparator fields. A numeric comparator such as >= is an operator, not a comparison object; keep it as recorded."
+      },
+      {
+        "code": "time",
+        "name": "Time",
+        "existing_field_examples": [
+          "time_label",
+          "start_min",
+          "end_or_point_min",
+          "time_window",
+          "time_scope_id"
+        ],
+        "typical_labels": [
+          "time_point",
+          "time_interval",
+          "other"
+        ],
+        "note": "The existing time fields and context retain the reference event, units, and interval endpoints."
+      },
+      {
+        "code": "numerical_context",
+        "name": "Numerical context and settings",
+        "existing_field_examples": [
+          "context",
+          "exposure_increment",
+          "increment",
+          "parameter_id",
+          "N",
+          "k",
+          "w"
+        ],
+        "typical_labels": [
+          "parameter",
+          "threshold",
+          "increment",
+          "count",
+          "other"
+        ],
+        "note": "Use threshold for a classification cutoff and increment for an exposure scale, even when both have the same value. Other contextual entries may remain other."
+      },
+      {
+        "code": "mathematics",
+        "name": "Mathematical results and assumptions",
+        "existing_field_examples": [
+          "equations",
+          "expression",
+          "assumption_ids",
+          "domain_condition",
+          "clauses"
+        ],
+        "typical_labels": [
+          "equation",
+          "parameter",
+          "assumption",
+          "condition",
+          "other"
+        ],
+        "note": "Keep mathematical details in the stored expression and context. These labels do not require a detailed mathematical taxonomy."
+      }
+    ],
+    "relationship_labels": [
+      {
+        "code": "uncertainty_of",
+        "label": "Uncertainty of",
+        "meaning": "Links a standard error, confidence interval, or confidence limit to its estimate.",
+        "direction": "Uncertainty measure -> estimate",
+        "note": "A clearly named field or interval target already supplies the link. Standard deviations use spread_of."
+      },
+      {
+        "code": "spread_of",
+        "label": "Spread of",
+        "meaning": "Links a standard deviation to the group, distribution, or reported group value it describes.",
+        "direction": "Standard deviation -> described group or group value",
+        "note": "The field or context can identify the relevant treatment or control group."
+      },
+      {
+        "code": "p_value_of",
+        "label": "P-value for",
+        "meaning": "Links a p-value to its particular test or comparison.",
+        "direction": "P-value -> test or comparison",
+        "note": "Keep treatment, association, heterogeneity, and other test targets clear; they share the p_value object label."
+      },
+      {
+        "code": "describes",
+        "label": "Describes",
+        "meaning": "Links a mean, proportion, count, sample size, or other value to the sample, group, outcome, or result it describes.",
+        "direction": "Value -> described sample, group, outcome, or result",
+        "note": "A sample or evidence count must remain attached to the result or set it actually counts."
+      },
+      {
+        "code": "compares",
+        "label": "Compares",
+        "meaning": "Identifies the evaluated condition or exposure and the reference for an effect or comparison.",
+        "direction": "Effect or comparison -> named target and reference",
+        "note": "Existing treatment/exposure and comparator fields are sufficient. If explicit links are used, identify which target is evaluated and which is the reference; two unqualified links are insufficient."
+      },
+      {
+        "code": "derived_from",
+        "label": "Derived from",
+        "meaning": "Identifies the numerical inputs or preceding results used to calculate or derive an output.",
+        "direction": "Output or result -> input quantity, equation, or preceding result",
+        "note": "Retain the existing formula or explanation of the calculation."
+      },
+      {
+        "code": "contributes_to",
+        "label": "Contributes to",
+        "meaning": "Identifies an individual result included in a pooled or combined result.",
+        "direction": "Contributing result -> pooled or combined result",
+        "note": "The relationship denotes contribution, not independent support for every conclusion of the synthesis."
+      },
+      {
+        "code": "applies_under",
+        "label": "Applies under",
+        "meaning": "Associates a result or equation with its relevant time, parameter setting, assumption, or condition.",
+        "direction": "Result or equation -> time, setting, parameter, assumption, or condition",
+        "note": "Existing fields can carry this association. Preserve the stated condition and any logical wording in context."
+      },
+      {
+        "code": "table_for",
+        "label": "Table for result",
+        "meaning": "Links one source table to an ordinary result that it reports, whose sample it describes, to which it supplies inputs, or for which it provides context.",
+        "direction": "Source table T -> ordinary result R",
+        "note": "role is reports_result, describes_sample, provides_inputs, or provides_context. closure_direction must be none. Link a table to every relevant ordinary result without making the table an independent result, evidential-strength assessment, or family boundary."
+      },
+      {
+        "code": "other",
+        "label": "Other",
+        "meaning": "A relationship outside the short common list.",
+        "direction": "As described in the existing record",
+        "note": "Retain its description and endpoints; there is no requirement to force it into a common label."
+      }
+    ]
+  },
+  "x-validation_checks": [
+    {
+      "id": "V01",
+      "kind": "reference",
+      "check": "Every source, group, table, record, and field ID has one physical definition in the extraction and the correct paper/extraction prefix. The same ID may occur in many closure member/reference lists without becoming a duplicate definition."
+    },
+    {
+      "id": "V02",
+      "kind": "reference",
+      "check": "Every relationship endpoint, named reference, parent_field_id, snippet source_id, family membership, family main-result ID, closure core/member/reference ID, and closure_review object_id resolves to an appropriate defined item. Table source_id, coverage reviewed_source_ids, table_for targets, and field table_references.table_id also resolve to their specified object types; table_for targets must be ordinary results, not cross-group summaries."
+    },
+    {
+      "id": "V03",
+      "kind": "grouping",
+      "check": "Each ordinary result has one primary family through group_id; each family has results and its core_result_ids belong to it. Assign these after local closure. Cross-group summaries reference existing families without owning their evidence."
+    },
+    {
+      "id": "V04",
+      "kind": "identity",
+      "check": "Moved fields retain their IDs and may have an earlier R/C allocation prefix. Neither ID prefix nor current storage container determines local membership or family membership."
+    },
+    {
+      "id": "V05",
+      "kind": "reference",
+      "check": "Parent-field links are acyclic, field_path resolves relative to parent.value, and the addressed value agrees. Include the specified child -> parent edge when recomputing local closure; update paths after reordering without changing IDs."
+    },
+    {
+      "id": "V06",
+      "kind": "vocabulary",
+      "check": "Object and relation codes occur in the embedded controlled vocabulary libraries. Typical field-vocabulary lists are advisory, and other is valid."
+    },
+    {
+      "id": "V07",
+      "kind": "scientific_attachment",
+      "check": "Explicit compares relationships retain evaluated/reference roles, with the other role present or explicit in context. Scientific comparison orientation and closure_direction are different properties; neither can be inferred merely from raw endpoint order."
+    },
+    {
+      "id": "V08",
+      "kind": "scientific_attachment",
+      "check": "Uncertainty and p-values target their actual estimates or tests. Counts retain their counted set. A joint test is not copied into independent category tests, and a shared sample is not substituted for a result-specific analysis count. Standard deviations ordinarily use spread_of; standard errors and confidence intervals use uncertainty_of. Preserve diagnostic-test targets separately from treatment-effect tests."
+    },
+    {
+      "id": "V09",
+      "kind": "source",
+      "check": "Values, units, signs, bounds, operators, contrast orientation, and approximations agree with the source or an explicitly marked calculation. Other retains an intelligible description in value, context, or notes."
+    },
+    {
+      "id": "V10",
+      "kind": "grouping",
+      "check": "Family boundaries use the question and generating investigation only after local closed sets have been derived. Shared samples, assumptions, sources, and cross-result dependencies do not automatically merge families."
+    },
+    {
+      "id": "V11",
+      "kind": "source",
+      "check": "Verbatim snippets remain distinguishable from summaries. Source-reported records trace to a source and locator; calculations identify their inputs or basis."
+    },
+    {
+      "id": "V12",
+      "kind": "closure",
+      "check": "Recompute each member_ids set from core_ids using reviewed closure_direction projections and implicit parent links. It must exactly equal the reverse-reachable ancestor set including the core. Do not add storage siblings, family members, or unrestricted graph neighbors."
+    },
+    {
+      "id": "V13",
+      "kind": "closure",
+      "check": "Core IDs belong to eligible terminal components of the projected local graph. G/S metadata and T source containers cannot be local cores or members. Support-only sinks do not automatically become cores. Compound cores and nontrivial cycles require a scientific explanation or review_required status; family core_result_ids do not substitute for local core_ids. Multiple core IDs must represent one reviewed terminal strongly connected component; otherwise use an explicitly linked compound anchor."
+    },
+    {
+      "id": "V14",
+      "kind": "closure",
+      "check": "A missing closure_direction is unreviewed, not none. A closure with an unresolved incident relationship or boundary cannot be marked closed. Known local links have a recorded direction; non-closing connections retain none and their appropriate references."
+    },
+    {
+      "id": "V15",
+      "kind": "closure",
+      "check": "Recompute reference_ids from external endpoints of reviewed none links incident on members, named references attached to the result or members, T source IDs of table_for links targeting the result record, and table_ids in member fields' table_references. Remove member IDs and duplicates. Include linked T objects even when the R record is not itself a closure member. Do not traverse references into neighboring closures or other table cells."
+    },
+    {
+      "id": "V16",
+      "kind": "closure",
+      "check": "Overlap is permitted: shared inputs keep one ID in all applicable closures and one physical definition. Repeated numeric values alone never establish a shared object. Parent/member views are not additional independent evidence."
+    },
+    {
+      "id": "V17",
+      "kind": "coverage",
+      "check": "Every in-scope scientific object is a closure member, an external reference, clearly contextual information, cross-group summary content, or an explicit closure_review item. Preserve unresolved objects and explain review_required results; do not silently drop unsupported sinks. Account for source tables separately through tables[] and extraction.table_coverage. Complete local closures do not imply complete numerical-table export."
+    },
+    {
+      "id": "V18",
+      "kind": "comparison",
+      "check": "When computing grouping, use the object inventory and source scope, not existing group labels or family-membership edges. Preserve identifiable comparison anchors and source-supported links; check memberships, attachment targets, coverage, and unresolved judgments."
+    },
+    {
+      "id": "V19",
+      "kind": "scientific_attachment",
+      "check": "Review terminal definitions and locally bound symbols used in structured equations. A locally defined coefficient used by another equation needs an appropriate derived_from link or an explicit contextual reference. Resolve scoped symbol identities before adding a dependency; identical printed symbols alone are insufficient."
+    },
+    {
+      "id": "V20",
+      "kind": "coverage",
+      "check": "Review the actual main source version and all associated supplements supplied or identified by that source and compare their numerical-table inventory with tables[]. Include descriptive, baseline, diagnostic, and supplementary numerical tables regardless of significance or importance. A partial result or supplementary-document selection does not excuse incomplete table export. A completed submission requires table_coverage.status=complete, all required sources reviewed, no missing or unreadable required table regions, and all exports delivered. Unavailable required supplements make coverage incomplete. An incomplete instructional example is not a completed submission."
+    },
+    {
+      "id": "V21",
+      "kind": "identity",
+      "check": "There is exactly one T object and one CSV per qualifying source table. Merge page continuations and panels into that export; do not create copies per result or family. Distinct source tables remain distinct. csv_file equals id + \".csv\" exactly and is a basename in the extraction JSON directory; no absolute paths, subdirectories, or traversal components are permitted."
+    },
+    {
+      "id": "V22",
+      "kind": "file",
+      "check": "Open every recorded CSV file from the delivered package. It must exist, decode as UTF-8 without BOM, parse under x-table_extraction.csv_format, and contain one header whose unique keys exactly equal columns[].name in order. Every parsed data record has that many cells and the total equals row_count. A syntactically valid filename does not prove the file exists."
+    },
+    {
+      "id": "V23",
+      "kind": "source",
+      "check": "Reconstruct every numerical entry and its interpretation from the CSV, column metadata, caption, and scoped annotations. Check source row order, row and panel identity, complete header hierarchy, units, footnotes, numerical precision, signs, inequalities, composite expressions, significance markers, and missing-value meanings. Do not silently correct source errors, round values, discard cells not individually extracted, or treat layout-induced blanks as reported missing values."
+    },
+    {
+      "id": "V24",
+      "kind": "reference",
+      "check": "Every table has at least one table_for relationship to an appropriate ordinary result. Link all directly reported results and any explicitly used sample, input, or context roles. Check role against the source. A descriptive result is valid; no invented effect or main finding is required. Each such link has source T, target R, and closure_direction=none; every other T relationship also has none."
+    },
+    {
+      "id": "V25",
+      "kind": "reference",
+      "check": "For every table_references entry, resolve the table and CSV, verify 1 <= row <= row_count, and resolve column to exactly one header key. Check the selected cell or component against the field value, units, operators, and source context. Directly cell-reported independent fields require these references when table coverage is complete. Header/caption/footnote quantities instead use a precise source snippet and a named table reference. Derived quantities identify their source fields and calculation rather than claiming to be reported in an input cell."
+    },
+    {
+      "id": "V26",
+      "kind": "source",
+      "check": "All annotation rows and columns resolve within the table; scopes agree with the source. Merged numeric cells are transcribed once at the first covered row and leftmost covered exported column, with the whole span recorded as merged_cell and the other covered cells left blank. Shared tests and notes must not be represented as independent observations for each row."
+    },
+    {
+      "id": "V27",
+      "kind": "closure",
+      "check": "T objects and CSV coordinates never enter core_ids, member_ids, parent_field_id, or implicit local edges. Cell provenance and source-table identity do not create scientific dependence, expand local closure to adjacent cells, or merge families. An interpreted F collection and its source T object are not independent evidence."
+    }
+  ],
+  "x-context_guidance": {
+    "description": "Context is ordinary text or an open object. These are useful familiar names, not compulsory fields or a new controlled taxonomy.",
+    "suggested_properties": {
+      "outcome": "What was measured or modeled, including any operation such as iAUC.",
+      "treatment": "The evaluated intervention or condition.",
+      "comparator": "The reference intervention or condition; numeric inequalities belong in value_operator.",
+      "exposure": "The exposure or predictor for an association.",
+      "population": "Species, participants, cohort, or other units studied.",
+      "sample": "Which sample or analysis subset applies.",
+      "time": "Time point or window and its reference event.",
+      "method": "The measurement, calculation, or test procedure.",
+      "model": "The statistical or theoretical model relevant to this result.",
+      "adjustment": "Covariates or other adjustment information.",
+      "weighting": "Whether and how values are weighted.",
+      "assumptions": "Conditions under which the result is derived or applied.",
+      "direction": "What is compared with what, including the meaning of positive or negative changes.",
+      "counted_entity": "What a count or proportion counts and its relevant denominator set."
+    }
+  },
+  "x-value_guidance": [
+    {
+      "case": "Bounded p-value",
+      "example": {
+        "label": "p_value",
+        "value": 0.001,
+        "value_operator": "<"
+      },
+      "instruction": "Preserve the inequality instead of treating the reported boundary as exact."
+    },
+    {
+      "case": "Whole confidence interval",
+      "example": {
+        "label": "confidence_interval",
+        "value": {
+          "lower": 0.41,
+          "upper": 0.83
+        },
+        "confidence_level": 0.95
+      },
+      "instruction": "Keep its estimate target clear. Separate endpoints may instead use confidence_limit."
+    },
+    {
+      "case": "Equation",
+      "example": {
+        "label": "equation",
+        "value": "b/c > k"
+      },
+      "instruction": "Keep variable meanings and assumptions in context or references. A detailed expression taxonomy is optional."
+    },
+    {
+      "case": "Unusual entry",
+      "example": {
+        "label": "other",
+        "value": "A source-specific description"
+      },
+      "instruction": "Other is a normal choice. Keep sufficient existing description or context to interpret the entry."
+    }
+  ],
+  "x-technical_reference": {
+    "format": "JSON Schema Draft 2020-12",
+    "url": "https://json-schema.org/draft/2020-12/json-schema-core",
+    "note": "The x- sections are application instructions. Ordinary JSON Schema validation checks structure; graph reachability, terminal-core eligibility, cross-record references, source fidelity, family boundaries, numerical-table coverage, filename-to-ID equality, and actual CSV presence/content require the documented semantic checks."
+  },
+  "examples": [
+    {
+      "schema_version": "1.1",
+      "paper": {
+        "id": "P001",
+        "title": "Food Order Has a Significant Impact on Postprandial Glucose and Insulin Levels",
+        "authors": [
+          "Shukla AP",
+          "Iliescu RG",
+          "Thomas CE",
+          "Aronne LJ"
+        ],
+        "year": 2015,
+        "doi": "10.2337/dc15-0429",
+        "journal": "Diabetes Care"
+      },
+      "extraction": {
+        "id": "E001",
+        "revision": 2,
+        "date": "2026-11-18",
+        "scope": "Example subset: the 30-minute glucose comparison and shared participant sample.",
+        "notes": "Illustrative partial extraction. Local membership is computed from the listed scientific relationships and parent-field links. Complete numerical-table exports are intentionally outside this instructional subset; see the synthetic table-export example for the full contract.",
+        "table_coverage": {
+          "status": "incomplete",
+          "reviewed_source_ids": [],
+          "notes": "Instructional subset only. Complete source-table coverage and CSV exports are not represented in this example. No absence of numerical tables is asserted, and this record is not a completed miner submission."
+        }
+      },
+      "sources": [
+        {
+          "id": "P001.E001.S001",
+          "title": "Food Order Has a Significant Impact on Postprandial Glucose and Insulin Levels",
+          "kind": "main_article",
+          "doi": "10.2337/dc15-0429",
+          "url": "https://doi.org/10.2337/dc15-0429"
+        }
+      ],
+      "result_groups": [
+        {
+          "id": "P001.E001.G001",
+          "title": "Meal order and postmeal responses",
+          "question": "How does meal order affect postmeal glucose and insulin responses?",
+          "investigation": "The meal-order investigation reported by Shukla et al.",
+          "grouping_reason": "Outcomes and time points remain within the same investigation; this example shows one record.",
+          "core_result_ids": [
+            "P001.E001.R002"
+          ]
+        }
+      ],
+      "results": [
+        {
+          "id": "P001.E001.R002",
+          "group_id": "P001.E001.G001",
+          "title": "Glucose at 30 minutes",
+          "context": {
+            "outcome": "Glucose concentration",
+            "treatment": "carbohydrate-last",
+            "comparator": "carbohydrate-first",
+            "time": "30 minutes after the start of the meal",
+            "method": "Wilcoxon matched-pairs signed rank"
+          },
+          "fields": [
+            {
+              "id": "P001.E001.R002.F001",
+              "field": "cf_mean",
+              "label": "mean",
+              "value": 156.8,
+              "units": "mg/dL",
+              "field_group": "descriptive_value"
+            },
+            {
+              "id": "P001.E001.R002.F002",
+              "field": "cf_sem",
+              "label": "standard_error",
+              "value": 8.2,
+              "units": "mg/dL",
+              "field_group": "uncertainty_variation"
+            },
+            {
+              "id": "P001.E001.R002.F003",
+              "field": "cl_mean",
+              "label": "mean",
+              "value": 112.0,
+              "units": "mg/dL",
+              "field_group": "descriptive_value"
+            },
+            {
+              "id": "P001.E001.R002.F004",
+              "field": "cl_sem",
+              "label": "standard_error",
+              "value": 5.8,
+              "units": "mg/dL",
+              "field_group": "uncertainty_variation"
+            },
+            {
+              "id": "P001.E001.R002.F005",
+              "field": "change_pct",
+              "label": "treatment_effect",
+              "value": -28.6,
+              "units": "percent",
+              "measure": "relative_change",
+              "field_group": "result_estimate"
+            },
+            {
+              "id": "P001.E001.R002.F006",
+              "field": "p",
+              "label": "p_value",
+              "value": 0.001,
+              "field_group": "test_result"
+            }
+          ],
+          "references": [
+            {
+              "field": "n",
+              "target_id": "P001.E001.C001.F001"
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P001.E001.S001",
+              "locator": "e99, Table 1, glucose at 30 minutes",
+              "text": "30      156.8 6 8.2         112.0 6 5.8      0.001      228.6",
+              "note": "The retained PDF text conversion renders ± as 6 and the minus sign in -28.6 as 2. Structured values follow the reviewed extraction."
+            }
+          ],
+          "closure": {
+            "core_ids": [
+              "P001.E001.R002"
+            ],
+            "member_ids": [
+              "P001.E001.R002",
+              "P001.E001.R002.F001",
+              "P001.E001.R002.F002",
+              "P001.E001.R002.F003",
+              "P001.E001.R002.F004",
+              "P001.E001.R002.F005",
+              "P001.E001.R002.F006"
+            ],
+            "reference_ids": [
+              "P001.E001.C001.F001"
+            ],
+            "status": "closed",
+            "notes": "The R-record is the known meal-order comparison anchor. The means, their SEs, reported relative change, and joint p-value reach it through explicit scientific links. The shared sample remains a reference."
+          }
+        }
+      ],
+      "shared_context": [
+        {
+          "id": "P001.E001.C001",
+          "title": "Participant sample",
+          "fields": [
+            {
+              "id": "P001.E001.C001.F001",
+              "field": "n",
+              "label": "sample_size",
+              "value": 11,
+              "units": "participants"
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P001.E001.S001",
+              "locator": "Study sample description",
+              "text": "11"
+            }
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "P001.E001.R002.F002",
+          "relation": "uncertainty_of",
+          "target_id": "P001.E001.R002.F001",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P001.E001.R002.F004",
+          "relation": "uncertainty_of",
+          "target_id": "P001.E001.R002.F003",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P001.E001.R002.F006",
+          "relation": "p_value_of",
+          "target_id": "P001.E001.R002",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P001.E001.R002",
+          "relation": "compares",
+          "target_id": "P001.E001.R002.F001",
+          "closure_direction": "target_to_source",
+          "role": "reference",
+          "basis": "Existing comparison identifies carbohydrate-first mean as the reference input."
+        },
+        {
+          "source_id": "P001.E001.R002",
+          "relation": "compares",
+          "target_id": "P001.E001.R002.F003",
+          "closure_direction": "target_to_source",
+          "role": "evaluated",
+          "basis": "Existing comparison identifies carbohydrate-last mean as the evaluated input."
+        },
+        {
+          "source_id": "P001.E001.R002.F005",
+          "relation": "describes",
+          "target_id": "P001.E001.R002",
+          "closure_direction": "source_to_target",
+          "basis": "Reported relative change characterizes this known meal-order comparison."
+        },
+        {
+          "source_id": "P001.E001.C001.F001",
+          "relation": "describes",
+          "target_id": "P001.E001.R002",
+          "closure_direction": "none",
+          "basis": "The participant sample is shared context, not a reason to merge comparisons."
+        }
+      ],
+      "tables": []
+    },
+    {
+      "schema_version": "1.1",
+      "paper": {
+        "id": "P002",
+        "title": "Association of Hearing Loss With Hospitalization and Burden of Disease in Older Adults",
+        "authors": [
+          "Dane J. Genther",
+          "Kevin D. Frick",
+          "David Chen",
+          "Joshua Betz",
+          "Frank R. Lin"
+        ],
+        "year": 2013,
+        "doi": "10.1001/jama.2013.5912",
+        "journal": "JAMA"
+      },
+      "extraction": {
+        "id": "E001",
+        "revision": 2,
+        "date": "2026-11-18",
+        "scope": "Example subset: age-group descriptive table, its joint test, and the adjusted association with any hospitalization.",
+        "notes": "Illustrative partial extraction. Local membership is computed from the listed scientific relationships and parent-field links. Complete numerical-table exports are intentionally outside this instructional subset; see the synthetic table-export example for the full contract.",
+        "table_coverage": {
+          "status": "incomplete",
+          "reviewed_source_ids": [],
+          "notes": "Instructional subset only. Complete source-table coverage and CSV exports are not represented in this example. No absence of numerical tables is asserted, and this record is not a completed miner submission."
+        }
+      },
+      "sources": [
+        {
+          "id": "P002.E001.S001",
+          "title": "Association of Hearing Loss With Hospitalization and Burden of Disease in Older Adults",
+          "kind": "main_article",
+          "doi": "10.1001/jama.2013.5912",
+          "url": "https://doi.org/10.1001/jama.2013.5912"
+        }
+      ],
+      "result_groups": [
+        {
+          "id": "P002.E001.G001",
+          "title": "Hearing and health",
+          "question": "How is hearing acuity associated with hospitalization and self-reported health burden?",
+          "investigation": "The pooled NHANES investigation reported by Genther et al.",
+          "grouping_reason": "Descriptive characterizations and association specifications remain within one investigation; this partial example contains a supporting age comparison and a main adjusted association.",
+          "core_result_ids": [
+            "P002.E001.R002"
+          ]
+        }
+      ],
+      "results": [
+        {
+          "id": "P002.E001.R001",
+          "group_id": "P002.E001.G001",
+          "title": "Age-group distribution by hearing group",
+          "context": {
+            "groups": {
+              "G_NORMAL": "normal hearing",
+              "G_HL": "hearing loss"
+            },
+            "weighting": "unweighted",
+            "method": "chi-square test",
+            "test_target": "The joint age-group comparison, not separate tests for each category."
+          },
+          "fields": [
+            {
+              "id": "P002.E001.R001.F001",
+              "field": "rows",
+              "label": "other",
+              "value": [
+                {
+                  "age_group": "70-74 years",
+                  "groups": [
+                    {
+                      "group": "G_NORMAL",
+                      "count": 289,
+                      "percent": 54.6
+                    },
+                    {
+                      "group": "G_HL",
+                      "count": 319,
+                      "percent": 30.0
+                    }
+                  ]
+                },
+                {
+                  "age_group": "75-79 years",
+                  "groups": [
+                    {
+                      "group": "G_NORMAL",
+                      "count": 138,
+                      "percent": 26.1
+                    },
+                    {
+                      "group": "G_HL",
+                      "count": 283,
+                      "percent": 24.8
+                    }
+                  ]
+                },
+                {
+                  "age_group": ">=80 years",
+                  "groups": [
+                    {
+                      "group": "G_NORMAL",
+                      "count": 102,
+                      "percent": 19.3
+                    },
+                    {
+                      "group": "G_HL",
+                      "count": 538,
+                      "percent": 47.2
+                    }
+                  ]
+                }
+              ],
+              "description": "Counts and percentages for each age category and hearing group."
+            },
+            {
+              "id": "P002.E001.R001.F002",
+              "field": "count",
+              "label": "count",
+              "value": 289,
+              "units": "persons",
+              "parent_field_id": "P002.E001.R001.F001",
+              "field_path": "[0].groups[0].count"
+            },
+            {
+              "id": "P002.E001.R001.F003",
+              "field": "percent",
+              "label": "proportion",
+              "value": 54.6,
+              "units": "percent",
+              "parent_field_id": "P002.E001.R001.F001",
+              "field_path": "[0].groups[0].percent"
+            },
+            {
+              "id": "P002.E001.R001.F004",
+              "field": "p",
+              "label": "p_value",
+              "value": 0.001,
+              "value_operator": "<",
+              "description": "P-value for the joint age-group comparison."
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P002.E001.S001",
+              "locator": "Table 1, age group, 70-74 years",
+              "text": "289"
+            },
+            {
+              "source_id": "P002.E001.S001",
+              "locator": "Table 1, age group, 70-74 years",
+              "text": "54.6"
+            },
+            {
+              "source_id": "P002.E001.S001",
+              "locator": "Table 1, age-group test",
+              "text": "<.001"
+            }
+          ],
+          "notes": "The existing extraction preserves a printed inconsistency: the hearing-loss age-group percentages sum to 102.0%, and the first reported percentage is 30.0% although 319/1140 rounds to 28.0%. Preserve the reported values and flag the discrepancy; do not silently correct it. Row-specific denominators are not separately reported.",
+          "closure": {
+            "core_ids": [
+              "P002.E001.R001"
+            ],
+            "member_ids": [
+              "P002.E001.R001",
+              "P002.E001.R001.F001",
+              "P002.E001.R001.F002",
+              "P002.E001.R001.F003",
+              "P002.E001.R001.F004"
+            ],
+            "reference_ids": [],
+            "status": "closed",
+            "notes": "The R-record is the known joint age-distribution comparison anchor. Addressed table members enter through parent_field_id; the joint p-value attaches once to the comparison."
+          }
+        },
+        {
+          "id": "P002.E001.R002",
+          "group_id": "P002.E001.G001",
+          "title": "Adjusted association with any hospitalization, model 3",
+          "context": {
+            "estimand": "Odds of any hospitalization versus none in previous 12 months, per 25 dB greater hearing threshold.",
+            "inference": "association; cross-sectional observational design",
+            "weighting": "survey weighted",
+            "adjustment_covariates": [
+              "age group",
+              "sex",
+              "race",
+              "education",
+              "annual household income",
+              "hypertension",
+              "stroke",
+              "diabetes mellitus",
+              "cardiovascular disease",
+              "smoking history"
+            ],
+            "test": "logistic regression coefficient test"
+          },
+          "fields": [
+            {
+              "id": "P002.E001.R002.F001",
+              "field": "estimate",
+              "label": "association",
+              "value": 1.32,
+              "measure": "odds_ratio"
+            },
+            {
+              "id": "P002.E001.R002.F002",
+              "field": "ci95",
+              "label": "confidence_interval",
+              "value": {
+                "lower": 1.07,
+                "upper": 1.63
+              },
+              "confidence_level": 0.95
+            },
+            {
+              "id": "P002.E001.R002.F003",
+              "field": "p",
+              "label": "p_value",
+              "value": 0.01,
+              "value_operator": "="
+            },
+            {
+              "id": "P002.E001.R002.F004",
+              "field": "n",
+              "label": "sample_size",
+              "value": 1646,
+              "units": "persons",
+              "description": "unweighted person count"
+            },
+            {
+              "id": "P002.E001.R002.F005",
+              "field": "exposure_increment",
+              "label": "increment",
+              "value": 25,
+              "units": "dB",
+              "description": "Increase in hearing threshold defining the reported association."
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P002.E001.S001",
+              "locator": "Table 2, Any hospitalization, model 3",
+              "text": "1646"
+            },
+            {
+              "source_id": "P002.E001.S001",
+              "locator": "Table 2, Any hospitalization, model 3",
+              "text": "1.32"
+            },
+            {
+              "source_id": "P002.E001.S001",
+              "locator": "Table 2, Any hospitalization, model 3",
+              "text": "1.07"
+            },
+            {
+              "source_id": "P002.E001.S001",
+              "locator": "Table 2, Any hospitalization, model 3",
+              "text": "1.63"
+            },
+            {
+              "source_id": "P002.E001.S001",
+              "locator": "Table 2, Any hospitalization, model 3",
+              "text": ".01"
+            }
+          ],
+          "closure": {
+            "core_ids": [
+              "P002.E001.R002.F001"
+            ],
+            "member_ids": [
+              "P002.E001.R002.F001",
+              "P002.E001.R002.F002",
+              "P002.E001.R002.F003",
+              "P002.E001.R002.F004"
+            ],
+            "reference_ids": [
+              "P002.E001.R002.F005"
+            ],
+            "status": "closed",
+            "notes": "The odds-ratio field is the local terminal core. Its CI, p-value, and analysis-specific sample size are members; the exposure increment remains a reference."
+          }
+        }
+      ],
+      "shared_context": [],
+      "relationships": [
+        {
+          "source_id": "P002.E001.R001.F004",
+          "relation": "p_value_of",
+          "target_id": "P002.E001.R001",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P002.E001.R002.F002",
+          "relation": "uncertainty_of",
+          "target_id": "P002.E001.R002.F001",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P002.E001.R002.F003",
+          "relation": "p_value_of",
+          "target_id": "P002.E001.R002.F001",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P002.E001.R001.F001",
+          "relation": "describes",
+          "target_id": "P002.E001.R001",
+          "closure_direction": "source_to_target",
+          "basis": "The age table describes the known joint hearing-group comparison; the joint p-value already targets that anchor."
+        },
+        {
+          "source_id": "P002.E001.R002.F004",
+          "relation": "describes",
+          "target_id": "P002.E001.R002.F001",
+          "closure_direction": "source_to_target",
+          "basis": "This is the analysis-specific person count for the adjusted association."
+        },
+        {
+          "source_id": "P002.E001.R002.F001",
+          "relation": "applies_under",
+          "target_id": "P002.E001.R002.F005",
+          "closure_direction": "none",
+          "basis": "The reported exposure increment defines the association scale and remains a boundary reference."
+        }
+      ],
+      "tables": []
+    },
+    {
+      "schema_version": "1.1",
+      "paper": {
+        "id": "P003",
+        "title": "A simple rule for the evolution of cooperation on graphs and social networks",
+        "authors": [
+          "Hisashi Ohtsuki",
+          "Christoph Hauert",
+          "Erez Lieberman",
+          "Martin A. Nowak"
+        ],
+        "year": 2006,
+        "doi": "10.1038/nature04605",
+        "journal": "Nature"
+      },
+      "extraction": {
+        "id": "E001",
+        "revision": 2,
+        "date": "2026-11-18",
+        "scope": "Example subset: death-birth cooperation condition and one curve from its distinct numerical evaluation.",
+        "notes": "Illustrative partial extraction. Local membership is computed from the listed scientific relationships and parent-field links. Complete numerical-table exports are intentionally outside this instructional subset; see the synthetic table-export example for the full contract.",
+        "table_coverage": {
+          "status": "incomplete",
+          "reviewed_source_ids": [],
+          "notes": "Instructional subset only. Complete source-table coverage and CSV exports are not represented in this example. No absence of numerical tables is asserted, and this record is not a completed miner submission."
+        }
+      },
+      "sources": [
+        {
+          "id": "P003.E001.S001",
+          "title": "A simple rule for the evolution of cooperation on graphs and social networks",
+          "kind": "main_article",
+          "doi": "10.1038/nature04605",
+          "url": "https://doi.org/10.1038/nature04605"
+        }
+      ],
+      "result_groups": [
+        {
+          "id": "P003.E001.G001",
+          "title": "Death-birth analytical condition",
+          "question": "When does selection favor cooperation under death-birth updating?",
+          "investigation": "Analytical death-birth mechanism.",
+          "grouping_reason": "The mathematical condition and its analytical specializations form one group.",
+          "core_result_ids": [
+            "P003.E001.R001"
+          ],
+          "related_group_ids": [
+            "P003.E001.G002"
+          ]
+        },
+        {
+          "id": "P003.E001.G002",
+          "title": "Death-birth numerical evaluation",
+          "question": "How does the analytical condition compare with simulated fixation behavior?",
+          "investigation": "The death-birth simulation study.",
+          "grouping_reason": "Parameter and graph variations stay within this numerical study; it remains distinct from the analytical investigation.",
+          "core_result_ids": [
+            "P003.E001.R002"
+          ],
+          "related_group_ids": [
+            "P003.E001.G001"
+          ]
+        }
+      ],
+      "results": [
+        {
+          "id": "P003.E001.R001",
+          "group_id": "P003.E001.G001",
+          "title": "Cooperation condition",
+          "fields": [
+            {
+              "id": "P003.E001.R001.F001",
+              "field": "equation",
+              "label": "equation",
+              "value": "b/c > k"
+            }
+          ],
+          "context": {
+            "variables": {
+              "b": "benefit",
+              "c": "cost",
+              "k": "regular-graph degree"
+            },
+            "assumptions": "Weak selection; population size large relative to degree; the reviewed analytical approximation."
+          },
+          "source_snippets": [
+            {
+              "source_id": "P003.E001.S001",
+              "locator": "Main text, statement of the cooperation rule",
+              "text": "b/c > k."
+            }
+          ],
+          "closure": {
+            "core_ids": [
+              "P003.E001.R001.F001"
+            ],
+            "member_ids": [
+              "P003.E001.R001.F001"
+            ],
+            "reference_ids": [
+              "P003.E001.R002.F001"
+            ],
+            "status": "closed",
+            "notes": "The reported equation is a meaningful singleton analytical core. The linked numerical result is retained as a non-closing scientific reference."
+          }
+        },
+        {
+          "id": "P003.E001.R002",
+          "group_id": "P003.E001.G002",
+          "title": "Digitized cycle curve, N=100 and k=2",
+          "fields": [
+            {
+              "id": "P003.E001.R002.F001",
+              "field": "data",
+              "label": "other",
+              "value": [
+                {
+                  "b_over_c_digitized": 1.887,
+                  "rho_C_digitized": 0.0087
+                },
+                {
+                  "b_over_c_digitized": 1.923,
+                  "rho_C_digitized": 0.0089
+                },
+                {
+                  "b_over_c_digitized": 1.961,
+                  "rho_C_digitized": 0.0093
+                },
+                {
+                  "b_over_c_digitized": 2.0,
+                  "rho_C_digitized": 0.0098
+                },
+                {
+                  "b_over_c_digitized": 2.041,
+                  "rho_C_digitized": 0.0099
+                },
+                {
+                  "b_over_c_digitized": 2.083,
+                  "rho_C_digitized": 0.0101
+                },
+                {
+                  "b_over_c_digitized": 2.128,
+                  "rho_C_digitized": 0.0106
+                },
+                {
+                  "b_over_c_digitized": 2.174,
+                  "rho_C_digitized": 0.0111
+                },
+                {
+                  "b_over_c_digitized": 2.222,
+                  "rho_C_digitized": 0.0113
+                }
+              ],
+              "description": "Digitized benefit/cost ratios and fixation probabilities.",
+              "origin": "digitized",
+              "value_status": "Approximate readings from a published plot."
+            },
+            {
+              "id": "P003.E001.R002.F002",
+              "field": "rho_C_digitized",
+              "label": "probability",
+              "value": 0.0087,
+              "parent_field_id": "P003.E001.R002.F001",
+              "field_path": "[0].rho_C_digitized",
+              "origin": "digitized"
+            }
+          ],
+          "context": {
+            "N": 100,
+            "k": 2,
+            "graph": "cycle",
+            "update_rule": "death-birth",
+            "independent_variable": "benefit/cost ratio"
+          },
+          "references": [
+            {
+              "field": "w",
+              "target_id": "P003.E001.C001.F001"
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P003.E001.S001",
+              "locator": "Figure 2 caption",
+              "text": "good agreement with numerical\nsimulations."
+            }
+          ],
+          "closure": {
+            "core_ids": [
+              "P003.E001.R002.F001"
+            ],
+            "member_ids": [
+              "P003.E001.R002.F001",
+              "P003.E001.R002.F002"
+            ],
+            "reference_ids": [
+              "P003.E001.C001.F001",
+              "P003.E001.R001.F001"
+            ],
+            "status": "closed",
+            "notes": "The whole curve is the local core; its addressed probability is included through parent_field_id. The analytical condition and selection-strength setting remain references."
+          }
+        }
+      ],
+      "shared_context": [
+        {
+          "id": "P003.E001.C001",
+          "title": "Simulation selection intensity",
+          "fields": [
+            {
+              "id": "P003.E001.C001.F001",
+              "field": "w",
+              "label": "parameter",
+              "value": 0.01,
+              "units": "dimensionless"
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P003.E001.S001",
+              "locator": "Figure 2 caption",
+              "text": "selection, w ¼ 0.01.",
+              "note": "The text conversion uses ¼ for the equality sign."
+            }
+          ]
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "P003.E001.R002.F001",
+          "relation": "other",
+          "target_id": "P003.E001.R001.F001",
+          "closure_direction": "none",
+          "note": "Numerically evaluates the analytical condition; retain separate local results.",
+          "basis": "Scientific link between a reported simulation curve and analytical condition, not a family-membership edge."
+        },
+        {
+          "source_id": "P003.E001.R002.F001",
+          "relation": "applies_under",
+          "target_id": "P003.E001.C001.F001",
+          "closure_direction": "none"
+        }
+      ],
+      "tables": []
+    },
+    {
+      "schema_version": "1.1",
+      "paper": {
+        "id": "P004",
+        "title": "Comparison of treatment effects between animal experiments and clinical trials: systematic review",
+        "authors": [
+          "Pablo Perel",
+          "Ian Roberts",
+          "Emily Sena",
+          "Philipa Wheble",
+          "Catherine Briscoe",
+          "Peter Sandercock",
+          "Malcolm Macleod",
+          "Luciano E Mignini",
+          "Pradeep Jayaram",
+          "Khalid S Khan"
+        ],
+        "year": 2007,
+        "doi": "10.1136/bmj.39048.407928.BE",
+        "journal": "BMJ"
+      },
+      "extraction": {
+        "id": "E001",
+        "revision": 2,
+        "date": "2026-11-18",
+        "scope": "Example subset: the pooled animal grip-test estimate within the head-injury corticosteroid review.",
+        "notes": "Illustrative partial extraction. Local membership is computed from the listed scientific relationships and parent-field links. Complete numerical-table exports are intentionally outside this instructional subset; see the synthetic table-export example for the full contract.",
+        "table_coverage": {
+          "status": "incomplete",
+          "reviewed_source_ids": [],
+          "notes": "Instructional subset only. Complete source-table coverage and CSV exports are not represented in this example. No absence of numerical tables is asserted, and this record is not a completed miner submission."
+        }
+      },
+      "sources": [
+        {
+          "id": "P004.E001.S001",
+          "title": "Comparison of treatment effects between animal experiments and clinical trials: systematic review",
+          "kind": "main_article",
+          "doi": "10.1136/bmj.39048.407928.BE",
+          "url": "https://doi.org/10.1136/bmj.39048.407928.BE"
+        }
+      ],
+      "result_groups": [
+        {
+          "id": "P004.E001.G001",
+          "title": "Corticosteroids for traumatic head injury",
+          "question": "Do corticosteroid effects in animal head-injury models agree with human effects?",
+          "investigation": "The intervention-specific animal review and comparison with human evidence.",
+          "grouping_reason": "Endpoints, contributing studies, and evidence counts remain within this intervention-specific question; this example shows the pooled grip-test endpoint.",
+          "core_result_ids": [
+            "P004.E001.R001"
+          ]
+        }
+      ],
+      "results": [
+        {
+          "id": "P004.E001.R001",
+          "group_id": "P004.E001.G001",
+          "title": "Pooled grip-test outcome",
+          "context": {
+            "outcome": "Adverse functional outcome: grip test",
+            "population": "animal models",
+            "treatment": "corticosteroids",
+            "comparator": "control conditions in the contributing studies",
+            "direction": "lower adverse outcome favours corticosteroids",
+            "confidence_display": "95%"
+          },
+          "fields": [
+            {
+              "id": "P004.E001.R001.F001",
+              "field": "estimate",
+              "label": "treatment_effect",
+              "value": 0.58,
+              "measure": "odds_ratio",
+              "units": "ratio"
+            },
+            {
+              "id": "P004.E001.R001.F002",
+              "field": "ci_lower",
+              "label": "confidence_limit",
+              "value": 0.41,
+              "confidence_level": 0.95,
+              "units": "ratio"
+            },
+            {
+              "id": "P004.E001.R001.F003",
+              "field": "ci_upper",
+              "label": "confidence_limit",
+              "value": 0.83,
+              "confidence_level": 0.95,
+              "units": "ratio"
+            },
+            {
+              "id": "P004.E001.R001.F004",
+              "field": "n_reports",
+              "label": "count",
+              "value": 3,
+              "units": "reports"
+            },
+            {
+              "id": "P004.E001.R001.F005",
+              "field": "n_experiments",
+              "label": "count",
+              "value": 4,
+              "units": "experiments"
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P004.E001.S001",
+              "locator": "Abstract, grip-test functional outcome",
+              "text": "outcome 0.58, 95% confidence interval 0.41 to 0.83)."
+            }
+          ],
+          "closure": {
+            "core_ids": [
+              "P004.E001.R001"
+            ],
+            "member_ids": [
+              "P004.E001.R001",
+              "P004.E001.R001.F001",
+              "P004.E001.R001.F002",
+              "P004.E001.R001.F003",
+              "P004.E001.R001.F004",
+              "P004.E001.R001.F005"
+            ],
+            "reference_ids": [],
+            "status": "closed",
+            "notes": "The R-record is the known pooled-result anchor. The estimate, confidence limits, and result-specific evidence counts reach it through explicit links."
+          }
+        }
+      ],
+      "shared_context": [],
+      "relationships": [
+        {
+          "source_id": "P004.E001.R001.F002",
+          "relation": "uncertainty_of",
+          "target_id": "P004.E001.R001.F001",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P004.E001.R001.F003",
+          "relation": "uncertainty_of",
+          "target_id": "P004.E001.R001.F001",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P004.E001.R001.F004",
+          "relation": "describes",
+          "target_id": "P004.E001.R001",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P004.E001.R001.F005",
+          "relation": "describes",
+          "target_id": "P004.E001.R001",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P004.E001.R001.F001",
+          "relation": "describes",
+          "target_id": "P004.E001.R001",
+          "closure_direction": "source_to_target",
+          "basis": "The pooled estimate and its evidence counts characterize this known pooled grip-test result."
+        }
+      ],
+      "tables": []
+    },
+    {
+      "schema_version": "1.1",
+      "paper": {
+        "id": "P005",
+        "title": "Synthetic numerical-table extraction example"
+      },
+      "extraction": {
+        "id": "E001",
+        "scope": "Complete synthetic instructional source containing only Table 1 with two marker comparisons. This is not an extraction from a real paper.",
+        "table_coverage": {
+          "status": "complete",
+          "reviewed_source_ids": [
+            "P005.E001.S001"
+          ],
+          "notes": "The only table in this synthetic source is fully represented; its exact CSV is supplied in x-table_extraction.example_csv_files."
+        }
+      },
+      "sources": [
+        {
+          "id": "P005.E001.S001",
+          "title": "Synthetic two-row marker table",
+          "kind": "synthetic_instructional_source",
+          "notes": "All source content is supplied by this example; no bibliographic or empirical claim is made."
+        }
+      ],
+      "tables": [
+        {
+          "id": "P005.E001.T001",
+          "source_id": "P005.E001.S001",
+          "locator": "Table 1",
+          "title": "Synthetic group comparisons",
+          "caption": "Table 1. Marker concentrations in groups A and B.",
+          "csv_file": "P005.E001.T001.csv",
+          "columns": [
+            {
+              "name": "outcome",
+              "header_path": [
+                "Outcome"
+              ],
+              "role": "label"
+            },
+            {
+              "name": "group_a_mean_se",
+              "header_path": [
+                "Concentration",
+                "Group A",
+                "Mean ± SE"
+              ],
+              "role": "data"
+            },
+            {
+              "name": "group_b_mean_se",
+              "header_path": [
+                "Concentration",
+                "Group B",
+                "Mean ± SE"
+              ],
+              "role": "data"
+            },
+            {
+              "name": "p_value",
+              "header_path": [
+                "P value"
+              ],
+              "role": "data"
+            }
+          ],
+          "row_count": 2,
+          "annotations": [
+            {
+              "kind": "statistical_convention",
+              "text": "Concentrations are reported as mean ± standard error.",
+              "columns": [
+                "group_a_mean_se",
+                "group_b_mean_se"
+              ]
+            },
+            {
+              "kind": "footnote",
+              "marker": "*",
+              "text": "* P < 0.05 for the comparison of groups A and B.",
+              "rows": [
+                1,
+                2
+              ],
+              "columns": [
+                "p_value"
+              ]
+            },
+            {
+              "kind": "unit",
+              "text": "Marker A concentrations are in mg/L.",
+              "rows": [
+                1
+              ],
+              "columns": [
+                "group_a_mean_se",
+                "group_b_mean_se"
+              ]
+            },
+            {
+              "kind": "unit",
+              "text": "Marker B concentrations are in ng/mL.",
+              "rows": [
+                2
+              ],
+              "columns": [
+                "group_a_mean_se",
+                "group_b_mean_se"
+              ]
+            }
+          ],
+          "notes": "Entirely synthetic instructional source with two data rows. No values are claimed to come from an actual scientific study."
+        }
+      ],
+      "result_groups": [
+        {
+          "id": "P005.E001.G001",
+          "title": "Synthetic group marker comparison",
+          "question": "How do the two marker concentrations compare between groups A and B?",
+          "investigation": "One synthetic two-group descriptive investigation.",
+          "grouping_reason": "Both local comparisons concern outcomes of the same identified comparison within one investigation. Their common source table supplies provenance; the common question and investigation supply the family rationale.",
+          "core_result_ids": [
+            "P005.E001.R001",
+            "P005.E001.R002"
+          ]
+        }
+      ],
+      "results": [
+        {
+          "id": "P005.E001.R001",
+          "group_id": "P005.E001.G001",
+          "title": "Marker A comparison",
+          "context": {
+            "outcome": "Marker A",
+            "evaluated": "Group B",
+            "reference": "Group A",
+            "inference": "Synthetic descriptive group comparison; no causal interpretation is asserted."
+          },
+          "fields": [
+            {
+              "id": "P005.E001.R001.F001",
+              "field": "group_a_mean",
+              "label": "mean",
+              "value": 12.0,
+              "origin": "source_reported",
+              "table_references": [
+                {
+                  "table_id": "P005.E001.T001",
+                  "row": 1,
+                  "column": "group_a_mean_se",
+                  "component": "mean"
+                }
+              ],
+              "units": "mg/L"
+            },
+            {
+              "id": "P005.E001.R001.F002",
+              "field": "group_a_se",
+              "label": "standard_error",
+              "value": 1.2,
+              "origin": "source_reported",
+              "table_references": [
+                {
+                  "table_id": "P005.E001.T001",
+                  "row": 1,
+                  "column": "group_a_mean_se",
+                  "component": "standard_error"
+                }
+              ],
+              "units": "mg/L"
+            },
+            {
+              "id": "P005.E001.R001.F003",
+              "field": "group_b_mean",
+              "label": "mean",
+              "value": 10.0,
+              "origin": "source_reported",
+              "table_references": [
+                {
+                  "table_id": "P005.E001.T001",
+                  "row": 1,
+                  "column": "group_b_mean_se",
+                  "component": "mean"
+                }
+              ],
+              "units": "mg/L"
+            },
+            {
+              "id": "P005.E001.R001.F004",
+              "field": "group_b_se",
+              "label": "standard_error",
+              "value": 1.1,
+              "origin": "source_reported",
+              "table_references": [
+                {
+                  "table_id": "P005.E001.T001",
+                  "row": 1,
+                  "column": "group_b_mean_se",
+                  "component": "standard_error"
+                }
+              ],
+              "units": "mg/L"
+            },
+            {
+              "id": "P005.E001.R001.F005",
+              "field": "p",
+              "label": "p_value",
+              "value": 0.04,
+              "origin": "source_reported",
+              "table_references": [
+                {
+                  "table_id": "P005.E001.T001",
+                  "row": 1,
+                  "column": "p_value",
+                  "component": "p_value"
+                }
+              ],
+              "value_operator": "="
+            }
+          ],
+          "references": [
+            {
+              "field": "source_table",
+              "target_id": "P005.E001.T001"
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P005.E001.S001",
+              "locator": "Table 1, Marker A row",
+              "text": "Marker A (mg/L) | 12.0 ± 1.2 | 10.0 ± 1.1 | 0.04*"
+            }
+          ],
+          "closure": {
+            "core_ids": [
+              "P005.E001.R001"
+            ],
+            "member_ids": [
+              "P005.E001.R001",
+              "P005.E001.R001.F001",
+              "P005.E001.R001.F002",
+              "P005.E001.R001.F003",
+              "P005.E001.R001.F004",
+              "P005.E001.R001.F005"
+            ],
+            "reference_ids": [
+              "P005.E001.T001"
+            ],
+            "status": "closed",
+            "notes": "The source explicitly identifies the group comparison. Its means, SEs, and comparison p-value reach this R anchor through reviewed scientific links. The T object remains a boundary reference."
+          }
+        },
+        {
+          "id": "P005.E001.R002",
+          "group_id": "P005.E001.G001",
+          "title": "Marker B comparison",
+          "context": {
+            "outcome": "Marker B",
+            "evaluated": "Group B",
+            "reference": "Group A",
+            "inference": "Synthetic descriptive group comparison; no causal interpretation is asserted."
+          },
+          "fields": [
+            {
+              "id": "P005.E001.R002.F001",
+              "field": "group_a_mean",
+              "label": "mean",
+              "value": 3.5,
+              "origin": "source_reported",
+              "table_references": [
+                {
+                  "table_id": "P005.E001.T001",
+                  "row": 2,
+                  "column": "group_a_mean_se",
+                  "component": "mean"
+                }
+              ],
+              "units": "ng/mL"
+            },
+            {
+              "id": "P005.E001.R002.F002",
+              "field": "group_a_se",
+              "label": "standard_error",
+              "value": 0.2,
+              "origin": "source_reported",
+              "table_references": [
+                {
+                  "table_id": "P005.E001.T001",
+                  "row": 2,
+                  "column": "group_a_mean_se",
+                  "component": "standard_error"
+                }
+              ],
+              "units": "ng/mL"
+            },
+            {
+              "id": "P005.E001.R002.F003",
+              "field": "group_b_mean",
+              "label": "mean",
+              "value": 4.1,
+              "origin": "source_reported",
+              "table_references": [
+                {
+                  "table_id": "P005.E001.T001",
+                  "row": 2,
+                  "column": "group_b_mean_se",
+                  "component": "mean"
+                }
+              ],
+              "units": "ng/mL"
+            },
+            {
+              "id": "P005.E001.R002.F004",
+              "field": "group_b_se",
+              "label": "standard_error",
+              "value": 0.3,
+              "origin": "source_reported",
+              "table_references": [
+                {
+                  "table_id": "P005.E001.T001",
+                  "row": 2,
+                  "column": "group_b_mean_se",
+                  "component": "standard_error"
+                }
+              ],
+              "units": "ng/mL"
+            },
+            {
+              "id": "P005.E001.R002.F005",
+              "field": "p",
+              "label": "p_value",
+              "value": 0.001,
+              "origin": "source_reported",
+              "table_references": [
+                {
+                  "table_id": "P005.E001.T001",
+                  "row": 2,
+                  "column": "p_value",
+                  "component": "p_value"
+                }
+              ],
+              "value_operator": "<"
+            }
+          ],
+          "references": [
+            {
+              "field": "source_table",
+              "target_id": "P005.E001.T001"
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P005.E001.S001",
+              "locator": "Table 1, Marker B row",
+              "text": "Marker B (ng/mL) | 3.50 ± 0.20 | 4.10 ± 0.30 | <0.001*"
+            }
+          ],
+          "closure": {
+            "core_ids": [
+              "P005.E001.R002"
+            ],
+            "member_ids": [
+              "P005.E001.R002",
+              "P005.E001.R002.F001",
+              "P005.E001.R002.F002",
+              "P005.E001.R002.F003",
+              "P005.E001.R002.F004",
+              "P005.E001.R002.F005"
+            ],
+            "reference_ids": [
+              "P005.E001.T001"
+            ],
+            "status": "closed",
+            "notes": "The source explicitly identifies the group comparison. Its means, SEs, and comparison p-value reach this R anchor through reviewed scientific links. The T object remains a boundary reference."
+          }
+        }
+      ],
+      "relationships": [
+        {
+          "source_id": "P005.E001.R001.F002",
+          "relation": "uncertainty_of",
+          "target_id": "P005.E001.R001.F001",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P005.E001.R001.F004",
+          "relation": "uncertainty_of",
+          "target_id": "P005.E001.R001.F003",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P005.E001.R001",
+          "relation": "compares",
+          "target_id": "P005.E001.R001.F001",
+          "role": "reference",
+          "closure_direction": "target_to_source"
+        },
+        {
+          "source_id": "P005.E001.R001",
+          "relation": "compares",
+          "target_id": "P005.E001.R001.F003",
+          "role": "evaluated",
+          "closure_direction": "target_to_source"
+        },
+        {
+          "source_id": "P005.E001.R001.F005",
+          "relation": "p_value_of",
+          "target_id": "P005.E001.R001",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P005.E001.T001",
+          "relation": "table_for",
+          "target_id": "P005.E001.R001",
+          "role": "reports_result",
+          "closure_direction": "none"
+        },
+        {
+          "source_id": "P005.E001.R002.F002",
+          "relation": "uncertainty_of",
+          "target_id": "P005.E001.R002.F001",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P005.E001.R002.F004",
+          "relation": "uncertainty_of",
+          "target_id": "P005.E001.R002.F003",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P005.E001.R002",
+          "relation": "compares",
+          "target_id": "P005.E001.R002.F001",
+          "role": "reference",
+          "closure_direction": "target_to_source"
+        },
+        {
+          "source_id": "P005.E001.R002",
+          "relation": "compares",
+          "target_id": "P005.E001.R002.F003",
+          "role": "evaluated",
+          "closure_direction": "target_to_source"
+        },
+        {
+          "source_id": "P005.E001.R002.F005",
+          "relation": "p_value_of",
+          "target_id": "P005.E001.R002",
+          "closure_direction": "source_to_target"
+        },
+        {
+          "source_id": "P005.E001.T001",
+          "relation": "table_for",
+          "target_id": "P005.E001.R002",
+          "role": "reports_result",
+          "closure_direction": "none"
+        }
+      ]
+    }
+  ]
+}
