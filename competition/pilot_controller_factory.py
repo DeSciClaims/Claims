@@ -66,6 +66,33 @@ def _payout_only_runtime_cutover(
     return {"weights.py", "result_controller.py"} <= changed <= _PAYOUT_ONLY_SOURCE_FILES
 
 
+def _bronze_source_fault_runtime_cutover(
+    round_id: str, configuration: Mapping[str, Any], runtime: Mapping[str, Any],
+) -> bool:
+    """Allow only the audited Bronze-source fault resume code on two frozen rounds."""
+    if (round_id not in {"round_20261116T120000Z_mainnet",
+                         "round_20261123T120000Z_mainnet"}
+        or canonical_sha256(configuration)
+           != "addf851749bf7e41fc9d6cedb7c660ca7dc8aaf50951da0e23c272490015dde3"
+        or any(configuration.get(key) != runtime.get(key)
+               for key in set(configuration) | set(runtime)
+               if key != "competition_policy_runtime")):
+        return False
+    original = configuration.get("competition_policy_runtime", {}).get("source_sha256")
+    current = runtime.get("competition_policy_runtime", {}).get("source_sha256")
+    return (isinstance(original, dict) and isinstance(current, dict)
+            and {name for name in set(original) | set(current)
+                 if original.get(name) != current.get(name)}
+            == {"weekly_automation.py", "pilot_controller_factory.py"})
+
+
+def _approved_runtime_cutover(
+    round_id: str, configuration: Mapping[str, Any], runtime: Mapping[str, Any],
+) -> bool:
+    return (_payout_only_runtime_cutover(round_id, configuration, runtime)
+            or _bronze_source_fault_runtime_cutover(round_id, configuration, runtime))
+
+
 def prepare_evaluation(row, backend):
     from .evaluation_binding import prepare_evaluation as prepare
     return prepare(row, backend)
@@ -240,7 +267,7 @@ def create_bronze_inputs(row: Mapping[str, Any], backend: Any) -> Any:
         or canonical_sha256(configuration) != row["configuration_sha256"]
         or document.get("configuration_sha256") != row["configuration_sha256"]
         or (configuration.get("competition_policy_runtime") != policy_runtime_config()
-            and not _payout_only_runtime_cutover(
+            and not _approved_runtime_cutover(
                 round_id, configuration,
                 {**configuration, "competition_policy_runtime": policy_runtime_config()},
             ))
@@ -340,7 +367,7 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         rules_revision=int(row.get("rules_revision", 1)),
     )
     if policy.configuration_sha256 != rules.configuration_sha256 or policy.configuration != configuration:
-        if not _payout_only_runtime_cutover(round_id, configuration, policy.configuration):
+        if not _approved_runtime_cutover(round_id, configuration, policy.configuration):
             raise ValueError("controller model runtime differs from frozen round")
         # The policy constructor validates the live source fingerprint. The
         # explicit payout-only audit above is the sole exception for this

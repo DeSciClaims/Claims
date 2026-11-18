@@ -165,6 +165,34 @@ def test_tick_scores_only_ready_final_papers_then_opens_gold(monkeypatch):
     assert opened == [True]
 
 
+def test_source_fault_scores_without_loading_bronze(monkeypatch):
+    backend = SimpleNamespace(
+        get_round=lambda _: _round("final"),
+        list_stages=lambda _: [{"stage": "final", "entries": [
+            {"hotkey": "ref", "role": "incumbent"},
+            {"hotkey": "miner", "role": "challenger"}]}],
+        list_sample=lambda _: [{"stage": "final", "paper_id": "bad-pdf"}],
+        list_stage_pairs=lambda *_: [],
+        list_paper_jobs=lambda *_: [{"hotkey": hotkey, "status": "completed",
+                                      "result_private": {"status": "infrastructure_fault",
+                                                         "detail": "bronze_source_excluded"}}
+                                     for hotkey in ("ref", "miner")],
+    )
+    inputs = SimpleNamespace(
+        bronze_for_paper=lambda *_: (_ for _ in ()).throw(ValueError("Bronze unavailable")),
+        evaluate_for_stage=lambda *_: object(),
+    )
+    monkeypatch.setattr("competition.weekly_automation.advance_ready_stage",
+                        lambda *_, **__: {"status": "final_running"})
+    def score(*_, **kwargs):
+        assert kwargs["bronze_artifact"]["source_fault"] == "bronze_source_excluded"
+        return {"status": "scored"}
+    monkeypatch.setattr("competition.weekly_automation.score_ready_paper", score)
+    result = tick_round("round", backend=backend, inputs=inputs, now=DEADLINE)
+    assert result["status"] == "waiting_for_final_scores"
+    assert result["scored_papers_this_tick"] == 1
+
+
 def test_gold_closes_at_thursday_noon_and_publishes_at_18(monkeypatch):
     class Backend:
         record = _round("gold")
