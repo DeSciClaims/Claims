@@ -132,3 +132,40 @@ def test_schedule_only_never_locks_or_evaluates_frozen_rounds(monkeypatch, tmp_p
     path.write_text(json.dumps({"independent_intake": True}))
     assert competition_service.main(["--role", "controller", "--network", "mainnet", "--backend-url", "https://backend.example",
         "--factory-module", module.__name__, "--recurrence-config", str(path), "--schedule-only", "--once"]) == 0
+
+
+def test_production_cli_streams_each_batch_completion_without_private_artifacts(monkeypatch, capsys):
+    module = ModuleType("competition.fake_parallel_production_factory")
+    def available(*, on_completed):
+        for status in ["completed", "package_failed"]:
+            on_completed({"status": status, "artifact": {"secret": "private extraction"}})
+            # The process must emit a completed paper immediately, even while
+            # its next paper is still running; never print the returned artifact.
+            output = capsys.readouterr().out
+            assert output.count('"job_status"') == 1
+            assert status in output and "private extraction" not in output
+        return []
+    module.create_production_worker = lambda *a, **kw: SimpleNamespace(run_available=available)
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setenv("CLAIMS_COMPETITION_CONTROLLER_TOKEN", "private-token")
+    assert competition_service.main([
+        "--role", "production", "--network", "testnet", "--backend-url", "https://backend.example",
+        "--factory-module", module.__name__, "--worker-id", "production-worker", "--once",
+    ]) == 0
+    assert '"job_status"' not in capsys.readouterr().out  # No duplicate batch-end logging.
+
+
+def test_production_check_never_starts_the_scheduling_loop(monkeypatch, capsys):
+    module = ModuleType("competition.fake_production_check")
+    def forbidden(**kwargs):
+        raise AssertionError("readiness must not execute or enqueue papers")
+    module.create_production_worker = lambda *a, **kw: SimpleNamespace(
+        check_ready=lambda: {"status": "production_ready", "backlog_available": True},
+        run_available=forbidden, run_once=forbidden)
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setenv("CLAIMS_COMPETITION_CONTROLLER_TOKEN", "private-token")
+    assert competition_service.main([
+        "--role", "production", "--network", "mainnet", "--backend-url", "https://backend.example",
+        "--factory-module", module.__name__, "--worker-id", "production-worker", "--check",
+    ]) == 0
+    assert '"status": "production_ready"' in capsys.readouterr().out

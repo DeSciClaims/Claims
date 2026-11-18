@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -71,4 +72,8 @@ def create_production_worker(
         rules_for_release=rules_for_release,
         pdf_fetcher=fetcher, keys=keys,
         execution=_worker_execution(transport), logs=logs,
+        max_parallel_jobs=int(os.environ.get("CLAIMS_PRODUCTION_MAX_PARALLEL_JOBS", "10")),
+        competition_parallel_jobs=int(os.environ.get("CLAIMS_PRODUCTION_COMPETITION_PARALLEL_JOBS", "4")),
+        producer_batch_size=int(os.environ.get("CLAIMS_PRODUCTION_BATCH_SIZE", "50")),
+        competition_check_seconds=float(os.environ.get("CLAIMS_PRODUCTION_ACTIVITY_POLL_SECONDS", "10")),
     )

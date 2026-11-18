@@ -36,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--worker-id")
     parser.add_argument("--poll-seconds", type=int, default=30)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--check", action="store_true",
+                        help="Read-only production readiness; never enqueue or execute papers")
     parser.add_argument("--recurrence-config", type=Path,
                         help="Primary controller recurrence profile installed by infra")
     parser.add_argument("--duplicate-review-policy", type=Path,
@@ -43,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--schedule-only", action="store_true",
                         help="Create future intakes without locking or evaluating existing rounds")
     args = parser.parse_args(argv)
+    if args.check and args.role != "production":
+        parser.error("--check is only available for the production coordinator")
     if not 1 <= args.poll_seconds <= 600:
         parser.error("--poll-seconds must be between 1 and 600")
     if args.schedule_only and (args.role != "controller" or args.recurrence_config is None):
@@ -86,6 +90,9 @@ def main(argv: list[str] | None = None) -> int:
         production = callback(
             backend, network=args.network, worker_id=args.worker_id,
         ) if args.role == "production" else None
+        if args.check:
+            print(json.dumps(production.check_ready(), sort_keys=True), flush=True)
+            return 0
         recurrence = None
         independent_intake = False
         if args.recurrence_config is not None:
@@ -155,12 +162,23 @@ def main(argv: list[str] | None = None) -> int:
             elif args.role == "handoff":
                 results = handoff.run_once()
             else:
-                production_result = production.run_once()
-                results = ([{"status": "job_processed",
-                             "job_status": production_result["status"]}]
-                           if production_result is not None else [])
+                if callable(getattr(production, "run_available", None)):
+                    results = []
+
+                    def completed_production(result):
+                        safe = {"status": "job_processed", "job_status": result["status"]}
+                        results.append(safe)
+                        print(json.dumps(safe, sort_keys=True), flush=True)
+
+                    production.run_available(on_completed=completed_production)
+                else:
+                    production_result = production.run_once()
+                    results = ([{"status": "job_processed",
+                                 "job_status": production_result["status"]}]
+                               if production_result is not None else [])
             for result in results:
-                print(json.dumps(result, sort_keys=True), flush=True)
+                if args.role != "production" or not callable(getattr(production, "run_available", None)):
+                    print(json.dumps(result, sort_keys=True), flush=True)
             failed = any(row["status"] == "error" for row in results)
         except KeyboardInterrupt:
             return 0
