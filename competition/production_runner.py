@@ -81,11 +81,6 @@ def run_production_paper(
         "lease_token": lease_token, "paper": paper,
         "manifest": active.manifest,
     }
-    pdf = fetch_pdf(source_url, pdf_sha256)
-    if hashlib.sha256(pdf).hexdigest() != pdf_sha256:
-        raise ValueError("production PDF differs from its pinned source hash")
-    if is_current_release is not None and not is_current_release():
-        raise ValueError("production release changed before paper execution")
     attempt_tokens, attempt_dollars, stop_reason = remaining_attempt_budget(
         dict(lease), paper_token_limit=token_limit, dollar_limit=dollar_limit,
     )
@@ -94,10 +89,9 @@ def run_production_paper(
         f"{hashlib.sha256(paper_id.encode()).hexdigest()}/"
         f"{job_id}-attempt-{attempt}.txt"
     )
-    if stop_reason is not None:
+    def finish_without_inference(status: str, detail: str, phase: str) -> dict[str, Any]:
         result = {
-            "status": ("cap_exceeded" if stop_reason == "prior_attempt_exhausted_budget"
-                       else "infrastructure_fault"),
+            "status": status,
             "artifact": None,
             "round_id": active.round_id, "hotkey": active.hotkey,
             "receipt_sha256": active.receipt_sha256,
@@ -106,14 +100,38 @@ def run_production_paper(
             "prompt_and_completion_tokens": 0, "token_limit": 0,
             "paper_token_limit": token_limit, "inference_cost_usd": 0.0,
             "denied_egress_packets": 0, "vm_elapsed_seconds": None,
-            "vm_cost_estimate_usd": None, "detail": stop_reason,
+            "vm_cost_estimate_usd": None, "detail": detail,
         }
-        logs.put(log_key, f"[trusted-budget] {stop_reason}\n".encode())
+        logs.put(log_key, f"[trusted-{phase}] {detail}\n".encode())
         results.complete_production_job(
             job_id, worker_id=worker_id, lease_token=lease_token, result=result,
             log_object_key=log_key,
         )
         return result
+
+    if stop_reason is not None:
+        return finish_without_inference(
+            "cap_exceeded" if stop_reason == "prior_attempt_exhausted_budget" else "infrastructure_fault",
+            stop_reason, "budget",
+        )
+    try:
+        pdf = fetch_pdf(source_url, pdf_sha256)
+        if hashlib.sha256(pdf).hexdigest() != pdf_sha256:
+            raise ValueError("production PDF differs from its pinned source hash")
+    except Exception as exc:
+        # A source failure precedes key creation and has known zero inference
+        # usage. Persist it as one infrastructure attempt so siblings continue;
+        # normal backend retry limits still apply. Never log a signed URL or
+        # arbitrary exception message from a storage/network client.
+        safe_messages = {
+            "PDF object is outside the approved S3 buckets", "PDF URL is outside the approved HTTPS hosts",
+            "PDF bytes differ from the locked source hash", "production PDF differs from its pinned source hash",
+            "PDF exceeds the configured size limit", "PDF is empty or exceeds the configured size limit",
+        }
+        detail = str(exc) if isinstance(exc, ValueError) and str(exc) in safe_messages else type(exc).__name__
+        return finish_without_inference("infrastructure_fault", "source_fetch_failed: " + detail, "source")
+    if is_current_release is not None and not is_current_release():
+        raise ValueError("production release changed before paper execution")
     contract = build_worker_contract(
         job, allowed_models=allowed_models,
         max_output_tokens=max_inference_output_tokens,

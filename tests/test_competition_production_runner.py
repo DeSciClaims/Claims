@@ -162,8 +162,12 @@ def test_production_rejects_release_or_pdf_mismatch_before_inference():
         _run(active=active, lease=lease)
     lease = _lease(active)
     lease["source_sha256"] = "d" * 64
-    with pytest.raises(ValueError, match="PDF differs"):
-        _run(active=active, lease=lease)
+    result, keys, logs, receipts, execution = _run(active=active, lease=lease)
+    assert result["status"] == "infrastructure_fault"
+    assert "PDF differs" in result["detail"]
+    assert not keys.created and execution.calls == 0
+    assert result["inference_cost_usd"] == 0 and result["prompt_and_completion_tokens"] == 0
+    assert receipts.receipt[1]["result"] == result
 
 
 def test_production_transport_fault_revokes_key_and_records_fault():
@@ -222,3 +226,42 @@ def test_production_discards_result_when_handoff_changes_during_execution():
     checks = iter((True, False))
     with pytest.raises(ValueError, match="release changed"):
         _run(is_current_release=lambda: next(checks))
+
+
+@pytest.mark.parametrize("error", [ValueError("PDF object is outside the approved S3 buckets"),
+                                  RuntimeError("private signed URL must not be logged")])
+def test_source_failure_is_durable_zero_cost_without_key_or_package_execution(error):
+    active = _active()
+    keys, execution, logs = Keys(), Execution(), Logs()
+    receipts = Results(keys)
+    def broken_fetch(url, digest):
+        raise error
+    result = run_production_paper(
+        active, _lease(active), network="testnet", worker_id="production-worker-1",
+        fetch_pdf=broken_fetch, keys=keys, execution=execution, logs=logs, results=receipts,
+        inference_base_url="https://inference.example/v1", allowed_models=("example/model",),
+        token_limit=1000, dollar_limit=1.0,
+    )
+    assert result["status"] == "infrastructure_fault"
+    assert result["inference_cost_usd"] == 0 and result["prompt_and_completion_tokens"] == 0
+    assert not keys.created and execution.calls == 0
+    assert receipts.receipt[1]["result"] == result
+    assert b"trusted-source" in logs.receipt[1]
+    assert b"private signed URL" not in logs.receipt[1]
+
+
+def test_unmetered_retry_is_checked_before_downloading_the_source():
+    active = _active()
+    lease = {**_lease(active), "attempts": 2, "result_private": {}}
+    keys, execution, logs = Keys(), Execution(), Logs()
+    receipts = Results(keys)
+    def forbidden_fetch(url, digest):
+        raise AssertionError("an unmetered retry must not fetch a PDF")
+    result = run_production_paper(
+        active, lease, network="testnet", worker_id="production-worker-1",
+        fetch_pdf=forbidden_fetch, keys=keys, execution=execution, logs=logs, results=receipts,
+        inference_base_url="https://inference.example/v1", allowed_models=("example/model",),
+        token_limit=1000, dollar_limit=1.0,
+    )
+    assert result["detail"] == "unmetered_prior_attempt"
+    assert not keys.created and execution.calls == 0
