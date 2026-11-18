@@ -116,7 +116,10 @@ def _score_active_stage(
     def score(paper_id):
         try:
             bronze_artifact = inputs.bronze_for_paper(stage, paper_id)
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, RuntimeError) as exc:
+            if (isinstance(exc, RuntimeError)
+                and str(exc) != "competition backend returned HTTP 409"):
+                raise
             # Only an audited, uniform source fault can score without Bronze.
             # Keep the normal path free of an extra raw-job API request.
             jobs = backend.list_paper_jobs(round_id, stage, paper_id)

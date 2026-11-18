@@ -179,7 +179,8 @@ def test_source_fault_scores_without_loading_bronze(monkeypatch):
                                      for hotkey in ("ref", "miner")],
     )
     inputs = SimpleNamespace(
-        bronze_for_paper=lambda *_: (_ for _ in ()).throw(ValueError("Bronze unavailable")),
+        bronze_for_paper=lambda *_: (_ for _ in ()).throw(
+            RuntimeError("competition backend returned HTTP 409")),
         evaluate_for_stage=lambda *_: object(),
     )
     monkeypatch.setattr("competition.weekly_automation.advance_ready_stage",
