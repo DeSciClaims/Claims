@@ -1,0 +1,4527 @@
+{
+  "schema_version": "1.1",
+  "paper": {
+    "id": "P001",
+    "title": "Food Order Has a Significant Impact on Postprandial Glucose and Insulin Levels",
+    "authors": [
+      "Alpana P. Shukla",
+      "Radu G. Iliescu",
+      "Catherine E. Thomas",
+      "Louis J. Aronne"
+    ],
+    "year": 2015,
+    "journal": "Diabetes Care",
+    "doi": "10.2337/dc15-0429",
+    "url": "https://doi.org/10.2337/dc15-0429",
+    "citation": "Diabetes Care 2015;38:e98–e99."
+  },
+  "extraction": {
+    "id": "E002",
+    "revision": 1,
+    "date": "2026-11-18",
+    "scope": "Complete extraction of substantive scientific content in the supplied two-page article, e98–e99: all 14 numerical table rows, all paired comparisons, participant descriptors, meal quantities and timing, author interpretations, limitations, and source discrepancies. Bibliographic/reference numbers, affiliations, grant identifiers, and meeting dates are retained as metadata where relevant rather than scientific numerical objects. Cited prior papers are not separately extracted. No supplementary document is identified in this article.",
+    "table_coverage": {
+      "status": "complete",
+      "reviewed_source_ids": [
+        "P001.E002.S001"
+      ],
+      "notes": "The supplied article contains one numerical table, fully exported as 14 CSV records. No supplementary material is identified by the supplied source."
+    },
+    "notes": "Illustrative full-article record for miners, independently allocated under E002. The actual source table CSV accompanies this JSON. Scientific snippets were checked against rendered pages because the embedded PDF text has mathematical-symbol substitutions."
+  },
+  "sources": [
+    {
+      "id": "P001.E002.S001",
+      "title": "Food Order Has a Significant Impact on Postprandial Glucose and Insulin Levels",
+      "kind": "main_article",
+      "doi": "10.2337/dc15-0429",
+      "url": "https://doi.org/10.2337/dc15-0429",
+      "version": "Diabetes Care Volume 38, July 2015, e98–e99; supplied PDF",
+      "notes": "Consulted supplied file: Diabetes Care Shukla et al.pdf; both pages reviewed visually and as text."
+    }
+  ],
+  "tables": [
+    {
+      "id": "P001.E002.T001",
+      "source_id": "P001.E002.S001",
+      "locator": "e99 (PDF page 2), Table 1",
+      "title": "Glucose and insulin levels/iAUC for various time points/intervals during the two visits",
+      "caption": "Table 1—Glucose and insulin levels/iAUC for various time points/intervals during the two visits",
+      "csv_file": "P001.E002.T001.csv",
+      "columns": [
+        {
+          "name": "outcome",
+          "header_path": [],
+          "role": "label",
+          "description": "Originally unheaded outcome row-group labels, including printed units and footnote markers, carried into each data record."
+        },
+        {
+          "name": "time_min",
+          "header_path": [
+            "Time",
+            "(min)"
+          ],
+          "role": "data",
+          "units": "minutes"
+        },
+        {
+          "name": "carbohydrates_first",
+          "header_path": [
+            "Carbohydrates",
+            "first"
+          ],
+          "role": "data"
+        },
+        {
+          "name": "carbohydrates_last",
+          "header_path": [
+            "Carbohydrates",
+            "last"
+          ],
+          "role": "data"
+        },
+        {
+          "name": "p_value",
+          "header_path": [
+            "Pᶜ"
+          ],
+          "role": "data"
+        },
+        {
+          "name": "change_percent",
+          "header_path": [
+            "Change (%)"
+          ],
+          "role": "data",
+          "units": "percent"
+        }
+      ],
+      "row_count": 14,
+      "annotations": [
+        {
+          "kind": "statistical_convention",
+          "text": "Data are means ± SEM, n = 11.",
+          "columns": [
+            "carbohydrates_first",
+            "carbohydrates_last"
+          ]
+        },
+        {
+          "kind": "footnote",
+          "marker": "a",
+          "text": "Blood samples were collected immediately before the meal (t = 0 min) and at 30, 60, and 120 min after the start of the meal.",
+          "rows": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "columns": [
+            "outcome",
+            "time_min"
+          ]
+        },
+        {
+          "kind": "footnote",
+          "marker": "b",
+          "text": "Intervals were measured in minutes from the start of the meal.",
+          "rows": [
+            9,
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "columns": [
+            "outcome",
+            "time_min"
+          ]
+        },
+        {
+          "kind": "footnote",
+          "marker": "c",
+          "text": "P values were calculated using the Wilcoxon matched-pairs signed rank test.",
+          "columns": [
+            "p_value"
+          ]
+        },
+        {
+          "kind": "unit",
+          "text": "Blood glucose is reported in mg/dL.",
+          "rows": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "columns": [
+            "carbohydrates_first",
+            "carbohydrates_last"
+          ]
+        },
+        {
+          "kind": "unit",
+          "text": "Serum insulin is reported in μIU/mL.",
+          "rows": [
+            5,
+            6,
+            7,
+            8
+          ],
+          "columns": [
+            "carbohydrates_first",
+            "carbohydrates_last"
+          ]
+        },
+        {
+          "kind": "unit",
+          "text": "Glucose iAUC is reported in mg/dL × min.",
+          "rows": [
+            9,
+            10,
+            11
+          ],
+          "columns": [
+            "carbohydrates_first",
+            "carbohydrates_last"
+          ]
+        },
+        {
+          "kind": "unit",
+          "text": "Insulin iAUC is reported in μIU/mL × min.",
+          "rows": [
+            12,
+            13,
+            14
+          ],
+          "columns": [
+            "carbohydrates_first",
+            "carbohydrates_last"
+          ]
+        },
+        {
+          "kind": "transcription",
+          "text": "Transcription was checked against the rendered table. The PDF text layer substitutes 6 for ±, 2 for some minus signs, and m for the insulin micro-unit symbol. CSV strings preserve the visible numerical precision, thousands separators, and composite cells."
+        }
+      ],
+      "notes": "Complete 14-row table. The text reports a 36.7% glucose decrease at 60 minutes whereas this table prints −37.0%; text reports glucose iAUC0–120 as 2,001 and 73% lower whereas this table prints 2,001.5 and −73.5%. The separate prose reports are preserved in their comparison records. No values have been recomputed to reconcile these differences."
+    }
+  ],
+  "result_groups": [
+    {
+      "id": "P001.E002.G001",
+      "title": "Meal order and postprandial glucose and insulin responses",
+      "question": "Does consuming vegetables and protein before carbohydrate change glucose and insulin responses to the same meal in adults with type 2 diabetes?",
+      "investigation": "One within-subject crossover pilot investigation of 11 metformin-treated overweight/obese adults, with two meal-order visits one week apart.",
+      "grouping_reason": "All 14 local comparisons concern the same meal-order question within one experiment. Outcomes, measurement times, integration windows, and baseline comparisons are variations within that investigation; the single table is provenance, not the grouping criterion.",
+      "core_result_ids": [
+        "P001.E002.R002",
+        "P001.E002.R003",
+        "P001.E002.R004",
+        "P001.E002.R007",
+        "P001.E002.R008",
+        "P001.E002.R011",
+        "P001.E002.R014"
+      ],
+      "summary": "Carbohydrate-last meals had lower glucose at 30, 60, and 120 minutes and lower glucose iAUC, with lower insulin at 60 and 120 minutes and lower insulin iAUC over 0–60 and 0–120 minutes. Table 1 also reports baseline comparisons and the 30-minute insulin and 0–30-minute insulin iAUC comparisons. All are retained regardless of statistical significance.",
+      "context": {
+        "population": "Metformin-treated overweight/obese adults with type 2 diabetes",
+        "comparison": "Protein and vegetables before carbohydrate versus carbohydrate before protein and vegetables",
+        "outcomes": [
+          "Blood glucose",
+          "Serum insulin",
+          "Glucose iAUC",
+          "Insulin iAUC"
+        ],
+        "study_design": "Within-subject crossover pilot; carbohydrate-first at visit 1 and carbohydrate-last at visit 2",
+        "author_interpretations": [
+          "The authors describe the glucose effect as comparable to that of pharmacological agents preferentially targeting postprandial glucose; this paper does not contain a direct drug comparison.",
+          "Reduced insulin excursions are interpreted as suggesting improved insulin sensitivity; insulin sensitivity is not directly measured in this study.",
+          "The authors suggest that timing carbohydrate ingestion during a meal may improve glycemia."
+        ],
+        "limitations": [
+          "Responses were analyzed only up to 120 minutes after meal ingestion.",
+          "The authors call for longer follow-up to assess delayed effects and underlying mechanisms."
+        ],
+        "source_disclosures": {
+          "funding": "Clinical and Translational Science Center at Weill Cornell Medical College (UL1TR000457), and the Dr. Robert C. and Veronica Atkins Curriculum in Metabolic Disease at Weill Cornell Medical College Grant.",
+          "conflicts_of_interest": "No potential conflicts of interest relevant to this article were reported."
+        }
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "outcomes",
+          "target_id": "P001.E002.C003"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, middle column, discussion",
+          "text": "In this pilot study, we demonstrated that the temporal sequence of carbohydrate ingestion during a meal has a significant impact on postprandial glucose and insulin excursions."
+        },
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, middle column bottom to right column top, interpretation",
+          "text": "The magnitude of the effect of food order on glucose levels is comparable to that observed with pharmacological agents that preferentially target postprandial glucose. Moreover, the reduced insulin excursions observed in this experimental setting suggest that this meal pattern may improve insulin sensitivity."
+        },
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, right column, limitation and future work",
+          "text": "A limitation of the study is that we analyzed glucose and insulin responses up to 120 min following meal ingestion, as this study was designed to test postprandial glucose levels as practically measured by patients with type 2 diabetes. Further studies with longer follow-up to delineate the full impact, including delayed effects and the mechanisms underlying the glycemic effect of food order, are indicated."
+        },
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, right column, concluding paragraph",
+          "text": "this pilot study suggests that improvement in glycemia may be achieved by optimal timing of carbohydrate ingestion during a meal."
+        }
+      ],
+      "notes": "The 14 local records are not 14 independent studies. They share 11 participants and one intervention protocol. Source uncertainty is SEM for outcome means and SD for participant descriptors. Prose/table numerical differences are retained in the affected records."
+    }
+  ],
+  "results": [
+    {
+      "id": "P001.E002.R001",
+      "group_id": "P001.E002.G001",
+      "title": "Blood glucose: 0 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 0 min has p=0.752 and a table-reported change of 0.5%. This is a premeal baseline comparison.",
+      "fields": [
+        {
+          "id": "P001.E002.R001.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 106.7,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 1,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R001.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 5.3,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 1,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R001.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 107.3,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 1,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R001.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 6.3,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 1,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R001.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.752,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 1,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R001.F006",
+          "field": "change_pct",
+          "label": "relative_change",
+          "value": 0.5,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 1,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Blood glucose",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "0",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": true
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F001"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F011"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Blood glucose, 0 min; CSV data row 1",
+          "text": "0 106.7 ± 5.3 107.3 ± 6.3 0.752 0.5",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R001"
+        ],
+        "member_ids": [
+          "P001.E002.R001",
+          "P001.E002.R001.F001",
+          "P001.E002.R001.F002",
+          "P001.E002.R001.F003",
+          "P001.E002.R001.F004",
+          "P001.E002.R001.F005",
+          "P001.E002.R001.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F011",
+          "P001.E002.C003.F001",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R002",
+      "group_id": "P001.E002.G001",
+      "title": "Blood glucose: 30 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 30 min has p=0.001 and a table-reported change of −28.6%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R002.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 156.8,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 2,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R002.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 8.2,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 2,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R002.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 112.0,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 2,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R002.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 5.8,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 2,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R002.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.001,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 2,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R002.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -28.6,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 2,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Blood glucose",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "30",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F001"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F012"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Blood glucose, 30 min; CSV data row 2",
+          "text": "30 156.8 ± 8.2 112.0 ± 5.8 0.001 −28.6",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        },
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, middle column, glucose response paragraph",
+          "text": "The mean postmeal glucose levels were decreased by 28.6% (P = 0.001), 36.7% (P = 0.001), and 16.8% (P = 0.03) at 30, 60, and 120 min, respectively",
+          "note": "The PDF text layer renders equality signs as 5. Wording and values were checked visually."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R002"
+        ],
+        "member_ids": [
+          "P001.E002.R002",
+          "P001.E002.R002.F001",
+          "P001.E002.R002.F002",
+          "P001.E002.R002.F003",
+          "P001.E002.R002.F004",
+          "P001.E002.R002.F005",
+          "P001.E002.R002.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F012",
+          "P001.E002.C003.F001",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R003",
+      "group_id": "P001.E002.G001",
+      "title": "Blood glucose: 60 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 60 min has p=0.001 and a table-reported change of −37.0%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R003.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 199.4,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 3,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R003.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 12.2,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 3,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R003.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 125.6,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 3,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R003.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 6.9,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 3,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R003.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.001,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 3,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R003.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -37.0,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 3,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        },
+        {
+          "id": "P001.E002.R003.F007",
+          "field": "prose_decrease_pct",
+          "label": "treatment_effect",
+          "value": 36.7,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "context": {
+            "direction": "Decrease with carbohydrate last; magnitude is reported as a positive decrease."
+          },
+          "source_snippets": [
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e98, middle column, glucose response paragraph",
+              "text": "36.7% (P = 0.001)"
+            }
+          ],
+          "notes": "The prose gives a decrease of 36.7%, while Table 1 gives change −37.0%. They describe the same comparison and are retained as conflicting source reports, not independent evidence."
+        }
+      ],
+      "context": {
+        "outcome": "Blood glucose",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "60",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F001"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F013"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Blood glucose, 60 min; CSV data row 3",
+          "text": "60 199.4 ± 12.2 125.6 ± 6.9 0.001 −37.0",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        },
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, middle column, glucose response paragraph",
+          "text": "The mean postmeal glucose levels were decreased by 28.6% (P = 0.001), 36.7% (P = 0.001), and 16.8% (P = 0.03) at 30, 60, and 120 min, respectively",
+          "note": "The PDF text layer renders equality signs as 5. Wording and values were checked visually."
+        }
+      ],
+      "notes": "Unreconciled source-report discrepancy: 36.7% decrease in prose versus −37.0% change in Table 1. The attachment target is unambiguous, so local closure is resolved despite this numerical discrepancy.",
+      "closure": {
+        "core_ids": [
+          "P001.E002.R003"
+        ],
+        "member_ids": [
+          "P001.E002.R003",
+          "P001.E002.R003.F001",
+          "P001.E002.R003.F002",
+          "P001.E002.R003.F003",
+          "P001.E002.R003.F004",
+          "P001.E002.R003.F005",
+          "P001.E002.R003.F006",
+          "P001.E002.R003.F007"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F013",
+          "P001.E002.C003.F001",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R004",
+      "group_id": "P001.E002.G001",
+      "title": "Blood glucose: 120 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 120 min has p=0.030 and a table-reported change of −16.8%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R004.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 169.2,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 4,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R004.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 13.8,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 4,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R004.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 140.8,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 4,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R004.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 7.7,
+          "origin": "source_reported",
+          "units": "mg/dL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 4,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R004.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.03,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 4,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R004.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -16.8,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 4,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Blood glucose",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "120",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F001"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F014"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Blood glucose, 120 min; CSV data row 4",
+          "text": "120 169.2 ± 13.8 140.8 ± 7.7 0.030 −16.8",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        },
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, middle column, glucose response paragraph",
+          "text": "The mean postmeal glucose levels were decreased by 28.6% (P = 0.001), 36.7% (P = 0.001), and 16.8% (P = 0.03) at 30, 60, and 120 min, respectively",
+          "note": "The PDF text layer renders equality signs as 5. Wording and values were checked visually."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R004"
+        ],
+        "member_ids": [
+          "P001.E002.R004",
+          "P001.E002.R004.F001",
+          "P001.E002.R004.F002",
+          "P001.E002.R004.F003",
+          "P001.E002.R004.F004",
+          "P001.E002.R004.F005",
+          "P001.E002.R004.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F014",
+          "P001.E002.C003.F001",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R005",
+      "group_id": "P001.E002.G001",
+      "title": "Serum insulin: 0 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 0 min has p=0.154 and a table-reported change of −13.6%. This is a premeal baseline comparison.",
+      "fields": [
+        {
+          "id": "P001.E002.R005.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 18.8,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 5,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R005.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 2.4,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 5,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R005.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 16.3,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 5,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R005.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 1.4,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 5,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R005.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.154,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 5,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R005.F006",
+          "field": "change_pct",
+          "label": "relative_change",
+          "value": -13.6,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 5,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Serum insulin",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "0",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": true
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F002"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F011"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Serum insulin, 0 min; CSV data row 5",
+          "text": "0 18.8 ± 2.4 16.3 ± 1.4 0.154 −13.6",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R005"
+        ],
+        "member_ids": [
+          "P001.E002.R005",
+          "P001.E002.R005.F001",
+          "P001.E002.R005.F002",
+          "P001.E002.R005.F003",
+          "P001.E002.R005.F004",
+          "P001.E002.R005.F005",
+          "P001.E002.R005.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F011",
+          "P001.E002.C003.F002",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R006",
+      "group_id": "P001.E002.G001",
+      "title": "Serum insulin: 30 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 30 min has p=0.083 and a table-reported change of −31.2%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R006.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 62.4,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 6,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R006.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 8.6,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 6,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R006.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 42.9,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 6,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R006.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 9.7,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 6,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R006.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.083,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 6,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R006.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -31.2,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 6,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Serum insulin",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "30",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F002"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F012"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Serum insulin, 30 min; CSV data row 6",
+          "text": "30 62.4 ± 8.6 42.9 ± 9.7 0.083 −31.2",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R006"
+        ],
+        "member_ids": [
+          "P001.E002.R006",
+          "P001.E002.R006.F001",
+          "P001.E002.R006.F002",
+          "P001.E002.R006.F003",
+          "P001.E002.R006.F004",
+          "P001.E002.R006.F005",
+          "P001.E002.R006.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F012",
+          "P001.E002.C003.F002",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R007",
+      "group_id": "P001.E002.G001",
+      "title": "Serum insulin: 60 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 60 min has p=0.002 and a table-reported change of −49.6%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R007.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 125.4,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 7,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R007.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 20.1,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 7,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R007.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 63.2,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 7,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R007.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 11.0,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 7,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R007.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.002,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 7,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R007.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -49.6,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 7,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Serum insulin",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "60",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F002"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F013"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Serum insulin, 60 min; CSV data row 7",
+          "text": "60 125.4 ± 20.1 63.2 ± 11.0 0.002 −49.6",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        },
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, middle column, insulin response paragraph",
+          "text": "Postprandial insulin levels at 60 and 120 min and the iAUC₀–₁₂₀ were also significantly lower when protein and vegetables were consumed first."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R007"
+        ],
+        "member_ids": [
+          "P001.E002.R007",
+          "P001.E002.R007.F001",
+          "P001.E002.R007.F002",
+          "P001.E002.R007.F003",
+          "P001.E002.R007.F004",
+          "P001.E002.R007.F005",
+          "P001.E002.R007.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F013",
+          "P001.E002.C003.F002",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R008",
+      "group_id": "P001.E002.G001",
+      "title": "Serum insulin: 120 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 120 min has p=0.014 and a table-reported change of −40.2%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R008.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 152.0,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 8,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R008.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 31.7,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 8,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R008.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 90.9,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 8,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R008.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 16.6,
+          "origin": "source_reported",
+          "units": "μIU/mL",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 8,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R008.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.014,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 8,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R008.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -40.2,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 8,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Serum insulin",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "120",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F002"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F014"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Serum insulin, 120 min; CSV data row 8",
+          "text": "120 152.0 ± 31.7 90.9 ± 16.6 0.014 −40.2",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        },
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, middle column, insulin response paragraph",
+          "text": "Postprandial insulin levels at 60 and 120 min and the iAUC₀–₁₂₀ were also significantly lower when protein and vegetables were consumed first."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R008"
+        ],
+        "member_ids": [
+          "P001.E002.R008",
+          "P001.E002.R008.F001",
+          "P001.E002.R008.F002",
+          "P001.E002.R008.F003",
+          "P001.E002.R008.F004",
+          "P001.E002.R008.F005",
+          "P001.E002.R008.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F014",
+          "P001.E002.C003.F002",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R009",
+      "group_id": "P001.E002.G001",
+      "title": "Glucose iAUC: 0–30 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 0–30 min has p=0.001 and a table-reported change of −88.0%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R009.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 751.4,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 9,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R009.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 71.0,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 9,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R009.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 90.0,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 9,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R009.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 26.8,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 9,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R009.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.001,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 9,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R009.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -88.0,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 9,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Glucose iAUC",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "0–30",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F003"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F015"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Glucose iAUC, 0–30 min; CSV data row 9",
+          "text": "0–30 751.4 ± 71.0 90.0 ± 26.8 0.001 −88.0",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R009"
+        ],
+        "member_ids": [
+          "P001.E002.R009",
+          "P001.E002.R009.F001",
+          "P001.E002.R009.F002",
+          "P001.E002.R009.F003",
+          "P001.E002.R009.F004",
+          "P001.E002.R009.F005",
+          "P001.E002.R009.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F015",
+          "P001.E002.C003.F003",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R010",
+      "group_id": "P001.E002.G001",
+      "title": "Glucose iAUC: 0–60 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 0–60 min has p=0.001 and a table-reported change of −86.9%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R010.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 3396.8,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 10,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R010.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 606.9,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 10,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R010.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 444.2,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 10,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R010.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 103.8,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 10,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R010.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.001,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 10,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R010.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -86.9,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 10,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Glucose iAUC",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "0–60",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F003"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F016"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Glucose iAUC, 0–60 min; CSV data row 10",
+          "text": "0–60 3,396.8 ± 606.9 444.2 ± 103.8 0.001 −86.9",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R010"
+        ],
+        "member_ids": [
+          "P001.E002.R010",
+          "P001.E002.R010.F001",
+          "P001.E002.R010.F002",
+          "P001.E002.R010.F003",
+          "P001.E002.R010.F004",
+          "P001.E002.R010.F005",
+          "P001.E002.R010.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F016",
+          "P001.E002.C003.F003",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R011",
+      "group_id": "P001.E002.G001",
+      "title": "Glucose iAUC: 0–120 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 0–120 min has p=0.001 and a table-reported change of −73.5%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R011.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 7545.0,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 11,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R011.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 804.4,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 11,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R011.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 2001.5,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 11,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R011.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 376.9,
+          "origin": "source_reported",
+          "units": "mg/dL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 11,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R011.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.001,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 11,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R011.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -73.5,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 11,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        },
+        {
+          "id": "P001.E002.R011.F007",
+          "field": "prose_cl_mean",
+          "label": "mean",
+          "value": 2001,
+          "origin": "source_reported",
+          "units": "mg/dL × 120 min (source prose display)",
+          "field_group": "descriptive_value",
+          "source_snippets": [
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e98, middle column, glucose iAUC paragraph",
+              "text": "the incremental area under the curve (iAUC₀–₁₂₀) was 73% lower (2,001 ± 376.9 vs. 7,545 ± 804.4 mg/dL × 120 min, P = 0.001) when vegetables and protein were consumed first, before carbohydrate, compared with the reverse food order (Table 1).",
+              "note": "Typography and line wrapping normalized from the rendered PDF; preserve the displayed prose unit wording, including 120 min."
+            }
+          ],
+          "notes": "Prose prints 2,001; the table prints 2,001.5. Preserve both reported values; no independent measurement is implied."
+        },
+        {
+          "id": "P001.E002.R011.F008",
+          "field": "prose_decrease_pct",
+          "label": "treatment_effect",
+          "value": 73,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "context": {
+            "direction": "Decrease with carbohydrate last; reported as a positive decrease."
+          },
+          "source_snippets": [
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e98, middle column, glucose iAUC paragraph",
+              "text": "the incremental area under the curve (iAUC₀–₁₂₀) was 73% lower (2,001 ± 376.9 vs. 7,545 ± 804.4 mg/dL × 120 min, P = 0.001) when vegetables and protein were consumed first, before carbohydrate, compared with the reverse food order (Table 1).",
+              "note": "Typography and line wrapping normalized from the rendered PDF; preserve the displayed prose unit wording, including 120 min."
+            }
+          ],
+          "notes": "Prose states 73% lower; Table 1 prints change −73.5%. Both descriptions concern the same iAUC contrast."
+        }
+      ],
+      "context": {
+        "outcome": "Glucose iAUC",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "0–120",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F003"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F017"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Glucose iAUC, 0–120 min; CSV data row 11",
+          "text": "0–120 7,545.0 ± 804.4 2,001.5 ± 376.9 0.001 −73.5",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        },
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, middle column, glucose iAUC paragraph",
+          "text": "the incremental area under the curve (iAUC₀–₁₂₀) was 73% lower (2,001 ± 376.9 vs. 7,545 ± 804.4 mg/dL × 120 min, P = 0.001) when vegetables and protein were consumed first, before carbohydrate, compared with the reverse food order (Table 1).",
+          "note": "Typography and line wrapping normalized from the rendered PDF; preserve the displayed prose unit wording, including 120 min."
+        }
+      ],
+      "notes": "Two prose/table presentation differences are retained: 2,001 versus 2,001.5 for the carbohydrate-last mean, and 73% decrease versus −73.5% change. The prose also displays the integration unit as mg/dL × 120 min. These are repeated reports of the same contrast, not extra observations.",
+      "closure": {
+        "core_ids": [
+          "P001.E002.R011"
+        ],
+        "member_ids": [
+          "P001.E002.R011",
+          "P001.E002.R011.F001",
+          "P001.E002.R011.F002",
+          "P001.E002.R011.F003",
+          "P001.E002.R011.F004",
+          "P001.E002.R011.F005",
+          "P001.E002.R011.F006",
+          "P001.E002.R011.F007",
+          "P001.E002.R011.F008"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F017",
+          "P001.E002.C003.F003",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R012",
+      "group_id": "P001.E002.G001",
+      "title": "Insulin iAUC: 0–30 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 0–30 min has p=0.102 and a table-reported change of −39.2%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R012.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 657.5,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 12,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R012.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 131.8,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 12,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R012.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 399.5,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 12,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R012.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 132.6,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 12,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R012.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.102,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 12,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R012.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -39.2,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 12,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Insulin iAUC",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "0–30",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F004"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F015"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Insulin iAUC, 0–30 min; CSV data row 12",
+          "text": "0–30 657.5 ± 131.8 399.5 ± 132.6 0.102 −39.2",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R012"
+        ],
+        "member_ids": [
+          "P001.E002.R012",
+          "P001.E002.R012.F001",
+          "P001.E002.R012.F002",
+          "P001.E002.R012.F003",
+          "P001.E002.R012.F004",
+          "P001.E002.R012.F005",
+          "P001.E002.R012.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F015",
+          "P001.E002.C003.F004",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R013",
+      "group_id": "P001.E002.G001",
+      "title": "Insulin iAUC: 0–60 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 0–60 min has p=0.002 and a table-reported change of −48.1%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R013.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 2908.5,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 13,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R013.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 432.0,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 13,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R013.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 1510.5,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 13,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R013.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 407.4,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 13,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R013.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.002,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 13,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R013.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -48.1,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 13,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Insulin iAUC",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "0–60",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F004"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F016"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Insulin iAUC, 0–60 min; CSV data row 13",
+          "text": "0–60 2,908.5 ± 432.0 1,510.5 ± 407.4 0.002 −48.1",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R013"
+        ],
+        "member_ids": [
+          "P001.E002.R013",
+          "P001.E002.R013.F001",
+          "P001.E002.R013.F002",
+          "P001.E002.R013.F003",
+          "P001.E002.R013.F004",
+          "P001.E002.R013.F005",
+          "P001.E002.R013.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F016",
+          "P001.E002.C003.F004",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    },
+    {
+      "id": "P001.E002.R014",
+      "group_id": "P001.E002.G001",
+      "title": "Insulin iAUC: 0–120 min, carbohydrate-last versus carbohydrate-first",
+      "summary": "The reported paired comparison at 0–120 min has p=0.002 and a table-reported change of −48.5%. Both meal orders involve the same participant sample.",
+      "fields": [
+        {
+          "id": "P001.E002.R014.F001",
+          "field": "cf_mean",
+          "label": "mean",
+          "value": 10097.9,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 14,
+              "column": "carbohydrates_first",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R014.F002",
+          "field": "cf_sem",
+          "label": "standard_error",
+          "value": 1646.9,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 14,
+              "column": "carbohydrates_first",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R014.F003",
+          "field": "cl_mean",
+          "label": "mean",
+          "value": 5202.8,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "descriptive_value",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 14,
+              "column": "carbohydrates_last",
+              "component": "mean"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R014.F004",
+          "field": "cl_sem",
+          "label": "standard_error",
+          "value": 1061.6,
+          "origin": "source_reported",
+          "units": "μIU/mL × min",
+          "field_group": "uncertainty_variation",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 14,
+              "column": "carbohydrates_last",
+              "component": "standard_error"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.R014.F005",
+          "field": "p",
+          "label": "p_value",
+          "value": 0.002,
+          "origin": "source_reported",
+          "value_operator": "=",
+          "field_group": "test_result",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 14,
+              "column": "p_value"
+            }
+          ],
+          "description": "P-value for the paired meal-order comparison at this time point or interval."
+        },
+        {
+          "id": "P001.E002.R014.F006",
+          "field": "change_pct",
+          "label": "treatment_effect",
+          "value": -48.5,
+          "origin": "source_reported",
+          "units": "percent",
+          "measure": "relative_change",
+          "field_group": "result_estimate",
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 14,
+              "column": "change_percent"
+            }
+          ],
+          "description": "Source-reported percentage contrast. No formula or rounding correction is imposed during extraction."
+        }
+      ],
+      "context": {
+        "outcome": "Insulin iAUC",
+        "treatment": "Carbohydrates last",
+        "comparator": "Carbohydrates first",
+        "time": {
+          "label": "0–120",
+          "units": "minutes",
+          "reference_event": "Start of meal ingestion"
+        },
+        "method": "Wilcoxon matched-pairs signed rank test",
+        "direction": "Change (%) is the table-reported carbohydrate-last versus carbohydrate-first contrast; negative values indicate lower values with carbohydrate last.",
+        "study_design": "Within-subject crossover; fixed sequence described",
+        "baseline_comparison": false
+      },
+      "references": [
+        {
+          "field": "sample",
+          "target_id": "P001.E002.C001"
+        },
+        {
+          "field": "n",
+          "target_id": "P001.E002.C001.F001"
+        },
+        {
+          "field": "protocol",
+          "target_id": "P001.E002.C002"
+        },
+        {
+          "field": "evaluated_meal_order",
+          "target_id": "P001.E002.C002.F002"
+        },
+        {
+          "field": "reference_meal_order",
+          "target_id": "P001.E002.C002.F001"
+        },
+        {
+          "field": "outcome",
+          "target_id": "P001.E002.C003.F004"
+        },
+        {
+          "field": "time",
+          "target_id": "P001.E002.C002.F017"
+        },
+        {
+          "field": "source_table",
+          "target_id": "P001.E002.T001"
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, Insulin iAUC, 0–120 min; CSV data row 14",
+          "text": "0–120 10,097.9 ± 1,646.9 5,202.8 ± 1,061.6 0.002 −48.5",
+          "note": "Verbatim data-cell strings transcribed from the visible table; spacing is normalized and the inherited outcome/units are supplied by the locator and context."
+        },
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, middle column, insulin response paragraph",
+          "text": "Postprandial insulin levels at 60 and 120 min and the iAUC₀–₁₂₀ were also significantly lower when protein and vegetables were consumed first."
+        }
+      ],
+      "closure": {
+        "core_ids": [
+          "P001.E002.R014"
+        ],
+        "member_ids": [
+          "P001.E002.R014",
+          "P001.E002.R014.F001",
+          "P001.E002.R014.F002",
+          "P001.E002.R014.F003",
+          "P001.E002.R014.F004",
+          "P001.E002.R014.F005",
+          "P001.E002.R014.F006"
+        ],
+        "reference_ids": [
+          "P001.E002.C001",
+          "P001.E002.C001.F001",
+          "P001.E002.C002",
+          "P001.E002.C002.F001",
+          "P001.E002.C002.F002",
+          "P001.E002.C002.F017",
+          "P001.E002.C003.F004",
+          "P001.E002.T001"
+        ],
+        "status": "closed",
+        "notes": "The R ID is the source-identified paired comparison anchor. Its two means, SEMs, p-value, and reported contrast feed this core through reviewed scientific links. Alternative prose reports, when present, describe the same core. Shared sample/protocol/outcome/time objects and the table remain boundary references."
+      }
+    }
+  ],
+  "shared_context": [
+    {
+      "id": "P001.E002.C001",
+      "title": "Shared participant sample and baseline characteristics",
+      "fields": [
+        {
+          "id": "P001.E002.C001.F001",
+          "field": "n",
+          "label": "sample_size",
+          "value": 11,
+          "origin": "source_reported",
+          "units": "subjects",
+          "field_group": "sample_evidence_count",
+          "references": [
+            {
+              "field": "source_table",
+              "target_id": "P001.E002.T001"
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e99, Table 1, general footnote",
+              "text": "Data are means ± SEM, n = 11."
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.C001.F002",
+          "field": "female_n",
+          "label": "count",
+          "value": 6,
+          "origin": "source_reported",
+          "units": "subjects",
+          "field_group": "sample_evidence_count",
+          "context": {
+            "sex": "female"
+          }
+        },
+        {
+          "id": "P001.E002.C001.F003",
+          "field": "male_n",
+          "label": "count",
+          "value": 5,
+          "origin": "source_reported",
+          "units": "subjects",
+          "field_group": "sample_evidence_count",
+          "context": {
+            "sex": "male"
+          }
+        },
+        {
+          "id": "P001.E002.C001.F004",
+          "field": "age_mean",
+          "label": "mean",
+          "value": 54,
+          "origin": "source_reported",
+          "units": "years",
+          "field_group": "descriptive_value",
+          "context": {
+            "outcome": "Age"
+          }
+        },
+        {
+          "id": "P001.E002.C001.F005",
+          "field": "age_sd",
+          "label": "standard_deviation",
+          "value": 9,
+          "origin": "source_reported",
+          "units": "years",
+          "field_group": "uncertainty_variation",
+          "context": {
+            "outcome": "Age"
+          }
+        },
+        {
+          "id": "P001.E002.C001.F006",
+          "field": "bmi_mean",
+          "label": "mean",
+          "value": 32.9,
+          "origin": "source_reported",
+          "units": "kg/m²",
+          "field_group": "descriptive_value",
+          "context": {
+            "outcome": "Body mass index"
+          }
+        },
+        {
+          "id": "P001.E002.C001.F007",
+          "field": "bmi_sd",
+          "label": "standard_deviation",
+          "value": 5,
+          "origin": "source_reported",
+          "units": "kg/m²",
+          "field_group": "uncertainty_variation",
+          "context": {
+            "outcome": "Body mass index"
+          }
+        },
+        {
+          "id": "P001.E002.C001.F008",
+          "field": "diabetes_duration_mean",
+          "label": "mean",
+          "value": 4.8,
+          "origin": "source_reported",
+          "units": "years",
+          "field_group": "descriptive_value",
+          "context": {
+            "outcome": "Duration of diabetes"
+          }
+        },
+        {
+          "id": "P001.E002.C001.F009",
+          "field": "diabetes_duration_sd",
+          "label": "standard_deviation",
+          "value": 2.4,
+          "origin": "source_reported",
+          "units": "years",
+          "field_group": "uncertainty_variation",
+          "context": {
+            "outcome": "Duration of diabetes"
+          }
+        },
+        {
+          "id": "P001.E002.C001.F010",
+          "field": "hba1c_mean",
+          "label": "mean",
+          "value": 6.5,
+          "origin": "source_reported",
+          "units": "percent",
+          "field_group": "descriptive_value",
+          "context": {
+            "outcome": "HbA1c"
+          }
+        },
+        {
+          "id": "P001.E002.C001.F011",
+          "field": "hba1c_sd",
+          "label": "standard_deviation",
+          "value": 0.7,
+          "origin": "source_reported",
+          "units": "percent",
+          "field_group": "uncertainty_variation",
+          "context": {
+            "outcome": "HbA1c"
+          }
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, left column, study population paragraph",
+          "text": "A total of 11 subjects (6 female, 5 male) with metformin-treated type 2 diabetes were studied using a within-subject crossover design. The average (mean ± SD) age and BMI were 54 ± 9 years and 32.9 ± 5 kg/m², respectively. The average duration of diabetes was 4.8 ± 2.4 years and the mean HbA₁c was 6.5 ± 0.7%.",
+          "note": "Transcribed from the rendered PDF; line wrapping and typographic sub/superscripts are normalized. The PDF text layer substitutes 6 for ±."
+        }
+      ],
+      "context": {
+        "population": "Overweight/obese adults with metformin-treated type 2 diabetes",
+        "design": "Within-subject crossover pilot study",
+        "counted_entity": "The same 11 subjects attending both meal-order visits",
+        "spread_type": "The baseline-characteristic ± values are SD, not SEM."
+      }
+    },
+    {
+      "id": "P001.E002.C002",
+      "title": "Shared meal protocol and measurement schedule",
+      "fields": [
+        {
+          "id": "P001.E002.C002.F001",
+          "field": "carbohydrates_first",
+          "label": "intervention",
+          "value": "Carbohydrate first; protein and vegetables 15 minutes later",
+          "origin": "source_reported",
+          "field_group": "intervention_exposure_comparator",
+          "context": {
+            "visit": 1,
+            "comparison_role": "reference"
+          }
+        },
+        {
+          "id": "P001.E002.C002.F002",
+          "field": "carbohydrates_last",
+          "label": "intervention",
+          "value": "Protein and vegetables first; carbohydrate second",
+          "origin": "source_reported",
+          "field_group": "intervention_exposure_comparator",
+          "context": {
+            "visit": 2,
+            "comparison_role": "evaluated",
+            "timing": "The paper states that food order was reversed at the second visit."
+          }
+        },
+        {
+          "id": "P001.E002.C002.F003",
+          "field": "meal_energy",
+          "label": "parameter",
+          "value": 628,
+          "origin": "source_reported",
+          "units": "kcal",
+          "field_group": "numerical_context"
+        },
+        {
+          "id": "P001.E002.C002.F004",
+          "field": "protein",
+          "label": "parameter",
+          "value": 55,
+          "origin": "source_reported",
+          "units": "g",
+          "field_group": "numerical_context"
+        },
+        {
+          "id": "P001.E002.C002.F005",
+          "field": "carbohydrate",
+          "label": "parameter",
+          "value": 68,
+          "origin": "source_reported",
+          "units": "g",
+          "field_group": "numerical_context"
+        },
+        {
+          "id": "P001.E002.C002.F006",
+          "field": "fat",
+          "label": "parameter",
+          "value": 16,
+          "origin": "source_reported",
+          "units": "g",
+          "field_group": "numerical_context"
+        },
+        {
+          "id": "P001.E002.C002.F007",
+          "field": "overnight_fast",
+          "label": "time_interval",
+          "value": 12,
+          "origin": "source_reported",
+          "units": "hours",
+          "field_group": "time"
+        },
+        {
+          "id": "P001.E002.C002.F008",
+          "field": "study_visits",
+          "label": "count",
+          "value": 2,
+          "origin": "source_reported",
+          "units": "visits",
+          "field_group": "sample_evidence_count"
+        },
+        {
+          "id": "P001.E002.C002.F009",
+          "field": "between_visit_interval",
+          "label": "time_interval",
+          "value": 1,
+          "origin": "source_reported",
+          "units": "week",
+          "field_group": "time"
+        },
+        {
+          "id": "P001.E002.C002.F010",
+          "field": "between_food_courses",
+          "label": "time_interval",
+          "value": 15,
+          "origin": "source_reported",
+          "units": "minutes",
+          "field_group": "time",
+          "description": "Interval explicitly stated for the first visit; second-visit food order is described as reversed."
+        },
+        {
+          "id": "P001.E002.C002.F011",
+          "field": "measurement_time",
+          "label": "time_point",
+          "value": 0,
+          "origin": "source_reported",
+          "units": "minutes",
+          "field_group": "time",
+          "context": {
+            "reference_event": "Start of meal ingestion",
+            "baseline": true
+          },
+          "source_snippets": [
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e98, middle column, blood sampling; e99, Table 1 footnote a",
+              "text": "Blood samples were collected immediately before the meal (t = 0 min) and at 30, 60, and 120 min after the start of the meal."
+            }
+          ],
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 1,
+              "column": "time_min"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 5,
+              "column": "time_min"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.C002.F012",
+          "field": "measurement_time",
+          "label": "time_point",
+          "value": 30,
+          "origin": "source_reported",
+          "units": "minutes",
+          "field_group": "time",
+          "context": {
+            "reference_event": "Start of meal ingestion",
+            "baseline": false
+          },
+          "source_snippets": [
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e98, middle column, blood sampling; e99, Table 1 footnote a",
+              "text": "Blood samples were collected immediately before the meal (t = 0 min) and at 30, 60, and 120 min after the start of the meal."
+            }
+          ],
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 2,
+              "column": "time_min"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 6,
+              "column": "time_min"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.C002.F013",
+          "field": "measurement_time",
+          "label": "time_point",
+          "value": 60,
+          "origin": "source_reported",
+          "units": "minutes",
+          "field_group": "time",
+          "context": {
+            "reference_event": "Start of meal ingestion",
+            "baseline": false
+          },
+          "source_snippets": [
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e98, middle column, blood sampling; e99, Table 1 footnote a",
+              "text": "Blood samples were collected immediately before the meal (t = 0 min) and at 30, 60, and 120 min after the start of the meal."
+            }
+          ],
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 3,
+              "column": "time_min"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 7,
+              "column": "time_min"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.C002.F014",
+          "field": "measurement_time",
+          "label": "time_point",
+          "value": 120,
+          "origin": "source_reported",
+          "units": "minutes",
+          "field_group": "time",
+          "context": {
+            "reference_event": "Start of meal ingestion",
+            "baseline": false
+          },
+          "source_snippets": [
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e98, middle column, blood sampling; e99, Table 1 footnote a",
+              "text": "Blood samples were collected immediately before the meal (t = 0 min) and at 30, 60, and 120 min after the start of the meal."
+            }
+          ],
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 4,
+              "column": "time_min"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 8,
+              "column": "time_min"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.C002.F015",
+          "field": "iauc_interval",
+          "label": "time_interval",
+          "value": {
+            "start": 0,
+            "end": 30
+          },
+          "origin": "source_reported",
+          "units": "minutes",
+          "field_group": "time",
+          "context": {
+            "reference_event": "Start of meal ingestion"
+          },
+          "references": [
+            {
+              "field": "source_table",
+              "target_id": "P001.E002.T001"
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e99, Table 1, Time (min), 0–30 rows",
+              "text": "0–30"
+            },
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e99, Table 1, iAUC interval 0–30; footnote b",
+              "text": "Intervals were measured in minutes from the start of the meal."
+            }
+          ],
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 9,
+              "column": "time_min"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 12,
+              "column": "time_min"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.C002.F016",
+          "field": "iauc_interval",
+          "label": "time_interval",
+          "value": {
+            "start": 0,
+            "end": 60
+          },
+          "origin": "source_reported",
+          "units": "minutes",
+          "field_group": "time",
+          "context": {
+            "reference_event": "Start of meal ingestion"
+          },
+          "references": [
+            {
+              "field": "source_table",
+              "target_id": "P001.E002.T001"
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e99, Table 1, Time (min), 0–60 rows",
+              "text": "0–60"
+            },
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e99, Table 1, iAUC interval 0–60; footnote b",
+              "text": "Intervals were measured in minutes from the start of the meal."
+            }
+          ],
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 10,
+              "column": "time_min"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 13,
+              "column": "time_min"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.C002.F017",
+          "field": "iauc_interval",
+          "label": "time_interval",
+          "value": {
+            "start": 0,
+            "end": 120
+          },
+          "origin": "source_reported",
+          "units": "minutes",
+          "field_group": "time",
+          "context": {
+            "reference_event": "Start of meal ingestion"
+          },
+          "references": [
+            {
+              "field": "source_table",
+              "target_id": "P001.E002.T001"
+            }
+          ],
+          "source_snippets": [
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e99, Table 1, Time (min), 0–120 rows",
+              "text": "0–120"
+            },
+            {
+              "source_id": "P001.E002.S001",
+              "locator": "e99, Table 1, iAUC interval 0–120; footnote b",
+              "text": "Intervals were measured in minutes from the start of the meal."
+            }
+          ],
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 11,
+              "column": "time_min"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 14,
+              "column": "time_min"
+            }
+          ]
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e98, left column bottom through middle column, meal protocol",
+          "text": "After a 12-h overnight fast, subjects consumed an isocaloric meal (628 kcal: 55 g protein, 68 g carbohydrate, and 16 g fat) with the same composition on 2 separate days, 1 week apart. During the first visit, the food order was carbohydrate (ciabatta bread and orange juice), followed 15 min later by protein (skinless grilled chicken breast) and vegetables (lettuce and tomato salad with low-fat Italian vinaigrette and steamed broccoli with butter); the food order was reversed a week later.",
+          "note": "Line wrapping is normalized; wording is transcribed from the rendered source."
+        }
+      ],
+      "context": {
+        "design": "Within-subject crossover with carbohydrate-first visit followed one week later by carbohydrate-last visit",
+        "order_assignment": "Fixed visit order is described; randomization of sequence is not reported.",
+        "meal_composition": {
+          "carbohydrate": [
+            "ciabatta bread",
+            "orange juice"
+          ],
+          "protein": "skinless grilled chicken breast",
+          "vegetables": [
+            "lettuce and tomato salad with low-fat Italian vinaigrette",
+            "steamed broccoli with butter"
+          ]
+        },
+        "time_reference": "Start of meal ingestion",
+        "method": "Wilcoxon matched-pairs signed rank test for paired meal-order comparisons",
+        "uncertainty": "Table means are accompanied by SEM."
+      }
+    },
+    {
+      "id": "P001.E002.C003",
+      "title": "Outcome definitions",
+      "fields": [
+        {
+          "id": "P001.E002.C003.F001",
+          "field": "glucose",
+          "label": "outcome",
+          "value": "Blood glucose",
+          "origin": "source_reported",
+          "description": "Blood glucose concentration",
+          "units": "mg/dL",
+          "field_group": "outcome_field",
+          "references": [
+            {
+              "field": "source_table",
+              "target_id": "P001.E002.T001"
+            }
+          ],
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 1,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 2,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 3,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 4,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.C003.F002",
+          "field": "insulin",
+          "label": "outcome",
+          "value": "Serum insulin",
+          "origin": "source_reported",
+          "description": "Serum insulin concentration",
+          "units": "μIU/mL",
+          "field_group": "outcome_field",
+          "references": [
+            {
+              "field": "source_table",
+              "target_id": "P001.E002.T001"
+            }
+          ],
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 5,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 6,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 7,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 8,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.C003.F003",
+          "field": "glucose_iauc",
+          "label": "outcome",
+          "value": "Glucose iAUC",
+          "origin": "source_reported",
+          "description": "Glucose incremental area under the curve",
+          "units": "mg/dL × min",
+          "field_group": "outcome_field",
+          "references": [
+            {
+              "field": "source_table",
+              "target_id": "P001.E002.T001"
+            }
+          ],
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 9,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 10,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 11,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            }
+          ]
+        },
+        {
+          "id": "P001.E002.C003.F004",
+          "field": "insulin_iauc",
+          "label": "outcome",
+          "value": "Insulin iAUC",
+          "origin": "source_reported",
+          "description": "Insulin incremental area under the curve",
+          "units": "μIU/mL × min",
+          "field_group": "outcome_field",
+          "references": [
+            {
+              "field": "source_table",
+              "target_id": "P001.E002.T001"
+            }
+          ],
+          "table_references": [
+            {
+              "table_id": "P001.E002.T001",
+              "row": 12,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 13,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            },
+            {
+              "table_id": "P001.E002.T001",
+              "row": 14,
+              "column": "outcome",
+              "component": "outcome name, excluding units and footnote marker"
+            }
+          ]
+        }
+      ],
+      "source_snippets": [
+        {
+          "source_id": "P001.E002.S001",
+          "locator": "e99, Table 1, outcome labels",
+          "text": "Blood glucose (mg/dL)ᵃ; Serum insulin (μIU/mL)ᵃ; Glucose iAUC (mg/dL × min)ᵇ; Insulin iAUC (μIU/mL × min)ᵇ",
+          "note": "Separate printed row-group labels are joined with semicolons for this excerpt; the CSV retains inherited row labels and source footnote markers."
+        }
+      ],
+      "context": {
+        "iauc": "Incremental area under the curve, as named in the article; calculation algorithm is not supplied.",
+        "specimen": {
+          "glucose": "blood",
+          "insulin": "serum"
+        }
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "source_id": "P001.E002.C001.F005",
+      "relation": "spread_of",
+      "target_id": "P001.E002.C001.F004",
+      "closure_direction": "none",
+      "basis": "Baseline-characteristic SD describes variation in the shared participant sample. This contextual association does not create a separate outcome comparison."
+    },
+    {
+      "source_id": "P001.E002.C001.F007",
+      "relation": "spread_of",
+      "target_id": "P001.E002.C001.F006",
+      "closure_direction": "none",
+      "basis": "Baseline-characteristic SD describes variation in the shared participant sample. This contextual association does not create a separate outcome comparison."
+    },
+    {
+      "source_id": "P001.E002.C001.F009",
+      "relation": "spread_of",
+      "target_id": "P001.E002.C001.F008",
+      "closure_direction": "none",
+      "basis": "Baseline-characteristic SD describes variation in the shared participant sample. This contextual association does not create a separate outcome comparison."
+    },
+    {
+      "source_id": "P001.E002.C001.F011",
+      "relation": "spread_of",
+      "target_id": "P001.E002.C001.F010",
+      "closure_direction": "none",
+      "basis": "Baseline-characteristic SD describes variation in the shared participant sample. This contextual association does not create a separate outcome comparison."
+    },
+    {
+      "source_id": "P001.E002.R001.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R001.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R001.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R001.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R001",
+      "relation": "compares",
+      "target_id": "P001.E002.R001.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R001",
+      "relation": "compares",
+      "target_id": "P001.E002.R001.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R001.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R001.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R001",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R002.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R002.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R002.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R002.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R002",
+      "relation": "compares",
+      "target_id": "P001.E002.R002.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R002",
+      "relation": "compares",
+      "target_id": "P001.E002.R002.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R002.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R002",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R002.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R002",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R002",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R003.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R003.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R003.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R003.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R003",
+      "relation": "compares",
+      "target_id": "P001.E002.R003.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R003",
+      "relation": "compares",
+      "target_id": "P001.E002.R003.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R003.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R003.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R003",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R003.F007",
+      "relation": "describes",
+      "target_id": "P001.E002.R003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R004.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R004.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R004.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R004.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R004",
+      "relation": "compares",
+      "target_id": "P001.E002.R004.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R004",
+      "relation": "compares",
+      "target_id": "P001.E002.R004.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R004.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R004",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R004.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R004",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R004",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R005.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R005.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R005.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R005.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R005",
+      "relation": "compares",
+      "target_id": "P001.E002.R005.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R005",
+      "relation": "compares",
+      "target_id": "P001.E002.R005.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R005.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R005",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R005.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R005",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R005",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R006.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R006.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R006.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R006.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R006",
+      "relation": "compares",
+      "target_id": "P001.E002.R006.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R006",
+      "relation": "compares",
+      "target_id": "P001.E002.R006.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R006.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R006",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R006.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R006",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R006",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R007.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R007.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R007.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R007.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R007",
+      "relation": "compares",
+      "target_id": "P001.E002.R007.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R007",
+      "relation": "compares",
+      "target_id": "P001.E002.R007.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R007.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R007",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R007.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R007",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R007",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R008.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R008.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R008.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R008.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R008",
+      "relation": "compares",
+      "target_id": "P001.E002.R008.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R008",
+      "relation": "compares",
+      "target_id": "P001.E002.R008.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R008.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R008",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R008.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R008",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R008",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R009.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R009.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R009.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R009.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R009",
+      "relation": "compares",
+      "target_id": "P001.E002.R009.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R009",
+      "relation": "compares",
+      "target_id": "P001.E002.R009.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R009.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R009",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R009.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R009",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R009",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R010.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R010.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R010.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R010.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R010",
+      "relation": "compares",
+      "target_id": "P001.E002.R010.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R010",
+      "relation": "compares",
+      "target_id": "P001.E002.R010.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R010.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R010",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R010.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R010",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R010",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R011.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R011.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R011.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R011.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R011",
+      "relation": "compares",
+      "target_id": "P001.E002.R011.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R011",
+      "relation": "compares",
+      "target_id": "P001.E002.R011.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R011.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R011",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R011.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R011",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R011",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R011.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R011.F007",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R011.F007",
+      "relation": "describes",
+      "target_id": "P001.E002.R011",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R011.F008",
+      "relation": "describes",
+      "target_id": "P001.E002.R011",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R012.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R012.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R012.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R012.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R012",
+      "relation": "compares",
+      "target_id": "P001.E002.R012.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R012",
+      "relation": "compares",
+      "target_id": "P001.E002.R012.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R012.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R012",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R012.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R012",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R012",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R013.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R013.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R013.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R013.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R013",
+      "relation": "compares",
+      "target_id": "P001.E002.R013.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R013",
+      "relation": "compares",
+      "target_id": "P001.E002.R013.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R013.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R013",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R013.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R013",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R013",
+      "closure_direction": "none",
+      "role": "reports_result"
+    },
+    {
+      "source_id": "P001.E002.R014.F002",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R014.F001",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R014.F004",
+      "relation": "uncertainty_of",
+      "target_id": "P001.E002.R014.F003",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R014",
+      "relation": "compares",
+      "target_id": "P001.E002.R014.F001",
+      "closure_direction": "target_to_source",
+      "role": "reference"
+    },
+    {
+      "source_id": "P001.E002.R014",
+      "relation": "compares",
+      "target_id": "P001.E002.R014.F003",
+      "closure_direction": "target_to_source",
+      "role": "evaluated"
+    },
+    {
+      "source_id": "P001.E002.R014.F005",
+      "relation": "p_value_of",
+      "target_id": "P001.E002.R014",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.R014.F006",
+      "relation": "describes",
+      "target_id": "P001.E002.R014",
+      "closure_direction": "source_to_target"
+    },
+    {
+      "source_id": "P001.E002.T001",
+      "relation": "table_for",
+      "target_id": "P001.E002.R014",
+      "closure_direction": "none",
+      "role": "reports_result"
+    }
+  ],
+  "notes": "All numerical source-table data are preserved as source-display strings in the CSV and separately labeled where scientifically addressable in JSON. One family reflects one meal-order investigation; multiple local comparisons and repeated source reports do not create independent evidence."
+}
