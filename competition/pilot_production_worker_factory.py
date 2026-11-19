@@ -12,6 +12,7 @@ from .pdf_fetch import TrustedPdfFetcher
 from .pilot_worker_factory import _bifrost_admin_client, _csv, _required, _round_file, _worker_execution
 from .production_reader import ActiveProductionPackage, ProductionReleaseReader
 from .production_worker_service import ProductionWorkerCoordinator
+from .production_checkpoints import ProductionExecutionCheckpoints
 from .publication import canonical_sha256
 from .ssh_worker import RestrictedSshWorkerTransport
 
@@ -70,6 +71,7 @@ def create_production_worker(
         backend=backend,
         reader=ProductionReleaseReader(root),
         rules_for_release=rules_for_release,
+        checkpoints=ProductionExecutionCheckpoints(root / "checkpoints"),
         pdf_fetcher=fetcher, keys=keys,
         execution=_worker_execution(transport), logs=logs,
         max_parallel_jobs=int(os.environ.get("CLAIMS_PRODUCTION_MAX_PARALLEL_JOBS", "10")),

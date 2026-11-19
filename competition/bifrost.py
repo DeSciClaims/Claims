@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import math
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -183,7 +184,23 @@ class BifrostClient:
 
     def revoke(self, key: PaperKey) -> None:
         key_id = urllib.parse.quote(key.key_id, safe="")
-        self._request("DELETE", f"/api/governance/virtual-keys/{key_id}")
+        # DELETE is idempotent: a transient config-store lock must not discard
+        # a completed paper. Do not retry key creation or model requests here.
+        for attempt in range(4):
+            try:
+                self._request("DELETE", f"/api/governance/virtual-keys/{key_id}")
+                return
+            except BifrostError as exc:
+                cause = exc.__cause__
+                if isinstance(cause, urllib.error.HTTPError):
+                    if cause.code == 404:
+                        return  # A previous DELETE already removed this key.
+                    retryable = cause.code in {408, 429, 500, 502, 503, 504}
+                else:
+                    retryable = isinstance(cause, (urllib.error.URLError, TimeoutError, OSError))
+                if not retryable or attempt == 3:
+                    raise
+                time.sleep(0.25 * 2 ** attempt)
 
     def check_budget(self, key: PaperKey) -> PaperUsage:
         response = self._live_key_usage(key)

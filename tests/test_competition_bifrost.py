@@ -230,3 +230,26 @@ def test_key_creation_revokes_if_persisted_scope_or_budget_differs(tamper):
                 expires_at=datetime.now(UTC) + timedelta(minutes=30),
             )
     assert requests[-1].method == "DELETE"
+
+
+@pytest.mark.parametrize('codes, calls, succeeds', [([500, 200], 2, True), ([404], 1, True),
+                                                  ([401], 1, False), ([503] * 4, 4, False)])
+def test_revocation_retries_only_transient_errors_and_accepts_already_deleted(codes, calls, succeeds):
+    from urllib.error import HTTPError
+    key = PaperKey('key-1', 'secret', datetime.now(UTC), 100, 0.1)
+    statuses = iter(codes)
+    def response(request, timeout):
+        assert request.method == 'DELETE'
+        code = next(statuses)
+        if code != 200:
+            raise HTTPError(request.full_url, code, 'failure', {}, None)
+        return Response({})
+    client = BifrostClient(management_url='http://localhost:8080')
+    with patch('competition.bifrost.urllib.request.urlopen', side_effect=response) as send, \
+         patch('competition.bifrost.time.sleep'):
+        if succeeds:
+            client.revoke(key)
+        else:
+            with pytest.raises(BifrostError):
+                client.revoke(key)
+    assert send.call_count == calls

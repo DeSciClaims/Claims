@@ -5,11 +5,14 @@ from __future__ import annotations
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime
+import hashlib
+import math
 from time import monotonic
 from typing import Any, Callable, Mapping
 
 from .production_reader import ActiveProductionPackage, ProductionReleaseReader
 from .production_runner import run_production_paper
+from .production_checkpoints import checkpoint_matches, usage_already_recorded
 
 
 @dataclass(frozen=True)
@@ -28,6 +31,7 @@ class ProductionWorkerCoordinator:
     max_parallel_jobs: int = 10
     competition_parallel_jobs: int = 4
     competition_check_seconds: float = 10
+    checkpoints: Any = field(default=None, repr=False)
 
     def _validate(self) -> None:
         try:
@@ -76,18 +80,53 @@ class ProductionWorkerCoordinator:
             raise ValueError("production backend returned a malformed lease")
         # A lease pins the signed release. A subsequent handoff stops new
         # admissions, but must not discard already paid-for extraction results.
-        return run_production_paper(
-            active, lease, network=self.network, worker_id=self.worker_id,
-            fetch_pdf=self.pdf_fetcher.fetch,
-            keys=self.keys, execution=self.execution, logs=self.logs,
-            results=self.backend,
-            inference_base_url=policy["inference_base_url"],
-            allowed_models=tuple(policy["allowed_models"]),
-            token_limit=policy["published_token_ceiling"],
-            dollar_limit=float(policy["dollar_limit_usd"]),
-            key_lifetime_seconds=min(policy["lease_seconds"], 3600),
-            max_inference_output_tokens=policy["max_inference_output_tokens"],
-        )
+        try:
+            return run_production_paper(
+                active, lease, network=self.network, worker_id=self.worker_id,
+                fetch_pdf=self.pdf_fetcher.fetch,
+                keys=self.keys, execution=self.execution, logs=self.logs,
+                results=self.backend,
+                inference_base_url=policy["inference_base_url"],
+                allowed_models=tuple(policy["allowed_models"]),
+                token_limit=policy["published_token_ceiling"],
+                dollar_limit=float(policy["dollar_limit_usd"]),
+                key_lifetime_seconds=min(policy["lease_seconds"], 3600),
+                max_inference_output_tokens=policy["max_inference_output_tokens"],
+                checkpoints=self.checkpoints,
+            )
+        except Exception as exc:
+            # A paper-level control/cleanup error is durable work to recover,
+            # not a reason to cancel healthy siblings. Persistence failures
+            # still escape: never pretend a lost result has been recorded.
+            snapshot = self.checkpoints.find(lease["job_id"]) if self.checkpoints is not None else None
+            if snapshot is not None and not checkpoint_matches(snapshot, active, lease, self.network):
+                snapshot = None
+            usage = (snapshot or {}).get("usage") or {}
+            key_id = (snapshot or {}).get("virtual_key_id")
+            cost, tokens = usage.get("dollar_cost_usd"), usage.get("tokens")
+            known = (type(cost) in {int, float} and math.isfinite(cost) and cost >= 0
+                     and type(tokens) is int and tokens >= 0)
+            if known and usage_already_recorded(lease, key_id):
+                cost, tokens = 0.0, 0
+            if not known:
+                cost, tokens = None, None
+            log_key = (f"logs/{self.network}/{active.round_id}/{active.hotkey}/"
+                       f"{hashlib.sha256(lease['paper_id'].encode()).hexdigest()}/"
+                       f"{lease['job_id']}-attempt-{lease['attempts']}.txt")
+            detail = "paper_processing_failed: " + type(exc).__name__
+            result = {"status": "infrastructure_fault", "artifact": None,
+                "round_id": active.round_id, "hotkey": active.hotkey,
+                "receipt_sha256": active.receipt_sha256, "package_sha256": active.package_sha256,
+                "paper_id": lease["paper_id"], "source_sha256": lease["source_sha256"],
+                "inference_cost_usd": cost, "prompt_and_completion_tokens": tokens,
+                "paper_token_limit": policy["published_token_ceiling"],
+                "usage_virtual_key_id": key_id, "recovery_required": True, "detail": detail}
+            self.logs.put(log_key, ("[trusted-paper] " + detail + "\n").encode())
+            saved = self.backend.complete_production_job(lease["job_id"], worker_id=self.worker_id,
+                lease_token=lease["lease_token"], result=result, log_object_key=log_key)
+            if saved is not True and not (isinstance(saved, dict) and saved.get("completed") is True):
+                raise RuntimeError("paper failure could not be durably recorded") from exc
+            return result
 
     def run_once(self) -> dict[str, Any] | None:
         """Compatibility path for one durable paper lease."""
