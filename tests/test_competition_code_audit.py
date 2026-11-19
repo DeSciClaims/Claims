@@ -117,6 +117,47 @@ def test_code_audit_binds_review_to_packages_and_worker_receipts():
         )
 
 
+def test_code_audit_accepts_only_unmetered_bronze_source_exclusions():
+    package = _wheel()
+
+    class ExcludedSourceBackend(Backend):
+        def list_paper_jobs(self, round_id, stage, paper_id):
+            jobs = super().list_paper_jobs(round_id, stage, paper_id)
+            if paper_id == "paper-2":
+                for job in jobs:
+                    job["result_private"] = {
+                        "status": "infrastructure_fault",
+                        "detail": "bronze_source_excluded",
+                        "artifact": None,
+                        "token_limit": None,
+                        "prompt_and_completion_tokens": 0,
+                        "denied_egress_packets": 0,
+                    }
+            return jobs
+
+    backend = ExcludedSourceBackend(hashlib.sha256(package).hexdigest())
+    evidence = collect_final_code_evidence(
+        "week1", backend=backend, fetch_package=lambda _: package,
+    )
+    assert evidence["packages"][0]["status_counts"] == {
+        "completed": 1, "infrastructure_fault": 1,
+    }
+
+    original = backend.list_paper_jobs
+
+    def altered_jobs(round_id, stage, paper_id):
+        jobs = original(round_id, stage, paper_id)
+        if paper_id == "paper-2":
+            jobs[1]["result_private"]["prompt_and_completion_tokens"] = 1
+        return jobs
+
+    backend.list_paper_jobs = altered_jobs
+    with pytest.raises(ValueError, match="trusted gateway or firewall usage"):
+        collect_final_code_evidence(
+            "week1", backend=backend, fetch_package=lambda _: package,
+        )
+
+
 def test_review_cannot_skip_or_invent_a_check():
     package = _wheel()
     backend = Backend(hashlib.sha256(package).hexdigest())
