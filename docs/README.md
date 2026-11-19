@@ -24,6 +24,7 @@
 - [V1 Consensus Validator](./0017-v1-consensus-validator.md)
 - [Equivalence Group Routing](./0019-equivalence-group-routing.md)
 - [Daily Testnet Competition Participation](./0020-testnet-competition-participation.md)
+- [Eligibility Model Benchmark](./0021-eligibility-model-benchmark.md)
 
 ## Purpose
 
