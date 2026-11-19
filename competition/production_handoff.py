@@ -283,8 +283,7 @@ def planned_production_handoff(
             or (final_stage.get("stage") == "rerun"
                 and final_stage.get("source_stage") != "final")
             or not isinstance(roles, list)
-            or not any(row.get("role") == "production_burned" and row.get("share") == 0.07
-                       for row in roles)
+            or not any(row.get("role") == "production_burned" for row in roles)
             or any(row.get("role") == "production" for row in roles)
             or not isinstance(security, dict) or security.get(hotkey, {}).get("passed") is not True
             or not isinstance(pairs, list) or not pairs
