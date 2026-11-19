@@ -34,6 +34,10 @@
         "description": "One complete numerical source table and its CSV metadata."
       }
     },
+    "data_code_availability": {
+      "$ref": "#/$defs/DataCodeAvailability",
+      "description": "Optional in 1.1. Data and code availability statements and the dataset and code links named by the paper. Recommended for every extraction; omission means not extracted, not that the paper has no data or code."
+    },
     "result_groups": {
       "type": "array",
       "description": "Result families formed after local closures have been derived from object relationships. Family membership is not an input to local closure.",
@@ -1446,6 +1450,222 @@
           }
         }
       ]
+    },
+    "ArtifactId": {
+      "type": "string",
+      "description": "Permanent ID of one data or code artifact named by the paper. A has its own positive counter per extraction; it is independent of result, table, and family allocation.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*\\.E(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})\\.A(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2,})$"
+    },
+    "AvailabilityStatement": {
+      "type": "object",
+      "description": "What the paper says about the availability of one kind of material (data or code). Record the paper's statement; do not test access.",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "available",
+            "available_on_request",
+            "restricted",
+            "not_available",
+            "not_stated",
+            "not_applicable"
+          ],
+          "description": "available: the paper states the material is publicly accessible or names where it is. available_on_request: access requires contacting authors or a committee. restricted: access requires an application, licence, or controlled-access agreement, or is embargoed. not_available: the paper states it cannot be shared. not_stated: the paper and supplied supplements say nothing. not_applicable: the paper generates and uses no such material, for example code for a purely analytical paper."
+        },
+        "source_snippets": {
+          "type": "array",
+          "description": "Verbatim text of the availability statement or the passage that names the material. Required unless status is not_stated or not_applicable.",
+          "items": {
+            "$ref": "#/$defs/SourceSnippet"
+          },
+          "minItems": 0
+        },
+        "notes": {
+          "type": "string",
+          "description": "Qualifications, such as partial availability or conflicting statements between the article and supplements."
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "available",
+                  "available_on_request",
+                  "restricted",
+                  "not_available"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "source_snippets"
+            ],
+            "properties": {
+              "source_snippets": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ArtifactLink": {
+      "type": "object",
+      "description": "One dataset, code repository, or other research artifact that the paper names with a link or persistent identifier. Record it as written in the source; never fetch, open, or run it during extraction.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ArtifactId",
+          "description": "Permanent A ID, using A001, A002, and so on."
+        },
+        "artifact_type": {
+          "type": "string",
+          "enum": [
+            "dataset",
+            "code",
+            "other"
+          ],
+          "description": "dataset: data files, databases, or accession records. code: source code, scripts, notebooks, or software repositories. other: for example a preregistration or protocol; explain it in description."
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "URL exactly as printed in the source, including any version or commit path."
+        },
+        "identifier": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Persistent identifier as printed, such as a DOI, accession number (GEO GSE…, dbGaP phs…, PDB ID), or software archive ID."
+        },
+        "identifier_type": {
+          "type": "string",
+          "description": "Open description of the identifier scheme, for example doi, accession, rrid, or swhid."
+        },
+        "repository": {
+          "type": "string",
+          "description": "Hosting service or archive as named or evident from the link, for example GitHub, Zenodo, Figshare, OSF, Dryad, GEO, or UK Biobank."
+        },
+        "description": {
+          "type": "string",
+          "description": "What the artifact contains, in plain language."
+        },
+        "provenance": {
+          "type": "string",
+          "enum": [
+            "generated_by_this_paper",
+            "reused",
+            "unclear"
+          ],
+          "description": "generated_by_this_paper: data or code produced for this paper. reused: a third-party or previously published resource the paper analysed or built on. unclear: the source does not establish which."
+        },
+        "access": {
+          "type": "string",
+          "enum": [
+            "open",
+            "on_request",
+            "restricted",
+            "unclear"
+          ],
+          "description": "Access condition as stated in the source, not as tested."
+        },
+        "source_snippets": {
+          "type": "array",
+          "description": "Verbatim source text that contains the URL or identifier. At least one snippet must contain the url or identifier exactly as recorded.",
+          "items": {
+            "$ref": "#/$defs/SourceSnippet"
+          },
+          "minItems": 1
+        },
+        "related_ids": {
+          "type": "array",
+          "description": "Optional results, result groups, shared context, or tables that the source says use this artifact. These are provenance pointers; they never participate in local closure.",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ReferenceId"
+              },
+              {
+                "$ref": "#/$defs/TableId"
+              }
+            ]
+          },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string",
+          "description": "Qualifications, such as a broken-looking link as printed or a version mismatch between article and supplement."
+        }
+      },
+      "required": [
+        "id",
+        "artifact_type",
+        "provenance",
+        "access",
+        "source_snippets"
+      ],
+      "anyOf": [
+        {
+          "required": [
+            "url"
+          ]
+        },
+        {
+          "required": [
+            "identifier"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "DataCodeAvailability": {
+      "type": "object",
+      "description": "The paper's data and code availability: its statements and every data or code artifact it names with a link or identifier. Records what the paper says; it does not certify that a link works or contains what is claimed.",
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/AvailabilityStatement",
+          "description": "Availability of the data the paper analyses or generates."
+        },
+        "code": {
+          "$ref": "#/$defs/AvailabilityStatement",
+          "description": "Availability of the analysis code or software the paper uses or generates."
+        },
+        "artifacts": {
+          "type": "array",
+          "description": "Each distinct dataset, code repository, or other artifact named with a URL or identifier, in the main article and supplied supplements. One entry per artifact, even when it is named several times. Use an empty list when none is named.",
+          "items": {
+            "$ref": "#/$defs/ArtifactLink"
+          }
+        },
+        "reviewed_source_ids": {
+          "type": "array",
+          "description": "Source documents inspected for availability statements and links.",
+          "items": {
+            "$ref": "#/$defs/SourceId"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "string",
+          "description": "Coverage gaps, such as an unavailable supplement that may hold the statement."
+        }
+      },
+      "required": [
+        "data",
+        "code",
+        "artifacts",
+        "reviewed_source_ids"
+      ],
+      "additionalProperties": false
     }
   },
   "x-how_to_use": [
@@ -1475,6 +1695,7 @@
     "Distinguish reported, source-calculated, extractor-calculated, and digitized content in origin or context. A separate calculated or converted entry gets a new ID and a derived_from connection when useful; preserve the reported entry.",
     "When context is stored at several levels, local details may narrow broader context. Conflicting bindings require an explicit note or corrected record; do not silently choose a convenient interpretation.",
     "Do not turn every graph sink into a result. Review support-only sinks, unreviewed relationships, cycles, and disconnected quantities. Keep unresolved objects visible in closure_review or a result with closure.status=review_required; do not silently discard them.",
+    "Record data and code availability in data_code_availability. Read the article's data availability, code availability, and software sections, the methods, acknowledgements, and supplied supplements. Classify the data and code statements separately, use not_stated when the paper says nothing, and create one ArtifactLink per distinct dataset or code repository named with a URL or persistent identifier. Copy URLs and identifiers exactly as printed and support each with a verbatim snippet. Do not fetch, open, clone, or execute any link during extraction, and do not add links that the source does not print.",
     "Validate the JSON structure with this JSON Schema, then perform x-validation_checks for identity, references, local closure, families, scientific attachment, numerical-table coverage, and actual CSV files. Structural validity alone does not establish scientific correctness or delivery completeness."
   ],
   "x-table_extraction": {
@@ -1799,9 +2020,10 @@
     "organizational_extensions": {
       "group_id": "{paper_id}.{extraction_id}.G001",
       "source_id": "{paper_id}.{extraction_id}.S001",
-      "instruction": "G, S, and T are separate positive counters per extraction for result groups, source documents, and source tables. They do not change the R/C/F field-ID convention. Cross-group summaries use the same R sequence as ordinary results.",
+      "instruction": "G, S, T, and A are separate positive counters per extraction for result groups, source documents, source tables, and data or code artifacts. They do not change the R/C/F field-ID convention. Cross-group summaries use the same R sequence as ordinary results.",
       "nested_location": "A field_path accompanying parent_field_id is relative to the parent F value and uses zero-based indexes. table_references.row instead uses one-based parsed CSV data-record positions, excluding the header; table_references.column uses an exact column key. Both describe current location, not permanent identity.",
-      "table_id": "{paper_id}.{extraction_id}.T001"
+      "table_id": "{paper_id}.{extraction_id}.T001",
+      "artifact_id": "{paper_id}.{extraction_id}.A001"
     }
   },
   "x-controlled_vocabularies": {
@@ -2349,6 +2571,21 @@
       "id": "V27",
       "kind": "closure",
       "check": "T objects and CSV coordinates never enter core_ids, member_ids, parent_field_id, or implicit local edges. Cell provenance and source-table identity do not create scientific dependence, expand local closure to adjacent cells, or merge families. An interpreted F collection and its source T object are not independent evidence."
+    },
+    {
+      "id": "V28",
+      "kind": "availability",
+      "check": "Every ArtifactLink url or identifier appears verbatim in at least one of its source_snippets, and each snippet traces to a listed source and locator. Links that the source does not print are fabricated and invalid."
+    },
+    {
+      "id": "V29",
+      "kind": "availability",
+      "check": "Statuses agree with the source: a data or code statement marked available, available_on_request, restricted, or not_available quotes the statement; not_stated is used only when the reviewed sources contain none; an artifact of type dataset or code is consistent with the corresponding statement (for example, a printed GitHub link for the analysis code is not compatible with code not_applicable)."
+    },
+    {
+      "id": "V30",
+      "kind": "availability",
+      "check": "Artifacts are not duplicated: the same URL or identifier repeated across the article and supplements is one entry with several snippets. related_ids resolve to existing objects and never enter core_ids, member_ids, or local edges."
     }
   ],
   "x-context_guidance": {

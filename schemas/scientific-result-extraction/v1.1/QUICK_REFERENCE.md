@@ -89,6 +89,22 @@ Nested table fields:
 - **`annotations[]`**: `kind` (annotation type), `text`, `marker` (source symbol), `rows` and `columns` (affected cells), `source_locator`. Omitted scope means all rows/columns; merged cells require both lists.
 - **`fields[].table_references[]`**: `table_id`, `row` (CSV data record, starting at 1), `column` (CSV key), `component` (part of a composite cell), `note`.
 
+### Data and code availability: `data_code_availability` (optional)
+
+Records what the paper says about access to its data and code, and every dataset or code repository it names with a link or identifier. Links are copied as printed; they are never fetched, opened, or run during extraction.
+
+| Field | Meaning |
+|---|---|
+| `data`, `code` | Separate availability statements, each with `status`, `source_snippets[]`, `notes`. |
+| `artifacts[]` | One entry per distinct dataset, code repository, or other artifact named with a URL or identifier. Empty list when none. |
+| `reviewed_source_ids` | Documents inspected for statements and links. |
+| `notes` | Coverage gaps. |
+
+Nested fields:
+
+- **`artifacts[]`**: `id` (permanent A identifier), `artifact_type`, `url` and/or `identifier` (as printed; at least one), `identifier_type` (e.g. doi, accession), `repository` (e.g. GitHub, Zenodo, GEO), `description`, `provenance`, `access`, `source_snippets[]` (must contain the URL or identifier verbatim), `related_ids` (results, groups, context, or tables that use it; never closure inputs), `notes`.
+- A statement marked `available`, `available_on_request`, `restricted`, or `not_available` requires a verbatim snippet.
+
 ### Relationships and organization records
 
 **`relationships[]`** records each connection:
@@ -126,7 +142,7 @@ Each result's **`closure`** contains:
 
 **`closure_review[]`** uses `object_id` (item needing attention), `reason` (issue), and `disposition` (how handled).
 
-**Required package sections:** `schema_version` = `"1.1"`, `paper`, `extraction`, `sources`, `tables`, `results`, `result_groups`. Optional sections: `shared_context`, `relationships`, `cross_group_summaries`, `closure_review`, and document-level `notes`. Relationships become necessary where grouping or table-link rules require them.
+**Required package sections:** `schema_version` = `"1.1"`, `paper`, `extraction`, `sources`, `tables`, `results`, `result_groups`. Optional sections: `data_code_availability`, `shared_context`, `relationships`, `cross_group_summaries`, `closure_review`, and document-level `notes`. Relationships become necessary where grouping or table-link rules require them.
 
 ## 2. Labeling and organization rules
 
@@ -138,7 +154,7 @@ Each result's **`closure`** contains:
 4. **Keep statistical distinctions.** SE describes estimate uncertainty; SD describes variation. A whole CI differs from an endpoint. Sample size differs from other counts. Attach each uncertainty measure or p-value to its actual estimate or test.
 5. **Define shared objects once.** Reuse IDs for clearly identical or repeated entries. Equal numbers alone do not establish identity. Preserve IDs when correcting labels or moving objects.
 
-ID keys: **E** extraction; **R** result; **C** shared context; **F** scientific field; **G** family; **S** source; **T** table. Example field ID: `P001.E001.R002.F003`. ID allocation does not determine group membership.
+ID keys: **E** extraction; **R** result; **C** shared context; **F** scientific field; **G** family; **S** source; **T** table; **A** data or code artifact. Example field ID: `P001.E001.R002.F003`. ID allocation does not determine group membership.
 
 ### Build local results, then result families
 
@@ -250,12 +266,16 @@ Arrows show scientific source-to-target direction, independently of `closure_dir
 | `table_coverage.status` | `complete`: all required tables exported; `incomplete`: coverage/export gaps, with `notes`. |
 | `columns[].role` | `data`: source values; `label`: row identity; `context`: inherited/panel labels. |
 | `annotations[].kind` | `footnote`, `unit`, `statistical_convention`, `panel`, `merged_cell`, `missing_value`, `structural_blank`, `transcription`, `other`. |
+| `data.status`, `code.status` | `available`: publicly accessible or location named; `available_on_request`: via authors or a committee; `restricted`: application, licence, controlled access, or embargo; `not_available`: stated as not shareable; `not_stated`: no statement in the reviewed sources; `not_applicable`: no such material (e.g. no code for a purely analytical paper). |
+| `artifacts[].artifact_type` | `dataset`, `code`, `other` (explain in `description`). |
+| `artifacts[].provenance` | `generated_by_this_paper`, `reused` (third-party or previously published), `unclear`. |
+| `artifacts[].access` | `open`, `on_request`, `restricted`, `unclear`; as stated, not tested. |
 
 `structural_blank` means an empty cell introduced by flattening the layout; it does not mean source-reported missing data. A `table_for` link also requires `closure_direction: none`.
 
 ### Open fields and value formats
 
-- **Open text/names:** `field`, `units`, `description`, `notes`, `origin`, `value_status`, `value_operator`, source `kind`, and context properties. Use clear source-specific wording.
+- **Open text/names:** `field`, `units`, `description`, `notes`, `origin`, `value_status`, `value_operator`, source `kind`, artifact `identifier_type` and `repository`, and context properties. Use clear source-specific wording.
 - **Illustrative operators:** `=`, `<`, `<=`, `>`, `>=`, `approximately`, `nearly`; these are examples, not an exhaustive list.
 - **Illustrative origins:** `source_reported`, `source_calculated`, `extractor_calculated`, `digitized`; these are examples, not an exhaustive list.
 - **`value` types:** number, string, boolean, array, object, or `null`.
