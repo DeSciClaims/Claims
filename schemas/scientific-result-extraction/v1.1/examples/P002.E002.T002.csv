@@ -1,0 +1,21 @@
+domain,outcome,model_1_n,model_1_or_ci95,model_1_p_value,model_2_n,model_2_or_ci95,model_2_p_value,model_3_n,model_3_or_ci95,model_3_p_value
+Hospitalizations in past 12 mo,Any (yes or no),1666,"1.33
+(1.08-1.65)",.008,1658,"1.34
+(1.09-1.65)",.006,1646,"1.32
+(1.07-1.63)",.01
+Hospitalizations in past 12 mo,"No. of hospitalizations (0, 1, >1)",1666,"1.36
+(1.10-1.67)ᵉ",.005,1661,"1.36
+(1.11-1.68)ᵉ",.005,1649,"1.35
+(1.09-1.68)ᵉ",.007
+Self-reported disease burden for >10 d in past 30 d,Poor physical health,1570,"1.32
+(1.06-1.64)",.02,1562,"1.35
+(1.06-1.73)",.02,1552,"1.36
+(1.06-1.74)",.02
+Self-reported disease burden for >10 d in past 30 d,Poor mental health,1568,"1.25
+(0.97-1.61)",.09,1560,"1.54
+(1.19-1.99)",.002,1550,"1.57
+(1.20-2.06)",.002
+Self-reported disease burden for >10 d in past 30 d,Inactivity due to health,1570,"1.09
+(0.72-1.67)",.66,1562,"1.04
+(0.68-1.58)",.87,1552,"1.02
+(0.67-1.56)",.93

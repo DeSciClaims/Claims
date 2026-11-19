@@ -4,6 +4,8 @@ Status: **Draft — under development.**
 
 Source: [Claims Extraction Schema 1.1](./schema.json). This guide summarizes its fields, organization rules, and vocabularies. The JSON defines exact requirements. `[]` means a list of entries.
 
+Worked examples: four complete extractions with their table CSVs are in [`examples/`](./examples/README.md).
+
 ## 1. Data collected
 
 The extraction records scientific values, equations, their interpretation, source evidence, and complete numerical tables.

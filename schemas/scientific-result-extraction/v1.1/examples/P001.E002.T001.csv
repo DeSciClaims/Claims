@@ -1,0 +1,15 @@
+outcome,time_min,carbohydrates_first,carbohydrates_last,p_value,change_percent
+Blood glucose (mg/dL)ᵃ,0,106.7 ± 5.3,107.3 ± 6.3,0.752,0.5
+Blood glucose (mg/dL)ᵃ,30,156.8 ± 8.2,112.0 ± 5.8,0.001,−28.6
+Blood glucose (mg/dL)ᵃ,60,199.4 ± 12.2,125.6 ± 6.9,0.001,−37.0
+Blood glucose (mg/dL)ᵃ,120,169.2 ± 13.8,140.8 ± 7.7,0.030,−16.8
+Serum insulin (μIU/mL)ᵃ,0,18.8 ± 2.4,16.3 ± 1.4,0.154,−13.6
+Serum insulin (μIU/mL)ᵃ,30,62.4 ± 8.6,42.9 ± 9.7,0.083,−31.2
+Serum insulin (μIU/mL)ᵃ,60,125.4 ± 20.1,63.2 ± 11.0,0.002,−49.6
+Serum insulin (μIU/mL)ᵃ,120,152.0 ± 31.7,90.9 ± 16.6,0.014,−40.2
+Glucose iAUC (mg/dL × min)ᵇ,0–30,751.4 ± 71.0,90.0 ± 26.8,0.001,−88.0
+Glucose iAUC (mg/dL × min)ᵇ,0–60,"3,396.8 ± 606.9",444.2 ± 103.8,0.001,−86.9
+Glucose iAUC (mg/dL × min)ᵇ,0–120,"7,545.0 ± 804.4","2,001.5 ± 376.9",0.001,−73.5
+Insulin iAUC (μIU/mL × min)ᵇ,0–30,657.5 ± 131.8,399.5 ± 132.6,0.102,−39.2
+Insulin iAUC (μIU/mL × min)ᵇ,0–60,"2,908.5 ± 432.0","1,510.5 ± 407.4",0.002,−48.1
+Insulin iAUC (μIU/mL × min)ᵇ,0–120,"10,097.9 ± 1,646.9","5,202.8 ± 1,061.6",0.002,−48.5
