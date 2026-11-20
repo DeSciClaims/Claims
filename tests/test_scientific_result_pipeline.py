@@ -22,6 +22,10 @@ class ScriptedRuntime:
                 "shared_context": [], "relationships": [], "table_plans": [], "excluded_candidates": [],
                 "result_plan": [{"id": prefix + ".R001", "title": "Estimate", "scope": "Reported estimate", "source_ids": [prefix + ".S001"]}],
             }
+        if stage.startswith("coverage-plan"):
+            return {"result_plan": [{**payload["proposed_plan"][0], "evidence": [{
+                "source_id": prefix + ".S001", "block_id": "B0001"}]}],
+                "unrecovered_regions": [], "review_notes": "All source findings inventoried."}
         if stage.startswith("results"):
             return {"results": [{
                 "id": prefix + ".R001", "group_id": prefix + ".G001", "title": "Estimate",
@@ -59,8 +63,8 @@ def test_staged_extraction_delivers_new_contract_without_ara(tmp_path):
     assert payload["schema_version"] == "1.1"
     assert "logic" not in payload
     assert (output / "extraction.json").exists()
-    assert json.loads((output / "validation_report.json").read_text())["valid"]
-    assert runtime.stages == ["inventory-1", "results-001-1", "families-1"]
+    assert json.loads((output / "validation_report.json").read_text())["package_consistent"]
+    assert runtime.stages == ["inventory-1", "coverage-plan-1", "results-001-1", "families-1"]
 
 
 def test_prepared_sources_must_match_actual_pdf(tmp_path):
@@ -121,7 +125,7 @@ def test_repair_preserves_unresolved_fields_with_explicit_review_state(tmp_path)
     payload = extract_pdf(pdf, output, runtime=ReviewRuntime(), paper_id="P1", table_audit=False, prepared_dir=cache)
     assert len(payload["results"][0]["fields"]) == 2
     report = json.loads((output / "validation_report.json").read_text())
-    assert report["valid"]
+    assert report["package_consistent"]
     assert not report["submission_ready"]
     assert report["review_required_results"] == ["P1.E001.R001"]
 
@@ -275,3 +279,28 @@ def test_focused_graph_review_attaches_statistics_without_rewriting_values(tmp_p
                          prepared_dir=cache, table_audit=False)
     assert result['results'][0]['fields'] == runtime.original_fields
     assert result['results'][0]['closure']['member_ids'] == ['P1.E001.R001.F001', 'P1.E001.R001.F002']
+
+
+def test_source_audit_missing_supplement_survives_table_audit_and_validation(tmp_path):
+    from miner.scientific_result_v1.validation import validate_package
+    pdf, cache = prepared(tmp_path)
+    text = 'The mean was 2. The supplementary quality table is provided online.'
+    (cache / 'S001/source.md').write_text(text)
+    class MissingSupplementRuntime(ScriptedRuntime):
+        def generate(self, **kwargs):
+            stage = kwargs['stage']
+            if stage.startswith('source-table-audit'):
+                return {'additional_tables': [], 'additional_results': [], 'relationships': [],
+                        'table_coverage': {'status': 'complete', 'reviewed_source_ids': ['P1.E001.S001']},
+                        'review_notes': 'No tables in supplied source.'}
+            result = super().generate(**kwargs)
+            if stage.startswith('coverage-plan'):
+                result['unrecovered_regions'] = [{'source_id': 'P1.E001.S001', 'block_id': 'B0001',
+                    'kind': 'unavailable_supplement', 'reason': 'Referenced external supplement not supplied.'}]
+            return result
+    directory = tmp_path / 'run'
+    payload = extract_pdf(pdf, directory, runtime=MissingSupplementRuntime(), paper_id='P1', prepared_dir=cache)
+    assert payload['extraction']['table_coverage']['status'] == 'incomplete'
+    assert 'supplement' in payload['extraction']['notes']
+    payload['extraction']['table_coverage']['status'] = 'complete'
+    assert any(i['code'] == 'V20' for i in validate_package(payload, directory))

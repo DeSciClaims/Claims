@@ -104,7 +104,7 @@ def test_rate_limit_attempts_are_logged_and_bounded(monkeypatch, tmp_path):
             raise litellm.RateLimitError("rate limited", llm_provider="openrouter", model="test")
         return response()
     monkeypatch.setattr(litellm, "completion", complete)
-    monkeypatch.setattr("miner.scientific_result_v1.runtime.time.sleep", lambda seconds: None)
+    monkeypatch.setattr("validator.scientific_result_v1.runtime.time.sleep", lambda seconds: None)
     runtime = DspyRuntime(model="deepseek/deepseek-v4-flash-0731", api_key="secret", transport_retries=1)
     generate(runtime, tmp_path / "stages")
     assert len(calls) == 2

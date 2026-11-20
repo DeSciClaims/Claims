@@ -106,7 +106,7 @@ class Backend:
 
 
 def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False, execution=None,
-        attempt=1, hotkey=None, manifest_updates=None):
+        attempt=1, hotkey=None, manifest_updates=None, controller_options=None):
     signer = Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
     job = {
         "job_id": "a" * 64, "round_id": "week2", "hotkey": hotkey or signer.ss58_address,
@@ -131,6 +131,7 @@ def run(over=False, package=b"package", pdf=b"%PDF sample", challenger=False, ex
         keys=keys, execution=execution or Executor(), logs=logs,
         inference_base_url="http://gateway.internal:8080/v1",
         allowed_models=("example/model",), published_token_ceiling=1000, dollar_limit=1.0,
+        **(controller_options or {}),
     )
     return result, keys, logs, backend, job
 
@@ -437,3 +438,44 @@ def test_capacity_deferral_cannot_erase_inference_spend(monkeypatch):
     monkeypatch.setattr(Backend,'defer_job',lambda *_ ,**__:pytest.fail('spent attempts cannot be deferred'),raising=False)
     result,*_=run(execution=Busy())
     assert result['status']=='infrastructure_fault'
+
+
+def test_scientific_controller_recomputes_full_validation_and_binds_report(tmp_path):
+    import json
+    from test_scientific_validator import example, Reviewer
+    from competition.scientific_validation import TrustedScientificValidator
+    from validator.scientific_result_v1.sources import SourceBundle
+    payload=json.loads(json.dumps(example()).replace('P1','paper-1'))
+    packed={'schema_version':'claims_scientific_package_v1','extraction':payload,'csv_files':{}}
+    class ScientificExecution:
+        def run(self, **kwargs):
+            assert kwargs['job']['worker_contract']['request']['output_schema']=='scientific_result_v1.1'
+            return ExecutionOutput('completed',packed,b'ran')
+    source=SourceBundle('paper-1',hashlib.sha256(b'%PDF sample').hexdigest(),({'source_id':'S001','text':'The mean was 2.'},))
+    gate=TrustedScientificValidator(lambda job:source,lambda job:Reviewer(),tmp_path/'reports')
+    result,*_=run(execution=ScientificExecution(),controller_options={'output_schema':'scientific_result_v1.1','scientific_validator':gate})
+    assert result['status']=='completed'
+    assert result['scientific_validation']['submission_ready']
+    packed['validation_report']={'submission_ready':True}
+    result,*_=run(execution=ScientificExecution(),controller_options={'output_schema':'scientific_result_v1.1','scientific_validator':gate})
+    assert result['status']=='invalid_output'
+
+
+def test_scientific_judge_failure_is_infrastructure_fault_not_miner_fault(tmp_path):
+    import json
+    from test_scientific_validator import example, Reviewer
+    from competition.scientific_validation import TrustedScientificValidator
+    from validator.scientific_result_v1.sources import SourceBundle
+    payload=json.loads(json.dumps(example()).replace('P1','paper-1'))
+    class ScientificExecution:
+        def run(self, **kwargs):
+            return ExecutionOutput('completed',{'schema_version':'claims_scientific_package_v1','extraction':payload,'csv_files':{}},b'ran')
+    source=SourceBundle('paper-1',hashlib.sha256(b'%PDF sample').hexdigest(),({'source_id':'S001','text':'The mean was 2.'},))
+    gate=TrustedScientificValidator(lambda job:source,lambda job:Reviewer(bad_evidence=True),tmp_path/'reports')
+    result,*_=run(execution=ScientificExecution(),controller_options={'output_schema':'scientific_result_v1.1','scientific_validator':gate})
+    assert result['status']=='infrastructure_fault'
+
+
+def test_scientific_profile_cannot_run_without_controller_validator():
+    with pytest.raises(ValueError,match='controller-owned validator'):
+        run(controller_options={'output_schema':'scientific_result_v1.1'})

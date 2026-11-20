@@ -140,3 +140,19 @@ def test_venv_and_install_share_one_build_budget(
                      [("venv", 600), ("install", expected_install_budget)])
     if expected_install_budget is None:
         assert "shared build budget exhausted" in (tmp_path / "log.txt").read_text()
+
+
+def test_scientific_worker_transports_full_json_csv_envelope(tmp_path):
+    from test_scientific_validator import example
+    payload=example()
+    packed={'schema_version':'claims_scientific_package_v1','extraction':payload,'csv_files':{}}
+    package=tmp_path/'smoke_miner-0.1.0-py3-none-any.whl'
+    make_wheel(package,extra='artifact='+repr(packed))
+    request=tmp_path/'request.json'
+    request.write_text(json.dumps({'paper':{'paper_id':'P1'},'output_schema':'scientific_result_v1.1'}))
+    wheels=tmp_path/'wheels';wheels.mkdir()
+    result=run_one_paper(package_path=package,entrypoint='smoke_miner:main',request_path=request,
+        output_path=tmp_path/'result.json',work_dir=tmp_path/'work',log_path=tmp_path/'log.txt',
+        wheelhouse=wheels,inference_base_url='http://gateway/v1',paper_key='test-key')
+    assert result.status=='completed',(tmp_path/'log.txt').read_text()
+    assert json.loads((tmp_path/'result.json').read_text())==packed

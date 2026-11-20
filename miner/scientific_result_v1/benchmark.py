@@ -97,7 +97,7 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     api_base = os.getenv("CLAIMS_INFERENCE_BASE_URL") or os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1")
     config = {"runtime": "dspy-predict", "runtime_version": "2",
-              "prompt_format": "raw-api-messages", "extraction_profile": "staged-contract-v2", "dspy_version": dspy.__version__, "model": args.model,
+              "prompt_format": "raw-api-messages", "extraction_profile": "source-coverage-v4", "dspy_version": dspy.__version__, "model": args.model,
               "max_tokens": args.max_tokens, "reasoning_effort": args.reasoning_effort, "retry_reasoning_effort": args.retry_reasoning_effort, "temperature": 0.0,
               "batch_size": args.batch_size, "semantic_attempts": args.max_attempts,
               "transport_retries": args.transport_retries, "request_deadline_seconds": args.request_deadline, "concurrency": args.concurrency,

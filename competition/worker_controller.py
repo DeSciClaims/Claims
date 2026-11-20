@@ -131,6 +131,8 @@ def run_claimed_job(
     allowed_models: tuple[str, ...], published_token_ceiling: int,
     dollar_limit: float, key_lifetime_seconds: int = 3600,
     max_output_bytes: int = 10_000_000,
+    output_schema: str = "agent_v1",
+    scientific_validator: Callable | None = None,
     max_inference_output_tokens: int = 8192,
 ) -> dict[str, Any]:
     """Verify inputs, execute once, account for tokens, revoke, then persist.
@@ -156,6 +158,10 @@ def run_claimed_job(
     if (not 1 <= key_lifetime_seconds <= 3600 or published_token_ceiling < 1
         or dollar_limit <= 0 or max_output_bytes < 1):
         raise ValueError("paper key budget or lifetime is invalid")
+    if output_schema not in {"agent_v1", "scientific_result_v1.1"}:
+        raise ValueError("unsupported trusted output schema")
+    if output_schema == "scientific_result_v1.1" and scientific_validator is None:
+        raise ValueError("scientific worker profile requires a controller-owned validator")
     package = fetch_package(job)
     if hashlib.sha256(package).hexdigest() != job["package_sha256"]:
         raise ValueError("sealed package differs from claimed job hash")
@@ -174,7 +180,7 @@ def run_claimed_job(
     # accounting. These are package faults, never infrastructure failures.
     try:
         contract = build_worker_contract(
-            job, allowed_models=allowed_models,
+            job, allowed_models=allowed_models, output_schema=output_schema,
             max_output_tokens=max_inference_output_tokens,
             paper_token_limit=paper_limit, dollar_limit_usd=dollar_limit,
         )
@@ -265,19 +271,34 @@ def run_claimed_job(
                       "timeout", "cap_exceeded", "infrastructure_fault", "security_violation"}:
         raise ValueError("worker returned an unknown status")
     validation_error = ""
+    scientific_report = None
     if status == "completed":
         try:
             if not isinstance(output.artifact, dict):
                 raise ValueError("completed worker result has no artifact")
             if len(json.dumps(output.artifact, separators=(",", ":")).encode()) > max_output_bytes:
                 raise ValueError("artifact exceeds output size limit")
-            artifact = Artifact.model_validate(output.artifact)
-            issues = validate_agent_artifact(artifact)
-            if artifact.paper.paper_id != job["paper_id"] or issues:
-                raise ValueError("artifact paper ID or agent_v1 schema is invalid")
-        except (TypeError, ValueError) as exc:
+            if output_schema == "scientific_result_v1.1":
+                scientific_report = scientific_validator(output.artifact, job, pdf)
+                if scientific_report.get("execution_status") == "error":
+                    status = "infrastructure_fault"
+                    validation_error = "trusted scientific review failed to execute"
+                elif scientific_report.get("authoritative") is not True or scientific_report.get("submission_ready") is not True:
+                    status = "invalid_output"
+                    validation_error = "trusted scientific validation did not accept the package"
+            else:
+                artifact = Artifact.model_validate(output.artifact)
+                issues = validate_agent_artifact(artifact)
+                if artifact.paper.paper_id != job["paper_id"] or issues:
+                    raise ValueError("artifact paper ID or agent_v1 schema is invalid")
+        except (TypeError, ValueError, RecursionError) as exc:
             status = "invalid_output"
             validation_error = str(exc)
+        except Exception as exc:
+            if output_schema != "scientific_result_v1.1":
+                raise
+            status = "infrastructure_fault"
+            validation_error = "trusted scientific validator execution failed: " + type(exc).__name__
     # The worker can print its scoped key; remove it before logs become visible.
     safe_log = output.log_bytes.replace(key.value.encode(), b"[REDACTED_PAPER_KEY]")
     if validation_error:
@@ -296,6 +317,8 @@ def run_claimed_job(
         "cap_source": cap_source,
         "detail": validation_error or output.detail,
     }
+    if scientific_report is not None:
+        result["scientific_validation"] = {k: scientific_report.get(k) for k in ("schema_version", "decision", "submission_ready", "package_sha256", "source_bundle_sha256", "schema_sha256", "scientific_review_status", "review_accounting", "validation_report_sha256")}
     backend.complete_job(
         job["job_id"], worker_id=worker_id, lease_token=job["lease_token"],
         result=result, log_object_key=log_key,
@@ -324,6 +347,8 @@ def run_next_claimed_job(
     claimed_job: dict[str, Any] | None = None,
     expected_configuration_sha256: str | None = None,
     expected_rules_revision: int | None = None,
+    output_schema: str = "agent_v1",
+    scientific_validator: Callable | None = None,
 ) -> dict[str, Any] | None:
     """Lease one job and stage only its frozen PDF bytes on the worker."""
     claim_options = {"worker_id": worker_id, "lease_seconds": lease_seconds}
@@ -360,4 +385,5 @@ def run_next_claimed_job(
         dollar_limit=dollar_limit,
         key_lifetime_seconds=min(lease_seconds, 3600),
         max_inference_output_tokens=max_inference_output_tokens,
+        output_schema=output_schema, scientific_validator=scientific_validator,
     )

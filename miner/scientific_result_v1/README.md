@@ -89,7 +89,8 @@ A valid working extraction can explicitly declare incomplete table/source
 coverage. That is not a completed submission. Source fidelity, scientific
 attachment, terminal-core judgments, graphical precision, and undiscovered
 supplements require review; deterministic validation does not certify them.
-The reference runner refuses incomplete table coverage for Bronze delivery.
+The reference runner now requires the shared source-review gate before Bronze delivery.
+The miner report is diagnostic only; see [the shared validator](../../validator/scientific_result_v1/README.md).
 
 ## Benchmark the worked examples
 
@@ -118,8 +119,33 @@ Benchmark reports: [original DSPy run](README.dspy-benchmark.md) and
 ## Release work remaining
 
 - Benchmark source fidelity and extraction coverage before selecting a release.
-- Add a v1.1 downstream validator projection and competition JSON/CSV transport.
+- Validate live scientific-review performance and integrate compatible downstream competitive scoring.
+- Shared validation and opt-in competition JSON/CSV transport are implemented; see the validator guide.
 - Freeze exact parser dependencies/model assets and build a separate release lock.
 
-The current competition wheel continues to accept only `agent_v1`; v1.1 is an
-explicit reference CLI/development output mode, not an automatic worker upgrade.
+Existing competition profiles remain `agent_v1`. Scientific profiles now have an
+explicit builder and controller gate; this does not upgrade or deploy an active round.
+
+### Source-coverage audit (development profile v4)
+
+Before extracting fields, `CoveragePlanProgram` reviews the initial result plan
+against the supplied article and supplements. It returns a replacement plan with
+numbered source-block anchors for every finding. Python verifies the anchors,
+attaches the original source text and checks that result IDs are consecutive. This verifies the location
+of evidence, not the correctness of its interpretation. No worked examples enter
+this stage. The audit separates independent findings while retaining supporting
+statistics with their comparison, and records unrecovered plot regions, unreadable
+content and unavailable supplements in `source_coverage_plan.json`.
+
+Unavailable supplements keep table coverage incomplete even if a subsequent
+source-table audit finds all tables in the main article. Other unrecovered regions
+are disclosed in extraction notes. Digitized fields without numerical content and
+literal placeholders such as `digitized curve` or `see figure` fail content checks.
+This does not enable chart digitization: no graphical coordinates are recovered
+by the text-only profile. Real digitization still requires a separately tested
+image-processing stage and provenance review.
+
+This profile changes planning and invalidates older extraction-stage caches. Its
+[live comparison](README.dspy-coverage-benchmark.md) has mixed results, including known
+mathematical transcription errors and a missed external-source declaration. Keep this
+profile experimental; passing validation is not certification of scientific accuracy.

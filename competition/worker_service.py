@@ -60,6 +60,7 @@ class CompetitionWorkerCoordinator:
     keys: Any = field(repr=False)
     execution: Any = field(repr=False)
     logs: Any = field(repr=False)
+    scientific_validator: Any = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if (
@@ -112,6 +113,8 @@ class CompetitionWorkerCoordinator:
             dollar_limit=float(policy["dollar_limit_usd"]),
             lease_seconds=policy["lease_seconds"],
             max_inference_output_tokens=policy["max_inference_output_tokens"],
+            output_schema=policy.get("output_schema", "agent_v1"),
+            scientific_validator=self.scientific_validator,
             expected_configuration_sha256=self.evaluation.configuration_sha256,
             expected_rules_revision=getattr(self.evaluation, "rules_revision", 1),
             **({"claimed_job": claimed_job} if claimed_job is not None else {}),

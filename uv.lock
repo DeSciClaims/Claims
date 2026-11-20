@@ -520,6 +520,9 @@ scientific-results = [
     { name = "docling" },
     { name = "jsonschema" },
 ]
+scientific-validation = [
+    { name = "jsonschema" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -527,6 +530,7 @@ requires-dist = [
     { name = "docling", marker = "extra == 'scientific-results'", specifier = ">=2,<3" },
     { name = "dspy", specifier = "==3.1.2" },
     { name = "jsonschema", marker = "extra == 'scientific-results'", specifier = ">=4,<5" },
+    { name = "jsonschema", marker = "extra == 'scientific-validation'", specifier = ">=4,<5" },
     { name = "langchain" },
     { name = "langchain-openai" },
     { name = "lxml" },
@@ -542,7 +546,7 @@ requires-dist = [
     { name = "requests" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.16.8" },
 ]
-provides-extras = ["scientific-results", "dev"]
+provides-extras = ["scientific-validation", "scientific-results", "dev"]
 
 [[package]]
 name = "click"

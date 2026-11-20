@@ -74,14 +74,14 @@ def test_raw_page_ocr_is_retained_even_when_layout_omits_figure_text(tmp_path):
 
 
 def test_schema_loader_finds_wheel_data_installation(monkeypatch, tmp_path):
-    import miner.scientific_result_v1.schema as module
+    import validator.scientific_result_v1.structural as module
 
     schema = module.load_schema()
     installed = tmp_path / "share/claims/schemas/scientific-result-extraction/v1.1/schema.json"
     installed.parent.mkdir(parents=True)
     import json
     installed.write_text(json.dumps(schema))
-    monkeypatch.setattr(module, "__file__", str(tmp_path / "site-packages/miner/scientific_result_v1/schema.py"))
+    monkeypatch.setattr(module, "__file__", str(tmp_path / "site-packages/validator/scientific_result_v1/structural.py"))
     monkeypatch.setattr(module.sys, "prefix", str(tmp_path))
     assert module.schema_path() == installed
     assert module.load_schema() == schema

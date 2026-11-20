@@ -17,6 +17,7 @@ from .docling_source import parse_pdf
 from .schema import load_schema, schema_path
 from .validation import recompute_closures, validate_package, objects, closure_sets, resolve_terminal_comparison_cores
 from .table_layout import source_rows
+from .coverage import placeholder_issues
 
 
 class Runtime(Protocol):
@@ -94,7 +95,7 @@ def _stage_contract(contract: dict, stage: str) -> dict:
 
 def _addressable_statistics(batch: dict) -> list[dict]:
     """Reject opaque bags of statistics while permitting addressable collections."""
-    errors = []
+    errors = placeholder_issues(batch)
     names = {"mean", "sem", "se", "standard_error", "standard_deviation", "sd",
              "p_value", "pvalue", "confidence_interval", "odds_ratio", "relative_change"}
     for result in batch.get("results", []):
@@ -261,7 +262,7 @@ def extract_pdf(
     schema = load_schema()
     for key, value in (("PaperId", paper_id), ("ExtractionId", extraction_id)):
         Draft202012Validator(schema["$defs"][key]).validate(value)
-    identity = {"paper_id": paper_id, "extraction_id": extraction_id, "extraction_profile": "staged-contract-v2",
+    identity = {"paper_id": paper_id, "extraction_id": extraction_id, "extraction_profile": "source-coverage-v4",
                 "runtime": getattr(runtime, "runtime_name", type(runtime).__name__),
                 "runtime_version": getattr(runtime, "runtime_version", None),
                 "model": getattr(runtime, "model", type(runtime).__name__), "vision": vision,
@@ -373,7 +374,9 @@ def extract_pdf(
     inventory = _call(runtime, stages, "inventory", SYSTEM + """
 First create a comprehensive source inventory and extraction plan. Allocate the given
 paper and extraction IDs exactly; use assigned source IDs. Put shared samples, protocol,
-and parameters in shared_context, with one stable ID per object. Plan a separate R record
+and parameters in shared_context, with one stable ID per object.
+Use the controlled label group for population/cohort descriptions; population is context,
+not a valid field label. Use intervention for treatments and group for comparator groups. Plan a separate R record
 for each locally meaningful comparison, descriptive result, equation, or numerical series.
 For numerical comparisons, allocate one R per outcome, timepoint or interval, contrast,
 and model variant. A table row containing a distinct comparison gets its own R; do not
@@ -403,6 +406,17 @@ Record availability statements and printed artifact links when present.
 """, shared, inventory_schema, max_attempts)
     if inventory["paper"]["id"] != paper_id or inventory["extraction"]["id"] != extraction_id:
         raise ValueError("Inventory changed assigned paper/extraction identity")
+    from .coverage import review_plan
+    coverage = review_plan(inventory["result_plan"], documents=documents, prefix=prefix,
+                           runtime=runtime, directory=stages, attempts=max_attempts)
+    dump(output_dir / "source_coverage_plan.json", coverage)
+    inventory["result_plan"] = coverage["result_plan"]
+    if any(gap["kind"] == "unavailable_supplement" for gap in coverage["unrecovered_regions"]):
+        inventory["extraction"]["table_coverage"]["status"] = "incomplete"
+        inventory["extraction"]["table_coverage"]["notes"] = "Required supplementary source unavailable; its numerical-table inventory cannot be verified. " + inventory["extraction"]["table_coverage"].get("notes", "")
+    if coverage["unrecovered_regions"]:
+        gaps = "; ".join(f"{gap['source_id']} {gap['locator']}: {gap['reason']}" for gap in coverage["unrecovered_regions"])
+        inventory["extraction"]["notes"] = inventory["extraction"].get("notes", "") + " Unrecovered source content: " + gaps
     planned_ids = [item["id"] for item in inventory["result_plan"]]
     if len(planned_ids) != len(set(planned_ids)):
         raise ValueError("Duplicate result plan IDs")
@@ -454,6 +468,13 @@ own labelled field ID. Do not hide these statistics in a dictionary labelled oth
 A genuine vector or collection may remain structured, with meaningful labels and
 addressable child fields for scientifically distinct components when needed. Distinguish
 reported values from computations and never invent an unreported statistic.
+Follow the assigned plan evidence and scope: transcribe each source-supported numerical
+finding, including supplementary derivation steps and study-quality or heterogeneity
+quantities. Do not substitute a general synopsis for the planned finding. Captions alone
+cannot establish curve coordinates. Never emit placeholder values such as "digitized curve"
+or "see figure". Only mark origin digitized when actual numerical coordinates were recovered
+from a visible image by an enabled image-processing stage; text-only extraction cannot
+claim this. Report unrecovered graphical content in extraction notes instead.
 Record source snippets and precise locators. Add all necessary
 scientific relationships with explicit reviewed closure_direction; table_for links use
 none. Choose source-supported local core_ids. When the R comparison is the core, link it to
@@ -495,6 +516,10 @@ necessary relationships between shared-context fields when supported by the sour
         audit_missing_tables(payload, documents=documents, source_images=source_images,
                              runtime=runtime, directory=output_dir, attempts=max_attempts)
         planned_ids = [record["id"] for record in payload["results"]]
+    # Source-table audits must not erase an independently recorded missing source.
+    if any(gap["kind"] == "unavailable_supplement" for gap in coverage["unrecovered_regions"]):
+        payload["extraction"]["table_coverage"]["status"] = "incomplete"
+        payload["extraction"]["table_coverage"]["notes"] = "Required supplement unavailable; numerical-table inventory unverified. " + payload["extraction"]["table_coverage"].get("notes", "")
     return finalize_extraction(payload, output_dir, runtime=runtime, documents=documents,
                                source_images=source_images, max_attempts=max_attempts)
 
@@ -599,6 +624,12 @@ from local results or context.
         "path": {"type": "string", "pattern": r"^/(?!results/[0-9]+/closure/(?:member_ids|reference_ids)(?:/|$))"}, "value": {}},
         "required": ["op", "path"], "additionalProperties": False}}},
         "required": ["edits"], "additionalProperties": False}
+    csv_exports = {}
+    for table in payload["tables"]:
+        name = table["csv_file"]
+        path = output_dir / name
+        if Path(name).name == name and path.is_file() and not path.is_symlink() and path.resolve().parent == output_dir.resolve():
+            csv_exports[table["id"]] = path.read_bytes().decode("utf-8")
     for attempt in range(max_attempts - 1):
         if not issues:
             break
@@ -617,6 +648,9 @@ from local results or context.
             return problems
         repair = _call(runtime, stages, f"repair-{attempt + 1}", SYSTEM + """
 Repair the listed deterministic issues through JSON-pointer add/replace/remove edits.
+For a wrong table reference, use the actual delivered csv_exports and source context to
+locate the correct row/column/component. CSV data rows are one-based after the header.
+Never change a scientific value merely to make it agree with an incorrect cell reference.
 Do not delete valid scientific content to pass validation. Preserve all scientific IDs,
 source snippets, values, and assigned paper/extraction identities. Do not edit paper,
 sources, tables, schema_version, or extraction.id. Never edit closure.member_ids or
@@ -645,7 +679,7 @@ through describes (field -> R, source_to_target) when the source justifies it. E
 uncertainty and p-value links may then complete its graph. This is scientific linking,
 not permission to connect every stored field by containment. If unsupported, keep review.
 Return edits only, with paths relative to the extraction object.
-""", {"extraction": payload, "issues": issues, "documents": documents, "source_images": source_images,
+""", {"extraction": payload, "issues": issues, "documents": documents, "source_images": source_images, "csv_exports": csv_exports,
        "object_paths": _object_paths(payload),
        "available_optional_paths": {"/closure_review": "present" if "closure_review" in payload else "absent; create array with add", **{
            f"/results/{index}/closure/notes": "present" if "notes" in result["closure"] else "absent; use add"
@@ -660,13 +694,13 @@ Return edits only, with paths relative to the extraction object.
                 dump(output_dir / f"core_projection_after_repair_{attempt + 1}.json", core_projection)
             recompute_closures(payload)
         issues = validate_package(payload, output_dir)
-    dump(output_dir / "validation_report.json", {
-        "valid": not issues, "issues": issues,
-        "submission_ready": not issues and payload["extraction"]["table_coverage"]["status"] == "complete"
-                            and all(result["closure"]["status"] == "closed" for result in payload["results"]),
-        "review_required_results": [result["id"] for result in payload["results"] if result["closure"]["status"] != "closed"],
-        "source_review_required": ["Numerical fidelity and source coverage", "Scientific attachment and terminal core judgments", "Graphical digitization where applicable"],
-    })
+    dump(output_dir / "working_extraction.json", payload)
+    if not issues:
+        dump(output_dir / "extraction.json", payload)
+    from validator.scientific_result_v1.engine import validate as validate_scientific
+    report = validate_scientific(payload, output_dir, expected_paper_id=payload["paper"]["id"],
+                                 scope="miner_diagnostic", report_dir=output_dir / "validator-report")
+    dump(output_dir / "validation_report.json", report)
     dump(output_dir / "working_extraction.json", payload)
     from .accounting import ledger_events, summarize_calls
     events = ledger_events(output_dir)
