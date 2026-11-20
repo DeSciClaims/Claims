@@ -436,3 +436,76 @@ def test_small_vm_does_not_lease_jobs_waiting_inside_the_thread_pool(monkeypatch
         return {"status": "completed"}
     monkeypatch.setattr("competition.production_worker_service.run_production_paper", run)
     assert len(worker.run_available()) == 6
+
+
+@pytest.mark.parametrize('code, tries', [(408, 4), (429, 4), (503, 4), (401, 1)])
+def test_read_only_control_retries_are_bounded_and_do_not_log_private_errors(monkeypatch, caplog, code, tries):
+    from urllib.error import HTTPError
+    worker = batch_worker()
+    calls = []
+    def unavailable(_):
+        calls.append(1)
+        try:
+            raise HTTPError('https://private-url', code, 'private-response', {}, None)
+        except HTTPError as error:
+            raise RuntimeError('private-token') from error
+    worker.backend.list_pending_rounds = unavailable
+    monkeypatch.setattr('competition.production_worker_service.sleep', lambda _: None)
+    with pytest.raises(RuntimeError):
+        worker._parallel_limit()
+    assert len(calls) == tries
+    assert 'private-token' not in caplog.text
+    assert 'private-url' not in caplog.text
+    assert 'private-response' not in caplog.text
+    if tries > 1:
+        assert 'competition_activity' in caplog.text and f'HTTP {code}' in caplog.text
+    assert worker.backend.claims == []
+
+
+def test_transient_capacity_probe_failure_does_not_stop_rolling_admissions(monkeypatch):
+    from competition.worker_errors import WorkerTransportError
+    worker = batch_worker(size=8)
+    original = worker.execution.capacity
+    calls = []
+    def capacity():
+        calls.append(1)
+        if len(calls) == 2:
+            raise WorkerTransportError('ssh_failed')
+        return original()
+    worker.execution.capacity = capacity
+    monkeypatch.setattr('competition.production_worker_service.sleep', lambda _: None)
+    monkeypatch.setattr('competition.production_worker_service.run_production_paper',
+                        lambda *a, **kw: {'status': 'completed'})
+    assert len(worker.run_available()) == 8
+    assert len(worker.backend.claims) == 8
+
+
+def test_claim_failure_preserves_safe_operation_and_cause_without_retrying_mutation(monkeypatch):
+    from urllib.error import URLError
+    worker = batch_worker()
+    calls = []
+    def claim(**kw):
+        calls.append(1)
+        try:
+            raise URLError('private network details')
+        except URLError as error:
+            raise RuntimeError('private message') from error
+    worker.backend.claim_production_job = claim
+    with pytest.raises(RuntimeError, match='claim_job:RuntimeError/URLError') as error:
+        worker.run_available()
+    assert len(calls) == 1
+    assert 'private' not in str(error.value)
+
+
+def test_malformed_worker_capacity_is_not_retried(monkeypatch):
+    worker = batch_worker()
+    calls = []
+    def bad():
+        calls.append(1)
+        return {'schema_version': 'unexpected'}
+    worker.execution.capacity = bad
+    monkeypatch.setattr('competition.production_worker_service.sleep',
+                        lambda _: pytest.fail('policy failures are not transient'))
+    with pytest.raises(ValueError, match='memory capacity'):
+        worker.run_available()
+    assert len(calls) == 1 and worker.backend.claims == []
