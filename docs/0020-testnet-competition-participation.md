@@ -1,6 +1,6 @@
 # Participate in testnet competitions
 
-**Scientific schema v1.1 testnet is open:** [`round_20261122T151842Z_testnet`](https://dashboard.claims111.ai/competition/round_20261122T151842Z_testnet). Submissions close **22 November 2026 at 15:18:42 UTC**. The round uses the production API, testnet subnet 530 and the reference miner as its baseline.
+**Scientific schema v1.1 testnet is open:** [`round_20261122T151842Z_testnet`](https://dashboard.claims111.ai/competition/round_20261122T151842Z_testnet). Submissions close **22 November 2026 at 11:00 UTC**. The round uses the production API, testnet subnet 530 and the reference miner as its baseline.
 
 Build a Python extraction package, submit it with a registered testnet hotkey, and commit its identity on-chain. Claims runs it on papers released after the submission deadline. You do not need to operate an extraction server or provide an OpenRouter key.
 
@@ -13,8 +13,8 @@ Build a Python extraction package, submit it with a registered testnet hotkey, a
 | Public round API | `https://api.claims111.ai` |
 | Signed uploads and logs | `https://artifacts.claims111.ai` |
 | Dashboard | [Testnet competitions](https://dashboard.claims111.ai/competition?network=testnet) |
-| Submission window | **18 hours**, opened 21 November at 21:18 UTC |
-| Current submission deadline | **22 November 2026, 15:18:42 UTC** |
+| Submission window | Opened 21 November at 21:18 UTC; cutoff revised to 11:00 UTC on 22 November |
+| Current submission deadline | **22 November 2026, 11:00 UTC** |
 | Evaluation stages | One flat **10-paper** stage (`week_one`); no prescreen or screen |
 
 Testnet competitions use the production Claims services. Select `network=testnet` in API queries and signed requests, and use testnet subnet 530 for chain operations.
