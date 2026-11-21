@@ -1,6 +1,6 @@
-# Participate in daily testnet competitions
+# Participate in testnet competitions
 
-**Testnet competitions are paused during the mainnet launch.** The November 9 testnet intake was cancelled; no new daily testnet rounds are being opened. Completed results and private log retrieval remain available. The settings below describe the configured testnet format.
+**Scientific schema v1.1 testnet is open:** [`round_20261122T151842Z_testnet`](https://dashboard.claims111.ai/competition/round_20261122T151842Z_testnet). Submissions close **22 November 2026 at 15:18:42 UTC**. The round uses the production API, testnet subnet 530 and the reference miner as its baseline.
 
 Build a Python extraction package, submit it with a registered testnet hotkey, and commit its identity on-chain. Claims runs it on papers released after the submission deadline. You do not need to operate an extraction server or provide an OpenRouter key.
 
@@ -13,13 +13,13 @@ Build a Python extraction package, submit it with a registered testnet hotkey, a
 | Public round API | `https://api.claims111.ai` |
 | Signed uploads and logs | `https://artifacts.claims111.ai` |
 | Dashboard | [Testnet competitions](https://dashboard.claims111.ai/competition?network=testnet) |
-| Submission window | **12:00 UTC to 12:00 UTC the following day** |
-| Daily submission deadline | **12:00 UTC (noon)** |
-| Evaluation stages | Prescreen **2** papers → screen **5** → final **10** |
+| Submission window | **18 hours**, opened 21 November at 21:18 UTC |
+| Current submission deadline | **22 November 2026, 15:18:42 UTC** |
+| Evaluation stages | One flat **10-paper** stage (`week_one`); no prescreen or screen |
 
 Testnet competitions use the production Claims services. Select `network=testnet` in API queries and signed requests, and use testnet subnet 530 for chain operations.
 
-These are the defaults as of 3 November 2026. Each round's published rules control its actual deadlines, models, budgets and stages. At each noon deadline, the controller locks that round’s submissions and opens the next day’s round, while evaluation continues separately. The normal submission window is 24 hours; initial startup requires at least six hours remaining before the selected deadline. Evaluation runs in deadline order, so a submitted round can queue while an earlier one finishes.
+The published rules control deadlines, models, budgets and stages. This first scientific round has no incumbent and uses one shared paper sample for all qualified challengers. Evaluation follows the submission cutoff, chain reveal and automatic package preflight. Results appear after evaluation and signed publication. Further daily intakes are not enabled automatically.
 
 ## 1. Register your hotkey
 
@@ -44,7 +44,7 @@ Each daily round has a submission window **before evaluation begins**:
 
 When submissions open, the controller creates the round with its own `round_id` and publishes its fixed rules and deadlines. During this window, `status: "open"` means **accepting submissions**; the evaluation has not started.
 
-The preceding round can still be evaluating while this submission window is open. Models, budgets and both the launch and incumbent stage plans are fixed before submissions. Before evaluation, Claims binds the baseline to the preceding signed, activated result; the exact package is recorded separately in a public evaluation-binding receipt.
+Models, budgets, the reference baseline and the flat stage plan are fixed before submissions. The reference package identity is included in this round’s published rules. Later rounds that use a preceding winner publish its baseline binding separately.
 
 Your upload must include this `round_id` so Claims can associate the package with the correct submission deadline, rules and eventual results. Use the API to get the round currently accepting submissions:
 
@@ -64,22 +64,27 @@ Finalize your upload before `deadline_at`, and have the chain commitment **inclu
 
 ## 3. Build your package
 
-Start from the [sample extraction package](https://github.com/DeSciClaims/claims-miner-package), which includes build instructions, a request example and a manifest. Submit a wheel containing source, or a supported `tar.gz` source archive. Your declared `module:function` entrypoint receives:
+Start from the [scientific reference miner](https://github.com/DeSciClaims/claims-reference-miner#scientific-result-schema-v11) and its [`profiles/scientific-v1.1.json`](https://github.com/DeSciClaims/claims-reference-miner/blob/main/profiles/scientific-v1.1.json) build profile. The older sample package requires an updated output contract for this round. Submit a wheel containing source, or a supported `tar.gz` source archive. Your declared `module:function` entrypoint receives:
 
 ```text
 --request /path/to/request.json --output /path/to/output.json
 ```
 
-It must write one `agent_v1` JSON artifact for the supplied paper. You may use your own PDF extractor and make multiple permitted model calls. Follow the existing [artifact and source-reference schema](./0014-agent-v1-miner-system.md); ground claims and evidence in the supplied PDF.
+Produce [schema v1.1 extraction JSON](../schemas/scientific-result-extraction/v1.1/schema.json) and separate table CSV files. Return the scientific artifact envelope (`claims_scientific_package_v2`, with `extraction_json` and `csv_files`) as the reference entrypoint does; the controller materializes and validates those original files. See the [validator/output contract](../validator/scientific_result_v1/README.md).
 
-The current worker runs **Python 3.12.3, Linux x86_64**, with an offline wheelhouse. It includes the sample package's `pydantic`, `pypdf` and `fonttools` dependencies. Additional dependencies must be available offline and compatible with the worker. The job cannot download packages, call arbitrary internet services or access storage directly.
+The reference package runs Docling inside the worker with full-page OCR and table-structure extraction, then uses DSPy for extraction. Challengers may use another parser. The validator independently parses the supplied PDF with Docling. Only the supplied main PDF is in scope for this round; unsupplied supplements are not scored.
+
+The current worker runs **Python 3.12, Linux x86_64**, with an offline wheelhouse. It includes `pydantic`, `pypdf`, `fonttools`, DSPy and Docling dependencies, plus offline OCR/table-parser weights. Additional dependencies must be available offline and compatible with the worker. The job cannot download packages, call arbitrary internet services or access storage directly.
 
 Update your manifest's team ID, entrypoint, real package filename, model IDs, source declaration and production-use licence declaration. The current extraction whitelist is:
 
 - `deepseek/deepseek-v4-flash-0731`
-- `qwen/qwen3-32b`
+- `minimax/minimax-m3.1-flash`
+- `qwen/qwen3.8-flash`
+- `z-ai/glm-5.3-flash`
+- `moonshotai/kimi-k2.5`
 
-Newly created testnet rounds use **$0.10 per package per paper**, a **1,000,000 input-plus-output token ceiling**, and **8,192 maximum output tokens per call**. Already-open rounds retain their published limits, including the earlier 800,000-token ceiling; check your round's `/rules`. The effective challenger token allowance is 1.5× baseline usage, bounded by the published ceiling; the ceiling is used when usable baseline usage is unavailable. These limits cover package inference, separately from validator judging.
+Newly created testnet rounds use **$0.10 per package per paper**, a **2,000,000 input-plus-output token ceiling**, and **32,768 maximum output tokens per call**. Already-open rounds retain their published limits, including the earlier 800,000-token ceiling; check your round's `/rules`. The effective challenger token allowance is 1.5× baseline usage, bounded by the published ceiling; the ceiling is used when usable baseline usage is unavailable. These limits cover package inference, separately from validator judging.
 
 Read the actual allowance from `request.inference.budget`: `token_limit`, `dollar_limit_usd`, `remaining_tokens` and `remaining_dollar_limit_usd`. Remaining amounts are a snapshot at attempt start; retries share the original paper budget. The worker supplies `CLAIMS_INFERENCE_BASE_URL` and a paper-scoped `CLAIMS_INFERENCE_TOKEN`. Never log the token. The sample handles Bifrost's `openrouter/` wire-model prefix; keep plain catalog IDs in the manifest. See [inference details](./submission.md#worker-inference).
 
