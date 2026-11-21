@@ -23,8 +23,11 @@ page images, visual inspection, crop coordinates and image-capable routes are no
 required. Do not request an original-page crop or require plot-derived quantities
 absent from the captured Docling output. Parser omissions and OCR errors are an
 explicit limitation of this policy, not something the judge may invent away.
-LOSSLESS ASSERTION TRANSPORT: a packet marked assertion_encoding=claims_property_pairs_v2
-uses each object's/relation's properties as ordered [name, original_json_literal] pairs.
+LOSSLESS ASSERTION TRANSPORT: a packet marked assertion_encoding=claims_property_columns_v3
+uses ordered [name, original_json_literal] pairs unless property_names_ref is present.
+With property_names_ref=N0, properties is an ordered literal-value vector: zip it
+with packet.property_name_sets.N0 to recover exactly the original property pairs.
+The name set contains the literal original property names in their original order.
 A null pair value means ABSENT; a string containing the JSON literal null means PRESENT
 with a null value. All other pair strings preserve the exact original JSON literal,
 including numbers, operators, units, nested context and quotes.

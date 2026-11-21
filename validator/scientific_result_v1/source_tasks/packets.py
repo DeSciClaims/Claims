@@ -23,6 +23,16 @@ from .operations import Hold
 CONTEXT_HEADER_PROPERTIES = frozenset({'id','field','field_group','label','units','measure','context','origin','parent_field_id','field_path','title','name','question','investigation','group_id'})
 
 
+def context_property_names(obj,refs):
+    names=set(CONTEXT_HEADER_PROPERTIES)
+    prefix=obj.original_ref.pointer+'/'
+    for ref in refs:
+        if ref.kind=='json' and ref.pointer.startswith(prefix):
+            key=ref.pointer[len(prefix):].split('/',1)[0].replace('~1','/').replace('~0','~')
+            if key!='fields':names.add(key)
+    return names
+
+
 FIELD_PROPERTIES = (
     "field",
     "field_group",
@@ -352,6 +362,8 @@ class Index:
                         raise ValueError("Unknown requirement")
                     for ref in item.output_refs:
                         self.resolve(ref)
+                        if task.scope_kind=='SOURCE_CONTEXT' and ref.kind=='json' and ref.pointer in self.components:
+                            raise ValueError('Context correspondence must cite original properties, not complete object/closure roots')
                 assigned=[ref for item in response.matches for ref in item.output_refs]
                 if response.state=='ABSENT' and assigned:raise ValueError('ABSENT correspondence cannot have matched references')
                 if response.state in {'MATCHED','AMBIGUOUS'} and not assigned:raise ValueError('Matched correspondence needs requirement references')
@@ -577,7 +589,15 @@ class Index:
         # are explicitly partial and cannot supply an unrendered numeric value.
         header_ids={endpoint for edge in relevant for endpoint in (edge.source_id,edge.target_id)}-selected if context_mode else set()
         header_ids.update(family_context-selected)
-        context_headers=[o.model_copy(update={'properties':[p for p in o.properties if p.name in CONTEXT_HEADER_PROPERTIES]})
+        if context_mode:
+            for obj in objects:
+                prefix=obj.original_ref.pointer+'/'
+                own=[r for r in refs if r.kind=='json' and (r.pointer==obj.original_ref.pointer or (r.pointer.startswith(prefix) and not r.pointer[len(prefix):].startswith('fields/')))]
+                full=any(r.pointer==obj.original_ref.pointer or r.pointer==prefix+'value' or r.pointer.startswith(prefix+'value/') for r in own)
+                if not full and (own or obj.kind=='RESULT'):header_ids.add(obj.object_id)
+            objects=[o for o in objects if o.object_id not in header_ids]
+        context_headers=[o.model_copy(update={'properties':[p for p in o.properties if p.name in
+                (context_property_names(o,refs) if context_mode else CONTEXT_HEADER_PROPERTIES)]})
             for o in self.objects if o.object_id in header_ids]
         closures=active_closures
         table_ids={o.object_id for o in objects if o.kind=='TABLE'}

@@ -872,11 +872,13 @@ def test_lossless_judge_transport_preserves_literals_absence_edges_and_sidecars(
     wire=judge_packet(packet)
     assert audit_packet(wire)==packet
     assert len(canonical(wire))<len(canonical(packet))*.65
-    assert any(literal=='12.0000' for node in wire['objects'] for _,literal in node['properties'])
-    assert any(literal is None for node in wire['objects'] for _,literal in node['properties'])
+    pairs=lambda node:list(zip(wire['property_name_sets'][node['property_names_ref']],node['properties'])) if 'property_names_ref' in node else node['properties']
+    assert any(literal=='12.0000' for node in wire['objects'] for _,literal in pairs(node))
+    assert any(literal is None for node in wire['objects'] for _,literal in pairs(node))
     assert any(node['property_ref_overrides'] for node in wire['objects'])  # Root sidecar pointers.
-    wire['objects'][0]['properties'].pop()
-    assert audit_packet(wire)!=packet  # Replay checks equality, not just decoding success.
+    node=next(o for o in wire['objects'] if 'property_names_ref' in o)
+    node['properties'].pop()
+    with pytest.raises(ValueError,match='mismatched value count'):audit_packet(wire)
 
 
 def test_archive_packet_keeps_row_links_without_all_scientific_closures(generated):
@@ -1092,7 +1094,8 @@ def test_pooled_literals_preserve_exact_original_strings_and_reject_unknown_refs
     assert literal in wire['literal_pool'].values()
     assert audit_packet(wire)==packet
     damaged=copy.deepcopy(wire);node=damaged['objects'][0]
-    node['properties'][0][1]={'literal_ref':'not-retained'}
+    if 'property_names_ref' in node:node['properties'][0]={'literal_ref':'not-retained'}
+    else:node['properties'][0][1]={'literal_ref':'not-retained'}
     with pytest.raises(ValueError,match='Unknown original literal'):
         audit_packet(damaged)
 
@@ -1152,3 +1155,54 @@ def test_parallel_matching_preserves_complete_search_order_and_failed_attempts(g
     assert wave<=state.peak<=4
     assert len(state.seen)==len(index.components)
     assert set(state.seen)==set(index.components)
+
+
+def test_property_scoped_context_keeps_matched_metadata_without_outcome_values(generated):
+    from validator.scientific_result_v1.source_tasks.contracts import JsonRef
+    from validator.scientific_result_v1.source_tasks.transport import judge_packet,audit_packet
+    path,_,_=generated;index=Index(Package(path,'a'));store=Store(path.parent/'property-context')
+    field=next(o for o in index.objects if o.kind=='FIELD' and any(p.name=='value' and p.present for p in o.properties))
+    descriptor=next(p for p in field.properties if p.name=='field')
+    task,base=packet_case(index,store,refs=[descriptor.original_ref]);task=task.model_copy(update={'scope_kind':'SOURCE_CONTEXT'})
+    packet=index.packet(task,task.binding,base.match,'5'*64,[])
+    header=next(o for o in packet.context_headers if o.object_id==field.object_id)
+    assert descriptor in header.properties
+    assert not any(p.name=='value' for p in header.properties)
+    assert field.object_id not in {o.object_id for o in packet.objects}
+    assert not packet.closures
+    assert audit_packet(judge_packet(packet))==packet
+    # An actual source-context input quantity remains a full original field.
+    value=next(p for p in field.properties if p.name=='value')
+    match=base.match.model_copy(update={'candidate_refs':[value.original_ref]})
+    quantity=index.packet(task,task.binding,match,'5'*64,[])
+    assert field in quantity.objects
+    assert not any(o.object_id==field.object_id for o in quantity.context_headers)
+
+
+def test_property_name_templates_roundtrip_and_reject_invalid_templates(generated):
+    import copy
+    from validator.scientific_result_v1.source_tasks.transport import judge_packet,audit_packet
+    path,_,_=generated;index=Index(Package(path,'a'));store=Store(path.parent/'property-names')
+    _,packet=packet_case(index,store,refs=[o.original_ref for o in index.objects if o.kind in {'RESULT','FIELD'}])
+    wire=judge_packet(packet)
+    assert wire['property_name_sets'] and audit_packet(wire)==packet
+    corrupted=copy.deepcopy(wire)
+    node=next(o for o in corrupted['objects'] if 'property_names_ref' in o)
+    node['property_names_ref']='not-retained'
+    with pytest.raises(ValueError,match='Unknown property-name set'):audit_packet(corrupted)
+
+
+def test_keyed_matcher_wire_requires_all_requirements_and_preserves_empty_answers():
+    from validator.scientific_result_v1.source_tasks.response_schema import response_schema
+    from validator.scientific_result_v1.source_tasks.runtime import StrictAdapter
+    from validator.scientific_result_v1.source_tasks.contracts import MatchResponse
+    import jsonschema
+    data={'task':{'task_id':'task','requirements':[{'requirement_id':'r1'},{'requirement_id':'r2'}]},'output_alias':'a','components':{},'inspection_component_ids':[]}
+    schema=response_schema(MatchResponse,data);adapter=StrictAdapter(schema)
+    answer=dict(task_id='task',output_alias='a',state='ABSENT',inspected_component_ids=[],matches={'r2':[],'r1':[]},explanation='Both requirements absent in this batch')
+    jsonschema.validate(answer,schema)
+    result=MatchResponse.model_validate(adapter.parse(None,json.dumps(answer)))
+    assert [m.requirement_id for m in result.matches]==['r1','r2']
+    assert all(m.output_refs==[] for m in result.matches)
+    del answer['matches']['r2']
+    with pytest.raises(ValueError,match='every requirement exactly once'):adapter.parse(None,json.dumps(answer))

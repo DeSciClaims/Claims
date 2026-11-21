@@ -26,10 +26,18 @@ def response_schema(response_type,data):
         ids=data.get('inspection_component_ids',list(data.get('components',{})))
         props['inspected_component_ids']['const']=ids
         required=data.get('required_requirement_ids',[r['requirement_id'] for r in task.get('requirements',[])])
-        props['matches'].update(minItems=len(required),maxItems=len(required))
+        # A keyed object enforces exactly one provider answer per requirement,
+        # without unsupported array-uniqueness grammar or duplicate-ID slots.
+        props['matches']={'type':'object','properties':{key:{'type':'array','items':{'$ref':'#/$defs/JsonRef'}} for key in required},'required':required,'additionalProperties':False}
         defs['RequirementMatch']['properties']['requirement_id']['enum']=required
         defs['RequirementMatch']['properties']['output_refs']['items']={'$ref':'#/$defs/JsonRef'}
         if 'JsonRef' in defs and data.get('output_alias') is not None:defs['JsonRef']['properties']['output_alias']['const']=data['output_alias']
+        if task.get('scope_kind')=='SOURCE_CONTEXT' and 'JsonRef' in defs:
+            nodes=[*data.get('components',{}).values(),*data.get('context_headers',{}).values()]
+            pointers=sorted({p['original_ref']['pointer'] for node in nodes for p in node.get('properties',[]) if p.get('present') and p.get('original_ref')})
+            if pointers:defs['JsonRef']['properties']['pointer']['enum']=pointers
+            else:
+                for specification in props['matches']['properties'].values():specification['maxItems']=0
         if data.get('scan_scope')=='TABLE_IDENTITY_ONLY':
             defs['JsonRef']['properties']['pointer']['enum']=sorted(data['components'])
         return schema

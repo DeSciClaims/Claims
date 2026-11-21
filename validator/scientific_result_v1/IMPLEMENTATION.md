@@ -359,3 +359,12 @@ survive a failed batch; no incomplete search becomes absence. All 133 tests pass
 The r6 run resolved packet/table holds and scored Shukla; Genther reached the
 unchanged 30-minute generation deadline. The fresh r7 run checks this scheduling
 correction without raising evidence, request, retry, or deadline limits.
+
+The property-scope revision has 136 passing regression tests. SOURCE_CONTEXT
+matches now cite original properties and retain only necessary original scope plus
+all matched metadata. Actual input values remain complete fields. Lossless transport
+v3 factors repeated ordered property-name sets and preserves exact round-tripping.
+A complete provider matches map prevents duplicate/missing requirement slots; the
+strict adapter decodes it without adding any correspondence. The r7 scheduling
+change met the deadline, but new scope/packet and response-contract cases remained;
+these cases are retained and rechecked before the next full verification.

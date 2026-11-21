@@ -464,7 +464,7 @@ class SourceContextRequested(Exception):
     def __init__(self, requests):self.requests=requests
 
 
-SOURCE_REQUIREMENT_POLICY = 'Preserve each coherent parent card and all its required scientific information. Within a card, use a distinct requirement for each independently reported condition-specific quantity or test. Do not bundle several independent times, groups or contrasts into one requirement merely because one sentence reports them together. Keep interval endpoints in one interval requirement, and retain genuinely joint/multivariate findings as joint. Each independent effect/estimate and its uncertainty or p-value must be assignable to the same scientific review group. This changes requirement granularity within the parent card, not source facts or scoring weights. Independently review this equivalence against the source.'
+SOURCE_REQUIREMENT_POLICY = 'Preserve each coherent parent card and all its required scientific information. Within a card, use a distinct requirement for each independently reported condition-specific quantity or test. Do not bundle several independent times, groups or contrasts into one requirement merely because one sentence reports them together, including qualitative significance/null statements spanning independent comparisons. Keep interval endpoints in one interval requirement, and retain genuinely joint/multivariate findings as joint. Each independent effect/estimate and its uncertainty or p-value must be assignable to the same scientific review group. This changes requirement granularity within the parent card, not source facts or scoring weights. Independently review this equivalence against the source.'
 
 
 def selected_cards(ops, tile, binding, evidence, *, expand=None):

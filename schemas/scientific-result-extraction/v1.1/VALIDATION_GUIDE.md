@@ -1,3 +1,17 @@
+> **Property-scoped context and lossless transport clarification — 21 November 2026:**
+> SOURCE_CONTEXT correspondence cites original property pointers. Non-value metadata
+> matches render those exact properties with original identity/scope headers, rather
+> than unrelated numerical outcome properties. A matched input value remains a full
+> original field; focal scientific findings keep their necessary full assertions.
+> Replay verifies the exact matched properties and rejects a partial focal quantity.
+> Transport v3 may factor repeated ordered property names into property_name_sets;
+> property_names_ref plus the same-length literal-value vector reconstructs the exact
+> original property pairs. Unknown templates or mismatched lengths are invalid.
+> Provider matches use an object keyed by every source requirement ID exactly once,
+> with an authored reference array (possibly empty) per ID. The strict adapter only
+> decodes that complete map into the unchanged canonical RequirementMatch list.
+> Missing/unknown keys fail; no match, value or scientific decision is synthesized.
+
 > Independent THIS_BATCH_ONLY matching scans may run in parallel, up to four
 > request contexts per case, under the existing 16-request global gate and four
 > case-worker limit. Aggregate matches in their original batch order and retain

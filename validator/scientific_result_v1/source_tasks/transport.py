@@ -1,7 +1,7 @@
 """Lossless judge transport; the rich immutable audit packet remains unchanged."""
 from .contracts import AssertionPacket
 
-ENCODING = 'claims_property_pairs_v2'
+ENCODING = 'claims_property_columns_v3'
 
 
 def judge_packet(packet):
@@ -27,6 +27,14 @@ def judge_packet(packet):
     for node in nodes:
         node['properties']=[[name,{'literal_ref':pool[literal]} if isinstance(literal,str) and literal in pool else literal] for name,literal in node['properties']]
     value['literal_pool']={key:literal for literal,key in pool.items()}
+    name_counts=Counter(tuple(name for name,_ in node['properties']) for node in nodes)
+    sets={names:'N'+str(i) for i,(names,count) in enumerate(name_counts.items()) if count>1}
+    for node in nodes:
+        names=tuple(name for name,_ in node['properties'])
+        if names in sets:
+            node['property_names_ref']=sets[names]
+            node['properties']=[literal for _,literal in node['properties']]
+    value['property_name_sets']={key:list(names) for names,key in sets.items()}
     return value
 
 
@@ -35,12 +43,20 @@ def audit_packet(value):
     import copy
     value = copy.deepcopy(value)
     encoding=value.pop('assertion_encoding')
-    if encoding not in {ENCODING,'claims_property_pairs_v1'}:
+    if encoding not in {ENCODING,'claims_property_pairs_v1','claims_property_pairs_v2'}:
         raise ValueError('Unknown scientific property encoding')
     pool=value.pop('literal_pool',{})
     if not isinstance(pool,dict) or any(not isinstance(k,str) or not isinstance(v,str) for k,v in pool.items()):
         raise ValueError('Invalid original-literal pool')
+    name_sets=value.pop('property_name_sets',{})
+    if not isinstance(name_sets,dict) or any(not isinstance(names,list) or any(not isinstance(n,str) for n in names) or len(names)!=len(set(names)) for names in name_sets.values()):
+        raise ValueError('Invalid property-name set')
     for node in value['objects'] + value['relations'] + value.get('context_headers', []):
+        if 'property_names_ref' in node:
+            key=node.pop('property_names_ref')
+            if key not in name_sets or len(node['properties'])!=len(name_sets[key]):
+                raise ValueError('Unknown property-name set or mismatched value count')
+            node['properties']=list(zip(name_sets[key],node['properties']))
         properties = []
         root = node['original_ref']
         overrides = node.pop('property_ref_overrides')

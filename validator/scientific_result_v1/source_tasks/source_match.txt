@@ -78,3 +78,14 @@ for an independently represented complete finding, a whole result/field root is
 appropriate. A label/measure-only match is not a match to an unreported numeric
 value. Preserve every conflicting or alternative encoding at that same scope;
 never discard a wrong value or wrong qualifier. Do not infer new properties.
+
+PROVIDER WIRE FORMAT: stage_schema.matches is an object keyed by every supplied
+required_requirement_id exactly once. Each value is the complete original output_refs
+array for that requirement, including [] when absent in this batch. Do not return
+an array of requirement objects. No key may be omitted or invented. The adapter
+losslessly decodes this map to the canonical RequirementMatch list; it never fills
+missing keys, changes references, or changes your correspondence decision.
+SOURCE_CONTEXT matches must cite original property pointers instead of full object
+or closure roots. Use /value for an actual input quantity; units and necessary scope
+remain available. Use the exact context/notes/description/etc. property for a shared
+convention or condition. This does not authorize a new value from narrative context.

@@ -7,7 +7,7 @@ from .store import canonical,sha
 from .sampling import samples,audit_buckets,seed_commitment,PROTOCOL
 from .scoring import score
 from .source import validate_frame
-from .packets import Index, CONTEXT_HEADER_PROPERTIES
+from .packets import Index, CONTEXT_HEADER_PROPERTIES, context_property_names
 from .packages import Package
 from .judging import validate_judgment
 
@@ -122,6 +122,12 @@ def replay(store,ref):
                         if not any(o.kind=='FAMILY' and o.object_id==family for o in case.objects):raise ValueError('Unscoped partial family-member header')
                     original_header=original_objects.get(header.object_id)
                     names=CONTEXT_HEADER_PROPERTIES
+                    if task.task_kind=='CONTENT' and task.scope_kind=='SOURCE_CONTEXT':
+                        focal=[*case.match.candidate_refs,*(r for m in case.match.matches for r in m.output_refs)]
+                        prefix=header.original_ref.pointer+'/'
+                        if any(r.kind=='json' and (r.pointer==header.original_ref.pointer or r.pointer==prefix+'value' or r.pointer.startswith(prefix+'value/')) for r in focal):
+                            raise ValueError('A focal quantity/root was replaced with a partial context header')
+                        names=context_property_names(header,focal)
                     if original_header is None or header!=original_header.model_copy(update={'properties':[p for p in original_header.properties if p.name in names]}):
                         raise ValueError('Original context header was changed or includes an unscoped value')
                 for relation in case.relations:

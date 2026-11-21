@@ -18,6 +18,14 @@ class StrictAdapter(JSONStageAdapter):
         result = strict_json(completion)
         if not isinstance(result, dict):
             raise ValueError("Expected one strict JSON object")
+        matches_schema=self.schema.get('properties',{}).get('matches',{})
+        if matches_schema.get('type')=='object':
+            expected=matches_schema['required'];matches=result.get('matches')
+            if not isinstance(matches,dict) or set(matches)!=set(expected) or any(not isinstance(refs,list) for refs in matches.values()):
+                raise ValueError('Provider must answer every requirement exactly once in the keyed matches object')
+            # Lossless wire-to-contract decoding only: preserve every authored ref,
+            # including empty matches. Never infer an omitted key or repair a decision.
+            result={**result,'matches':[{'requirement_id':key,'output_refs':matches[key]} for key in expected]}
         return result
 
     def __call__(self, lm, lm_kwargs, signature, demos, inputs):
