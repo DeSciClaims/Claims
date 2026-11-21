@@ -1,3 +1,28 @@
+> Source requirement identity explicitly records analysis_scope and adjustment_scope
+> from the source, including which analysis a qualitative restatement refers to.
+> NOT_APPLICABLE and SOURCE_UNSPECIFIED preserve absent source information; these
+> fields do not add miner output requirements. Independent review verifies the scope.
+
+> **Bounded independent match identity — 21 November 2026:** when a scientific
+> CONTENT packet cannot fit, two independent roles (SECONDARY and ARBITER) review
+> each complete original owner against supplied-source evidence. Small owner batches
+> keep the existing 120-second timeout, four contexts per case and 16 global requests.
+> Every owner needs an explicit decision. Exclusion requires positive source evidence
+> and matching non-KEEP dispositions from both roles; uncertainty or disagreement
+> retains it. Scientific fields remain scientific in every storage section and may
+> not be excluded as context/format. Wrong numbers/qualifiers and equivalent encodings
+> at the same referent stay. The target, original output and C/T/P/Q rules do not change.
+> An immutable identity receipt preserves the complete initial lookup and owner groups,
+> original scope headers, source witnesses and both review journals. Replay reconstructs
+> initial proposals, checks full disjoint batch coverage and reproduces the exact
+> conservative exclusions. Excluded assertions remain in the original P population.
+
+> Oversized CONTENT cards may assess complete requirements separately, repeating
+> all their full shared scientific objects, endpoints, closures and contradictory
+> views. A requirement is never split into partial candidate views. The same parent
+> bit requires every mandatory shard; weights and scientific source targets remain
+> unchanged. A single complete requirement that cannot fit still holds.
+
 > **Property-scoped context and lossless transport clarification — 21 November 2026:**
 > SOURCE_CONTEXT correspondence cites original property pointers. Non-value metadata
 > matches render those exact properties with original identity/scope headers, rather
@@ -1269,6 +1294,8 @@ class EncodingConstraint(Closed):
 class SourceRequirement(Closed):
     requirement_id: Id
     statement: Id
+    analysis_scope: Id = "SOURCE_UNSPECIFIED"
+    adjustment_scope: Id = "SOURCE_UNSPECIFIED"
     qualifications: list[Id]
     evidence_anchor_ids: Annotated[list[Id], Field(min_length=1)]
     encoding_constraints: list[EncodingConstraint]
@@ -1484,6 +1511,43 @@ class SearchCoverage(Closed):
         return self
 
 
+class IdentityDecision(Closed):
+    disposition: Literal["KEEP", "DISTINCT_SOURCE_RESULT", "CONTEXT_ONLY"]
+    distinction_dimension: Literal["OUTCOME", "ANALYSIS", "POPULATION", "TIME", "METHOD", "QUANTITY_ROLE"] | None
+    separate_source_identity: str | None
+    evidence_anchor_ids: list[Id]
+    reason: Id
+
+    @model_validator(mode="after")
+    def source_supported_exclusion(self):
+        if self.disposition=="KEEP":
+            if self.distinction_dimension is not None or self.separate_source_identity is not None:
+                raise ValueError("KEEP cannot assert an exclusion")
+        else:
+            if not self.evidence_anchor_ids or not self.separate_source_identity:
+                raise ValueError("An exclusion needs a positive source identity and witnesses")
+            if (self.disposition=="DISTINCT_SOURCE_RESULT")!=(self.distinction_dimension is not None):
+                raise ValueError("Only a distinct source result has a distinction dimension")
+        return self
+
+
+class IdentityReviewResponse(Closed):
+    task_id: Id
+    output_alias: Id
+    inspected_owner_ids: list[Id]
+    decisions: dict[Id, dict[Id, IdentityDecision]]
+
+
+class MatchIdentityReceipt(Closed):
+    task_id: Id
+    output_alias: Id
+    original_match: FileRef
+    refined_match: FileRef
+    owner_groups: dict[Id, list[OutputRef]]
+    authoritative_evidence: FileRef
+    judge_run_ids: dict[Literal["SECONDARY", "ARBITER"], list[Id]]
+
+
 class MatchResult(Closed):
     task_id: Id
     output_alias: Id
@@ -1492,6 +1556,7 @@ class MatchResult(Closed):
     candidate_refs: list[OutputRef]
     coverage: SearchCoverage
     explanation: Id
+    identity_receipt: FileRef | None = None
 
     @model_validator(mode="after")
     def absence_requires_search(self):
@@ -7765,3 +7830,18 @@ This is the complete supplied Claims Extraction Schema 1.1, including its semant
 
 ```
 <!-- END CLAIMS_EXTRACTION_SCHEMA -->
+
+
+Source-task consolidation (21 November 2026): Before targets and sampling weights
+freeze, a source-only pass consolidates restatements of the same scientific
+quantity (§4.1). It preserves distinct analyses, values, uncertainty, conditions
+and all original cited anchors. The independent reviewer compares both complete
+drafts with the source and may correct lost information or unjustified merging.
+Both drafts, the consolidation request and the review remain replayable. This
+step never consults a miner output or changes a submitted extraction.
+
+Caption/reporting-convention clarification (21 November 2026): A caption that
+identifies a table/cohort and says how values are reported is SOURCE_CONTEXT.
+It does not make every referenced table result one scientific target. Findings
+explicitly reported in captions/notes remain SCIENTIFIC_RESULT, and independently
+owned numerical table rows remain eligible. Mixed spans retain both kinds.

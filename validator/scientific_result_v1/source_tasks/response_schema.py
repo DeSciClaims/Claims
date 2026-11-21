@@ -22,6 +22,30 @@ def response_schema(response_type,data):
     for key,value in bindings.items():
         if value is not None and key in props:props[key]['const']=value
     defs=schema.get('$defs',{})
+    if response_type.__name__ in {'SourceTaskBatch','SourceReviewResponse'} and 'SourceRequirement' in defs:
+        requirement=defs['SourceRequirement']
+        for key in ('analysis_scope','adjustment_scope'):
+            requirement['properties'][key].pop('default',None)
+            if key not in requirement['required']:requirement['required'].append(key)
+    if response_type.__name__=='IdentityReviewResponse':
+        props['inspected_owner_ids']['const']=data['inspection_owner_ids']
+        anchors=[a['anchor_id'] for a in data['authoritative_evidence']['anchors']]
+        template=defs['IdentityDecision'];branches={}
+        for disposition in ('KEEP','DISTINCT_SOURCE_RESULT','CONTEXT_ONLY'):
+            branch=copy.deepcopy(template);p=branch['properties']
+            p['disposition']={'type':'string','const':disposition}
+            p['evidence_anchor_ids']['items']['enum']=anchors
+            p['distinction_dimension']=_nonnull(p['distinction_dimension']) if disposition=='DISTINCT_SOURCE_RESULT' else {'type':'null','const':None}
+            p['separate_source_identity']=_nonnull(p['separate_source_identity']) if disposition!='KEEP' else {'type':'null','const':None}
+            if disposition!='KEEP':p['evidence_anchor_ids']['minItems']=1;p['separate_source_identity']['minLength']=1
+            branches[disposition]=branch
+        defs['ScientificIdentityDecision']={'anyOf':[branches['KEEP'],branches['DISTINCT_SOURCE_RESULT']]}
+        defs['AnyIdentityDecision']={'anyOf':list(branches.values())}
+        scientific=set(data['scientific_owner_ids']);required=data['required_owner_ids_by_requirement']
+        props['decisions']={'type':'object','properties':{key:{'type':'object','properties':{
+            root:{'$ref':'#/$defs/'+('ScientificIdentityDecision' if root in scientific else 'AnyIdentityDecision')} for root in roots},
+            'required':roots,'additionalProperties':False} for key,roots in required.items()},'required':list(required),'additionalProperties':False}
+        return schema
     if response_type.__name__=='MatchResponse':
         ids=data.get('inspection_component_ids',list(data.get('components',{})))
         props['inspected_component_ids']['const']=ids

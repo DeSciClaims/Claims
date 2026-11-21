@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import math
 import re
 from typing import Any, Mapping, Protocol
 
@@ -129,10 +130,12 @@ def publish_selected_round(
         fresh=scientific_copy_diagnostics(round_id=round_id,stage=stages[-1]['stage'],entries=stages[-1]['entries'],
             paper_ids=[p['paper_id'] for p in backend.list_sample(round_id) if p['stage']==stages[-1]['stage']],backend=backend)
         if dict(copy_audit)!=fresh:raise ValueError('Scientific copy diagnostics belong to a superseded paper generation')
-    judge_diagnostics = final_judge_diagnostics(
+    judge_diagnostics = ({"protocol_id": "claims-source-task-v1",
+                          "source_task_receipts": scientific_lineage}
+                         if enabled(round_record) else final_judge_diagnostics(
         sample=backend.list_sample(round_id), pair_rows=list(selection.final_pair_rows),
         stage=stages[-1]["stage"], finalist_hotkeys=finalist_hotkeys,
-    )
+    ))
     duplicate_disputes = backend.list_duplicate_disputes(round_id)
     if any(row["status"] == "pending" for row in duplicate_disputes):
         raise ValueError("duplicate dispute is unresolved")
@@ -154,7 +157,11 @@ def publish_selected_round(
         if selection.decision == "reference_fallback" else None,
         "winner_hotkey": selection.production_hotkey if selection.decision == "new_crown" else None,
         "winner_gain": selection.winner_gain,
-        "finalists": [asdict(row) for row in selection.verdicts],
+        # A one-paper rehearsal has no estimated standard error. JSON has no
+        # infinity; use an explicit missing value before hashing and signing.
+        "finalists": [{**asdict(row), "standard_error": row.standard_error
+                       if math.isfinite(row.standard_error) else None}
+                      for row in selection.verdicts],
         "gold": {hotkey: asdict(result) for hotkey, result in sorted(gold_by_hotkey.items())},
         "gold_check": dict(gold_check) if gold_check else None,
         "known_answer_audit": dict(known_answer_audit) if known_answer_audit else None,

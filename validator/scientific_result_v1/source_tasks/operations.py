@@ -23,7 +23,7 @@ page images, visual inspection, crop coordinates and image-capable routes are no
 required. Do not request an original-page crop or require plot-derived quantities
 absent from the captured Docling output. Parser omissions and OCR errors are an
 explicit limitation of this policy, not something the judge may invent away.
-LOSSLESS ASSERTION TRANSPORT: a packet marked assertion_encoding=claims_property_columns_v3
+LOSSLESS ASSERTION TRANSPORT: a packet marked assertion_encoding=claims_property_columns_v4
 uses ordered [name, original_json_literal] pairs unless property_names_ref is present.
 With property_names_ref=N0, properties is an ordered literal-value vector: zip it
 with packet.property_name_sets.N0 to recover exactly the original property pairs.
@@ -35,6 +35,21 @@ A {"literal_ref":"L0"} slot means the exact original JSON literal string in
 packet.literal_pool.L0, not missing information or a summary. Expand it unchanged
 before interpreting that property's original value. Repeated long literal strings
 share one pool entry; their content is neither paraphrased nor rounded.
+References with no output_alias inherit packet.reference_output_alias exactly.
+An object marked object_id_from_property uses its original id property's value.
+Relation headers listed in headers_from_properties are the exact values of those
+original properties, retained in the same property vector; the edges are present.
+A closure's submitted_from_original_closure maps its view fields to arrays in
+the owning result's original closure property. computed_sets_equal_submitted means
+the corresponding recomputed array is EXACTLY equal to its submitted array,
+including order. Read the original closure arrays once; these markers remove only
+identical repeated views, never scientific values, relationships or closure members.
+If literal_identifier_pool is present, a marker inside an original JSON literal
+consists of literal_identifier_prefix, a decimal pool key, and ';'. Substitute the
+exact identifier in literal_identifier_pool before reading the JSON literal. The
+prefix is chosen to avoid every original literal, so decoding is unambiguous.
+Only administrative object identifiers are factored; scientific numbers and text
+remain original. Use the decoded original IDs and references in your response.
 A property pointer is original_ref.pointer + '/' + JSON-Pointer-escaped name;
 property_ref_overrides contains
 any exceptions. The output_alias is inherited from original_ref. Every assertion,

@@ -46,13 +46,20 @@ class Script:
         assert "Preserve each coherent parent card" in data["controller_requirement_policy"]
         assert "candidate" not in data and "packet" not in data
         if response_type is SourceTaskBatch:
+            if operation=='source_card_consolidate':
+                assert data['required_preserved_evidence_anchor_ids']==['owned']
+                response=response_type.model_validate(data['original_source_draft'])
+                validate(response)
+                return response
             requested = self.always_requests or (len(self.calls) == 1 and not self.reviewer_requests)
             value = dict(tile_id='tile', outcome='NEED_EVIDENCE', cards=[],
                 evidence_requests=[need()], unresolved_reason=None) if requested else ready(
                     'context' if self.wrong_owner else 'owned')
         else:
             assert response_type is SourceReviewResponse
-            requested = self.reviewer_requests and len(self.calls) == 2
+            assert data['original_source_draft']
+            assert data['checked_item_ids']==['original:finding','proposed:finding']
+            requested = self.reviewer_requests and sum(op=='source_card_review' for _,op,_ in self.calls)==1
             value = dict(request_id=data['request_id'], proposal_kind=data['proposal_kind'],
                 proposal_hash=data['proposal_hash'], outcome='NEED_EVIDENCE' if requested else 'ACCEPT',
                 checked_anchor_ids=[] if requested else data['checked_anchor_ids'],
@@ -98,3 +105,42 @@ def test_expanded_context_cannot_become_an_unrelated_owned_target():
         selected_cards(Script(wrong_owner=True), tile, binding, evidence,
             expand=lambda current, requests, limit: {'anchors': current['anchors'] + [
                 {'anchor_id': 'context', 'exact_text': 'Unrelated finding.'}]})
+
+
+def test_source_scope_identity_is_explicit_in_provider_contract():
+    import copy,jsonschema
+    from validator.scientific_result_v1.source_tasks.response_schema import response_schema
+    tile,binding,evidence=inputs();batch=SourceTaskBatch.model_validate(ready())
+    schema=response_schema(SourceTaskBatch,{'tile_id':tile.tile_id})
+    answer=batch.model_dump(mode='json');jsonschema.validate(answer,schema)
+    missing=copy.deepcopy(answer);del missing['cards'][0]['requirements'][0]['adjustment_scope']
+    with pytest.raises(jsonschema.ValidationError):jsonschema.validate(missing,schema)
+    assert answer['cards'][0]['requirements'][0]['analysis_scope']=='SOURCE_UNSPECIFIED'
+
+
+def test_scientific_shard_cannot_change_analysis_identity():
+    from validator.scientific_result_v1.source_tasks.contracts import TaskCard
+    from validator.scientific_result_v1.source_tasks.sharding import validate_child
+    tile,binding,evidence=inputs();draft=SourceTaskBatch.model_validate(ready()).cards[0]
+    parent=TaskCard(task_id='parent',task_kind='CONTENT',binding=binding,tile_ids=[tile.tile_id],
+        output_alias=None,source_bucket_id=None,requirements=draft.requirements,
+        evidence_anchor_ids=['owned'],source_scope_note=draft.source_scope_note)
+    changed=parent.requirements[0].model_copy(update={'analysis_scope':'A different source analysis'})
+    child=parent.model_copy(update={'task_id':'parent::shard:test','requirements':[changed]})
+    with pytest.raises(ValueError,match='rewrote a scientific requirement'):validate_child(child,parent)
+
+
+def test_consolidation_cannot_drop_original_source_witnesses():
+    class DropsWitness(Script):
+        def request(self, role, operation, data, response_type, *, validate, source_limit=32000):
+            if operation in {'source_card','source_card_consolidate'}:
+                value=ready()
+                if operation=='source_card':value['cards'][0]['evidence_anchor_ids'].append('context')
+                response=response_type.model_validate(value)
+                validate(response)
+                return response
+            return super().request(role,operation,data,response_type,validate=validate,source_limit=source_limit)
+    tile,binding,evidence=inputs()
+    evidence['anchors'].append({'anchor_id':'context','exact_text':'A necessary definition.'})
+    with pytest.raises(ValueError,match='dropped original evidence'):
+        selected_cards(DropsWitness(),tile,binding,evidence)

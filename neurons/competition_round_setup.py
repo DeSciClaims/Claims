@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         result = prepare_pilot_round(
             draft, backend=backend, directory=args.rounds_dir,
             storage=storage,
-            decision_api_key=_required(
+            decision_api_key="" if draft.get("configuration", {}).get("scientific_scoring", {}).get("protocol_id") == "claims-source-task-v1" else _required(
                 "JEV_API_KEY" if (
                     draft.get("configuration_spec") or draft.get("configuration") or {}
                 ).get("decision_routing", {}).get("provider") == "jev"

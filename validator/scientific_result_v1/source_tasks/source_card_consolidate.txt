@@ -1,0 +1,42 @@
+ROLE: SOURCE_CARD_CONSOLIDATION
+Return a complete SourceTaskBatch for the supplied tile using only authoritative
+source evidence and original_source_draft. No candidate outputs are available.
+
+Preserve every distinct scientific finding, numerical value, operator, uncertainty,
+classification and necessary qualifier from the original draft. Restatements of
+the same scientific quantities are ONE target with multiple evidence anchors,
+including qualitative Discussion/Abstract restatements of numerical Results.
+Prefer the more informative detailed task and attach the restatement's anchors
+and material qualifiers. Do not retain a separate broad summary card or requirement
+whose scientific information is already entailed by the detailed cards.
+
+Do not merge different analyses, outcomes, conditions or investigations. Do not
+remove a new qualitative finding because it has no numbers. Keep source-defined
+coherent units and complete requirements; preserve estimates with their uncertainty
+and p-values. Follow controller_requirement_policy within each resulting card.
+Resolve analysis_scope and adjustment_scope from the source, using NOT_APPLICABLE
+or SOURCE_UNSPECIFIED when warranted. Never invent unreported facts or prescribe
+miner organization. Keep all distinct source evidence anchors in the consolidated
+batch; each card must still concern the original owned tile.
+required_preserved_evidence_anchor_ids is the exact controller-computed union of
+original citations. Every ID must remain cited in at least one resulting card or
+requirement; copy the original ID strings exactly, including repeated occurrences
+whose scientific quantity is consolidated. Do not drop a source witness because
+its wording repeats another witness.
+
+Return the unchanged draft if no consolidation is justified. Use NEED_EVIDENCE
+for material missing context. A separate reviewer will compare BOTH drafts with
+the source for complete scientific equivalence before targets and weights freeze.
+Return only the naked JSON object matching stage_schema.
+
+CAPTIONS AND TABLE NOTES: A reference such as "Table 1 presents demographic
+characteristics; data are unweighted n (%)" identifies a table, cohort and
+reporting convention. It is SOURCE_CONTEXT, not a request to reconstruct every
+scientific finding in that table. Classify the information actually asserted in
+the owned source span. A table number, cohort age threshold, survey year or format
+convention alone is not a reported estimate/comparison. Do not turn a caption or
+note into a catch-all SCIENTIFIC_RESULT by referring to its table. Preserve genuine
+findings explicitly stated in captions/notes as SCIENTIFIC_RESULT and independently
+owned numerical table rows as their own source tasks. Mixed passages require
+separate context and finding requirements/cards; never conceal actual quantities
+or scientific dependencies as context.

@@ -71,3 +71,28 @@ unrelated footnotes. This is within-card granularity, not extra cards or samplin
 weight. Every required shard must pass for the parent to pass. Never split based on
 candidate output, replace source facts, or omit difficult measurements. Independent
 review must correct materially compound requirements through a complete REVISE.
+
+EXPLICIT SOURCE IDENTITY: Each requirement must state analysis_scope and
+adjustment_scope. Identify the actual source-defined analysis/model and its
+adjustment conditions; do not leave "independent" or "adjusted" as an ambiguous
+shorthand when Methods, Results or table notes resolve the variables/models.
+For a discussion/abstract restatement, resolve which source analysis it restates.
+Different source-supported analysis/adjustment versions are different referents;
+do not silently request all of them for a summary of one identified analysis.
+Use NOT_APPLICABLE when no analysis/adjustment applies and SOURCE_UNSPECIFIED only
+when the source does not specify it. Never invent conditions. If the supplied
+context is insufficient to resolve a material distinction, request evidence.
+These are source-task identity metadata, not extra fields required from miners.
+Independent source review must correct omitted/misidentified analysis conditions.
+
+CAPTIONS AND TABLE NOTES: A reference such as "Table 1 presents demographic
+characteristics; data are unweighted n (%)" identifies a table, cohort and
+reporting convention. It is SOURCE_CONTEXT, not a request to reconstruct every
+scientific finding in that table. Classify the information actually asserted in
+the owned source span. A table number, cohort age threshold, survey year or format
+convention alone is not a reported estimate/comparison. Do not turn a caption or
+note into a catch-all SCIENTIFIC_RESULT by referring to its table. Preserve genuine
+findings explicitly stated in captions/notes as SCIENTIFIC_RESULT and independently
+owned numerical table rows as their own source tasks. Mixed passages require
+separate context and finding requirements/cards; never conceal actual quantities
+or scientific dependencies as context.

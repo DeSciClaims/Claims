@@ -161,6 +161,8 @@ def create_worker_coordinator(
         inference_base_url=gateway,
         gateway_ip=_required("CLAIMS_WORKER_GATEWAY_IP"),
         gateway_port=gateway_port,
+        ssh_user=os.environ.get("CLAIMS_WORKER_SSH_USER", "claims-control"),
+        control_command=os.environ.get("CLAIMS_WORKER_CONTROL_COMMAND", "/usr/local/sbin/claims-worker-control"),
     )
     return CompetitionWorkerCoordinator(
         round_id=round_id, network=str(row["network"]), worker_id=worker_id,

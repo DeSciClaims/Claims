@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,8 @@ def parse_pdf(pdf_path: Path, output_dir: Path) -> dict[str, Any]:
     from docling.document_converter import DocumentConverter, PdfFormatOption
 
     options = PdfPipelineOptions()
+    if artifacts := os.environ.get("DOCLING_ARTIFACTS_PATH"):
+        options.artifacts_path = Path(artifacts)
     options.do_ocr = True
     # Some publisher PDFs map ±/minus glyphs to ordinary digits. OCR only on
     # bitmap regions leaves these substitutions intact, corrupting numeric values.

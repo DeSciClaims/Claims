@@ -140,6 +140,10 @@ def run_one_paper(
     if ca_bundle and Path(ca_bundle).is_file():
         environment["SSL_CERT_FILE"] = ca_bundle
         environment["REQUESTS_CA_BUNDLE"] = ca_bundle
+    for cache_key in ("DOCLING_ARTIFACTS_PATH", "TIKTOKEN_CACHE_DIR"):
+        cache_path = os.environ.get(cache_key)
+        if cache_path and Path(cache_path).is_dir():
+            environment[cache_key] = cache_path
     venv_dir = work_dir / "venv"
     started = time.monotonic()
     install_deadline = started + install_timeout_seconds

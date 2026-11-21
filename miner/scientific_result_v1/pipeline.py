@@ -225,7 +225,10 @@ def _call(runtime: Runtime, run_dir: Path, stage: str, instructions: str, payloa
         except (json.JSONDecodeError, ValueError) as exc:
             feedback = [{"message": str(exc)}]
         dump(run_dir / f"{stage}-{attempt + 1}.feedback.json", feedback)
-    raise ValueError(f"{stage} failed after {attempts} attempts; see stage feedback files")
+    # The disposable worker retains its log, but removes stage files on cleanup.
+    # Keep bounded failure diagnostics in the exception so remote runs are debuggable.
+    summary = "; ".join(str(item.get("message", item))[:600] for item in feedback[:3])
+    raise ValueError(f"{stage} failed after {attempts} attempts: {summary}; see stage feedback files")
 
 
 SYSTEM = """Extract scientific result objects from the supplied source documents only.
@@ -612,10 +615,10 @@ from local results or context.
     if summaries:
         payload["cross_group_summaries"] = [*payload.get("cross_group_summaries", []), *summaries]
     issues = validate_package(payload, output_dir)
-    from .patch import apply_edits
+    from .patch import apply_edits, REPAIR_PATH_PATTERN
     repair_schema = {"type": "object", "properties": {"edits": {"type": "array", "items": {
         "type": "object", "properties": {"op": {"enum": ["add", "replace", "remove"]},
-        "path": {"type": "string", "pattern": r"^/(?!results/[0-9]+/closure/(?:member_ids|reference_ids)(?:/|$))"}, "value": {}},
+        "path": {"type": "string", "pattern": REPAIR_PATH_PATTERN}, "value": {}},
         "required": ["op", "path"], "additionalProperties": False}}},
         "required": ["edits"], "additionalProperties": False}
     csv_exports = {}
@@ -647,7 +650,12 @@ locate the correct row/column/component. CSV data rows are one-based after the h
 Never change a scientific value merely to make it agree with an incorrect cell reference.
 Do not delete valid scientific content to pass validation. Preserve all scientific IDs,
 source snippets, values, and assigned paper/extraction identities. Do not edit paper,
-sources, tables, schema_version, or extraction.id. Never edit closure.member_ids or
+sources, table data/identities, schema_version, or extraction.id. Table metadata repairs
+may correct ONLY /tables/N/annotations/M/rows or /columns coordinates against the
+delivered CSV and source. Preserve annotation text, markers and kind; never change
+CSV values, column definitions, row_count, table IDs or filenames. Annotation row
+coordinates are one-based data-row numbers after the CSV header.
+Never edit closure.member_ids or
 closure.reference_ids: they are computed and such edits cannot repair the graph.
 For V17, establish a source-supported relationship and reviewed closure_direction,
 or a justified named external reference, OR preserve the object in closure_review

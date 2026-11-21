@@ -29,6 +29,30 @@ def generate(runtime, directory):
                             output_dir=directory, stage="results-001-1")
 
 
+def test_gateway_cost_receipt_survives_extraction_final_accounting(monkeypatch,tmp_path):
+    from miner.scientific_result_v1.accounting import summarize_calls,ledger_events
+    raw={"id":"gateway-response","choices":[{"finish_reason":"stop","message":{"content":'{"results": [], "relationships": []}'}}],
+         "usage":{"prompt_tokens":12,"completion_tokens":10,"cost":{"total_cost":0.0123,"input_cost":0.001}}}
+    gateway_response=litellm.ModelResponse(**raw)
+    monkeypatch.setattr(litellm,"completion",lambda **kwargs:gateway_response)
+    runtime=DspyRuntime(model="deepseek/deepseek-v4-flash-0731",api_key="secret")
+    assert generate(runtime,tmp_path/'stages')=={"results":[],"relationships":[]}
+    report=summarize_calls(tmp_path)
+    assert report['provider_reported_cost_usd']==0.0123
+    assert report['recorded_cost_usd']==0.0123
+    assert report['requests_without_cost']==0
+    event=next(e for e in ledger_events(tmp_path) if e['event']=='request_complete')
+    assert event['usage']['gateway_cost_receipt']==raw['usage']['cost']
+
+
+@pytest.mark.parametrize('total',[True,-1,float('nan'),None,'0.1'])
+def test_invalid_gateway_cost_is_never_reported_as_zero(tmp_path,total):
+    runtime=DspyRuntime(model='deepseek/deepseek-v4-flash-0731',api_key='secret')
+    with pytest.raises(ValueError,match='total_cost'):
+        runtime._record_response(response={'usage':{'cost':{'total_cost':total}}},
+            output_dir=tmp_path,metadata={'call_id':'c','stage':'results-1','program_id':'p'},started=0)
+
+
 def test_runtime_uses_dspy_predict_typed_outputs_and_one_provider_call(monkeypatch, tmp_path):
     sent = []
     def complete(**kwargs):

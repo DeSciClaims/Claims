@@ -52,20 +52,40 @@ def check_runs(store, receipt, cards, packets, verdicts, secret, scope):
         if run.raw_response:store.read(run.raw_response)
         runs[run.run_id]=run; requests[run.run_id]=request
     accepted_batches={}
+    generated_batches=[store.load(r.parsed_response,SourceTaskBatch) for rid,r in runs.items()
+        if not r.error and r.parsed_response and requests[rid]['operation']=='source_card']
+    consolidated={}
+    for rid,run in runs.items():
+        if run.error or not run.parsed_response or requests[rid]['operation']!='source_card_consolidate':continue
+        payload=requests[rid]['payload']
+        original=SourceTaskBatch.model_validate(payload['original_source_draft'])
+        if original not in generated_batches:raise ValueError('Consolidation lacks its original source draft')
+        batch=store.load(run.parsed_response,SourceTaskBatch)
+        if batch.tile_id!=original.tile_id:raise ValueError('Consolidation changed source ownership')
+        if batch.outcome=='READY':consolidated[batch.tile_id]=(original,batch)
     for rid,run in runs.items():
         if run.error or run.parsed_response is None:continue
         req=requests[rid]
-        if req['operation']=='source_card':
+        if req['operation'] in {'source_card','source_card_consolidate'}:
             batch=store.load(run.parsed_response,SourceTaskBatch)
             # NEED_EVIDENCE is a retained context request, not an authoritative
             # empty task batch. A later READY batch owns the source targets.
-            if batch.outcome=='READY':accepted_batches[batch.tile_id]=batch
+            if batch.outcome=='READY' and (req['operation']=='source_card_consolidate' or batch.tile_id not in consolidated):accepted_batches[batch.tile_id]=batch
         if req['operation']=='source_card_reconcile':
             review=store.load(run.parsed_response,SourceReviewResponse)
             if review.outcome=='REVISE' and review.corrected_proposal is not None:
                 batch=review.corrected_proposal.payload
                 accepted_batches[batch.tile_id]=batch
     for tileid,batch in accepted_batches.items():
+        if tileid in consolidated:
+            original,proposal=consolidated[tileid]
+            expected_items={'original:'+c.local_key for c in original.cards}|{'proposed:'+c.local_key for c in proposal.cards}
+            bound=[store.load(r.parsed_response,SourceReviewResponse) for rid,r in runs.items()
+                if not r.error and r.parsed_response and requests[rid]['operation'] in {'source_card_review','source_card_reconcile'}
+                and requests[rid]['payload'].get('proposal')==proposal.model_dump(mode='json')
+                and requests[rid]['payload'].get('original_source_draft')==original.model_dump(mode='json')]
+            if not any(r.outcome in {'ACCEPT','REVISE'} and set(r.checked_item_ids)==expected_items for r in bound):
+                raise ValueError('Source consolidation lacks independent equivalence review')
         expected={'task-'+sha(canonical([tileid,c])) for c in batch.cards}
         actual={c.task_id for c in cards.values() if c.task_kind=='CONTENT' and c.tile_ids==[tileid] and '::shard:' not in c.task_id}
         if actual!=expected:raise ValueError('Source cards dropped or invented after independent review')

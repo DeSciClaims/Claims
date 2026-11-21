@@ -454,6 +454,8 @@ class EncodingConstraint(Closed):
 class SourceRequirement(Closed):
     requirement_id: Id
     statement: Id
+    analysis_scope: Id = "SOURCE_UNSPECIFIED"
+    adjustment_scope: Id = "SOURCE_UNSPECIFIED"
     qualifications: list[Id]
     evidence_anchor_ids: Annotated[list[Id], Field(min_length=1)]
     encoding_constraints: list[EncodingConstraint]
@@ -669,6 +671,43 @@ class SearchCoverage(Closed):
         return self
 
 
+class IdentityDecision(Closed):
+    disposition: Literal["KEEP", "DISTINCT_SOURCE_RESULT", "CONTEXT_ONLY"]
+    distinction_dimension: Literal["OUTCOME", "ANALYSIS", "POPULATION", "TIME", "METHOD", "QUANTITY_ROLE"] | None
+    separate_source_identity: str | None
+    evidence_anchor_ids: list[Id]
+    reason: Id
+
+    @model_validator(mode="after")
+    def source_supported_exclusion(self):
+        if self.disposition=="KEEP":
+            if self.distinction_dimension is not None or self.separate_source_identity is not None:
+                raise ValueError("KEEP cannot assert an exclusion")
+        else:
+            if not self.evidence_anchor_ids or not self.separate_source_identity:
+                raise ValueError("An exclusion needs a positive source identity and witnesses")
+            if (self.disposition=="DISTINCT_SOURCE_RESULT")!=(self.distinction_dimension is not None):
+                raise ValueError("Only a distinct source result has a distinction dimension")
+        return self
+
+
+class IdentityReviewResponse(Closed):
+    task_id: Id
+    output_alias: Id
+    inspected_owner_ids: list[Id]
+    decisions: dict[Id, dict[Id, IdentityDecision]]
+
+
+class MatchIdentityReceipt(Closed):
+    task_id: Id
+    output_alias: Id
+    original_match: FileRef
+    refined_match: FileRef
+    owner_groups: dict[Id, list[OutputRef]]
+    authoritative_evidence: FileRef
+    judge_run_ids: dict[Literal["SECONDARY", "ARBITER"], list[Id]]
+
+
 class MatchResult(Closed):
     task_id: Id
     output_alias: Id
@@ -677,6 +716,7 @@ class MatchResult(Closed):
     candidate_refs: list[OutputRef]
     coverage: SearchCoverage
     explanation: Id
+    identity_receipt: FileRef | None = None
 
     @model_validator(mode="after")
     def absence_requires_search(self):

@@ -280,7 +280,8 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
     configuration = document.get("configuration")
     if not isinstance(configuration, dict):
         raise ValueError("trusted round file has no frozen configuration")
-    validate_provisional_judge_routes(configuration, network=str(row["network"]))
+    if configuration.get("scientific_scoring", {}).get("protocol_id") != "claims-source-task-v1":
+        validate_provisional_judge_routes(configuration, network=str(row["network"]))
     rules = FrozenWorkerRules(round_id, str(row["configuration_sha256"]), configuration,
                               rules_revision=int(row.get("rules_revision", 1)))
     if document.get("configuration_sha256") != rules.configuration_sha256:

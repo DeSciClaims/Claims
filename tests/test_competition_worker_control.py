@@ -173,7 +173,11 @@ def test_control_requires_the_guest_unit_to_be_stopped(monkeypatch):
     _stop_unit("claims-job-test")
 
 
-def test_restricted_transport_uses_only_control_command_and_binds_response(tmp_path):
+@pytest.mark.parametrize("control_command,ssh_user", [
+    ("/usr/local/sbin/claims-worker-control", "claims-control"),
+    ("/usr/local/sbin/claims-worker-control-scientific-testnet", "claims-testnet-control"),
+])
+def test_restricted_transport_uses_only_control_command_and_binds_response(tmp_path, control_command, ssh_user):
     identity, known = tmp_path / "id", tmp_path / "known_hosts"
     identity.write_text("private test key")
     known.write_text("pinned host")
@@ -183,8 +187,8 @@ def test_restricted_transport_uses_only_control_command_and_binds_response(tmp_p
 
     def invoke(argv, **kwargs):
         commands.append(argv[-1])
-        assert argv[-1] == "sudo -n /usr/local/sbin/claims-worker-control run"
-        assert "claims-control@192.0.2.1" in argv
+        assert argv[-1] == "sudo -n " + control_command + " run"
+        assert ssh_user + "@192.0.2.1" in argv
         assert "scoped-key" not in " ".join(argv)
         _, files = _read_bundle(io.BytesIO(kwargs["input"]))
         assert files["paper-key"] == b"scoped-key"
@@ -198,7 +202,7 @@ def test_restricted_transport_uses_only_control_command_and_binds_response(tmp_p
 
     transport = RestrictedSshWorkerTransport(
         identity, known, "https://gateway.example/v1", "192.0.2.20", 443,
-        invoke=invoke,
+        invoke=invoke, control_command=control_command, ssh_user=ssh_user,
     )
     output = transport.run(
         WorkerVm("worker", "192.0.2.1", 20005, 1.0),
@@ -207,4 +211,4 @@ def test_restricted_transport_uses_only_control_command_and_binds_response(tmp_p
     )
     assert output.status == "completed"
     assert output.log_bytes == b"installed and executed"
-    assert commands == ["sudo -n /usr/local/sbin/claims-worker-control run"]
+    assert commands == ["sudo -n " + control_command + " run"]

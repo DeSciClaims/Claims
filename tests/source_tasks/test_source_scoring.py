@@ -421,6 +421,8 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
 
         def generate(self, *, instructions, payload, output_dir, stage):
             self.calls += 1
+            if "source_card_consolidate" in stage:
+                return payload["original_source_draft"]
             if "source_card_review" in stage:
                 return dict(
                     request_id=payload["request_id"],
@@ -991,7 +993,6 @@ def test_audit_groups_keep_all_assertions_once_and_join_record_relations(generat
 def test_context_requirements_share_definitions_without_forcing_a_giant_joint_case(generated):
     from validator.scientific_result_v1.source_tasks.contracts import JsonRef,RequirementMatch
     from validator.scientific_result_v1.source_tasks.sharding import partition,validate_child
-    from validator.scientific_result_v1.source_tasks.operations import Hold
     path,_,_=generated;index=Index(Package(path,'a'));store=Store(path.parent/'context-shards')
     ref=JsonRef(kind='json',output_alias='a',pointer='/results/0/context')
     task,base=packet_case(index,store,refs=[ref]);reqs=[task.requirements[0].model_copy(update={'requirement_id':'context-'+str(i)}) for i in range(2)]
@@ -1007,11 +1008,20 @@ def test_context_requirements_share_definitions_without_forcing_a_giant_joint_ca
     for child,rendered in shards:
         validate_child(child,task)
         assert rendered.match.matches[0].output_refs==[ref]
-    # A scientific result is not independently split just because it would be cheaper.
+    # Scientific requirements may repeat a FULL joint finding; no quantity,
+    # uncertainty, endpoint or closure may be partitioned away to make it fit.
     scientific=task.model_copy(update={'scope_kind':'SCIENTIFIC_RESULT'})
+    core=next(o.original_ref for o in index.objects if o.kind=='FIELD')
+    match=match.model_copy(update={'candidate_refs':[core],
+        'matches':[RequirementMatch(requirement_id=r.requirement_id,output_refs=[core]) for r in reqs]})
     packet=index.packet(scientific,scientific.binding,match,'5'*64,[])
-    with pytest.raises(Hold,match='No complete independent partition'):
-        partition(index,scientific,packet,tokenizers={'test':budget})
+    scientific_shards=partition(index,scientific,packet,tokenizers={'test':budget})
+    assert len(scientific_shards)==2 and packet.closures
+    for _,rendered in scientific_shards:
+        assert rendered.objects==packet.objects
+        assert rendered.relations==packet.relations
+        assert rendered.closures==packet.closures
+        assert rendered.evidence_anchor_ids==packet.evidence_anchor_ids
 
 
 def test_context_association_headers_are_partial_original_definitions(generated):
@@ -1206,3 +1216,100 @@ def test_keyed_matcher_wire_requires_all_requirements_and_preserves_empty_answer
     assert all(m.output_refs==[] for m in result.matches)
     del answer['matches']['r2']
     with pytest.raises(ValueError,match='every requirement exactly once'):adapter.parse(None,json.dumps(answer))
+
+
+def test_shared_table_context_does_not_join_independent_scientific_requirements(generated):
+    from validator.scientific_result_v1.source_tasks.contracts import RequirementMatch
+    from validator.scientific_result_v1.source_tasks.sharding import partition
+    from validator.scientific_result_v1.source_tasks.transport import audit_packet
+    path,_,_=generated;index=Index(Package(path,'a'));store=Store(path.parent/'scientific-context-shards')
+    results=[o for o in index.objects if o.kind=='RESULT'];table=next(o for o in index.objects if o.kind=='TABLE')
+    task,base=packet_case(index,store,refs=[results[0].original_ref,results[1].original_ref,table.original_ref])
+    requirements=[task.requirements[0].model_copy(update={'requirement_id':key}) for key in ['first','second']]
+    task=task.model_copy(update={'requirements':requirements})
+    matches=[RequirementMatch(requirement_id=r.requirement_id,output_refs=[o.original_ref,table.original_ref]) for r,o in zip(requirements,results)]
+    match=base.match.model_copy(update={'matches':matches})
+    packet=index.packet(task,task.binding,match,'5'*64,[])
+    def bound(text):return 32001 if len(audit_packet(json.loads(text)).closures)>1 else 1000
+    shards=partition(index,task,packet,tokenizers={'test':bound})
+    assert len(shards)==2
+    assert {r.requirement_id for child,_ in shards for r in child.requirements}=={'first','second'}
+    for child,rendered in shards:
+        assert len(rendered.closures)==1
+        assert table.original_ref in rendered.match.candidate_refs
+        assert any(o.object_id==table.object_id for o in rendered.objects)
+
+
+def test_one_complete_scientific_requirement_cannot_be_split_into_partial_candidates(generated):
+    from validator.scientific_result_v1.source_tasks.contracts import RequirementMatch
+    from validator.scientific_result_v1.source_tasks.sharding import partition
+    from validator.scientific_result_v1.source_tasks.transport import audit_packet
+    from validator.scientific_result_v1.source_tasks.operations import Hold
+    path,_,_=generated;index=Index(Package(path,'a'));store=Store(path.parent/'joint-source-requirement')
+    refs=[o.original_ref for o in index.objects if o.kind=='RESULT']
+    task,base=packet_case(index,store,refs=refs)
+    match=base.match.model_copy(update={'matches':[RequirementMatch(requirement_id=task.requirements[0].requirement_id,output_refs=refs)]})
+    packet=index.packet(task,task.binding,match,'5'*64,[])
+    def bound(text):return 32001 if len(audit_packet(json.loads(text)).closures)>1 else 1000
+    with pytest.raises(Hold,match='No complete independent partition'):
+        partition(index,task,packet,tokenizers={'test':bound})
+
+
+def test_context_property_can_share_a_component_root_pointer(generated):
+    from validator.scientific_result_v1.source_tasks.contracts import MatchResponse
+    path,_,_=generated;index=Index(Package(path,'a'));store=Store(path.parent/'property-component-overlap')
+    present={p.original_ref.pointer for o in index.objects for p in o.properties if p.present}
+    pointer=next(p for p in ['/extraction','/extraction/notes'] if p in present and p in index.components)
+    task,_=packet_case(index,store);task=task.model_copy(update={'scope_kind':'SOURCE_CONTEXT'})
+    class Scanner:
+        def __init__(self):self.store=store
+        def request(self,role,operation,data,response_type,validate,**kwargs):
+            keys=data['inspection_component_ids'];refs=[dict(kind='json',output_alias='a',pointer=pointer)] if pointer in keys else []
+            response=MatchResponse.model_validate(dict(task_id=task.task_id,output_alias='a',state='MATCHED' if refs else 'ABSENT',inspected_component_ids=keys,
+                matches=[dict(requirement_id=r.requirement_id,output_refs=refs) for r in task.requirements],explanation='Original metadata property is also an index component'))
+            validate(response);return response
+    match=index.match(task,Scanner())
+    assert [r.pointer for r in match.candidate_refs]==[pointer]
+    assert match.coverage.exhaustive_fallback_completed
+
+
+@pytest.mark.parametrize('paper_key',['P005','openalex_w123456789','study-2026_trial'])
+def test_v4_transport_factors_only_exact_headers_and_closure_views(generated,paper_key):
+    from validator.scientific_result_v1.source_tasks.transport import judge_packet,audit_packet
+    path,_,_=generated
+    if paper_key!='P005':
+        (path/'output.json').write_text((path/'output.json').read_text().replace('P005',paper_key))
+        (path/'P005.E001.T001.csv').rename(path/(paper_key+'.E001.T001.csv'))
+    index=Index(Package(path,'long-output-alias-'+'a'*64))
+    _,packet=packet_case(index,Store(path.parent/'v4-transport'),refs=[o.original_ref for o in index.objects if o.kind=='RESULT'])
+    wire=judge_packet(packet)
+    assert any(o.get('object_id_from_property') for o in wire['objects'])
+    assert any(e.get('headers_from_properties') for e in wire['relations'])
+    assert any(c.get('submitted_from_original_closure') for c in wire['closures'])
+    assert wire['literal_identifier_pool']
+    assert audit_packet(wire)==packet
+    # A different recomputation order is evidence, and must remain explicit.
+    closure=packet.closures[0]
+    assert len(closure.recomputed_member_ids)>1
+    changed=packet.model_copy(update={'closures':[closure.model_copy(update={'recomputed_member_ids':list(reversed(closure.recomputed_member_ids))}),*packet.closures[1:]]})
+    encoded=judge_packet(changed)
+    assert 'recomputed_member_ids' in encoded['closures'][0]
+    assert audit_packet(encoded)==changed
+
+
+def test_v4_identifier_pool_avoids_literal_marker_collision_and_rejects_unknown_ids(generated):
+    import copy
+    from validator.scientific_result_v1.source_tasks.transport import judge_packet,audit_packet
+    path,_,_=generated;index=Index(Package(path,'a'))
+    _,packet=packet_case(index,Store(path.parent/'v4-collision'),refs=[o.original_ref for o in index.objects if o.kind=='RESULT'])
+    node=packet.objects[0];prop=next(p for p in node.properties if p.present and p.name!='id')
+    changed_prop=prop.model_copy(update={'value_json':json.dumps('original marker ~0; and '+node.object_id)})
+    changed_node=node.model_copy(update={'properties':[changed_prop if p.name==prop.name else p for p in node.properties]})
+    changed=packet.model_copy(update={'objects':[changed_node,*packet.objects[1:]]})
+    wire=judge_packet(changed)
+    assert wire['literal_identifier_prefix']=='~~'
+    assert audit_packet(wire)==changed
+    corrupted=copy.deepcopy(wire);corrupted['literal_identifier_pool'].pop(next(iter(corrupted['literal_identifier_pool'])))
+    with pytest.raises(ValueError,match='Unknown original identifier reference'):audit_packet(corrupted)
+    corrupted=copy.deepcopy(wire);corrupted['literal_identifier_pool']=[]
+    with pytest.raises(ValueError,match='Invalid original-identifier pool'):audit_packet(corrupted)

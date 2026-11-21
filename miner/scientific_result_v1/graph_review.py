@@ -18,6 +18,8 @@ def review_batch_graph(batch, *, context, documents, runtime, directory, stage, 
     ids = sorted(key for key in known if not re.search(r'\.[GSTA]\d+$', key))
     eligible = ids
     record_ids = [record['id'] for record in batch['results']]
+    owners = {record['id']: record['id'] for record in batch['results']}
+    owners.update({field['id']: record['id'] for record in batch['results'] for field in record['fields']})
     old_edges = batch['relationships']
     removable = [i for i, edge in enumerate(old_edges) if edge['relation'] != 'table_for']
     edge_type = {'allOf': [schema['properties']['relationships']['items'], {
@@ -28,7 +30,9 @@ def review_batch_graph(batch, *, context, documents, runtime, directory, stage, 
         'remove_relationship_indexes': {'type': 'array', 'uniqueItems': True, 'items': {'enum': removable} if removable else False},
         'core_assignments': {'type': 'object', 'properties': {key: {'type': 'array', 'minItems': 1, 'uniqueItems': True, 'items': {'enum': eligible}} for key in record_ids}, 'additionalProperties': False},
         'review_notes': {'type': 'string', 'minLength': 1},
-        'closure_review': schema['properties']['closure_review'],
+        'closure_review': {'type': 'array', 'items': {'allOf': [
+            {'$ref': '#/$defs/ClosureReviewItem'},
+            {'properties': {'object_id': {'enum': sorted(owners)}}}]}},
         'review_required_results': {'type': 'array', 'uniqueItems': True, 'items': {'enum': record_ids}},
     }, ['add_relationships', 'remove_relationship_indexes', 'core_assignments', 'review_notes'])
 
@@ -50,9 +54,8 @@ def review_batch_graph(batch, *, context, documents, runtime, directory, stage, 
 
     def check(review):
         trial = apply(review)
-        owners = {field['id']: record['id'] for record in trial['results'] for field in record['fields']}
-        flags = set(review.get('review_required_results', []))
-        errors = [{'message': f'{item["object_id"]}: closure review requires an existing field and its owning result marked review_required'}
+        flags = {record['id'] for record in trial['results'] if record['closure'].get('status')=='review_required'}
+        errors = [{'message': f'{item["object_id"]}: closure review requires an existing field or record and its owning result marked review_required'}
                   for item in review.get('closure_review', []) if owners.get(item['object_id']) not in flags]
         return errors + _result_batch_issues(trial)
 
@@ -74,7 +77,7 @@ Choose cores consistent with the reviewed scientific graph. A p-value qualifying
 identified comparison is not a replacement for that comparison's terminal anchor.
 An independently reported baseline/reference value can use a justified none boundary
 link to the result it helps interpret. Never manufacture a dependency to claim closure.
-If attachment cannot be established from source, preserve the field in closure_review
+If attachment cannot be established from source, preserve the field or record in closure_review
 and mark its result in review_required_results. Do not silently claim it is closed.
 Retain existing valid edges. Remove an edge only when specifically correcting it,
 using its supplied numeric index. Preserve source table links. Return only the graph

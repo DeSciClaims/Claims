@@ -304,3 +304,51 @@ def test_source_audit_missing_supplement_survives_table_audit_and_validation(tmp
     assert 'supplement' in payload['extraction']['notes']
     payload['extraction']['table_coverage']['status'] = 'complete'
     assert not any(i['code'] == 'V20' for i in validate_package(payload, directory))
+
+
+@pytest.mark.parametrize('review_kind,already_flagged', [('record',False),('field',False),('record',True),('unknown',False)])
+def test_graph_review_accepts_scoped_records_and_fields_with_review_status(tmp_path,review_kind,already_flagged):
+    from miner.scientific_result_v1.graph_review import review_batch_graph
+    rid='P001.E001.R001';mean=rid+'.F001';sem=rid+'.F002'
+    batch={'results':[{'id':rid,'fields':[{'id':mean,'field':'mean','label':'mean','value':2},
+        {'id':sem,'field':'sem','label':'standard_error','value':.1}],
+        'closure':{'core_ids':[mean],'member_ids':[mean],'reference_ids':[],
+                   'status':'review_required' if already_flagged else 'closed'}}], 'relationships':[]}
+    object_id={'record':rid,'field':sem,'unknown':'P001.E001.R999'}[review_kind]
+    class Runtime:
+        def generate(self,**kwargs):
+            return {'add_relationships':[{'source_id':sem,'target_id':mean,'relation':'uncertainty_of',
+                'closure_direction':'source_to_target','basis':'The source reports this SE for the mean.'}],
+                'remove_relationship_indexes':[],'core_assignments':{},'review_notes':'Retain an explicit unresolved disposition.',
+                'closure_review':[{'object_id':object_id,'reason':'Needs source review','disposition':'Preserved for review'}],
+                'review_required_results':[] if already_flagged else [rid]}
+    call=lambda:review_batch_graph(batch,context={'relationships':[]},documents=[],runtime=Runtime(),
+        directory=tmp_path,stage='graph-review',attempts=1)
+    if review_kind=='unknown':
+        with pytest.raises(ValueError,match='failed after'):call()
+    else:
+        result=call()
+        assert result['results'][0]['fields']==batch['results'][0]['fields']
+        assert result['results'][0]['closure']['status']=='review_required'
+        assert result['closure_review'][0]['object_id']==object_id
+
+
+def test_repair_can_correct_annotation_coordinates_without_changing_table_data():
+    from copy import deepcopy
+    from miner.scientific_result_v1.patch import apply_edits,REPAIR_PATH_PATTERN
+    from jsonschema import Draft202012Validator
+    payload={'tables':[{'id':'T1','row_count':2,'columns':[{'name':'mean'}],
+        'annotations':[{'rows':[3],'columns':['mean'],'text':'Printed footnote','kind':'footnote'}]}]}
+    original=deepcopy(payload)
+    path='/tables/0/annotations/0/rows'
+    assert Draft202012Validator({'type':'string','pattern':REPAIR_PATH_PATTERN}).is_valid(path)
+    repaired=apply_edits(payload,[{'op':'replace','path':path,'value':[2]}])
+    assert payload==original
+    expected=deepcopy(original);expected['tables'][0]['annotations'][0]['rows']=[2]
+    assert repaired==expected
+    for forbidden in ['/paper/id','/sources/0/version','/tables','/tables/0/id',
+                      '/tables/0/row_count','/tables/0/columns/0/name','/tables/0/annotations/0/text',
+                      '/schema_version','/extraction/id','/results/0/closure/member_ids']:
+        assert not Draft202012Validator({'type':'string','pattern':REPAIR_PATH_PATTERN}).is_valid(forbidden)
+        with pytest.raises(ValueError,match='Repair cannot change'):
+            apply_edits(payload,[{'op':'replace','path':forbidden,'value':'changed'}])

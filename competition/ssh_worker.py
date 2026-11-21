@@ -273,9 +273,15 @@ class RestrictedSshWorkerTransport(PinnedSshWorkerTransport):
     """
 
     ssh_user: str = "claims-control"
+    control_command: str = "/usr/local/sbin/claims-worker-control"
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not re.fullmatch(r"/usr/local/sbin/[A-Za-z0-9_-]+", self.control_command):
+            raise ValueError("worker control command must name a trusted root helper")
 
     def capacity(self, vm: WorkerVm) -> dict[str, int]:
-        response = self._ssh(vm, "sudo -n /usr/local/sbin/claims-worker-control run",
+        response = self._ssh(vm, "sudo -n " + self.control_command + " run",
                              input_bytes=b'{"operation":"capacity"}', timeout=30)
         if len(response) > 4096:
             raise ValueError("worker capacity response is too large")
@@ -300,7 +306,7 @@ class RestrictedSshWorkerTransport(PinnedSshWorkerTransport):
             raise ValueError("worker job ID is invalid")
         archive = _tar_bytes({**bundle, "paper-key": paper_key.encode("ascii")})
         response_bytes = self._ssh(
-            vm, "sudo -n /usr/local/sbin/claims-worker-control run",
+            vm, "sudo -n " + self.control_command + " run",
             input_bytes=archive, timeout=self.command_timeout_seconds,
         )
         if len(response_bytes) > result_limit + 2 * self.max_log_bytes + 4096:

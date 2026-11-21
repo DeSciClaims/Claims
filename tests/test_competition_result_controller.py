@@ -189,3 +189,33 @@ def test_signed_reference_fallback_burns_all_miner_shares():
     assert bundle["weights"]["vector"] == [
         {"uid": 0, "weight": pytest.approx(1.0)},
     ]
+
+
+@pytest.mark.parametrize('standard_error',[.005,float('inf')])
+def test_scientific_single_paper_publication_cites_source_tasks_not_legacy_panels(monkeypatch,standard_error):
+    from competition import scientific_lineage,scientific_scoring,result_controller
+    class ScientificBackend(Backend):
+        def get_round(self,rid):
+            return {**super().get_round(rid),'status':'final','rules_public':{'policy':{'validation_protocol':'claims-source-task-v1','winner_selection':'silver_tiebreak'}}}
+        def list_stages(self,rid):
+            stage=super().list_stages(rid)[0]
+            return [{**stage,'entries':[e for e in stage['entries'] if e['hotkey']!='runner']}]
+        def list_sample(self,rid):return [{'stage':'final','paper_id':'paper-1','judge_id':'J2'}]
+    backend=ScientificBackend();proof=[{'paper_id':'paper-1','silver_receipt_sha256':'a'*64,'revision':0,'comparison_plan_sha256':'b'*64}]
+    copies={'winner':{'schema_version':'claims_source_copy_diagnostic_v1','is_copy':False}}
+    monkeypatch.setattr(scientific_lineage,'verify_current_grid',lambda *a,**k:proof)
+    monkeypatch.setattr(scientific_scoring,'scientific_copy_diagnostics',lambda **k:copies)
+    monkeypatch.setattr(result_controller,'final_judge_diagnostics',lambda **k:(_ for _ in ()).throw(AssertionError('legacy panels called')))
+    pair={'stage':'final','paper_id':'paper-1','judge_id':'J2','challenger_hotkey':'winner','baseline_hotkey':'incumbent','challenger_score':.54,'baseline_score':.5,'infrastructure_fault':False}
+    selection=FinalSelection('winner','new_crown',.04,(FinalistVerdict('winner','new-team',.04,standard_error,1,True,'cleared'),),final_pair_rows=(pair,))
+    signer=Keypair.create_from_mnemonic(Keypair.generate_mnemonic())
+    receipt=publish_selected_round('week2',backend=backend,signer=signer,selection=selection,operator_hotkey='operator',uid_by_hotkey={'operator':9,'winner':1,'incumbent':3},qualified_by_hotkey={'winner':True},production_team_id='old-team',gold_by_hotkey={},copy_audit=copies,worker_security_audit={'winner':{'passed':True},'incumbent':{'passed':True}},code_audit={'evidence_sha256':'a'*64,'failed_checks':{'winner':0}})
+    assert receipt['bundle']['results']['judge_diagnostics']=={'protocol_id':'claims-source-task-v1','source_task_receipts':proof}
+    assert backend.published==('week2',receipt)
+
+    import json,math
+    from pydantic import TypeAdapter
+    assert receipt['bundle']['results']['finalists'][0]['standard_error']==(standard_error if math.isfinite(standard_error) else None)
+    wire=json.dumps(receipt,allow_nan=False).encode()
+    decoded=TypeAdapter(dict).validate_json(wire)
+    assert canonical_sha256(decoded['bundle'])==receipt['bundle_sha256']

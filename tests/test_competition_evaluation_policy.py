@@ -40,6 +40,13 @@ def _configuration(tiebreak=None):
 CONFIGURATION = _configuration()
 
 
+@pytest.fixture(autouse=True)
+def capture_current_frozen_configuration(monkeypatch):
+    # Lazy workflow imports can load local environment settings during other
+    # tests. Freeze each test's baseline after those imports, not at collection.
+    monkeypatch.setitem(globals(), "CONFIGURATION", _configuration())
+
+
 def test_fixed_comparison_models_do_not_follow_judge_rotation_and_resume_stages():
     descriptor = {"model": "deepseek/deepseek-v4-flash-0731", "provider_slug": "deepinfra/fp8"}
     config = {**CONFIGURATION, "workflow_specs": validated_workflow_spec({

@@ -2,6 +2,13 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
+
+
+ANNOTATION_COORDINATES = r"/tables/[0-9]+/annotations/[0-9]+/(?:rows|columns)(?:/[^/]+)*"
+REPAIR_PATH_PATTERN = (r"^(?:" + ANNOTATION_COORDINATES +
+    r"|/(?!(?:paper|sources|tables|schema_version)(?:/|$)|extraction/id(?:/|$)|"
+    r"results/[0-9]+/closure/(?:member_ids|reference_ids)(?:/|$)).+)$")
 
 
 def apply_edits(payload: dict, edits: list[dict]) -> dict:
@@ -11,8 +18,8 @@ def apply_edits(payload: dict, edits: list[dict]) -> dict:
         if operation not in ("add", "replace", "remove") or not pointer.startswith("/"):
             raise ValueError("Invalid edit operation or JSON pointer")
         tokens = [part.replace("~1", "/").replace("~0", "~") for part in pointer[1:].split("/")]
-        if tokens[0] in ("paper", "sources", "tables", "schema_version") or tokens[:2] == ["extraction", "id"]:
-            raise ValueError("Repair cannot change source, table, or assigned identities")
+        if not re.fullmatch(REPAIR_PATH_PATTERN, pointer):
+            raise ValueError(f"Repair cannot change source, table data/identities, or computed closure arrays: {pointer}")
         node = result
         for key in tokens[:-1]:
             node = node[int(key)] if isinstance(node, list) else node[key]

@@ -155,6 +155,21 @@ def replay(store,ref):
         from .replay_checks import check_selections,check_runs
         check_selections(store,receipt,source,manifest,selected,secret,scope)
         check_runs(store,receipt,cards,packets,verdicts,secret,scope)
+        identity_runs={};identity_requests={}
+        from .contracts import JudgeRunReceipt
+        for ref in receipt.judge_runs:
+            run=store.load(ref,JudgeRunReceipt);identity_runs[run.run_id]=run
+            identity_requests[run.run_id]=__import__('json').loads(store.read(run.request))
+        for case in packets.values():
+            if case.match.identity_receipt is None:continue
+            original_package=next(p for p in packages if p.output_alias==case.output_alias)
+            with tempfile.TemporaryDirectory(prefix='claims-identity-replay-') as work:
+                root=Path(work);(root/'output.json').write_bytes(store.read(original_package.extraction_json))
+                for f in original_package.table_csv_files:(root/Path(f.relative_path).name).write_bytes(store.read(f))
+                from .match_identity import replay_identity
+                from .sharding import parent_id
+                replay_identity(store,case,cards[case.task_id],Index(Package(root,case.output_alias)),source,
+                    identity_runs,identity_requests,cards[parent_id(case.task_id)])
         for alias in active:
             if gates[alias].gate_bit!=1:continue
             from .sharding import leaves,validate_child,parent_id,MARKER

@@ -24,3 +24,9 @@ def test_publication_hash_and_hotkey_signature_are_reproducible():
         bytes.fromhex(receipt["bundle_sha256"]), bytes.fromhex(receipt["signature_hex"]),
     )
     assert canonical_sha256({**bundle, "results": {"decision": "rejected"}}) != receipt["bundle_sha256"]
+
+
+def test_publication_rejects_non_json_statistics_before_signing():
+    import pytest
+    for value in [float('inf'),float('-inf'),float('nan')]:
+        with pytest.raises(ValueError):canonical_sha256({'standard_error':value})

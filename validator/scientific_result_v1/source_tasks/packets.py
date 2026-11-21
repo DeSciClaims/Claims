@@ -330,6 +330,7 @@ class Index:
 
     def match(self, task, ops, *, evidence=None, role="PRIMARY"):
         available = sorted(self.components, key=lambda s: s.encode())
+        original_properties={p.original_ref.pointer for o in [*self.objects,*self.relations] for p in o.properties if p.present}
         inspected = []
         matches = {r.requirement_id: [] for r in task.requirements}
         candidates = []
@@ -362,7 +363,7 @@ class Index:
                         raise ValueError("Unknown requirement")
                     for ref in item.output_refs:
                         self.resolve(ref)
-                        if task.scope_kind=='SOURCE_CONTEXT' and ref.kind=='json' and ref.pointer in self.components:
+                        if task.scope_kind=='SOURCE_CONTEXT' and ref.kind=='json' and ref.pointer in self.components and ref.pointer not in original_properties:
                             raise ValueError('Context correspondence must cite original properties, not complete object/closure roots')
                 assigned=[ref for item in response.matches for ref in item.output_refs]
                 if response.state=='ABSENT' and assigned:raise ValueError('ABSENT correspondence cannot have matched references')
@@ -548,9 +549,17 @@ class Index:
         relevant=[];boundary=set()
         focus=joint-descriptor_results
         selected_fields={oid for oid in selected if byid[oid].kind=='FIELD'}
+        local_scientific={oid for oid in focus if oid in self.originals and self.originals[oid][0].startswith(('/results/','/cross_group_summaries/'))}
         for relation in self.relations:
-            context_link=relation.relation in {'table_for','applies_under'} and (relation.source_id in joint or relation.target_id in joint)
-            include=(canonical(relation.original_ref) in matched_edges or (relation.relation=='applies_under' and (relation.source_id in joint or relation.target_id in joint)) or (relation.relation=='derived_from' and (relation.source_id in selected_fields or relation.target_id in selected_fields))) if context_mode else (relation.source_id in focus or relation.target_id in focus or context_link)
+            context_scope=joint if task.task_kind=='ARCHIVE' else local_scientific
+            context_link=relation.relation in {'table_for','applies_under'} and (relation.source_id in context_scope or relation.target_id in context_scope)
+            explicit=canonical(relation.original_ref) in matched_edges
+            if context_mode:
+                include=(explicit or (relation.relation=='applies_under' and (relation.source_id in joint or relation.target_id in joint)) or (relation.relation=='derived_from' and (relation.source_id in selected_fields or relation.target_id in selected_fields)))
+            elif relation.relation in {'applies_under','table_for'}:
+                include=explicit or context_link
+            else:
+                include=relation.source_id in focus or relation.target_id in focus
             if include:
                 relevant.append(relation)
                 if not context_mode or relation.relation in {'applies_under','derived_from'}:boundary.update({relation.source_id,relation.target_id}-joint)

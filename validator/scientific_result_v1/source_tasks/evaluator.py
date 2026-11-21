@@ -312,7 +312,14 @@ class PaperEvaluator:
                     for output,uid in table_uid_by_output.items() if task.task_kind=='ARCHIVE' and tilemap[task.tile_ids[0]].table_uid==uid}
                 packet=index.packet(task,binding,match,package_hash,db,owned_refs=owned_refs,table_ranges=ranges)
                 from .sharding import partition
-                shards=partition(index,task,packet,tokenizers=local.tokenizers,owned_refs=owned_refs,table_ranges=ranges,source_frame=source_frame)
+                try:
+                    shards=partition(index,task,packet,tokenizers=local.tokenizers,owned_refs=owned_refs,table_ranges=ranges,source_frame=source_frame)
+                except Hold as exc:
+                    if task.task_kind!='CONTENT' or task.scope_kind!='SCIENTIFIC_RESULT' or exc.category!='EVALUATOR':raise
+                    from .match_identity import refine_identity
+                    match=refine_identity(index,local,task,match,source_frame)
+                    packet=index.packet(task,binding,match,package_hash,db)
+                    shards=partition(index,task,packet,tokenizers=local.tokenizers,source_frame=source_frame)
                 for child,rendered in shards:
                     if child!=task:children.append(child)
                     packet_refs.append(store.put(rendered))

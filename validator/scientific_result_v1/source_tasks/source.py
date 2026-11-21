@@ -494,8 +494,25 @@ def selected_cards(ops, tile, binding, evidence, *, expand=None):
         try:
             if batch.outcome=='NEED_EVIDENCE':raise SourceContextRequested(batch.evidence_requests)
             if batch.outcome!='READY':raise Hold('SOURCE','Selected tile requires common correction: '+batch.outcome)
-            batch=reviewed(ops,'CARD_BATCH',batch,request,anchor_ids,[c.local_key for c in batch.cards],
-                source_limit=limit,allow_evidence_requests=True,proposal_validator=validate)
+            original=batch
+            def cited(cards):
+                return {a for c in cards for a in c.evidence_anchor_ids+[a for r in c.requirements for a in r.evidence_anchor_ids]}
+            required_anchors=sorted(cited(original.cards))
+            request={**request,'original_source_draft':original.model_dump(mode='json'),
+                'required_preserved_evidence_anchor_ids':required_anchors}
+            def validate_consolidated(proposal):
+                validate(proposal)
+                if proposal.outcome!='READY':return
+                missing=set(required_anchors)-cited(proposal.cards)
+                if missing:
+                    raise ValueError('Source consolidation dropped original evidence anchors: '+repr(sorted(missing)))
+            batch=ops.request('SOURCE_READER','source_card_consolidate',request,SourceTaskBatch,
+                validate=validate_consolidated,source_limit=limit)
+            if batch.outcome=='NEED_EVIDENCE':raise SourceContextRequested(batch.evidence_requests)
+            if batch.outcome!='READY':raise Hold('SOURCE','Source consolidation unresolved: '+batch.outcome)
+            check_items=['original:'+c.local_key for c in original.cards]+['proposed:'+c.local_key for c in batch.cards]
+            batch=reviewed(ops,'CARD_BATCH',batch,request,anchor_ids,check_items,
+                source_limit=limit,allow_evidence_requests=True,proposal_validator=validate_consolidated)
             if batch.outcome!='READY':raise Hold('SOURCE','Selected tile requires common correction: '+batch.outcome)
             validate(batch)
             return [TaskCard(task_id='task-'+sha(canonical([tile.tile_id,card])),task_kind='CONTENT',binding=binding,

@@ -119,3 +119,42 @@ output's score. It does not issue new scientific judgments.
 See [implementation and operation](IMPLEMENTATION.md) for entry points and
 [the validation guide](../../schemas/scientific-result-extraction/v1.1/VALIDATION_GUIDE.md)
 for the evaluation policy, sampling rules and response contracts.
+
+## Latest verification
+
+The latest retained check for each example paper completed on 21 November 2026.
+Three receipts are FROZEN; Genther remains HOLD. All four passed provider-free replay. Shukla, Ohtsuki
+and Perel use the four-paper r11 run; Genther uses the fresh focused r12 run
+after making the complete required source-anchor list explicit. These receipts
+are not one competition generation or a live ranking.
+
+| Paper | G | C | T | P | Q | Verification |
+| --- | --- | --- | --- | --- | --- | --- |
+| Shukla | 1 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | FROZEN; r11 |
+| Genther | 1 | — | — | — | — | HOLD; r12 focused |
+| Ohtsuki | 0 | — | — | — | 0.0000 | FROZEN; r11 |
+| Perel | 0 | — | — | — | 0.0000 | FROZEN; r11 |
+
+Genther: EVIDENCE_LIMIT: No complete independent partition fits the 32000-token bound; RESPONSE_INVALID: Technical response failure after one identical-request retry
+
+Genther's remaining oversized caption case passed a separate fresh-source targeted
+check after the caption-scope clarification: one packet at 8,364 tokens. Its earlier full-run HOLD, including provider
+429s and malformed matcher responses, has not been replaced with a new score.
+
+Ohtsuki and Perel retain seven and eight V13 graph errors respectively; scientific
+review is skipped and Q=0. No miner output was repaired.
+
+All 148 regression tests pass. All 98 distinct dispatched scientific-review
+packets decode exactly to their retained audit records; the largest is 30,959
+tokens. Table matching preserves original CSV coordinates. Source-only consolidation
+merges restatements before targets freeze, retains every original source witness,
+and receives independent review against both drafts. Full scientific dependencies
+remain in review packets.
+
+The workspace report and per-run inputs, calls, snapshots and receipts are under
+`outputs/claims-validator-packet-and-table-verification-20261121`. Latest selected
+receipts recorded $5.591689 plus 3 unknown-billing attempts; earlier trials
+have separate billing records. This is validator expense, separate from miner limits.
+
+**Scientific judge accuracy is unmeasured.** Full conformance/pilot work and remaining
+production integration are separate from this execution and replay check.

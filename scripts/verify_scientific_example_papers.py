@@ -196,6 +196,8 @@ def main():
     parser.add_argument('--secondary-model', choices=sorted(APPROVED_MODELS), default=MODELS['SECONDARY'])
     parser.add_argument('--env-file', type=Path)
     parser.add_argument('--concurrency', type=int, choices=(1, 2, 3, 4), default=4)
+    parser.add_argument('--papers', nargs='+', choices=tuple(CASES), default=list(CASES),
+                        help='Select retained papers for a focused rerun; defaults to all four')
     parser.add_argument('--check-inputs-only', action='store_true')
     parser.add_argument('--reparse-pdfs', action='store_true',help='Run Docling from original supplied PDF bytes into a validator-owned cache')
     args = parser.parse_args()
@@ -204,8 +206,8 @@ def main():
         load_dotenv(args.env_file)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     with ThreadPoolExecutor(max_workers=args.concurrency) as executor:
-        reports = list(executor.map(lambda name: run_case(args, name), CASES))
-    summary = {'mode': 'retrospective_four_paper_verification', 'papers': reports,
+        reports = list(executor.map(lambda name: run_case(args, name), dict.fromkeys(args.papers)))
+    summary = {'mode': 'retrospective_four_paper_verification', 'selected_papers': list(dict.fromkeys(args.papers)), 'papers': reports,
                'all_scored_and_replayed': all(r['state'] == 'FROZEN' and r.get('offline_replay') == 'passed' for r in reports)}
     (args.output_dir / 'report.json').write_text(json.dumps(summary, indent=2))
     if any(r['state'] == 'ERROR' for r in reports):

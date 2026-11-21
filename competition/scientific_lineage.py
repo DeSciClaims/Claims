@@ -2,6 +2,8 @@
 from contextlib import contextmanager
 import tempfile
 import json
+import os
+from pathlib import Path
 from validator.scientific_result_v1.source_tasks.contracts import ComparisonPlan,SourceGridManifest,FileRef
 from validator.scientific_result_v1.source_tasks.store import sha,canonical
 from validator.scientific_result_v1.source_tasks.replay import replay
@@ -20,6 +22,11 @@ def evidence_store(backend):
     from validator.scientific_result_v1.source_tasks.remote import RemoteStore
     if not hasattr(backend,'base_url'):
         raise ValueError('Scientific replay requires retained evidence and current generation heads')
+    root=os.environ.get('CLAIMS_SCIENTIFIC_EVIDENCE_ROOT')
+    if root:
+        # Immutable blobs remain hash-checked; logical revision heads stay remote.
+        yield RemoteStore(Path(root),backend)
+        return
     with tempfile.TemporaryDirectory(prefix='claims-scientific-lineage-') as root:
         yield RemoteStore(root,backend)
 

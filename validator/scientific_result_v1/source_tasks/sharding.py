@@ -27,7 +27,7 @@ def validate_child(child,parent):
     requirements={r.requirement_id:r for r in parent.requirements}
     for r in child.requirements:
         original=requirements.get(r.requirement_id)
-        if original is None or r.statement!=original.statement or r.qualifications!=original.qualifications or r.encoding_constraints!=original.encoding_constraints:
+        if original is None or r.statement!=original.statement or r.qualifications!=original.qualifications or r.encoding_constraints!=original.encoding_constraints or r.analysis_scope!=original.analysis_scope or r.adjustment_scope!=original.adjustment_scope:
             raise ValueError('Shard rewrote a scientific requirement')
         if not set(r.evidence_anchor_ids)<=set(original.evidence_anchor_ids):raise ValueError('Shard invented a requirement witness')
 
@@ -43,23 +43,13 @@ def partition(index,task,packet,*,tokenizers,owned_refs=None,table_ranges=None,s
         # unrelated result that happens to share the same protocol or convention.
         groups=[([r],None,None,[]) for r in task.requirements]
     elif task.task_kind=='CONTENT':
-        by_requirement={m.requirement_id:m for m in packet.match.matches}
         assigned={canonical(r) for m in packet.match.matches for r in m.output_refs}
         extras=[r for r in packet.match.candidate_refs if canonical(r) not in assigned]
-        # Requirements sharing a candidate remain joint, preserving intervals/tests/contradictions.
-        def joint_key(ref):
-            if ref.kind!='json':return canonical(ref)
-            return ref.pointer.split('/fields/')[0].encode()
-        pending=[([r],{joint_key(x) for x in by_requirement[r.requirement_id].output_refs}) for r in task.requirements]
-        while pending:
-            reqs,refs=pending.pop(0)
-            changed=True
-            while changed:
-                changed=False
-                for i,(other,orefs) in enumerate(pending):
-                    if refs&orefs:
-                        reqs+=other;refs|=orefs;pending.pop(i);changed=True;break
-            groups.append((reqs,None,None,extras))
+        # Each unchanged source requirement is a complete semantic target. Repeat
+        # its FULL objects, graph endpoints, closures and all conflicting views.
+        # Shared assertions are duplicated, never cut apart or awarded twice;
+        # every required shard must pass for the single original parent bit.
+        groups=[([r],None,None,extras) for r in task.requirements]
     elif task.task_kind=='OUTPUT_AUDIT':
         if owned_refs is None:raise ValueError('Missing complete audit ownership ledger')
         from .audit_groups import assertion_groups

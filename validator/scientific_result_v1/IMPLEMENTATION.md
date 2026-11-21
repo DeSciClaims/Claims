@@ -80,6 +80,13 @@ after generation. Unassigned context cannot inflate every review packet.
 `transport.judge_packet` losslessly factors repetitive property wrappers and original
 property pointers. Exact literal strings, missing-property flags, original references,
 relationships, closures, sidecars and CSV cells remain recoverable by `audit_packet`.
+Version 4 also inherits repeated output aliases and derives identity, edge and
+closure view headers only when their values exactly match retained original
+properties. Repeated administrative IDs inside JSON literals use a collision-safe
+identifier pool; decoding restores the exact literal strings. A differently ordered
+closure array stays explicit. These changes reduce packet size without removing
+scientific assertions or changing the 32,000-token bound. Older v1–v3 records remain
+decodable, and a changed transport requires a newly frozen runtime configuration.
 `judge_evidence` factors only repeated document SHA-256 values; document/anchor IDs
 and source text stay unchanged. The 32k budget measures actual judge transport.
 Rich immutable audit records remain available, and score replay checks transport
@@ -330,41 +337,81 @@ rules; activate a new round format only with compatible downstream consumers.
 
 ## Verification status
 
-All four worked examples pass deterministic checks. Offline regression against
-the previous generated packages detects incorrect field-to-cell references and
-invalid local cores. A controller manifest can additionally block the known
-unavailable external Perel table. This is not automatic missing-source discovery.
+The packet-construction and table-matching checks completed on 21 November 2026.
+These are the latest verified receipts per paper: Shukla/Ohtsuki/Perel from the
+four-paper r11 run, and Genther from a fresh focused r12 run after correcting the
+source-anchor request. They are not one frozen competition generation or a ranking.
+Three receipts are FROZEN; Genther remains HOLD. All four passed provider-free replay.
 
-The model-assisted review path is implemented, but its scientific accuracy still
-needs live verification and calibration. Offline tests cover successful/rejected
-full gates, invented evidence, review failures/budgets, missing sources, forged
-reports, CSV transport, CLI behavior and source/package integrity. Mocked-review
-tests do not establish scientific performance.
+| Paper | G | C | T | P | Q | Verification |
+| --- | --- | --- | --- | --- | --- | --- |
+| Shukla | 1 | 1.0000 | 1.0000 | 1.0000 | 1.0000 | FROZEN; r11 |
+| Genther | 1 | — | — | — | — | HOLD; r12 focused |
+| Ohtsuki | 0 | — | — | — | 0.0000 | FROZEN; r11 |
+| Perel | 0 | — | — | — | 0.0000 | FROZEN; r11 |
 
-Packet-size correction (21 November): source-only cards use complete independently
-reported condition-specific requirements within each unchanged coherent parent.
-The independent source reviewer checks this granularity; interval endpoints and
-joint multivariate findings remain together. Family co-members used only for
-membership context have explicit original identity/scope headers instead of
-unrelated closures/metadata. Focused assertions, scientific endpoints and boundary
-definitions remain full. Replay rejects partial headers for focal assertions.
-Transport `claims_property_pairs_v2` additionally pools repeated long exact JSON
-literal strings. Decoding preserves original number spellings, whitespace, missing
-markers and pointers. Bounds count this lossless transport, not an abridgment.
+A dash means skipped or unresolved; a HOLD is not zero.
+Genther: EVIDENCE_LIMIT: No complete independent partition fits the 32000-token bound; RESPONSE_INVALID: Technical response failure after one identical-request retry
 
-Independent index batches now use up to four request contexts per case, with the
-existing global 16-request gate and four case workers. Ordered aggregation keeps
-matching results and coverage identical to serial scanning. All attempt records
-survive a failed batch; no incomplete search becomes absence. All 133 tests pass.
-The r6 run resolved packet/table holds and scored Shukla; Genther reached the
-unchanged 30-minute generation deadline. The fresh r7 run checks this scheduling
-correction without raising evidence, request, retry, or deadline limits.
+Ohtsuki and Perel retain seven and eight V13 result-graph
+errors respectively, so G=0 and Q=0. Their submitted packages were not repaired.
+The latest selected receipts recorded **$5.591689** in validator charges, plus
+**3 attempts with unknown billing**. Earlier failed trials and targeted
+diagnostics retain their own billing records; this figure is not total development
+cost and is separate from the unchanged $0.10 miner cap.
 
-The property-scope revision has 136 passing regression tests. SOURCE_CONTEXT
-matches now cite original properties and retain only necessary original scope plus
-all matched metadata. Actual input values remain complete fields. Lossless transport
-v3 factors repeated ordered property-name sets and preserves exact round-tripping.
-A complete provider matches map prevents duplicate/missing requirement slots; the
-strict adapter decodes it without adding any correspondence. The r7 scheduling
-change met the deadline, but new scope/packet and response-contract cases remained;
-these cases are retained and rechecked before the next full verification.
+The historical r12 HOLD includes a caption/reporting-convention card incorrectly
+classified as a scientific result, which activated most of a table. After a general
+caption-scope clarification, fresh source drafting, consolidation and independent
+review classified it as context. The targeted real-case check produced
+one complete packet at 8,364 tokens, with
+exact round-trip checks. The full Genther package was not rescored after that
+prompt clarification; its earlier HOLD remains authoritative. Provider HTTP 429s
+and malformed matcher responses also exhausted technical retries in r12.
+
+The fixes are general:
+
+- Caption/format references do not request all results in their table; findings
+  explicitly stated in captions and numerical table row targets remain scientific.
+- Table identity is matched against the original TableObjects and CSV headers,
+  with blind independent review and arbitration. Table-fidelity checks retain
+  actual CSV row coordinates, including section-label rows.
+- Shared context does not recursively activate every consumer's result closure.
+  Focal scientific objects and necessary dependencies remain complete. Unrelated
+  family members use explicit original scope headers and cannot supply unseen values.
+- Source tasks identify analysis and adjustment conditions. A source-only pass
+  merges restatements of the same quantity before targets freeze. Both drafts are
+  independently reviewed for scientific equivalence; every original cited source
+  anchor must remain. The controller supplies the exact anchor list and identifies
+  missing IDs in retry feedback. Distinct analyses and new findings stay distinct.
+- Oversized packets may split by complete source requirements, repeating complete
+  shared scientific objects where necessary. A single requirement cannot be split
+  into incomplete candidate views. Independent source-witnessed identity reviews
+  can exclude a different referent only when both reviewers agree; uncertainty stays.
+- Lossless transport factors repeated exact literals, property names and source
+  hashes. It preserves original values, JSON pointers, missing/null distinctions,
+  relationships, closures and CSV text. Request-bound provider schemas and complete
+  keyed match maps prevent binding and duplicate/missing requirement errors.
+- Independent match batches run under the existing 16 global requests, four case
+  workers and four contexts per case, with deterministic complete aggregation.
+
+All **148 regression tests pass**, as do targeted Ruff checks and diff checks.
+Retained-request checks decoded **98 distinct dispatched review packets**
+byte-for-byte to their full audit records. The largest packet was **30,959 tokens**, within 32,000. Source evidence has a separate 32,000-token allowance; the
+whole prompt also contains instructions and schemas. Judge output remains 16,384.
+The generation deadline (30 minutes), request timeout (120 seconds), one technical
+retry and approved models are unchanged.
+
+The original historical miner JSON/CSV packages and supplied PDF bytes are immutable.
+The validator independently parsed and hash-bound its Docling evidence. Ohtsuki's
+originally supplied supplement remains in scope; unavailable supplements are not
+required. No worked-example gold extraction was shown to the judges.
+
+The r11 Genther attempt is retained as HOLD: consolidation dropped original anchor
+IDs despite its retry. The two exact retained failures passed independent source
+review once the complete required anchor list was explicit. The fresh r12 run is
+reported separately rather than replacing that failed attempt.
+
+Scientific judge accuracy remains unmeasured. This verifies the execution path and
+replay, not production qualification; full conformance/pilot work and remaining
+production integration are separate.
