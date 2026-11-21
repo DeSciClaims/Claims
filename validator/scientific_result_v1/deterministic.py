@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Any
 from .structural import structural_issues
 from . import references, closure, tables as table_checks
-from .graph import objects, definitions, walk, closure_sets, resolve_field_path
+from .graph import definitions, walk, closure_sets, resolve_field_path, GraphProjection
 
 
 def validate_package(
-    payload: Any, directory: Path, *, require_complete: bool = False
+    payload: Any, directory: Path, *, require_complete: bool = False, projection=None
 ) -> list[dict]:
     issues = [{"code": "schema", **issue} for issue in structural_issues(payload)]
     if issues:
@@ -19,7 +19,8 @@ def validate_package(
     from .content import placeholder_issues
 
     issues.extend(placeholder_issues(payload))
-    inventory = objects(payload)
+    projection=projection or GraphProjection(payload)
+    inventory = projection.inventory
     prefix = f"{payload['paper']['id']}.{payload['extraction']['id']}."
 
     def issue(code, path, message):
@@ -85,13 +86,18 @@ def validate_package(
                     )
             except (KeyError, IndexError, TypeError, ValueError):
                 issue("V05", node["id"], "Invalid parent field or component path")
-            visited = {node["id"]}
-            while parent.get("parent_field_id") in inventory:
-                if parent["id"] in visited:
-                    issue("V05", node["id"], "Cyclic parent-field links")
-                    break
-                visited.add(parent["id"])
-                parent = inventory[parent["parent_field_id"]]
+    # Validate parent acyclicity once, independently of the scientific SCC graph.
+    settled=set()
+    for key in inventory:
+        if key in settled:continue
+        path=[];positions={};node=key
+        while node in inventory and node not in settled:
+            if node in positions:
+                for member in path[positions[node]:]:issue('V05',member,'Cyclic parent-field links')
+                break
+            positions[node]=len(path);path.append(node)
+            node=inventory[node].get('parent_field_id')
+        settled.update(path)
     for group_id, group in groups.items():
         owned = {
             key for key, record in results.items() if record["group_id"] == group_id
@@ -122,7 +128,7 @@ def validate_package(
                 "table_for must link a table to an ordinary result",
             )
     for result in results.values():
-        members, refs = closure_sets(payload, result)
+        members, refs = closure_sets(payload, result,projection)
         if members != set(result["closure"]["member_ids"]):
             issue(
                 "V12",
@@ -131,11 +137,7 @@ def validate_package(
             )
         if refs != set(result["closure"]["reference_ids"]):
             issue("V15", result["id"], "reference_ids differs from computed boundary")
-        if result["closure"]["status"] == "closed" and any(
-            "closure_direction" not in edge
-            and (edge["source_id"] in members or edge["target_id"] in members)
-            for edge in payload.get("relationships", [])
-        ):
+        if result["closure"]["status"] == "closed" and any(projection.unresolved[k] for k in members|{result['id']}):
             issue(
                 "V14", result["id"], "Closed result has unreviewed incident direction"
             )
@@ -254,6 +256,6 @@ def validate_package(
                     "Unresolved local closure is not a completed submission",
                 )
     issues.extend(references.checks(payload))
-    issues.extend(closure.checks(payload))
+    issues.extend(closure.checks(payload,projection))
     issues.extend(table_checks.checks(payload, directory))
     return issues

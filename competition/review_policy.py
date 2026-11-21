@@ -160,6 +160,7 @@ def review_policy(record: Mapping[str, Any]) -> ReviewPolicy:
 
 def uses_miner_review(record: Mapping[str, Any]) -> bool:
     """Historical signed rounds retain their policy; new rounds use Silver only."""
-    return ((record.get("rules_public") or {}).get("policy") or {}).get(
-        "winner_selection"
-    ) != "silver_tiebreak"
+    policy=((record.get("rules_public") or {}).get("policy") or {})
+    if policy.get("validation_protocol")=="claims-source-task-v1" and policy.get("winner_selection")!="silver_tiebreak":
+        raise ValueError("Scientific source-task rounds require common-pool corrections, not unit Gold")
+    return policy.get("winner_selection")!="silver_tiebreak"

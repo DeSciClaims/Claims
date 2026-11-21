@@ -57,8 +57,17 @@ def incumbent_failure_summary(
             raise ValueError("incumbent failure audit has an unknown worker status")
         if result["status"] == "infrastructure_fault":
             raise ValueError("incumbent infrastructure fault was not excluded globally")
+        effective=result['status']
+        if effective=='completed':
+            frozen=backend.get_paper_evaluation(round_id,stage,paper_id) if hasattr(backend,'get_paper_evaluation') else None
+            silver=(frozen or {}).get('result_private',{}).get('silver') or {}
+            if silver.get('protocol_id')=='claims-source-task-v1':
+                alias=silver['output_alias_by_hotkey'][incumbent_hotkey]
+                gate=next(g['gate_bit'] for g in silver['sampled_receipt']['deterministic_gates'] if g['output_alias']==alias)
+                if gate is None:raise ValueError('Pending scientific gate cannot count as an eligible paper')
+                if gate==0:effective='invalid_output'
         eligible += 1
-        failed += int(result["status"] != "completed")
+        failed += int(effective != "completed")
     if not eligible:
         raise ValueError("incumbent failure audit has no eligible papers")
     return IncumbentFailureSummary(stage, eligible, failed)

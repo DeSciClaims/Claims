@@ -222,6 +222,11 @@ def run_claimed_job(
     contract["request"]["inference"]["budget"].update(
         remaining_tokens=token_limit, remaining_dollar_limit_usd=attempt_dollars,
     )
+    scientific_inputs = None
+    if output_schema=="scientific_result_v1.1" and callable(getattr(scientific_validator,"worker_inputs",None)):
+        scientific_inputs=scientific_validator.worker_inputs(job)
+        if scientific_inputs["files"].get("paper.pdf")!=pdf:
+            raise RuntimeError("Scientific input packet differs from the released main PDF")
     key = keys.create_paper_key(
         round_id=job["round_id"], paper_id=job["paper_id"], hotkey=job["hotkey"],
         allowed_models=contract["allowed_models"], token_limit=token_limit,
@@ -232,6 +237,7 @@ def run_claimed_job(
         try:
             output = execution.run(
                 job={**job, "worker_contract": contract,
+                     **({"scientific_inputs": scientific_inputs} if scientific_inputs is not None else {}),
                      "expected_pdf_sha256": expected_pdf_sha256},
                 package=package, pdf=pdf,
                 inference_base_url=inference_base_url, paper_key=key.value,
@@ -276,13 +282,20 @@ def run_claimed_job(
         try:
             if not isinstance(output.artifact, dict):
                 raise ValueError("completed worker result has no artifact")
-            if len(json.dumps(output.artifact, separators=(",", ":")).encode()) > max_output_bytes:
+            if len(json.dumps(output.artifact, separators=(",", ":")).encode()) > (1_261_000_000 if output_schema=="scientific_result_v1.1" else max_output_bytes):
                 raise ValueError("artifact exceeds output size limit")
             if output_schema == "scientific_result_v1.1":
                 scientific_report = scientific_validator(output.artifact, job, pdf)
                 if scientific_report.get("execution_status") == "error":
                     status = "infrastructure_fault"
                     validation_error = "trusted scientific review failed to execute"
+                elif scientific_report.get("validation_phase") == "mechanical_delivery":
+                    if scientific_report.get('authoritative') is not True:
+                        status='infrastructure_fault'
+                        validation_error='Mechanical delivery checker did not return an authoritative report'
+                    elif scientific_report.get('delivery_accepted') is not True:
+                        status='invalid_output'
+                        validation_error='trusted mechanical delivery check failed'
                 elif scientific_report.get("authoritative") is not True or scientific_report.get("submission_ready") is not True:
                     status = "invalid_output"
                     validation_error = "trusted scientific validation did not accept the package"
@@ -304,9 +317,17 @@ def run_claimed_job(
     if validation_error:
         safe_log += f"\n[trusted-validate] {validation_error}\n".encode()
     logs.put(log_key, safe_log)
+    retain_failed=False
+    if status=='invalid_output' and output_schema=='scientific_result_v1.1' and isinstance(output.artifact,dict):
+        try:
+            json.dumps(output.artifact,ensure_ascii=False,allow_nan=False).encode('utf-8')
+            retain_failed=(output.artifact.get('schema_version')=='claims_scientific_package_v2' and
+                isinstance(output.artifact.get('extraction_json'),str) and isinstance(output.artifact.get('csv_files'),dict) and
+                all(isinstance(k,str) and isinstance(v,str) for k,v in output.artifact['csv_files'].items()))
+        except (ValueError,UnicodeError):pass
     result = {
         "status": status,
-        "artifact": output.artifact if status == "completed" else None,
+        "artifact": output.artifact if status=='completed' or retain_failed else None,
         "prompt_and_completion_tokens": usage.tokens,
         "inference_cost_usd": usage.dollar_cost_usd,
         "vm_elapsed_seconds": output.vm_elapsed_seconds,
@@ -318,7 +339,7 @@ def run_claimed_job(
         "detail": validation_error or output.detail,
     }
     if scientific_report is not None:
-        result["scientific_validation"] = {k: scientific_report.get(k) for k in ("schema_version", "decision", "submission_ready", "package_sha256", "source_bundle_sha256", "schema_sha256", "scientific_review_status", "review_accounting", "validation_report_sha256")}
+        result["scientific_validation"] = {k: scientific_report.get(k) for k in ("schema_version", "validation_protocol", "validation_phase", "delivery_accepted", "gate", "decision", "submission_ready", "package_sha256", "source_bundle_sha256", "schema_sha256", "scientific_review_status", "review_accounting", "validation_report_sha256")}
     backend.complete_job(
         job["job_id"], worker_id=worker_id, lease_token=job["lease_token"],
         result=result, log_object_key=log_key,

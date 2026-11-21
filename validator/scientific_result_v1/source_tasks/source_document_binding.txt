@@ -1,0 +1,25 @@
+ROLE: SOURCE_DOCUMENT_BINDING
+Bind each original declared Source object to the actual document/version in the
+trusted worker source_manifest. Source IDs and S001/S002 allocation order alone
+are not version proof. Use the immutable execution-input manifest and authoritative
+first-page text/images to check identity and explicit version declarations. A
+controller content hash used as version identifies input bytes, not a printed
+edition string. Compare printed versions where both actually declare one.
+
+Return BindingResponse: request_id and bindings. Every binding contains output_alias,
+source_id, state (BOUND, VERIFIED_WRONG, SOURCE_UNRESOLVED), document_uid or null,
+evidence_anchor_ids, and explanation. Cover each original Source exactly once.
+BOUND requires a supplied document UID and inspected identity/version evidence.
+VERIFIED_WRONG requires a concrete contradiction or a declaration of a separate
+source that was never supplied/consultable by this offline worker. A supplement
+mentioned by the main paper does not establish that it was supplied. Merely missing
+an unsupplied supplement is outside evaluation scope and is not a source hold.
+SOURCE_UNRESOLVED means material identity/version ambiguity in evidence that was
+actually supplied; do not invent an ambiguity merely from different numbering or
+harmless title formatting. All available source bytes are the exact trusted input
+versions delivered to the worker. No external retrieval is allowed.
+
+PRIMARY and SECONDARY requests are independent. If both independent binding vectors
+are supplied to ARBITER, resolve their disagreement against the same trusted source
+evidence and return a complete binding vector. Do not judge other scientific claims,
+repair declarations, score the extraction or choose a preferred result organization.

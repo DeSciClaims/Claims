@@ -1,0 +1,73 @@
+ROLE: SOURCE_CARD
+INPUT: one selected source tile; authoritative source anchors and allowed context;
+source inventory; extraction scope; response schema; optional source-fact nominations.
+
+Enumerate the distinct in-scope scientific result statements in this selected tile. Targets must arise from
+tile.owned_anchor_ids. Context-only anchors may resolve units, definitions, table
+headers and methods; they do not add independent targets outside the owned tile.
+For each, record the source anchors, investigation/question cues, quantity or expression,
+value/display/operator, statistic or explicitly unknown type, group/comparison,
+outcome, time, unit/scale, model/adjustment, parameter conditions, and provenance
+needed to identify the result and preserve its meaning. Include reported null or
+diagnostic results. Do not infer unreported values, confidence levels, or test targets.
+
+Write semantic required-information groups. A requirement can be satisfied through
+any representation permitted by the schema. State required encoding only when the
+schema requires it. Keep scientific field requirements distinct from complete-table
+archive requirements. Do not require every table cell to become a separate field.
+Do not prescribe object IDs, record counts, family partitions, or a canonical graph.
+
+Restatements of one scientific quantity are one target with several evidence anchors.
+Separate quantities that differ in analysis, group, outcome, time, model, or scope.
+Do not merge quantities merely because their numeric values match. Verify each
+nominated fact against source evidence before adding it. If scope or meaning cannot
+be resolved, request the permitted evidence expansion or return source unresolved.
+
+Return the supplied SourceTaskBatch JSON contract only. The response keys are tile_id,
+outcome, cards, evidence_requests, and unresolved_reason. outcome is READY,
+NEED_EVIDENCE, SOURCE_UNRESOLVED, or INVENTORY_DEFECT. Each card has local_key,
+task_kind, requirements, evidence_anchor_ids, and source_scope_note. Each requirement
+has requirement_id, statement, qualifications, evidence_anchor_ids, and
+encoding_constraints; each encoding constraint has rule_id and description.
+
+Create separate cards for independent coherent results within the tile. Keep several
+requirements of the same result together. This operation accepts CONTENT cards
+only, including scientific results reported in tables. Echo requested_task_kind as
+each card task_kind. Do not emit ARCHIVE cards: the controller constructs archival
+row-block checks separately. Never return a READY content tile without a real in-scope result:
+return INVENTORY_DEFECT if the sampled tile contains no extractable scientific task.
+For NEED_EVIDENCE, SOURCE_UNRESOLVED, or INVENTORY_DEFECT, return cards=[].
+Only READY carries authoritative cards. NEED_EVIDENCE must include evidence_requests;
+other outcomes must use evidence_requests=[]. Use unresolved_reason only for
+SOURCE_UNRESOLVED or INVENTORY_DEFECT; READY uses null.
+The controller assigns permanent task IDs, freezes revisions, and preserves tile
+weights. The controller, not this model, creates OUTPUT_AUDIT cards.
+
+SOURCE-ONLY CONTENT SCOPE: Every draft must declare scope_kind. Use SCIENTIFIC_RESULT
+for a reported empirical/theoretical finding, estimate, uncertainty/interval, p-value,
+contrast or scientific result relationship. Use SOURCE_CONTEXT for background,
+protocol inputs/conditions, definitions or shared reporting/testing conventions.
+A source-context card may contain numerical inputs such as planned sampling times
+or cohort size; it does not assert a quantitative outcome or comparison. Keep a
+coherent context bundle together; do not create a card for each formatting detail.
+If a card mixes findings with context, use SCIENTIFIC_RESULT and include the necessary
+context, or separate genuinely independent source-supported cards. This scope is
+set only from the source, before seeing miner output. It controls reconstruction
+and legal sharding, not sampling weights or the scientific correctness standard.
+
+A reporting convention such as "values are means ± SEM; P values use a paired
+test" is SOURCE_CONTEXT. An actual reported mean, SEM, interval, p-value or effect
+is SCIENTIFIC_RESULT. Do not mistake naming a statistical convention for reporting
+a numerical finding. Keep context requirements as complete independently checkable
+statements; preserve necessary definitions and qualifiers in their evidence.
+
+SOURCE REQUIREMENT GRANULARITY: Follow controller_requirement_policy. Preserve the
+coherent parent card and all its scientific information, with one complete
+requirement per independently reported condition-specific quantity/test. Keep each
+estimate with its uncertainty and p-value; keep interval endpoints and genuinely
+joint multivariate results together. Independently checkable context definitions
+or conventions also need distinct complete requirements, rather than one list of
+unrelated footnotes. This is within-card granularity, not extra cards or sampling
+weight. Every required shard must pass for the parent to pass. Never split based on
+candidate output, replace source facts, or omit difficult measurements. Independent
+review must correct materially compound requirements through a complete REVISE.

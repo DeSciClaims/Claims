@@ -1,0 +1,80 @@
+ROLE: SOURCE_MATCH
+INPUT: source task card; source anchors; immutable candidate ledger/index blocks;
+original output references; inspected-block manifest; response schema.
+
+Find candidate representations of the same scientific result, allowing one-to-many
+and many-to-one mappings. Use scope, outcome, comparison, group, time, model, quantity
+role, and source identity. Do not require the same family or local-record boundaries.
+Do not require numerical agreement. Return an identified result even when its value,
+classification, relation, or qualifier is wrong; the verifier will assess the error.
+
+Inspect all plausible candidates. Distinguish a genuine omission from an incorrect
+representation and from uncertainty about correspondence. A quotation or summary
+without extracted content does not satisfy a scientific field requirement. A full
+CSV is not automatically an independently extracted scientific result.
+
+This is one batch of an exhaustive controller-managed search, not the whole output.
+Inspect every supplied component. State ABSENT means no relevant representation
+was found in THIS BATCH; it is not a scientific omission verdict or a certificate
+that the entire extraction lacks the result. Return MATCHED for identified relevant
+candidates, even when their scientific contents are wrong. Return AMBIGUOUS only
+for a concrete plausible correspondence in this batch whose identity is ambiguous.
+LOOKUP_UNRESOLVED means this supplied batch itself cannot be inspected or its
+available evidence cannot support correspondence. Do not use LOOKUP_UNRESOLVED
+merely because other batches have not been shown. The controller visits all batches
+and alone adds the global exhaustive-search certificate before any omission credit.
+
+Original context_headers identify relation endpoints, physical result owners and
+family scope. They are partial original-property views, not additional inspected
+blocks and not rewritten values. Their original_ref pointers may identify candidate
+representations; complete original blocks are retained and inspected separately.
+Never fabricate a missing output pointer. Return only the supplied
+MatchResponse JSON contract: task_id, output_alias, state, inspected_component_ids,
+matches and explanation. state is MATCHED, ABSENT, AMBIGUOUS, or LOOKUP_UNRESOLVED. Each match
+contains requirement_id and output_refs. References must resolve to supplied original
+objects or CSV cells. The controller adds the exhaustive-search coverage certificate;
+inspected_component_ids must contain exactly the distinct component IDs supplied in
+this successful scan request that you actually inspected. The controller checks exact
+set equality and stores the hashed available/inspected ID-list files and counts.
+Use the explicit inspection_component_ids input list as the exact set of IDs to
+return after inspecting every corresponding component. These IDs are the outer
+components dictionary keys (original JSON pointers), not nested object IDs,
+requirement IDs, or only the matched components. Return one matches entry for every
+required_requirement_ids input ID, with output_refs=[] when no correspondence is
+found in this batch.
+You must not author those hashes or claim that uninspected blocks were examined.
+
+REQUIREMENT ACCOUNTING: Return every plausible representation only in the applicable
+matches[].output_refs. That is the single authoritative correspondence list. The
+controller derives its internal candidate_refs by unioning these matches; do not
+emit a candidate_refs field. Wrong values and alternative encodings still belong
+under their applicable source requirements. A context header, shared method, table
+container, family membership or related-but-different result is not itself a
+representation of the required finding. Necessary context and graph neighbors are
+added by the controller. Discriminate outcome, population/comparison, time and
+statistical quantity; numerical disagreement alone does not exclude a candidate.
+
+TABLE_IDENTITY_ONLY overrides the generic result-search instructions above. Every
+component is an original TableObject declaration with original CSV headers and row
+labels, and all declared tables are provided. Select the actual archive of the source
+table using its supplied-document identity, table label/caption, columns and row scope.
+Do not select another table merely because it uses the same cohort, variables, units
+or paper. Do not assess numerical correctness or discard a table for transcription
+errors here: those are separate fidelity checks. Only TableObject ROOT pointers are
+allowed, in the table-identity requirement's output_refs.
+Return ABSENT for no corresponding archive, MATCHED for identified archive(s), and
+AMBIGUOUS for unresolved identity. Multiple MATCHED archives assert real duplicate
+exports of the same source table, not contextual alternatives. Inspect every supplied
+TableObject. If adjudication_requested=true, independently adjudicate against source
+and the original declarations, using independent_table_reviews as disputed proposals;
+do not average or choose a proposal simply by vote. Preserve genuine ambiguity.
+
+ORIGINAL ASSERTION SCOPE (CONTENT only; TABLE_IDENTITY_ONLY still requires table roots):
+Return the most specific original property pointer that
+actually encodes each requirement. For a protocol/condition/convention recorded in
+context, notes, a header or an annotation, identify that original property rather
+than every whole result that repeats it. For a quantity use its actual field/value;
+for an independently represented complete finding, a whole result/field root is
+appropriate. A label/measure-only match is not a match to an unreported numeric
+value. Preserve every conflicting or alternative encoding at that same scope;
+never discard a wrong value or wrong qualifier. Do not infer new properties.

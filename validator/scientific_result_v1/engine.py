@@ -15,8 +15,9 @@ from .report import build_report
 
 def implementation_hashes():
     return {
-        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
-        for p in Path(__file__).parent.glob("*.py")
+        p.relative_to(Path(__file__).parent).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in Path(__file__).parent.rglob("*")
+        if p.is_file() and p.suffix in {".py", ".txt", ".json"} and "__pycache__" not in p.parts
     }
 
 
@@ -190,18 +191,6 @@ def validate(
                         "message": "Complete coverage requires review of every supplied in-scope source, including supplements.",
                     }
                 )
-            missing = [s for s in sources.required_sources if not s["available"]]
-            if (
-                missing
-                and payload["extraction"]["table_coverage"]["status"] == "complete"
-            ):
-                issues.append(
-                    {
-                        "code": "V20",
-                        "path": "extraction.table_coverage",
-                        "message": "Trusted manifest identifies unavailable required sources; complete coverage is false.",
-                    }
-                )
     reviews, review_errors = [], []
     if not structure:
         from .registry import targets
@@ -292,6 +281,7 @@ def validate(
     report["source_review_performed"] = any(
         r.get("method") == "dspy_source_review" for r in reviews
     )
+    report["source_scope_policy"] = "supplied_sources_only"
     report["external_source_inventory"] = []
     for path in sorted((trace_dir / "reviews").glob("*.review.json")):
         report["external_source_inventory"].extend(

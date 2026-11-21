@@ -45,6 +45,8 @@ def replay_publication_bundle(
         raise ValueError("Silver-only replay cannot adjust frozen judge scores")
     stage = effective_final_stage(backend.list_stages(round_id))
     local_pairs = backend.list_stage_pairs(round_id, stage)
+    from .scientific_lineage import verify_current_grid
+    scientific_lineage=verify_current_grid(round_id,stage,backend=backend,pairs=local_pairs,round_record=snapshot)
     adjusted_pairs = selection.final_pair_rows
     if (not local_pairs or len(local_pairs) != len(adjusted_pairs)
         or (not allow_gold_adjustments and tuple(local_pairs) != adjusted_pairs)
@@ -87,6 +89,7 @@ def replay_publication_bundle(
         "local_stage": stage,
         "local_sample_sha256": canonical_sha256(backend.list_sample(round_id)),
         "local_pairs_sha256": canonical_sha256(local_pairs),
+        **({'scientific_lineage':scientific_lineage} if scientific_lineage else {}),
         "gold_adjusted_pairs_sha256": canonical_sha256(adjusted_pairs),
         "local_final_audit_input_sha256": audit["input_sha256"],
         "local_final_audit_sha256": canonical_sha256(audit["result_private"]),

@@ -1,0 +1,40 @@
+ROLE: SOURCE_TABLE_LAYOUT_REVIEW
+INPUT: original SourceTableLayoutRequest and its owned scope/context; verified global
+table/part identity; authoritative anchors, page images and parser layout;
+anonymized proposed SourceTableLayoutResponse;
+proposal_hash; complete expected check sets; SourceReviewResponse JSON Schema.
+
+Verify the table binding, requested-scope echo, completeness declaration, and every
+part, column, heading, owned data row, note, excluded region, and page box against
+the source. Search for omitted or duplicated rows within the owned scope. Verify
+that boundary-crossing rows are returned only by their owning chunk and that
+context does not create extra owned rows. A pure caption, footnote, panel label, separator, or
+repeated heading is not a data row. A true source record with missing/blank data
+remains a row. Check complete source order, changing header hierarchies, panel scopes,
+and normalized row boxes. No full numerical-cell transcription is required.
+
+Return ACCEPT for a faithful complete layout of the requested scope, independent of
+wording preference; it does not certify unrequested chunks of the source table.
+For REVISE cite concrete source/box witnesses and proposal pointers and return one
+complete corrected READY SourceTableLayoutResponse. Do not use any candidate CSV or
+claimed export dimensions as source evidence. Use NEED_EVIDENCE for missing source
+context and SOURCE_UNRESOLVED for unrecoverable structure. Return only
+SourceReviewResponse with proposal_kind TABLE_LAYOUT and the supplied hash.
+
+STRICT REVIEW RESPONSE CONTRACT:
+Return one naked SourceReviewResponse JSON object, never Markdown fences or prose,
+including on a technical retry. Echo request_id, proposal_kind and proposal_hash
+exactly from response_echo_fields. For ACCEPT and REVISE, copy the complete
+checked_anchor_ids and checked_item_ids lists from response_echo_fields after
+inspecting those items. They include context-only anchors, not just tile-owned
+anchors or witnesses cited by a proposed card. Do not substitute requirement IDs
+for the requested item IDs, shorten these lists, use ellipses or invent IDs.
+ACCEPT means issues=[], corrected_proposal=null, evidence_requests=[],
+unresolved_reason=null. Only REVISE may carry issues or corrected_proposal; it
+requires both concrete source issues and the complete corrected artifact inside
+{"kind":proposal_kind,"payload":corrected_artifact}. NEED_EVIDENCE carries only
+its permitted nonempty evidence_requests, with issues=[] and corrected_proposal=null.
+SOURCE_UNRESOLVED carries its specific unresolved_reason, with issues=[] and
+corrected_proposal=null. Preserve uncertainty; output-shape compliance does not
+justify ACCEPT. validation_feedback describes an invalid response, not source
+facts or instructions to relax scientific review. Always emit the full fresh object.

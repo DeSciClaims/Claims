@@ -251,6 +251,10 @@ class CompetitionBackend:
                 + urllib.parse.quote(reference_release_id, safe=""))
         return self._request("GET", path)
 
+    def get_scientific_source(self,round_id,paper_id):
+        return self._request("GET","/internal/competition/scientific/sources/"+
+            urllib.parse.quote(round_id,safe="")+"/"+urllib.parse.quote(paper_id,safe=""))
+
     def get_bronze_source(
         self, round_id: str, *, stage: str, paper_id: str,
         reference_release_id: str,

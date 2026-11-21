@@ -113,8 +113,8 @@ A missing printed table must be exported even if its pooled effect was already e
 as an F field. In particular, printed study weights and estimate/CI columns in a forest
 plot are not the plotted axis or curve coordinates.
 If no new tables exist, return empty additions. Report unresolved or unreadable numerical
-regions in review_notes and table_coverage; unavailable required supplements remain
-incomplete regardless of how many main-article tables have been exported.
+regions in review_notes and table_coverage. Unsupplied supplements/external tables
+are outside evaluation scope and do not make coverage incomplete; supplied supplements remain required.
 """.replace("PREFIX", prefix)
     printed_regions = []
     for document in documents:

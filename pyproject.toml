@@ -28,7 +28,7 @@ dependencies = [
 claims-validate-scientific = "validator.scientific_result_v1.__main__:main"
 
 [project.optional-dependencies]
-scientific-validation = ["jsonschema>=4,<5"]
+scientific-validation = ["jsonschema>=4,<5", "docling>=2,<3", "PyMuPDF>=1.24,<2", "Pillow>=10,<13", "tiktoken==0.13.0"]
 scientific-results = [
     "docling>=2,<3",
     "jsonschema>=4,<5",
@@ -58,7 +58,11 @@ exclude = ["*.outputs", "*.outputs.*", "*.build", "*.build.*", "*.tests", "*.tes
 "share/claims/schemas/scientific-result-extraction/v1.1" = [
     "schemas/scientific-result-extraction/v1.1/schema.json",
     "schemas/scientific-result-extraction/v1.1/QUICK_REFERENCE.md",
+    "schemas/scientific-result-extraction/v1.1/VALIDATION_GUIDE.md",
 ]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["outputs/*", "outputs/**/*", "**/outputs/**/*", "__pycache__/*", "*.pyc"]
+
+[tool.setuptools.package-data]
+"validator.scientific_result_v1.source_tasks" = ["*.txt", "*.json", "*.md"]

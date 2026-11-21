@@ -26,6 +26,7 @@ from .publication import canonical_sha256
 REVIEW_CHECKS = frozenset({"evaluation_context", "cap_evasion", "fragmentation"})
 AUDIT_SCHEMA = "claims_final_code_audit_v1"
 AUTO_REVIEWER = "automated:claims-code-audit-v1"
+SOURCE_AUDIT_POLICY={'schema_version':'claims_source_code_audit_policy_v1','checks':['build','evaluation_context','cap_evasion']}
 AUDIT_POLICY_FIELDS = frozenset({
     "min_completed_papers", "max_cap_trip_fraction", "max_claim_count_ratio",
 })
@@ -34,6 +35,9 @@ CONTEXT_MARKERS = ("input.json", "claims_competition_rounds_dir", "competition_r
 
 def validated_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
     """Accept only calibrated, public thresholds; there are no hidden defaults."""
+    if isinstance(value,Mapping) and value.get('schema_version')=='claims_source_code_audit_policy_v1':
+        if dict(value)!=SOURCE_AUDIT_POLICY:raise ValueError('Scientific code audit checks must be exactly build, evaluation_context and cap_evasion')
+        return dict(value)
     if not isinstance(value, Mapping) or set(value) != AUDIT_POLICY_FIELDS:
         raise ValueError("code audit policy has missing or extra thresholds")
     count = value["min_completed_papers"]
@@ -57,7 +61,7 @@ def validated_audit_policy(value: Mapping[str, Any]) -> dict[str, Any]:
     return parsed
 
 
-def _source_indicators(package: bytes) -> dict[str, Any]:
+def _source_indicators(package: bytes, *, scientific=False) -> dict[str, Any]:
     """Read first-party Python literals without importing or executing a package."""
     matched_context: set[str] = set()
     source_bytes = 0
@@ -83,7 +87,7 @@ def _source_indicators(package: bytes) -> dict[str, Any]:
     if not saw_source:
         raise ValueError("audit package has no Python source")
     return {
-        "evaluation_context_markers": sorted(matched_context),
+        "evaluation_context_markers": sorted(matched_context-({'input.json'} if scientific else set())),
     }
 
 
@@ -98,6 +102,7 @@ def collect_final_code_evidence(
     round_id: str, *, backend: Any, fetch_package: Callable[[Mapping[str, Any]], bytes],
 ) -> dict[str, Any]:
     """Read frozen final jobs and package bytes without executing miner code."""
+    scientific = (backend.get_round(round_id).get("rules_public",{}).get("policy",{}).get("validation_protocol")=="claims-source-task-v1")
     stages = backend.list_stages(round_id)
     stage = effective_final_stage(stages)
     receipts = [row for row in stages if row.get("stage") == stage]
@@ -135,7 +140,7 @@ def collect_final_code_evidence(
             artifact = result.get("artifact")
             if not isinstance(artifact, dict):
                 raise ValueError("successful baseline audit job has no artifact")
-            baseline_claims.append(_claim_count(artifact, job["paper_id"]))
+            if not scientific:baseline_claims.append(_claim_count(artifact, job["paper_id"]))
     packages = []
     for entry in sorted(challengers, key=lambda row: row["hotkey"]):
         hotkey = entry["hotkey"]
@@ -148,7 +153,7 @@ def collect_final_code_evidence(
             raise ValueError("code audit package differs from frozen final")
         try:
             fingerprint = python_source_fingerprint(package, max_source_bytes=100_000_000)
-            indicators = _source_indicators(package)
+            indicators = _source_indicators(package,scientific=scientific)
             source_scan_error = None
         except ValueError as exc:
             # A malformed finalist archive must fail that finalist's build
@@ -185,7 +190,7 @@ def collect_final_code_evidence(
                 artifact = result.get("artifact")
                 if not isinstance(artifact, dict):
                     raise ValueError("successful audit job has no artifact")
-                claims.append(_claim_count(artifact, job["paper_id"]))
+                claims.append(1 if scientific else _claim_count(artifact, job["paper_id"]))
         packages.append({
             "hotkey": hotkey,
             "package_sha256": package_hash,
@@ -195,20 +200,32 @@ def collect_final_code_evidence(
             "final_job_count": len(jobs_by_hotkey[hotkey]),
             "completed_job_count": statuses["completed"],
             "status_counts": dict(sorted(statuses.items())),
-            "build_passed": bool(fingerprint and claims and not statuses["build_failed"]),
+            "build_passed": bool(fingerprint and (claims or scientific) and not statuses["build_failed"]),
             "cap_trip_count": caps,
             "denied_egress_packets": denied,
             "measured_worker_tokens": total_tokens,
-            "completed_claim_count_median": median(claims) if claims else None,
+            "completed_claim_count_median": None if scientific else median(claims) if claims else None,
             "baseline_claim_count_median": median(baseline_claims) if baseline_claims else None,
         })
+    lineage=[]
+    if scientific:
+        from .scientific_lineage import verify_current_grid
+        lineage=verify_current_grid(round_id,stage,backend=backend,pairs=backend.list_stage_pairs(round_id,stage))
     return {
-        "schema_version": AUDIT_SCHEMA,
+        "schema_version": "claims_source_code_audit_v1" if scientific else AUDIT_SCHEMA,
+        **({'scientific_lineage':lineage} if scientific else {}),
         "round_id": round_id,
         "stage": stage,
         "sample_sha256": canonical_sha256(sample),
         "packages": packages,
     }
+
+
+def audit_file_prefix(round_id,revision,evidence):
+    prefix=f'{round_id}.r{revision}' if revision>1 else round_id
+    if evidence.get('schema_version')=='claims_source_code_audit_v1':
+        prefix+='.scientific-'+canonical_sha256(evidence['scientific_lineage'])
+    return prefix
 
 
 def finalize_code_audit(
@@ -231,7 +248,7 @@ def finalize_code_audit(
         if (not isinstance(decision, dict)
             or decision.get("package_sha256") != row["package_sha256"]
             or not isinstance(decision.get("checks"), dict)
-            or set(decision["checks"]) != REVIEW_CHECKS
+            or set(decision["checks"]) != (REVIEW_CHECKS-{"fragmentation"} if evidence.get("schema_version")=="claims_source_code_audit_v1" else REVIEW_CHECKS)
             or any(type(value) is not bool for value in decision["checks"].values())):
             raise ValueError("code audit review differs from sealed finalist")
         if row["denied_egress_packets"] and decision["checks"]["cap_evasion"]:
@@ -241,7 +258,7 @@ def finalize_code_audit(
             "checks": {"build": row["build_passed"], **decision["checks"]},
         })
     return {
-        "schema_version": AUDIT_SCHEMA,
+        "schema_version": evidence["schema_version"],
         "round_id": evidence["round_id"],
         "evidence_sha256": canonical_sha256(evidence),
         "reviewer": review["reviewer"],
@@ -253,6 +270,13 @@ def automatic_code_audit(
     evidence: Mapping[str, Any], policy: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Apply the published, calibrated thresholds to sealed final evidence."""
+    if evidence.get("schema_version")=="claims_source_code_audit_v1":
+        if validated_audit_policy(policy)!=SOURCE_AUDIT_POLICY:raise ValueError('Scientific code audit cannot use legacy claim-count thresholds')
+        return {"schema_version":"claims_source_code_audit_v1","round_id":evidence["round_id"],
+                "evidence_sha256":canonical_sha256(evidence),"policy_sha256":canonical_sha256(SOURCE_AUDIT_POLICY),"reviewer":"automated:claims-source-code-audit-v1",
+                "packages":[{"hotkey":r["hotkey"],"package_sha256":r["package_sha256"],"checks":{
+                    "build":r["build_passed"],"evaluation_context":bool(r["source_indicators"] is not None and not r["source_indicators"]["evaluation_context_markers"]),
+                    "cap_evasion":r["denied_egress_packets"]==0}} for r in evidence["packages"]]}
     thresholds = validated_audit_policy(policy)
     packages = []
     for row in evidence["packages"]:
@@ -285,7 +309,7 @@ def automatic_code_audit(
             "checks": checks,
         })
     return {
-        "schema_version": AUDIT_SCHEMA,
+        "schema_version": evidence["schema_version"],
         "round_id": evidence["round_id"],
         "evidence_sha256": canonical_sha256(evidence),
         "policy_sha256": canonical_sha256(thresholds),
@@ -304,7 +328,7 @@ def verify_code_audit_receipt(
             raise ValueError("automatic code audit differs from frozen policy or evidence")
     elif receipt.get("reviewer") == AUTO_REVIEWER:
         raise ValueError("automatic code audit has no frozen policy")
-    if (receipt.get("schema_version") != AUDIT_SCHEMA
+    if (receipt.get("schema_version") != evidence.get("schema_version", AUDIT_SCHEMA)
         or receipt.get("round_id") != evidence.get("round_id")
         or receipt.get("evidence_sha256") != canonical_sha256(evidence)
         or not isinstance(receipt.get("reviewer"), str) or not receipt["reviewer"]):
@@ -322,7 +346,7 @@ def verify_code_audit_receipt(
         checks = decision.get("checks")
         if (decision.get("package_sha256") != row["package_sha256"]
             or not isinstance(checks, dict)
-            or set(checks) != REVIEW_CHECKS | {"build"}
+            or set(checks) != ((REVIEW_CHECKS-{"fragmentation"} if evidence.get("schema_version")=="claims_source_code_audit_v1" else REVIEW_CHECKS) | {"build"})
             or any(type(value) is not bool for value in checks.values())
             or checks["build"] != row["build_passed"]
             or (row["denied_egress_packets"] > 0 and checks["cap_evasion"])):

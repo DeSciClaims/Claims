@@ -249,6 +249,8 @@ class CompetitionControllerInputs:
 
     def bronze_for_paper(self, stage: str, paper_id: str) -> Mapping[str, Any]:
         self._round(self.evaluation.round_id)
+        if getattr(self.evaluation,"configuration",{}).get("scientific_scoring",{}).get("protocol_id")=="claims-source-task-v1":
+            return {"validation_protocol":"claims-source-task-v1", "paper_id":paper_id}
         return self.paper_inputs.bronze_for_paper(stage, paper_id)
 
     def evaluate_for_stage(self, stage: str) -> Callable[..., Any]:
@@ -273,6 +275,7 @@ class CompetitionControllerInputs:
             return replace(result, judge_usage_events=tuple(events),
                            resources=sampler.summary())
 
+        capture.validation_protocol = getattr(evaluate, "validation_protocol", None)
         return capture
 
     def voters_for_round(self, round_id: str) -> list[dict[str, str]]:

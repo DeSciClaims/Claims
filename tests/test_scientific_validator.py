@@ -192,7 +192,7 @@ def test_low_confidence_is_review_required(tmp_path):
     assert not report["submission_ready"]
 
 
-def test_missing_trusted_supplement_overrides_all_pass_judge(tmp_path):
+def test_unsupplied_supplement_is_out_of_scope(tmp_path):
     source = bundle()
     source = SourceBundle(
         source.paper_id,
@@ -209,8 +209,37 @@ def test_missing_trusted_supplement_overrides_all_pass_judge(tmp_path):
     report = run(
         tmp_path, runtime=Reviewer(), sources=source, scope="reference_preflight"
     )
-    assert next(r for r in report["rules"] if r["rule_id"] == "V20")["status"] == "fail"
-    assert not report["submission_ready"]
+    assert next(r for r in report["rules"] if r["rule_id"] == "V20")["status"] == "pass"
+    assert report["submission_ready"]
+    assert report["source_scope_policy"] == "supplied_sources_only"
+
+
+def test_unavailable_external_inventory_does_not_downgrade_coverage(tmp_path):
+    class InventoryReviewer(Reviewer):
+        def generate(self, **kwargs):
+            assert kwargs["payload"]["source_scope_policy"] == "supplied_sources_only"
+            answer = super().generate(**kwargs)
+            anchor = kwargs["payload"]["source_blocks"][0]
+            answer["external_sources"] = [
+                {
+                    "source_id": anchor["source_id"],
+                    "block_id": anchor["block_id"],
+                    "description": "Referenced but unsupplied supplementary table",
+                    "status": "unavailable",
+                    "reason": "Not supplied to miners; outside evaluation scope.",
+                }
+            ]
+            return answer
+
+    report = run(
+        tmp_path,
+        runtime=InventoryReviewer(),
+        sources=bundle(),
+        scope="reference_preflight",
+    )
+    assert next(r for r in report["rules"] if r["rule_id"] == "V20")["status"] == "pass"
+    assert report["submission_ready"]
+    assert report["external_source_inventory"]
 
 
 def test_source_identity_mismatch_stops_model_spend(tmp_path):
@@ -579,3 +608,50 @@ def test_frozen_validator_digest_mismatch_stops_before_review(tmp_path):
             expected_validator_sha256="0" * 64,
         )
     assert not runtime.calls
+
+
+def test_field_cell_review_receives_actual_delivered_csv(tmp_path):
+    payload = table_example()
+    directory = tmp_path / "package"
+    directory.mkdir()
+    csv_text = "mean\n999\n"
+    (directory / "P1.E001.T001.csv").write_text(csv_text)
+
+    class CsvReviewer(Reviewer):
+        def generate(self, **kwargs):
+            if "V25" in kwargs["payload"]["assigned_object_ids"]:
+                assert kwargs["payload"]["csv_exports"]["P1.E001.T001"] == csv_text
+                self.saw_delivered_csv = True
+            return super().generate(**kwargs)
+
+    runtime = CsvReviewer()
+    validate(
+        payload,
+        directory,
+        sources=bundle(),
+        runtime=runtime,
+        report_dir=tmp_path / "report",
+    )
+    assert runtime.saw_delivered_csv
+
+
+def test_evidence_retry_feedback_identifies_the_invalid_anchor(tmp_path):
+    class FixingReviewer(Reviewer):
+        def generate(self, **kwargs):
+            feedback = kwargs["payload"]["validation_feedback"]
+            if feedback:
+                assert "unknown source block" in feedback[0]["message"]
+                assert "B9999" in feedback[0]["message"]
+                self.bad_evidence = False
+            else:
+                self.bad_evidence = True
+            return super().generate(**kwargs)
+
+    report = run(
+        tmp_path,
+        sources=bundle(),
+        runtime=FixingReviewer(),
+        scope="reference_preflight",
+    )
+    assert report["execution_status"] == "completed"
+    assert report["submission_ready"]

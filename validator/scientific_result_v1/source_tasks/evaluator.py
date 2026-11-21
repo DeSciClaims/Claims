@@ -1,0 +1,581 @@
+"""One common sealed paper pool, source tasks, exact scores and retained evidence."""
+
+from __future__ import annotations
+from pathlib import Path
+import tempfile
+from collections import defaultdict
+from .contracts import (
+    EvaluationBinding,
+    TaskCard,
+    SourceRequirement,
+    TaskBit,
+    SourceBucket,
+    ErrorRecord,
+    SampleManifest,
+    SampledSilverReceipt,
+    GateReceipt,
+)
+from .store import canonical, sha
+from .packages import Package, error
+from .packets import Index
+from .sampling import samples, audit_buckets, seed_commitment, selection_manifest, PROTOCOL
+from .source import validate_frame, selected_cards
+from .judging import assess
+from .scoring import score
+from .operations import Hold
+from .errors import hold_record
+
+
+def evidence_for(source_frame, ids):
+    anchors = {a.anchor_id: a for a in source_frame.anchors}
+    needed = set(ids)
+    # Controller row anchors retain source-region references, not a guessed numerical transcript.
+    # Include source context for selected rows and their complete headers/notes.
+    result = []
+    for anchor in source_frame.anchors:
+        if anchor.anchor_id in needed:
+            result.append(anchor.model_dump(mode="json"))
+    return {"anchors": result}
+
+
+def original_refs(index):
+    return [o.original_ref for o in index.objects] + [
+        r.original_ref for r in index.relations
+    ]
+
+
+def buckets(index, frame, document_bindings, table_uid_by_output=None):
+    """Stable source occupancy from exact supplied provenance, with mandatory UNANCHORED."""
+    docmap = {
+        b.source_id: b.document_uid for b in document_bindings if b.state == "BOUND"
+    }
+    anchors = {a.anchor_id: a for a in frame.anchors}
+    owner = {}
+    for tile in frame.tiles:
+        for aid in tile.owned_anchor_ids:
+            owner.setdefault(aid, []).append(tile.tile_id)
+    import unicodedata
+    normalize = lambda s: " ".join(unicodedata.normalize('NFKC',s).replace('|',' ').casefold().split())
+    table_uid_by_output=table_uid_by_output or {}
+    source_tables={t.table_uid:t for t in frame.tables}
+    output_tables={t['id']:t for t in index.package.payload['tables']}
+
+    def direct_cells(node):
+        hits=[]
+        for reference in node.get('table_references',[]):
+            uid=table_uid_by_output.get(reference['table_id'])
+            if uid is None:continue
+            table=source_tables[uid];submitted=output_tables[reference['table_id']]
+            rows=index.package.csv[submitted['id']]
+            row=int(reference['row'])
+            if not 1<=row<len(rows):continue
+            # Resolve by original row label and occurrence, not by a miner's row grouping.
+            label=normalize(rows[row][0])
+            if not label or not any(c.isalpha() for c in label):continue
+            matches=[aid for aid in table.data_row_anchor_ids if label in normalize(anchors[aid].exact_text or '')]
+            occurrence=sum(normalize(r[0])==label for r in rows[1:row])
+            if occurrence<len(matches):hits.extend(owner.get(matches[occurrence],[]))
+        return sorted(set(hits),key=lambda s:s.encode())
+
+    def candidates(node):
+        result = []
+        snippets = node.get("source_snippets", [])
+        for snippet in snippets:
+            text = normalize(snippet["text"])
+            doc = docmap.get(snippet["source_id"])
+            hits = [
+                a.anchor_id
+                for a in anchors.values()
+                if a.document_uid == doc
+                and a.exact_text is not None
+                and text
+                and text in normalize(a.exact_text)
+            ]
+            result.extend(t for a in hits for t in owner.get(a, []))
+        return sorted(set(result), key=lambda s: s.encode())
+
+    object_bucket = {}
+    owned = defaultdict(list)
+    ordered = sorted(
+        index.objects,
+        key=lambda o: (o.kind == "FIELD", o.original_ref.pointer.encode()),
+    )
+    for obj in ordered:
+        node = index.doc.resolve(obj.original_ref.pointer)
+        options = direct_cells(node) if isinstance(node,dict) and obj.kind=='FIELD' else []
+        if not options and obj.kind=='TABLE' and obj.object_id in table_uid_by_output:
+            table=source_tables[table_uid_by_output[obj.object_id]]
+            options=sorted({tile for aid in table.data_row_anchor_ids for tile in owner.get(aid,[])},key=lambda s:s.encode())
+        if not options:options = candidates(node) if isinstance(node, dict) else []
+        if not options and obj.kind == "FIELD":
+            pointer = obj.original_ref.pointer.split("/fields/")[0]
+            options = candidates(index.doc.resolve(pointer))
+        if not options and obj.kind == "FAMILY":
+            # Earliest supporting member's provenance with full family scope retained in packet.
+            options = sorted(
+                {
+                    t
+                    for r in index.package.payload["results"]
+                    if r["group_id"] == obj.object_id
+                    for t in candidates(r)
+                },
+                key=lambda s: s.encode(),
+            )
+        object_bucket[obj.object_id] = options[0] if options else "UNANCHORED"
+        # Administrative source IDs / extraction status add no asserted scientific information.
+        if obj.kind == "SOURCE" or obj.object_id == "$extraction":
+            continue
+        owned[object_bucket[obj.object_id]].append(obj.original_ref)
+    for relation in index.relations:
+        choices = sorted(
+            {
+                object_bucket.get(relation.source_id, "UNANCHORED"),
+                object_bucket.get(relation.target_id, "UNANCHORED"),
+            }
+        )
+        key = next((v for v in choices if v != "UNANCHORED"), "UNANCHORED")
+        owned[key].append(relation.original_ref)
+    return [
+        SourceBucket(
+            bucket_id=k,
+            output_alias=index.alias,
+            kind="UNANCHORED" if k == "UNANCHORED" else "SOURCE_TILE",
+            tile_id=None if k == "UNANCHORED" else k,
+            assertion_refs=v,
+        )
+        for k, v in sorted(owned.items())
+    ]
+
+
+class PaperEvaluator:
+    def __init__(self, ops):
+        self.ops = ops
+
+    def evaluate(
+        self,
+        *,
+        source_packet,
+        source_frame,
+        packages,
+        comparison_plan,
+        secret,
+        commitment,
+        policy_sha256,
+        document_bindings,
+        revision=0,
+        generation_authorization=None,
+    ):
+        """All arguments are trusted immutable artifacts; packages includes every scheduled role."""
+        store = self.ops.store
+        validate_frame(source_frame, source_packet)
+        from .docling_frame import validate_docling_frame
+        docling_evidence=validate_docling_frame(store,source_frame,source_packet)
+        if any(d.file and d.file.media_type=='application/pdf' for d in source_packet.documents) and not docling_evidence:
+            raise ValueError('PDF evaluation requires a bound independent Docling source frame')
+        from .layout_validation import validate_layout
+        for table in source_frame.tables:
+            validate_layout(store,table,source_frame,source_packet)
+        for document in source_packet.documents:
+            if document.file is not None:
+                store.read(document.file)
+            if document.required and document.availability != "AVAILABLE":
+                raise Hold("SOURCE", "Required supplied source bytes unavailable")
+        if len({p.output_alias for p in packages}) != len(packages):
+            raise ValueError("Duplicate output alias")
+        aliases = {p.output_alias for p in packages}
+        active = {comparison_plan.baseline_alias, *comparison_plan.challenger_aliases}
+        if not active <= aliases or comparison_plan.reference_alias not in aliases:
+            raise ValueError("Incomplete compared pool")
+        for p in packages:
+            if (p.paper_id, p.round_id, p.source_packet_sha256) != (
+                source_packet.paper_id,
+                source_packet.round_id,
+                sha(canonical(source_packet)),
+            ):
+                raise ValueError("Package/source identity mismatch")
+            for f in [p.execution_receipt, p.extraction_json, *p.table_csv_files]:
+                if f is not None:
+                    store.read(f)
+        pool = sha(
+            canonical(
+                sorted(
+                    (p.model_dump(mode="json") for p in packages),
+                    key=lambda x: x["output_alias"],
+                )
+            )
+        )
+        scope = (
+            PROTOCOL,
+            source_packet.round_id,
+            comparison_plan.stage,
+            source_packet.paper_id,
+        )
+        if (
+            seed_commitment(secret, scope, sha(canonical(source_packet)), policy_sha256)
+            != commitment
+        ):
+            raise ValueError("Seed commitment mismatch")
+        binding = EvaluationBinding(
+            protocol_id=PROTOCOL,
+            paper_id=source_packet.paper_id,
+            round_id=source_packet.round_id,
+            stage=comparison_plan.stage,
+            source_packet_sha256=sha(canonical(source_packet)),
+            source_frame_sha256=sha(canonical(source_frame)),
+            input_pool_sha256=pool,
+            policy_sha256=policy_sha256,
+            revision=revision,
+        )
+        clock_core={k:getattr(binding,k) for k in ('protocol_id','round_id','stage','paper_id','source_packet_sha256','input_pool_sha256','policy_sha256')}
+        key="generation:"+sha(canonical(clock_core))
+        inherited_corrections=[]
+        if revision:
+            if generation_authorization is None:raise ValueError("A scientific correction requires explicit common authorization")
+            from .contracts import CorrectionRecord
+            prior_ref=generation_authorization["predecessor"]
+            prior=store.load(prior_ref,SampledSilverReceipt)
+            correction=generation_authorization["correction"]
+            if not isinstance(correction,CorrectionRecord) or correction.superseded_receipt_sha256!=prior_ref.sha256 or prior.binding.revision+1!=revision:
+                raise ValueError("Scientific correction predecessor/revision mismatch")
+            if any(getattr(prior.binding,k)!=v for k,v in clock_core.items()):raise ValueError("Correction changed original source/output/policy scope")
+            inherited_corrections=[*prior.corrections,correction]
+            if sum(c.kind in {"SOURCE_FRAME","SOURCE_TASK"} for c in inherited_corrections)>2:raise ValueError("Common correction limit exhausted")
+            if prior.state=="FROZEN":key+=":authorized:"+sha(canonical(generation_authorization))
+        _,deadline=store.generation(key,sha(canonical(clock_core)))
+        self.ops.deadline=min(self.ops.deadline,deadline)
+        source_ineligible=not any(t.eligible_content for t in source_frame.tiles) and not any(t.numerical for t in source_frame.tables)
+        selected = samples(source_frame.tiles, secret, scope)
+        tilemap = {t.tile_id: t for t in source_frame.tiles}
+        work_items = []
+        measured = {}
+        all_cards = {}
+        tasks = []
+        packets = []
+        verdicts = []
+        gates = []
+        vectors = []
+        held = []
+        allbuckets = []
+        selections = []
+        tasks_initialized=False
+        def ensure_shared_tasks():
+            # G=0 needs no scientific judgment. The source-only task payload and
+            # precommitted samples remain independent of submitted representations.
+            nonlocal tasks_initialized
+            if tasks_initialized:return
+            tasks_initialized=True
+            try:
+                for tileid in selected["content_prose"] + selected["content_table"]:
+                    tile = tilemap[tileid]
+                    evidence = evidence_for(
+                        source_frame, tile.owned_anchor_ids + tile.context_anchor_ids
+                    )
+                    tasks.extend(selected_cards(self.ops,tile,binding,evidence,
+                        expand=lambda current,requests,limit:expand_evidence(source_frame,current,requests,limit)))
+                for tileid in selected["archive"]:
+                    tile = tilemap[tileid]
+                    tasks.append(
+                        TaskCard(
+                            task_id="archive-" + sha(canonical([binding, tileid])),
+                            task_kind="ARCHIVE",
+                            binding=binding,
+                            tile_ids=[tileid],
+                            output_alias=None,
+                            source_bucket_id=None,
+                            requirements=[
+                                SourceRequirement(
+                                    requirement_id="archive-complete",
+                                    statement="Faithfully preserve every selected source row and all logical columns, exact display precision, caption, headers, panels, units, markers, annotations and scoped table links.",
+                                    qualifications=[],
+                                    evidence_anchor_ids=tile.owned_anchor_ids
+                                    + tile.context_anchor_ids,
+                                    encoding_constraints=[],
+                                )
+                            ],
+                            evidence_anchor_ids=tile.owned_anchor_ids
+                            + tile.context_anchor_ids,
+                            source_scope_note="Selected complete five-row source block; do not require an F per CSV cell.",
+                        )
+                    )
+            except Hold as exc:
+                held.append(hold_record(exc,'TASK_BUILD'))
+        from concurrent.futures import ThreadPoolExecutor
+        def check(item):
+            task,alias,index,package_hash,db,occupied,table_uid_by_output=item
+            local=self.ops.scoped();packet_refs=[];verdict_refs=[];bits=[];errors=[];children=[]
+            try:
+                owned_refs=next((b.assertion_refs for b in occupied if b.bucket_id==task.source_bucket_id),None)
+                match=(index.audit_match(task,store,owned_refs) if task.task_kind=='OUTPUT_AUDIT'
+                       else index.archive_match(task,store,{o for o,uid in table_uid_by_output.items() if uid==tilemap[task.tile_ids[0]].table_uid}) if task.task_kind=='ARCHIVE'
+                       else index.match(task,local,evidence=evidence_for(source_frame,task.evidence_anchor_ids)))
+                ranges={output:(tilemap[task.tile_ids[0]].first_data_row,tilemap[task.tile_ids[0]].stop_data_row)
+                    for output,uid in table_uid_by_output.items() if task.task_kind=='ARCHIVE' and tilemap[task.tile_ids[0]].table_uid==uid}
+                packet=index.packet(task,binding,match,package_hash,db,owned_refs=owned_refs,table_ranges=ranges)
+                from .sharding import partition
+                shards=partition(index,task,packet,tokenizers=local.tokenizers,owned_refs=owned_refs,table_ranges=ranges,source_frame=source_frame)
+                for child,rendered in shards:
+                    if child!=task:children.append(child)
+                    packet_refs.append(store.put(rendered))
+                    verdict=assess(local,task=child,packet=rendered,evidence=evidence_for(source_frame,child.evidence_anchor_ids),
+                        secret=secret,scope=scope,resolve=index.resolve,
+                        expand=lambda current,requests,limit:expand_evidence(source_frame,current,requests,limit))
+                    verdict_ref=store.put(verdict);verdict_refs.append(verdict_ref)
+                    if verdict.state=='HOLD':errors.extend(verdict.hold_reasons)
+                    else:bits.append(TaskBit(task_id=child.task_id,tile_or_bucket_id=child.source_bucket_id or child.tile_ids[0],
+                        task_kind=child.task_kind,bit=int(verdict.state=='PASS'),verdict_sha256=verdict_ref.sha256))
+            except Hold as exc:
+                errors.append(hold_record(exc,'VERIFICATION'))
+            return alias,packet_refs,verdict_refs,bits,errors,local,children
+        by_alias=defaultdict(list)
+        def consume(work_items):
+            # Four distinct contexts at a time; every required shard runs even after a failure.
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                for alias,packet_refs,verdict_refs,bits,errors,local,children in executor.map(check,sorted(work_items,key=lambda x:(x[0].task_id,x[1]))):
+                    packets.extend(packet_refs+local.packet_refs);verdicts.extend(verdict_refs)
+                    by_alias[alias].extend(bits)
+                    for child in children:all_cards[child.task_id]=child
+                    held.extend(errors);self.ops.run_refs.extend(local.run_refs);self.ops.used.extend(local.used)
+        for package in packages:
+            if package.output_alias not in active:
+                continue
+            alias = package.output_alias
+            work_items=[]
+            per_selected = {**selected, "output_audit": []}
+            if package.state == "INFRASTRUCTURE_FAILURE":
+                gates.append(
+                    GateReceipt(
+                        output_alias=alias,
+                        state="EVALUATOR_HOLD",
+                        gate_bit=None,
+                        errors=package.errors,
+                    )
+                )
+                if source_ineligible:vectors.append(score(binding,alias,None,source_frame,per_selected,[]))
+                else:held.extend(package.errors)
+                continue
+            if package.state == "PACKAGE_FAILURE":
+                gate = GateReceipt(
+                    output_alias=alias,
+                    state="PIPELINE_FAILURE",
+                    gate_bit=0,
+                    errors=package.errors,
+                )
+                gates.append(gate)
+                vectors.append(score(binding, alias, 0, source_frame, per_selected, []))
+                continue
+            with tempfile.TemporaryDirectory(prefix="claims-source-score-") as work:
+                root = Path(work)
+                (root / "output.json").write_bytes(store.read(package.extraction_json))
+                for f in package.table_csv_files:
+                    (root / Path(f.relative_path).name).write_bytes(store.read(f))
+                # FileRef storage names are not delivered filenames: the package manifest retains exact name.
+                original = Package(root, alias, paper_id=source_packet.paper_id)
+                gate = original.gate
+                gates.append(gate)
+                if source_ineligible:
+                    vectors.append(score(binding,alias,gate.gate_bit,source_frame,per_selected,[]));continue
+                if gate.gate_bit and len(original.payload["tables"]) < len(
+                    source_frame.tables
+                ):
+                    gate = GateReceipt(
+                        output_alias=alias,
+                        state="PIPELINE_FAILURE",
+                        gate_bit=0,
+                        errors=[
+                            error(
+                                "TABLE_PACKAGE_OR_COVERAGE",
+                                "A required source table is missing from the delivered package",
+                            )
+                        ],
+                    )
+                    gates[-1] = gate
+                if gate.gate_bit == 0:
+                    vectors.append(
+                        score(binding, alias, 0, source_frame, per_selected, [])
+                    )
+                    continue
+                index = Index(original)
+                db = document_bindings.get(alias)
+                if db is None:
+                    from .document_binding import resolve_documents
+                    try:db=resolve_documents(self.ops,index=index,source_packet=source_packet,source_frame=source_frame)
+                    except Hold as exc:
+                        held.append(hold_record(exc,'MECHANICAL'));continue
+                if any(b.state=='VERIFIED_WRONG' for b in db):
+                    gate=GateReceipt(output_alias=alias,state='PIPELINE_FAILURE',gate_bit=0,
+                        errors=[error('REFERENCE_UNRESOLVED','Submitted source/version contradicts the trusted execution inputs')])
+                    gates[-1]=gate;vectors.append(score(binding,alias,0,source_frame,per_selected,[]));continue
+                defined_sources = {s["id"] for s in original.payload["sources"]}
+                if {b.source_id for b in db} != defined_sources or any(
+                    b.state != "BOUND" for b in db
+                ):
+                    held.append(
+                        ErrorRecord(
+                            category="SOURCE",
+                            code="SOURCE_VERSION_UNRESOLVED",
+                            stage="MECHANICAL",
+                            message="Trusted worker source-version bindings are incomplete",
+                            retryable=False,
+                            output_refs=[],
+                        )
+                    )
+                    continue
+                index.document_uid_by_source={b.source_id:b.document_uid for b in db if b.state=='BOUND'}
+                # Exhaustive required-table/source delivery, independent of sampled T fidelity.
+                supplied={d.document_uid for d in source_packet.documents if d.file is not None}
+                reviewed={b.document_uid for b in db if b.source_id in original.payload["extraction"]["table_coverage"]["reviewed_source_ids"]}
+                delivery_errors=[]
+                if supplied-reviewed:delivery_errors.append(error("TABLE_PACKAGE_OR_COVERAGE","A supplied in-scope source was not reviewed"))
+                mapped=[]
+                table_uid_by_output={}
+                for source_table in source_frame.tables:
+                    table_anchors=list(dict.fromkeys(source_table.anchor_ids+source_table.header_anchor_ids+source_table.note_anchor_ids))
+                    target=TaskCard(task_id="inventory-"+source_table.table_uid,task_kind="ARCHIVE",binding=binding,tile_ids=[t.tile_id for t in source_frame.tiles if t.table_uid==source_table.table_uid],
+                        output_alias=None,source_bucket_id=None,requirements=[SourceRequirement(requirement_id="table-identity",
+                        statement="Identify the one original submitted TableObject corresponding to this independent source table, combining its panels/continuations. This is correspondence only, not cell fidelity: "+canonical(source_table).decode(),
+                        qualifications=[],evidence_anchor_ids=table_anchors,encoding_constraints=[])],
+                        evidence_anchor_ids=table_anchors,source_scope_note="Exhaustive source-table inventory mapping; do not score cell contents or scientific result omissions.")
+                    try:
+                        from .table_matching import resolve_table
+                        candidates=[resolve_table(index,self.ops,target,evidence_for(source_frame,table_anchors))]
+                        if len(candidates[0])!=1:
+                            delivery_errors.append(error("TABLE_PACKAGE_OR_COVERAGE","Required source table missing/duplicated: "+source_table.table_uid))
+                        else:
+                            output_table=next(iter(candidates[0]));mapped.append(output_table)
+                            table_uid_by_output[output_table]=source_table.table_uid
+                            declared=next(t for t in original.payload["tables"] if t["id"]==output_table)
+                            from .packets import source_data_rows
+                            physical_rows=source_data_rows(declared,index.package.csv[output_table],source_table.data_row_count)
+                            if physical_rows is None:
+                                delivery_errors.append(error("CSV_FORMAT_OR_DIMENSIONS","Delivered data-row count differs from the trusted source table: "+source_table.table_uid))
+                            else:index.table_data_rows[output_table]=physical_rows
+                    except Hold as exc:
+                        held.append(hold_record(exc,"MATCHING"))
+                if len(mapped)!=len(set(mapped)):
+                    delivery_errors.append(error("TABLE_PACKAGE_OR_COVERAGE","Distinct required source tables mapped to one delivered table"))
+                if delivery_errors:
+                    gate=GateReceipt(output_alias=alias,state="PIPELINE_FAILURE",gate_bit=0,errors=delivery_errors)
+                    gates[-1]=gate
+                    vectors.append(score(binding,alias,0,source_frame,per_selected,[]));continue
+                index.table_uid_by_output=table_uid_by_output
+                ensure_shared_tasks()
+                if held:continue  # Unresolved common source targets cannot produce a scientific score.
+                own_tasks=list(tasks)
+                occupied = buckets(index, source_frame, db, table_uid_by_output)
+                allbuckets.extend(occupied)
+                chosen = audit_buckets([b.bucket_id for b in occupied], secret, scope)
+                per_selected["output_audit"] = chosen
+                selections.append(selection_manifest(store,source_frame.tiles,secret,scope,"output_audit",chosen,
+                                  alias=alias,population=[b.bucket_id for b in occupied]))
+                for bucket in occupied:
+                    if bucket.bucket_id not in chosen:
+                        continue
+                    tile_ids = [] if bucket.tile_id is None else [bucket.tile_id]
+                    anchor_ids = (
+                        [a.anchor_id for a in source_frame.anchors]
+                        if bucket.tile_id is None
+                        else tilemap[bucket.tile_id].owned_anchor_ids
+                        + tilemap[bucket.tile_id].context_anchor_ids
+                    )
+                    own_tasks.append(
+                        TaskCard(
+                            task_id="audit-" + sha(canonical([binding, alias, bucket])),
+                            task_kind="OUTPUT_AUDIT",
+                            binding=binding,
+                            tile_ids=tile_ids,
+                            output_alias=alias,
+                            source_bucket_id=bucket.bucket_id,
+                            requirements=[],
+                            evidence_anchor_ids=anchor_ids,
+                            source_scope_note="Verify EVERY assertion owned by packet.match.candidate_refs. Other rendered objects and relations provide necessary context, not additional audit ownership. The complete parent-bucket ownership ledger is retained in the sampling manifest; mandatory shards collectively cover it. Raw archival cells are assessed only in T.",
+                        )
+                    )
+                measured[alias]=per_selected
+                for task in own_tasks:
+                    all_cards[task.task_id]=task
+                    work_items.append((task,alias,index,sha(canonical(package)),db,occupied,table_uid_by_output))
+                # Keep only one immutable package index resident; all cases still run.
+                consume(work_items)
+        for alias,per_selected in measured.items():
+            vectors.append(score(binding,alias,1,source_frame,per_selected,by_alias[alias],hold=bool(held)))
+        # Any common uncertainty nulls every score, including a gate-failed pipeline's provisional zero.
+        if held:
+            vectors = [
+                score(
+                    binding, p.output_alias, next((g.gate_bit for g in gates if g.output_alias==p.output_alias),None), source_frame, selected, [], hold=True
+                )
+                for p in packages
+                if p.output_alias in active
+            ]
+        for name in ("content_prose","content_table","archive"):
+            selections.append(selection_manifest(store,source_frame.tiles,secret,scope,name,selected[name]))
+        manifest = SampleManifest(
+            binding=binding,
+            seed_commitment=commitment,
+            revealed_seed_hex=secret.hex(),
+            selections=selections,
+            output_buckets=allbuckets,
+            content_available=any(t.eligible_content for t in source_frame.tiles),
+            archive_available=any(t.numerical for t in source_frame.tables),
+        )
+        ineligible = not manifest.content_available and not manifest.archive_available
+        receipt = SampledSilverReceipt(
+            binding=binding,
+            state="HOLD" if held else "INELIGIBLE" if ineligible else "FROZEN",
+            source_packet=store.put(source_packet),
+            source_frame=store.put(source_frame),
+            comparison_plan=store.put(comparison_plan),
+            input_packages=[store.put(p) for p in packages],
+            sampling_manifest=store.put(manifest),
+            task_cards=[store.put(t) for t in {**{t.task_id:t for t in tasks}, **all_cards}.values()],
+            assertion_packets=packets,
+            judge_runs=list(dict.fromkeys(self.ops.run_refs)),
+            deterministic_gates=gates,
+            scientific_verdicts=verdicts,
+            paper_scores=vectors,
+            corrections=inherited_corrections,
+            hold_reasons=held,
+        )
+        ref = store.put(receipt)
+        import json
+        head_key="paper:"+json.dumps([source_packet.round_id,comparison_plan.stage,source_packet.paper_id])
+        current=store.head(head_key)
+        if current is not None and current!=ref.sha256:
+            prior=SampledSilverReceipt.model_validate_json(store.get_blob(current),strict=True)
+            if prior.state=="FROZEN" and generation_authorization is None:
+                raise ValueError("A frozen scientific receipt cannot change without common correction authorization")
+            if prior.binding!=binding and (generation_authorization is None or generation_authorization["predecessor"].sha256!=current):
+                raise ValueError("Stale scientific generation predecessor")
+        store.advance_paper_revision(source_packet.round_id,comparison_plan.stage,source_packet.paper_id,current,ref.sha256)
+        return receipt, ref
+
+
+def expand_evidence(source_frame,current,requests,limit):
+    """Retrieve only captured evidence from the same immutable source frame; never URLs."""
+    from .packets import tokens
+    anchors={a.anchor_id:a for a in source_frame.anchors}
+    selected={a['anchor_id'] for a in current['anchors']}
+    before=set(selected)
+    for request in requests:
+        if not set(request.anchor_ids)<=anchors.keys():raise Hold('EVALUATOR','Unknown requested source anchor')
+        candidates=[a for a in source_frame.anchors if request.document_uid is None or a.document_uid==request.document_uid]
+        if request.document_uid is not None and not candidates:raise Hold('SOURCE','Requested document was not supplied')
+        selected.update(request.anchor_ids)
+        # Docling provenance links table captions/notes to their headers. A request
+        # for adjacent text may need those associated headers and OCR context too.
+        for table in source_frame.tables:
+            if set(request.anchor_ids)&set(table.anchor_ids+table.data_row_anchor_ids+table.header_anchor_ids+table.note_anchor_ids):
+                selected.update(table.header_anchor_ids+table.note_anchor_ids)
+        if request.kind in {'TABLE_HEADERS','TABLE_NOTES'}:
+            for table in source_frame.tables:
+                if set(request.anchor_ids)&set(table.anchor_ids+table.data_row_anchor_ids+table.header_anchor_ids+table.note_anchor_ids):
+                    selected.update(table.header_anchor_ids+table.note_anchor_ids+table.anchor_ids)
+        elif request.kind=='ADJACENT_TEXT':
+            indices=[i for i,a in enumerate(candidates) if a.anchor_id in request.anchor_ids]
+            for i in indices:selected.update(a.anchor_id for a in candidates[max(0,i-1):i+2])
+        else:
+            query=tokens(request.query)
+            ranked=sorted(candidates,key=lambda a:(-len(query&tokens(a.exact_text or '')),a.anchor_id.encode()))
+            selected.update(a.anchor_id for a in ranked[:12])
+    if selected==before:raise Hold('SOURCE','Requested expansion adds no captured evidence')
+    return evidence_for(source_frame,[a.anchor_id for a in source_frame.anchors if a.anchor_id in selected])

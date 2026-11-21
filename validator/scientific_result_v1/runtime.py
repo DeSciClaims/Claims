@@ -146,11 +146,8 @@ class DspyRuntime:
                                 "model": runtime.api_model,
                                 "temperature": runtime.temperature,
                                 "max_tokens": runtime.max_tokens,
-                                "reasoning": {
-                                    "effort": effective_reasoning,
-                                    "exclude": True,
-                                },
-                                "response_format": kwargs.get("response_format"),
+                                **{k:v for k,v in {**self.kwargs,**kwargs}.items()
+                                   if k in {'reasoning','response_format','top_p','n','tools','tool_choice','provider'}},
                             },
                             ensure_ascii=False,
                             indent=2,
@@ -187,6 +184,7 @@ class DspyRuntime:
                             "event": "request_error",
                             "status_code": status,
                             "error_type": type(exc).__name__,
+                            "error_message": str(exc).replace(runtime.api_key,'[REDACTED]')[:2000] if runtime.api_key else str(exc)[:2000],
                             "retryable": retryable,
                             "usage": {},
                             "cost_source": "unavailable",
@@ -236,6 +234,9 @@ class DspyRuntime:
             num_retries=0,
         )
 
+    def create_adapter(self, schema):
+        return JSONStageAdapter()
+
     def create_program(self, stage, **kwargs):
         return StageProgram(**kwargs)
 
@@ -266,7 +267,7 @@ class DspyRuntime:
             reasoning_effort=self.effective_reasoning(stage, payload),
         )
         try:
-            with dspy.context(lm=lm, adapter=JSONStageAdapter()):
+            with dspy.context(lm=lm, adapter=self.create_adapter(payload["stage_schema"])):
                 prediction = program(stage_request=payload)
                 result = prediction.toDict()
         except AdapterParseError as exc:

@@ -151,6 +151,9 @@ def create_worker_coordinator(
         allowed_s3_buckets=_csv("CLAIMS_COMPETITION_PDF_S3_BUCKETS"),
         s3_client=client, hippius_endpoint=_required("CLAIMS_HIPPIUS_ENDPOINT"),
     )
+    if configuration.get("worker_policy",{}).get("scientific_validation",{}).get("validation_protocol")=="claims-source-task-v1":
+        from .scientific_factory import bind_scientific_worker_sources
+        papers,fetcher=bind_scientific_worker_sources(papers,backend)
     keys = _bifrost_admin_client()
     transport = RestrictedSshWorkerTransport(
         identity_file=Path(_required("CLAIMS_WORKER_SSH_IDENTITY")),
@@ -164,18 +167,22 @@ def create_worker_coordinator(
         backend=backend, paper_inputs=papers, packages=packages, evaluation=rules,
         pdf_fetcher=fetcher, keys=keys,
         execution=_worker_execution(transport), logs=storage,
-        scientific_validator=_scientific_validator(configuration.get("worker_policy", {})),
+        scientific_validator=_scientific_validator(configuration.get("worker_policy", {}), backend=backend),
     )
 
 
-def _scientific_validator(policy):
+def _scientific_validator(policy, *, backend=None):
     """Opt in only through hash-bound round policy and host-owned reviewer credentials."""
     if policy.get("output_schema", "agent_v1") == "agent_v1":
         return None
     if policy.get("output_schema") != "scientific_result_v1.1":
         raise ValueError("unsupported frozen scientific output policy")
+    if policy.get("scientific_validation",{}).get("validation_protocol")=="claims-source-task-v1":
+        if backend is None:raise ValueError("Scientific delivery requires the trusted evidence backend")
+        from .scientific_factory import create_delivery_validator
+        return create_delivery_validator(backend,policy["scientific_validation"])
     import hashlib
-    from .scientific_validation import TrustedScientificValidator
+    from .scientific_validation import TrustedScientificValidator, TrustedScientificDeliveryValidator
     from validator.scientific_result_v1.sources import load_bundle
     from validator.scientific_result_v1.source_review import ReviewRuntime
     spec = policy.get("scientific_validation", {})
@@ -205,4 +212,6 @@ def _scientific_validator(policy):
                              request_deadline=float(spec.get("request_deadline_seconds", 180)), transport_retries=0)
     options = {key:spec[key] for key in ("max_review_calls", "review_deadline_seconds", "max_review_input_characters", "max_review_cost_usd", "batch_size", "max_attempts") if key in spec}
     options.update(expected_validator_sha256=spec['validator_sha256'], expected_schema_sha256=spec['schema_sha256'])
+    if spec.get("validation_protocol") == "claims-source-task-v1":
+        return TrustedScientificDeliveryValidator(sources,Path(_required("CLAIMS_SCIENTIFIC_VALIDATOR_REPORT_ROOT")))
     return TrustedScientificValidator(sources,runtime,Path(_required("CLAIMS_SCIENTIFIC_VALIDATOR_REPORT_ROOT")),options)

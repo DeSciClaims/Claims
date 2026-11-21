@@ -115,6 +115,9 @@ def build_worker_contract(
     }
     if output_schema == "scientific_result_v1.1":
         request["output_schema"] = output_schema
+        request.update(output_format="claims-extraction-1.1", validation_protocol="claims-source-task-v1",
+                       source_manifest_file="sources.json", extraction_schema_file="claims_extraction.schema.json",
+                       required_table_scope="supplied_sources_only")
     # Reject JSON values that would be coerced or vary across runners.
     try:
         json.dumps(request, sort_keys=True, separators=(",", ":"), allow_nan=False)

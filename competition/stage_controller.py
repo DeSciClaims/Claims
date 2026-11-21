@@ -79,6 +79,9 @@ def start_failed_incumbent_reference_rerun(
 ) -> dict[str, Any]:
     """Persist and enqueue the precommitted reference on the failed paper grid."""
     round_record = backend.get_round(round_id)
+    from .scientific_lineage import enabled
+    if enabled(round_record):
+        raise ValueError('Scientific reference fallback must promote the sealed common pool; fresh worker reruns are forbidden')
     ledger = backend.list_stages(round_id)
     if not ledger:
         raise ValueError("reference rerun has no source stage")
@@ -153,6 +156,8 @@ def advance_ready_stage(round_id: str, *, backend: CompetitionBackend, identity_
     if len(grid) != len(expected):
         return {"stage": stage, "status": "waiting_for_scores",
                 "scored": len(grid), "expected": len(expected)}
+    from .scientific_lineage import verify_current_grid
+    verify_current_grid(round_id,stage,backend=backend,pairs=pairs)
     if round_record.get("rules_public", {}).get("policy", {}).get("team_identity") == "linked":
         if identity_preparer is None:
             raise ValueError("advancement needs a team identity resolver")

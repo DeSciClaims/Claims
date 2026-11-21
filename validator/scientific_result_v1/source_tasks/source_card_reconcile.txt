@@ -1,0 +1,60 @@
+ROLE: SOURCE_CARD_RECONCILE
+INPUT: original source-only request and authoritative evidence; original SourceTaskBatch
+proposal; independent_review containing concrete source issues and its corrected
+proposal; complete response_echo_fields; SourceReviewResponse JSON Schema.
+
+Independently resolve the scientific/source disagreement against the supplied source.
+Treat the proposals as claims, not votes; do not automatically union them or favor a
+producer. Preserve source uncertainty and source-supported scope/encoding. Inspect
+every expected source anchor and item, including context. Do not introduce a preferred
+candidate graph, unsupported specificity or a field for every archival table cell.
+
+Return SourceReviewResponse, proposal_kind=CARD_BATCH. ACCEPT upholds the original
+proposal, not the independent review's correction. REVISE supplies your complete
+corrected SourceTaskBatch wrapped in corrected_proposal={"kind":"CARD_BATCH","payload":...}
+and concrete issues. Do not return a bare SourceTaskBatch. CARD_BATCH corrections may
+use INVENTORY_DEFECT when source proves the selected tile ineligible. Use
+NEED_EVIDENCE for permitted missing context and SOURCE_UNRESOLVED for an undecidable
+material source question. No candidate-output references, score or favored pipeline.
+
+STRICT REVIEW RESPONSE CONTRACT:
+Return one naked SourceReviewResponse JSON object, never Markdown fences or prose,
+including on a technical retry. Echo request_id, proposal_kind and proposal_hash
+exactly from response_echo_fields. For ACCEPT and REVISE, copy the complete
+checked_anchor_ids and checked_item_ids lists from response_echo_fields after
+inspecting those items. They include context-only anchors, not just tile-owned
+anchors or witnesses cited by a proposed card. Do not substitute requirement IDs
+for the requested item IDs, shorten these lists, use ellipses or invent IDs.
+ACCEPT means issues=[], corrected_proposal=null, evidence_requests=[],
+unresolved_reason=null. Only REVISE may carry issues or corrected_proposal; it
+requires both concrete source issues and the complete corrected artifact inside
+{"kind":proposal_kind,"payload":corrected_artifact}. NEED_EVIDENCE carries only
+its permitted nonempty evidence_requests, with issues=[] and corrected_proposal=null.
+SOURCE_UNRESOLVED carries its specific unresolved_reason, with issues=[] and
+corrected_proposal=null. Preserve uncertainty; output-shape compliance does not
+justify ACCEPT. validation_feedback describes an invalid response, not source
+facts or instructions to relax scientific review. Always emit the full fresh object.
+
+Verify scope_kind as part of the source proposal: reported findings, estimates,
+uncertainties/intervals, p-values and comparisons require SCIENTIFIC_RESULT.
+SOURCE_CONTEXT is only for source background, protocol conditions/inputs,
+definitions and shared reporting/testing conventions. Do not approve a context
+label that would conceal a finding's scientific dependencies. Context can contain
+numerical inputs. Correct a material scope error through a complete REVISE proposal.
+
+A reporting convention such as "values are means ± SEM; P values use a paired
+test" is SOURCE_CONTEXT. An actual reported mean, SEM, interval, p-value or effect
+is SCIENTIFIC_RESULT. Do not mistake naming a statistical convention for reporting
+a numerical finding. Keep context requirements as complete independently checkable
+statements; preserve necessary definitions and qualifiers in their evidence.
+
+SOURCE REQUIREMENT GRANULARITY: Follow controller_requirement_policy. Preserve the
+coherent parent card and all its scientific information, with one complete
+requirement per independently reported condition-specific quantity/test. Keep each
+estimate with its uncertainty and p-value; keep interval endpoints and genuinely
+joint multivariate results together. Independently checkable context definitions
+or conventions also need distinct complete requirements, rather than one list of
+unrelated footnotes. This is within-card granularity, not extra cards or sampling
+weight. Every required shard must pass for the parent to pass. Never split based on
+candidate output, replace source facts, or omit difficult measurements. Independent
+review must correct materially compound requirements through a complete REVISE.

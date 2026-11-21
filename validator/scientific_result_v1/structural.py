@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,12 @@ def structural_issues(
     from jsonschema import Draft202012Validator
 
     try:
-        json.dumps(payload, allow_nan=False)
+        def exact_number(value):
+            if isinstance(value, Decimal) and value.is_finite():
+                return str(value)  # Preflight only; schema validates the original Decimal.
+            raise TypeError("Non-JSON or nonfinite value")
+
+        json.dumps(payload, allow_nan=False, default=exact_number)
     except (TypeError, ValueError, RecursionError) as exc:
         return [{"path": "$", "message": "Not finite JSON: " + str(exc)}]
     schema = load_schema(claims_repo)

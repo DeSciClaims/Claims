@@ -7,12 +7,14 @@ an implicit code pass or invents a qualified voter.
 
 from __future__ import annotations
 
+import os
+
 import json
 from pathlib import Path
 from typing import Any, Mapping
 
 from .chain_archive import BittensorArchive, LazySubtensor
-from .code_audit import automatic_code_audit, collect_final_code_evidence, verify_code_audit_receipt
+from .code_audit import automatic_code_audit, collect_final_code_evidence, verify_code_audit_receipt, audit_file_prefix
 from .controller_inputs import CompetitionControllerInputs, build_provisional_evaluation_policy
 from .duplicate_candidate_setup import load_candidate_report
 from .duplicate_review import verify_duplicate_review
@@ -184,7 +186,7 @@ def _final_audit(
     )
     round_record = backend.get_round(round_id)
     revision = int(round_record.get("rules_revision", 1))
-    audit_prefix = f"{round_id}.r{revision}" if revision > 1 else round_id
+    audit_prefix = audit_file_prefix(round_id,revision,evidence)
     policy = (round_record.get("rules_public") or {}).get("policy", {}).get("code_audit")
     if round_record.get("network") == "mainnet" and policy is None:
         raise ValueError("mainnet code audit has no frozen automatic thresholds")
@@ -194,7 +196,8 @@ def _final_audit(
                     _canonical_bytes(evidence), 0o600)
         _write_once(directory / f"{audit_prefix}.audit.json",
                     _canonical_bytes(automatic_code_audit(evidence, policy)), 0o600)
-    record = _late_receipt(round_id, f"r{revision}.audit" if revision > 1 else "audit")
+    suffix=(audit_prefix[len(round_id)+1:]+'.audit') if audit_prefix!=round_id else 'audit'
+    record = _late_receipt(round_id,suffix)
     code_passed = verify_code_audit_receipt(record, evidence, policy=policy)
     if set(code_passed) != set(finalists):
         raise ValueError("final code audit omits a finalist")
@@ -244,8 +247,15 @@ def create_bronze_inputs(row: Mapping[str, Any], backend: Any) -> Any:
                 round_id, configuration,
                 {**configuration, "competition_policy_runtime": policy_runtime_config()},
             ))
-        or configuration.get("silver_runtime") != silver_runtime_config()):
+        or (configuration.get("scientific_scoring",{}).get("protocol_id")!="claims-source-task-v1" and configuration.get("silver_runtime") != silver_runtime_config())):
         raise ValueError("Bronze preparation runtime differs from frozen round")
+    if configuration.get("scientific_scoring",{}).get("protocol_id")=="claims-source-task-v1":
+        from .scientific_factory import create_source_preparer
+        from .pdf_fetch import TrustedPdfFetcher
+        client=hippius_s3_client(endpoint=_required("CLAIMS_HIPPIUS_ENDPOINT"),access_key_id=_required("CLAIMS_HIPPIUS_ACCESS_KEY_ID"),secret_access_key=_required("CLAIMS_HIPPIUS_SECRET_ACCESS_KEY"))
+        fetcher=TrustedPdfFetcher(allowed_https_hosts=tuple(x for x in os.environ.get("CLAIMS_COMPETITION_PDF_HTTPS_HOSTS","").split(",") if x),
+            allowed_s3_buckets=tuple(x for x in os.environ.get("CLAIMS_COMPETITION_PDF_S3_BUCKETS","").split(",") if x),s3_client=client,hippius_endpoint=_required("CLAIMS_HIPPIUS_ENDPOINT"))
+        return SimpleNamespace(prepare_bronze=create_source_preparer(row,backend,configuration,fetcher),close=lambda:None)
     wallet = bt.Wallet(name=_required("CLAIMS_COMPETITION_WALLET_NAME"),
         hotkey=_required("CLAIMS_COMPETITION_WALLET_HOTKEY"),
         path=_required("CLAIMS_COMPETITION_WALLET_PATH"))
@@ -318,27 +328,32 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         expected_pool_sha256=row.get("paper_pool_sha256"),
     )
     packages = CompetitionPackageResolver(backend, storage, baseline, reference)
-    routing = configuration.get("decision_routing")
-    if not isinstance(routing, dict):
-        raise ValueError("pilot Decisions routing is missing from frozen rules")
-    judge_usage_capture = JudgeUsageCapture()
-    policy = build_provisional_evaluation_policy(
-        paper_inputs=papers,
-        decision_api_key=_required(
-            "JEV_API_KEY" if routing.get("provider") == "jev"
-            else "CLAIMS_COMPETITION_DECISION_API_KEY"),
-        weekly_budget_usd=float(configuration["weekly_budget_usd"]),
-        worker_policy=configuration["worker_policy"],
-        prescreen_fraction=float(routing["prescreen_acceptance_fraction"]),
-        screen_threshold=float(routing["screen_confidence_threshold"]),
-        decision_api_base=str(routing["api_base"]),
-        decision_provider=str(routing.get("provider", "openai")),
-        decision_model=str(routing.get("model", "gpt-6-luna")),
-        judge_specs=configuration.get("judge_specs"),
-        workflow_specs=configuration.get("workflow_specs"),
-        judge_usage_sink=judge_usage_capture.record,
-        rules_revision=int(row.get("rules_revision", 1)),
-    )
+    if configuration.get("scientific_scoring",{}).get("protocol_id")=="claims-source-task-v1":
+        from .scientific_factory import create_scientific_policy
+        policy=create_scientific_policy(row,backend,configuration)
+        judge_usage_capture=JudgeUsageCapture()
+    else:
+        routing = configuration.get("decision_routing")
+        if not isinstance(routing, dict):
+            raise ValueError("pilot Decisions routing is missing from frozen rules")
+        judge_usage_capture = JudgeUsageCapture()
+        policy = build_provisional_evaluation_policy(
+            paper_inputs=papers,
+            decision_api_key=_required(
+                "JEV_API_KEY" if routing.get("provider") == "jev"
+                else "CLAIMS_COMPETITION_DECISION_API_KEY"),
+            weekly_budget_usd=float(configuration["weekly_budget_usd"]),
+            worker_policy=configuration["worker_policy"],
+            prescreen_fraction=float(routing["prescreen_acceptance_fraction"]),
+            screen_threshold=float(routing["screen_confidence_threshold"]),
+            decision_api_base=str(routing["api_base"]),
+            decision_provider=str(routing.get("provider", "openai")),
+            decision_model=str(routing.get("model", "gpt-6-luna")),
+            judge_specs=configuration.get("judge_specs"),
+            workflow_specs=configuration.get("workflow_specs"),
+            judge_usage_sink=judge_usage_capture.record,
+            rules_revision=int(row.get("rules_revision", 1)),
+        )
     if policy.configuration_sha256 != rules.configuration_sha256 or policy.configuration != configuration:
         if not _payout_only_runtime_cutover(round_id, configuration, policy.configuration):
             raise ValueError("controller model runtime differs from frozen round")

@@ -1,106 +1,121 @@
 # How the structured-result validator works
 
-Claims is moving from extracting individual prose claims to extracting
-**structured scientific results**: quantities, their meaning, the conditions
-under which they apply, and the relationships between them.
+The validator checks whether an extraction faithfully represents a scientific
+finding: its numbers, classifications, relationships and conditions together.
+A correctly copied standard error attached to the wrong estimate is still wrong.
 
-The validator checks whether those pieces **jointly represent the scientific
-finding faithfully**. Copying a number correctly is not enough.
+Competition evaluation uses the supplied paper as its reference. Worked examples
+help test the implementation; they are not gold extractions, and matching their
+numbers of fields, results or families earns no credit.
 
-## A simple example
+## From a submitted package to a score
 
-Suppose a paper reports a treatment effect of **−5**, a standard error of **1.2**,
-and **p = 0.01**.
+1. **Check the package.** Code validates the extended v1.1 schema, identities,
+   references, graph closures and the actual separate CSV files.
+2. **Select checks from the source.** The validator runs Docling on the supplied PDFs
+   independently and freezes its text/OCR, captions and native tables. Source-only
+   eligibility checks identify scientific prose before sampling. A committed
+   random seed selects common content and table checks for every miner.
+3. **Check the science.** DSPy programs compare each original output with the
+   selected source evidence. They check complete findings, including attachments,
+   context, grouping and provenance. Separate checks assess table transcription
+   and the support for submitted scientific assertions.
+4. **Review exceptions.** Independent judges review failures, unresolved findings
+   and a reproducible 10% sample of primary passes. An arbiter resolves disagreement.
+5. **Calculate and retain the score.** Code calculates exact fractions and retains
+   sources, original JSON/CSV bytes, samples, judgments and score components for replay.
 
-An extraction can contain all three correct numbers and still be wrong if the
-standard error belongs to a different estimate, the p-value tests another
-comparison, or the result applies to a different population.
-
-The validator checks the values **and their connections and context**. Related
-objects form a local result; results answering a common scientific question from
-the same investigation can belong to a broader result family.
-
-## The intended evaluation process
-
-1. **Check the package mechanically.** Code checks the schema, IDs, references,
-   relationships, computed result membership and actual table CSV files.
-2. **Choose checks from the source.** Select scientific findings and numerical
-   table regions independently of competing pipelines. This makes omissions
-   detectable, including findings every pipeline missed.
-3. **Verify scientific meaning.** An AI judge compares each pipeline's
-   representation with the original paper and supplied supplements. Separate
-   audits check table transcription and unsupported scientific assertions.
-4. **Score quality and review exceptions.** Record clear findings and send
-   uncertain or disputed cases for additional independent review.
-
-Mechanical checks are inexpensive. A scientific review can cover several related
-objects together. Sampling and exception review concentrate expensive judgments
-where they are useful.
-
-**The full process above is the design target.** The current implementation and
-remaining work are distinguished below.
-
-## What the proposed score rewards
-
-| Dimension | Question |
+| Component | What it measures |
 |---|---|
-| **G — Mechanical compliance gate** | Does the extraction satisfy the mandatory mechanical requirements? |
-| **C — Scientific content** | Is the sampled scientific information represented correctly and completely, including relationships and context? |
-| **T — Table fidelity** | Is the sampled numerical-table content faithfully preserved? |
-| **P — Output reliability** | Are the pipeline's submitted scientific assertions supported by the source? |
+| **G — Mechanical gate** | Does the package satisfy the mandatory mechanical requirements? |
+| **C — Scientific content** | Is sampled scientific information represented correctly and completely? |
+| **T — Table fidelity** | Are sampled numerical-table rows and their interpretation faithfully preserved? |
+| **P — Output reliability** | Are the sampled groups of submitted scientific assertions supported? |
 
-For papers with qualifying numerical tables, the proposed score is:
+For a paper with scientific content and qualifying numerical tables:
 
 **Q = G × P × (7C + 2T) / 9**
 
-When no qualifying numerical tables exist:
+Without qualifying numerical tables, **Q = G × P × C**. A table-only paper uses
+**Q = G × P × T**. A source with neither is ineligible for scoring.
 
-**Q = G × P × C**
+Numbers, links, conditions and result families are assessed together in C and P;
+there are no separate object-count or family-count bonuses. Table CSVs have their
+own T checks. Optional data/code availability assertions use the extended schema's
+V28–V30 rules and receive source-grounded review when applicable.
 
-A failed mechanical gate gives no credit. Unsupported assertions reduce output
-reliability and therefore reduce the contribution of both content and tables.
-Producing more objects, local results or families does not itself earn points.
+## Zero, pending review and corrections
 
-## Evaluation is separate from database curation
+A mechanical failure gives the miner **G = 0 and Q = 0**. A schema-valid
+`review_required` closure with the required explanation does not automatically
+fail the entire package; its scientific meaning still needs review.
 
-The competition evaluates extraction quality against the source. It does not
-need to assemble competing outputs into one canonical reference dataset.
-Different scientifically valid organizations can receive credit.
+A validator, provider or source-evidence problem produces a **common HOLD**:
+Q remains null for every miner on that paper, and pending review emits no numeric
+pair scores. An unresolved judgment is not a measured zero. A terminal common
+exclusion uses explicitly flagged transport placeholders that ranking must skip.
 
-Building a curated scientific database is a separate process. Worked examples
-help test the schema and implementation; their object counts are not scoring
-targets or a substitute for checking the paper.
+If a source task or judgment is corrected, the original miner outputs stay
+immutable. Every affected miner is reassessed under the common correction.
+The earlier receipt remains in history; ranking and publication must use a
+consistent current generation of scores.
 
-## What is implemented today
+## Which sources are in scope?
 
-| Implemented | Still to implement or verify |
-|---|---|
-| Shared mechanical checks for JSON, graphs and delivered CSVs | Independent source sampling and its sampling policy |
-| DSPy programs for source, scientific-attachment and family review | C, T and P scoring, calibration and the Q calculation |
-| Per-rule reports with evidence and explicit uncertainty | Additional independent review and exception resolution |
-| Reference preflight and an opt-in trusted controller gate | Live verification of scientific-review accuracy |
+**Only sources actually supplied to miners.** A supplement or external table that
+was not supplied is not a coverage requirement. Supplied supplements remain in
+scope. A paper mentioning a missing supplement does not by itself block scoring.
+Submitted scientific assertions still need support in the supplied evidence.
 
-The current reviewer processes submitted records in batches and performs broader
-coverage reviews. **That is not yet the independent source-sampling workflow.**
-The current submission-readiness gate also does not calculate the proposed
-competition score.
+The schema can represent figure-derived values. OCR recovers printed text and
+numbers; interpreting marker positions or curves needs additional capabilities.
+The current source-evidence policy is `docling_pdf_derivatives_v1`: judges rely
+on the validator's independently captured Docling text/OCR and table structure.
+No page-image review, model-authored bounding boxes or image crops are required.
+Printed figure text/numbers captured by Docling remain usable; graph values that
+Docling does not recover are not silently invented. Parser omissions and OCR
+mistakes limit what this evaluation can verify.
 
-Checks report **pass**, **fail**, **review required**, **not checked**, or
-**not applicable**. An unavailable reviewer or insufficient evidence does not
-become a pass. The trusted controller runs its own validation; it does not accept
-a miner's claim that its output is valid.
+## Components and interfaces
 
-Required supplements must be supplied upstream or declared unavailable. Figure
-values read from plotted positions need appropriate image evidence and review
-capability. The schema can represent both; the validator must disclose evidence
-or capability gaps.
+The source-task implementation is in [`source_tasks/`](source_tasks/). It provides
+source preparation, deterministic sampling, original-byte package indexing,
+scientific review, exact scoring and provider-free replay. The competition adapter
+in [`competition/scientific_scoring.py`](../../competition/scientific_scoring.py)
+converts frozen scientific receipts into paper and baseline/challenger score rows.
+The older diagnostic interface remains available for miner preflight.
 
-## Code and usage
+The default source reader and primary judge use Qwen3.8 Flash, the independent
+secondary uses DeepSeek V4 Flash 0731, and arbitration uses Kimi K2.5. Each request
+allows 32,000 source-evidence tokens and a separate 32,000-token structured packet,
+with up to two additional source-context retrievals within the same allowance.
+Judge output is capped at 16,384 tokens. These are validator settings, separate
+from miner execution budgets. Routes, limits, prompts and implementation identities
+are retained in the frozen evaluation configuration.
 
-The shared validator lives here in `Claims/validator/scientific_result_v1`.
-The miner uses it for diagnostic checks, `claims-reference-miner` uses it for
-preflight, and the scientific controller path independently validates delivered
-packages. Existing `agent_v1` rounds are not automatically migrated.
+Independent index batches use up to four request contexts per case, subject to a
+global 16-request gate and four case workers. Packet splitting keeps scientific
+dependencies together. Lossless transport pools repeated literal strings and
+round-trips to the original retained assertion packet; it does not rewrite values.
 
-See [implementation and operation](IMPLEMENTATION.md) for commands, source bundles,
-rule coverage, report fields, review budgets and controller configuration.
+## Retained evidence and replay
+
+The content-addressed store retains supplied sources, Docling derivatives, original
+JSON/CSV bytes, source tasks, sampling manifests, judge requests/responses,
+mechanical findings, scientific verdicts and score components. Current-revision
+checks prevent publication of stale score projections.
+
+Replay a retained receipt without contacting a model provider:
+
+```sh
+python -m validator.scientific_result_v1.source_tasks replay \
+  --store /path/to/evidence-store \
+  --receipt-sha256 RECEIPT_SHA256
+```
+
+The replay command checks retained artifacts and prints the receipt state and each
+output's score. It does not issue new scientific judgments.
+
+See [implementation and operation](IMPLEMENTATION.md) for entry points and
+[the validation guide](../../schemas/scientific-result-extraction/v1.1/VALIDATION_GUIDE.md)
+for the evaluation policy, sampling rules and response contracts.

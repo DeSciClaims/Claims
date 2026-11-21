@@ -7,6 +7,8 @@ key. This helper has no backend, storage, provider, or Targon credentials.
 
 from __future__ import annotations
 
+import hashlib
+
 import base64
 import fcntl
 import ipaddress
@@ -105,10 +107,16 @@ def _read_bundle(stream: BinaryIO) -> tuple[str, dict[str, bytes]]:
     except (ValueError, UnicodeError) as exc:
         raise ValueError("worker control input or key is malformed") from exc
     filename = receipt.get("package_filename") if isinstance(receipt, dict) else None
-    if (not isinstance(filename, str) or set(files) != {
-        "input.json", "request.json", "paper.pdf", "paper-key", filename,
-    } or not re.fullmatch(r"[0-9a-f]{64}", str(receipt.get("job_id", "")))
-        or not key or any(character.isspace() or ord(character) < 33 for character in key)):
+    expected={"input.json","request.json","paper.pdf","paper-key",filename}
+    request=json.loads(files["request.json"])
+    if request.get("output_schema")=="scientific_result_v1.1":
+        additions=receipt.get("scientific_input_sha256")
+        if not isinstance(additions,dict) or not {"sources.json","claims_extraction.schema.json"}<=set(additions):raise ValueError("Scientific input manifest missing")
+        for name,digest in additions.items():
+            if name not in {"sources.json","claims_extraction.schema.json"} and not re.fullmatch(r"supplied-source-S[0-9]+\.(pdf|txt|html|csv)",name):raise ValueError("Unsafe scientific source file")
+            if name not in files or hashlib.sha256(files[name]).hexdigest()!=digest:raise ValueError("Scientific source file hash mismatch")
+        expected.update(additions)
+    if (not isinstance(filename,str) or set(files)!=expected or not re.fullmatch(r"[0-9a-f]{64}",str(receipt.get("job_id",""))) or not key or any(character.isspace() or ord(character)<33 for character in key)):
         raise ValueError("worker control bundle receipt or key is invalid")
     validated_package_filename(filename, "wheel" if filename.endswith(".whl") else "tar.gz")
     return receipt["job_id"], files
@@ -331,7 +339,8 @@ def _run_once_locked(stream: BinaryIO, config: dict[str, Any], *, slot: int | No
             else:
                 raise RuntimeError("worker guest did not return a result")
         else:
-            summary = json.loads(_limited_read(results / "result.json", MAX_RESULT_BYTES, miner_uid))
+            result_limit = 1_261_000_000 if json.loads(files["request.json"]).get("output_schema")=="scientific_result_v1.1" else MAX_RESULT_BYTES
+            summary = json.loads(_limited_read(results / "result.json", result_limit, miner_uid))
             if (not isinstance(summary, dict)
                 or summary.get("schema_version") != "claims_worker_result_v1"
                 or summary.get("job_id") != job_id

@@ -39,6 +39,8 @@ def audit_replay_final(
             "result_sha256": canonical_sha256(frozen["result_private"]),
         })
     pairs = backend.list_stage_pairs(round_id, stage)
+    from .scientific_lineage import verify_current_grid
+    verify_current_grid(round_id,stage,backend=backend,pairs=pairs)
     evidence = collect_final_code_evidence(
         round_id, backend=backend, fetch_package=fetch_package,
     )

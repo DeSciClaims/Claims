@@ -300,7 +300,7 @@ def test_source_audit_missing_supplement_survives_table_audit_and_validation(tmp
             return result
     directory = tmp_path / 'run'
     payload = extract_pdf(pdf, directory, runtime=MissingSupplementRuntime(), paper_id='P1', prepared_dir=cache)
-    assert payload['extraction']['table_coverage']['status'] == 'incomplete'
+    assert payload['extraction']['table_coverage']['status'] == 'complete'
     assert 'supplement' in payload['extraction']['notes']
     payload['extraction']['table_coverage']['status'] = 'complete'
-    assert any(i['code'] == 'V20' for i in validate_package(payload, directory))
+    assert not any(i['code'] == 'V20' for i in validate_package(payload, directory))

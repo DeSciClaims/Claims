@@ -7,7 +7,7 @@ import math
 import time
 from pathlib import Path
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 
 from .registry import rules, targets
 from .runtime_support import StageProgram
@@ -37,17 +37,31 @@ For equations verify coefficients, operators, symbol scope and assumptions. A li
 must not replace a finite/general rule. Check ALL source representations: layout text may mark a
 formula unreadable while page OCR contains it. Do not reconstruct missing mathematics from memory.
 OCR ambiguity, missing images or unreadable formulas require review_required, never a guessed pass.
-Printed numerical columns inside a forest plot are tables; curve coordinates are different. A bare
+Printed numerical columns inside a forest plot are tables; curve coordinates are different.
+Axis ticks, scale labels and legend identifiers are not measurement rows. OCR detecting a list
+of numbers on a plot does not establish a numerical table without row/column measurement context. A bare
 image placeholder is not evidence of a graph. Digitized values require verifiable image/digitization
 evidence; text captions alone cannot verify marker positions. Source snippets claimed as verbatim
 must be distinguishable from summaries. Repeated scientific quantities are not independent evidence.
 For coverage inventory explicit external/supplementary materials, including tables available at web
 addresses, not just documents named 'supplement'. Compare them with supplied sources. Classify every
 mention in external_sources; do not confuse artifact links or bibliographies with numerical tables.
-Unavailable required tables/supplements prevent complete table coverage. Compare actual CSV rows,
+Evaluation scope is controller-supplied sources ONLY. Supplements or external tables not supplied
+to miners are excluded: do not fail, downgrade, or require review for their omission, and do not
+require miners to fetch them. Complete coverage means complete within the supplied sources.
+Still inventory references to unsupplied materials for information, without affecting verdicts.
+Supplied supplements ARE in scope. Unsupported assertions about unsupplied materials still need
+source support; exclusion does not license invention. Compare actual CSV rows,
 column hierarchy, annotations, precision, missingness, merged cells and links against source text.
 For families use question and generating investigation, not broad topic, storage or shared data.
-For each rule return one check with exactly its assigned object_ids. Evidence cites existing
+For V25, inspect actual csv_exports: row 1 is the first DATA row after the header.
+Exported row order may differ from paper layout. Check the cited cell, not whether a value
+occurs somewhere in the paper or CSV. Missing CSV evidence cannot support a V25 pass.
+For each rule return ONE check with exactly its assigned object_ids, combining judgments
+across those objects rather than emitting several checks for the same rule.
+Evidence object_ids must also be drawn from that rule's assigned IDs. For a global rule
+assigned ["$extraction"], use ["$extraction"] in its evidence, not table or field IDs. For a
+core review assigned an R ID, evidence names that R ID, not an unassigned supporting F ID. Evidence cites existing
 source_id/block_id anchors, with object_ids identifying the objects that evidence supports. A pass
 requires evidence covering EVERY assigned object. Cite several anchors where necessary. If evidence
 is insufficient, choose review_required or not_checked and explain. not_applicable is permitted only
@@ -236,10 +250,11 @@ def review(
             "submission": subset,
             "object_catalogue": catalogue,
             "source_blocks": source_blocks,
-            "required_sources": list(bundle.required_sources),
+            "source_scope_policy": "supplied_sources_only",
+            "external_source_notices": list(bundle.required_sources),
             "source_images": bundle.images(payload["extraction"]["id"]),
         }
-        if category == "coverage":
+        if category == "coverage" or "V25" in active:
             request["csv_exports"] = {}
             for table in payload["tables"]:
                 path = package_dir / table["csv_file"]
@@ -248,8 +263,8 @@ def review(
                     and not path.is_symlink()
                     and path.resolve().parent == package_dir.resolve()
                 ):
-                    request["csv_exports"][table["id"]] = path.read_text(
-                        encoding="utf-8"
+                    request["csv_exports"][table["id"]] = path.read_bytes().decode(
+                        "utf-8"
                     )
         identity = digest(request)
         prefix = f"review-{index:03d}-{category}"
@@ -310,13 +325,16 @@ def review(
                             "Review must account for every assigned object, without invented IDs"
                         )
                     covered = set()
-                    for evidence in check["evidence"]:
-                        if (
-                            evidence["source_id"],
-                            evidence["block_id"],
-                        ) not in anchors or not set(evidence["object_ids"]) <= expected:
+                    for evidence_index, evidence in enumerate(check["evidence"]):
+                        anchor = (evidence["source_id"], evidence["block_id"])
+                        if anchor not in anchors:
                             raise ValueError(
-                                "Evidence cites an unavailable anchor or an unassigned object"
+                                f"{check['rule_id']} evidence[{evidence_index}]: unknown source block {anchor}; cite an existing source_blocks entry."
+                            )
+                        extra = set(evidence["object_ids"]) - expected
+                        if extra:
+                            raise ValueError(
+                                f"{check['rule_id']} evidence[{evidence_index}]: unassigned object IDs {sorted(extra)[:12]}; use this rule's assigned IDs {sorted(expected)[:12]}."
                             )
                         covered.update(evidence["object_ids"])
                     if check["status"] in {"pass", "fail"} and (
@@ -343,24 +361,21 @@ def review(
                         raise ValueError(
                             "External-source finding has no available source anchor"
                         )
-                if any(
-                    e["status"] in {"unavailable", "uncertain"}
-                    for e in answer["external_sources"]
-                ):
-                    for check in answer["checks"]:
-                        if check["rule_id"] == "V20" and check["status"] == "pass":
-                            check["status"] = "review_required"
-                            check["reason"] = (
-                                "External-source inventory is unresolved. "
-                                + check["reason"]
-                            )
                 (directory / f"{prefix}.review.json").write_text(
                     json.dumps(answer, ensure_ascii=False, indent=2)
                 )
                 verdicts.extend(answer["checks"])
                 break
             except Exception as exc:
-                feedback = [{"message": f"{type(exc).__name__}: {str(exc)[:1500]}"}]
+                if isinstance(exc, ValidationError):
+                    message = f"Invalid review at {exc.json_path}: {exc.validator} requires {exc.validator_value}. "
+                    if exc.validator == "maxItems":
+                        message += "Return exactly one check per assigned rule, not separate checks per object."
+                    elif exc.validator == "enum":
+                        message += exc.message[:500]
+                else:
+                    message = str(exc)[:1500]
+                feedback = [{"message": f"{type(exc).__name__}: {message}"}]
                 (directory / f"{prefix}-{attempt}.error.json").write_text(
                     json.dumps(feedback, indent=2)
                 )
@@ -368,6 +383,8 @@ def review(
                     attempt == max_attempts
                     or "budget exhausted" in feedback[0]["message"]
                 ):
+                    if "budget exhausted" in feedback[0]["message"]:
+                        exhausted = True
                     errors.append(
                         {
                             "job": index,

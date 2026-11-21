@@ -400,8 +400,9 @@ with original header hierarchy retained. Correct layout/OCR using source context
 explain all changes. If a printed numerical table is visible in source text but absent
 from detected candidates, recover it with candidate_ids=[] and explain provenance.
 Never substitute a prose summary for CSV transcription. Set csv_file to table.id+'.csv'.
-Keep table coverage incomplete when required supplements are not supplied, regions are
-unreadable, or exports cannot be certified. No detection alone certifies complete coverage.
+Evaluation covers supplied sources only. Unsupplied supplements/external tables are
+outside scope and must not force incomplete coverage. Keep coverage incomplete when
+in-scope regions are unreadable or exports cannot be certified. No detection alone certifies coverage.
 Record availability statements and printed artifact links when present.
 """, shared, inventory_schema, max_attempts)
     if inventory["paper"]["id"] != paper_id or inventory["extraction"]["id"] != extraction_id:
@@ -411,12 +412,9 @@ Record availability statements and printed artifact links when present.
                            runtime=runtime, directory=stages, attempts=max_attempts)
     dump(output_dir / "source_coverage_plan.json", coverage)
     inventory["result_plan"] = coverage["result_plan"]
-    if any(gap["kind"] == "unavailable_supplement" for gap in coverage["unrecovered_regions"]):
-        inventory["extraction"]["table_coverage"]["status"] = "incomplete"
-        inventory["extraction"]["table_coverage"]["notes"] = "Required supplementary source unavailable; its numerical-table inventory cannot be verified. " + inventory["extraction"]["table_coverage"].get("notes", "")
     if coverage["unrecovered_regions"]:
         gaps = "; ".join(f"{gap['source_id']} {gap['locator']}: {gap['reason']}" for gap in coverage["unrecovered_regions"])
-        inventory["extraction"]["notes"] = inventory["extraction"].get("notes", "") + " Unrecovered source content: " + gaps
+        inventory["extraction"]["notes"] = inventory["extraction"].get("notes", "") + " Source review notices (unsupplied supplements are outside scope): " + gaps
     planned_ids = [item["id"] for item in inventory["result_plan"]]
     if len(planned_ids) != len(set(planned_ids)):
         raise ValueError("Duplicate result plan IDs")
@@ -516,10 +514,6 @@ necessary relationships between shared-context fields when supported by the sour
         audit_missing_tables(payload, documents=documents, source_images=source_images,
                              runtime=runtime, directory=output_dir, attempts=max_attempts)
         planned_ids = [record["id"] for record in payload["results"]]
-    # Source-table audits must not erase an independently recorded missing source.
-    if any(gap["kind"] == "unavailable_supplement" for gap in coverage["unrecovered_regions"]):
-        payload["extraction"]["table_coverage"]["status"] = "incomplete"
-        payload["extraction"]["table_coverage"]["notes"] = "Required supplement unavailable; numerical-table inventory unverified. " + payload["extraction"]["table_coverage"].get("notes", "")
     return finalize_extraction(payload, output_dir, runtime=runtime, documents=documents,
                                source_images=source_images, max_attempts=max_attempts)
 

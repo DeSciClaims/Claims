@@ -2,9 +2,178 @@
 
 For the high-level design, start with the [overview](README.md).
 
-This is the shared, read-only validator for scientific extraction schema 1.1.
-It checks extraction JSON, delivered table CSVs and controller-owned source
-artifacts. It does not repair the submission or trust miner-generated reports.
+There are two entry points. `source_tasks/` implements source-based competition
+scoring. The root diagnostic CLI provides the older per-rule preflight report.
+Both preserve submitted extraction bytes and use controller-owned source evidence.
+Neither accepts miner-generated validation reports as authority.
+
+## Source-task competition scoring
+
+The protocol is `claims-source-task-v1`, bound to the extended schema SHA-256
+`78f5b279dfbf4f2fec5fc83b2219350e43e3fece5c58e94f81fb5d146d10a5e2`.
+The authoritative policy is the amended [validation guide](../../schemas/scientific-result-extraction/v1.1/VALIDATION_GUIDE.md).
+It includes the owner's supplied-sources-only policy and waived truth-corpus
+requirement. Judge accuracy remains unmeasured.
+
+`source_tasks.configuration.freeze_settings` constructs hash-bound settings from
+retained approved route snapshots and the deployment execution policy. The chosen
+routes are Qwen3.8 Flash for source reading and primary verification, DeepSeek V4 Flash 0731
+for independent secondary verification, and Kimi K2.5 for arbitration. These judge
+routes do not change the miners' allowed models or their $0.10 inference cap.
+The per-call output allowance is 16,384 tokens. Credentials stay in host
+variables. The current PDF evidence policy is `docling_pdf_derivatives_v1`, chosen
+by the owner on 21 November 2026. The controller runs Docling on the supplied PDF
+bytes; caches must be controller-owned and bound to the same SHA-256 and retained
+parser metadata. No page-image review or LLM-authored crop geometry is required.
+Native Docling text/OCR, table cells, spans, headers and section rows are retained.
+Judges assess against those derivatives; their omissions and OCR errors remain a
+limitation. The text-only DeepSeek secondary route can therefore review PDFs.
+
+`source_tasks.docling_frame` derives PDF source frames directly from retained
+Docling bytes. Its parser layout proofs can be rebuilt without a model call.
+Source-only prose eligibility has independent classification and arbitration when
+needed. Scientific content/archival/assertion judgments retain their existing
+independent routes. Mechanical failures skip scientific judgment after source
+eligibility is established. Additional archival context rows are mapped to their
+original CSV coordinates without changing delivered bytes. Additional table exports
+are reviewed as submitted assertions; they do not fail merely because Docling did
+not detect a corresponding native table. Every qualifying native source table still
+requires a corresponding delivered archive.
+
+Run retained real-paper packages with `scripts/verify_scientific_example_papers.py`.
+Required arguments are `--packages`, `--pdfs`, `--trusted-sources`, `--parsed`,
+`--snapshots`, and `--output-dir`; `--reparse-pdfs` uses a validator-owned Docling
+cache under that output directory. Missing caches are created from retained actual
+PDF bytes. `--check-inputs-only` verifies original source hashes and package gates
+without provider calls. Scope preserves the exact supplied source bundle, including
+any supplied supplement, and fetches no missing supplement. Each case retains
+inputs, frozen routes, Docling artifacts, original JSON/CSVs, calls and a JSON report.
+These historical extractions predate the validator's seed commitment, so this is a
+retrospective diagnostic rather than a live competition execution. Worked examples
+are not gold inputs to the scorer.
+
+The standalone harness supplies an explicit empty transport control because the
+competition comparison contract requires a pair. That control is marked as a
+diagnostic package failure, consumes no scientific judge calls, and is not a miner
+submission or gold extraction. The report selects the historical extraction's
+source-grounded Q and publishes no competition ranking.
+
+Source-card construction accepts a judge's `NEED_EVIDENCE` request and retrieves
+only captured anchors from the same immutable source frame, with at most two
+context retrievals (each request allows 32,000 source tokens). Independent review can request
+the same expansion. Added context cannot become an independent target outside the
+original tile. Unresolved common task construction holds the score before further
+matching/scientific calls. Oversized joint assertion packets still require complete
+legal partitions; they must never be truncated or scored as missing miner content.
+
+`table_matching.resolve_table` compares the complete original table declarations,
+CSV headers/row labels and trusted source bindings. Primary and secondary calls are
+blind; differing or ambiguous matches go to the arbiter. Scientific-content matching
+still scans the full original assertion index. Providers return only typed requirement
+matches; code derives candidate_refs from their union, so no unrelated second list
+can inflate packets or cause an inconsistent response. DeepSeek routes are pinned
+to advertised DeepInfra strict-schema endpoints; original and filtered snapshots
+are retained and no fallback to another provider is implicit. The status-dependent
+counterexample constraints are encoded in the provider schema, not just checked
+after generation. Unassigned context cannot inflate every review packet.
+
+`transport.judge_packet` losslessly factors repetitive property wrappers and original
+property pointers. Exact literal strings, missing-property flags, original references,
+relationships, closures, sidecars and CSV cells remain recoverable by `audit_packet`.
+`judge_evidence` factors only repeated document SHA-256 values; document/anchor IDs
+and source text stay unchanged. The 32k budget measures actual judge transport.
+Rich immutable audit records remain available, and score replay checks transport
+against the original records. Closure expansion uses the initially selected owners;
+shared context does not recursively pull in every other consumer's result fields.
+
+SourceTaskDraft.scope_kind is set from source only and independently reviewed.
+SCIENTIFIC_RESULT retains joint result dependencies. SOURCE_CONTEXT covers given
+protocol conditions/inputs and shared conventions; complete independent context
+requirements can be mandatory shards with common task/source identity. Every
+representation of each requirement remains in its shard. Explicit partial
+context_headers preserve original identity/scope needed for contextual associations,
+without pretending to supply unseen numeric fields. Numeric findings remain full.
+
+P shards group record assertions and incident associations by scientific owner.
+The child ownership list is packet.match.candidate_refs, not a duplicated parent
+ledger in instruction text. Replay checks its disjoint exhaustive union against
+the sampled parent bucket. Shared context does not merge every consumer into one
+indivisible group. These checks preserve audit coverage while reducing duplicate
+reviews of the same result context.
+
+`response_schema.response_schema` binds the provider schema to the immutable
+request: task/packet identities, applicable dimension names/count, available source
+witnesses and provided counterexample pointers. It expresses existing outcome and
+witness constraints with grammar-supported branches. Canonical response validation
+still enforces exact distinct dimension/inspection sets, original-pointer resolution,
+scientific witness rules and all scoring conditions; no scientific decision is
+filled in or repaired by this binding. The provider still returns JudgeResponse.
+
+The trusted flow is `prepare_paper` → sealed `SubmittedPackage` pool →
+`PaperEvaluator.evaluate` → `adapt_scientific_receipt`. Main paper and supplied
+companions are immutable `SourcePacket` documents. Preparation captures Docling
+text/OCR and native table layout directly from the actual PDF bytes. The 32-byte paper seed is committed
+before worker execution; parsing and inventory time are separate from the retained
+1,800-second post-seal scientific evaluation deadline.
+
+C samples six source tiles (initially three prose and three table blocks, with
+shortage transfers); T independently samples four five-row table blocks. C averages
+cards within tiles and blocks within tables, then gives equal weight to the two
+applicable content strata. P samples up to four occupied source buckets plus a
+mandatory UNANCHORED bucket. P starts from the committed ownership references;
+it does not ask a model to rediscover those assertions. Source correspondence
+search remains required for C/T. Complete independent shards share one original task
+identity and combine by minimum, so splitting does not create scoring mass.
+
+The package reader retains original numeric literals, null/missing distinctions
+and RFC 6901 pointers. Matching uses exact source hits, indexed descriptor ranks
+and complete fallback before certifying absence. Scientific checks receive the
+original properties and graph/context; available CSV cells do not instantiate
+missing scientific fields. No claim-unit count, canonical family organization or
+semantic-copy veto governs this protocol.
+
+Scientific judgments use strict response contracts and fixed parameters: 16,384
+output tokens, temperature 0, top-p 1, one response, no tools and a 120-second
+request timeout. Primary/secondary/arbiter identities are distinct. Technical
+failures have one retained retry. All failures/unresolved cases and a deterministic
+10% pass audit receive independent review; incompatible interpretations go to the
+arbiter. Source evidence allows 32k tokens from the first call, with two context retrievals; complete
+structured shards are bounded to 32k tokens. No truncation receives omission credit.
+
+Evidence is content-addressed in `Store`, or in the private backend via `RemoteStore`.
+Paper-head advancement is compare-and-set. Corrections archive/invalidate existing
+score projections; rebuilding the complete paper score/pair grid is transactional.
+Rank/publication checks reject stale receipts and incompatible comparison plans.
+Backend SQL changes are included in the scientific-evidence migration and have not
+been deployed by this work.
+
+Replay a retained receipt without a provider call:
+
+```sh
+python -m validator.scientific_result_v1.source_tasks replay \
+  --store path/to/evidence-store --receipt-sha256 RECEIPT_SHA256
+```
+
+Run the offline implementation checks from the Claims repository:
+
+```sh
+python -m pytest tests/source_tasks
+```
+
+The synthetic live smoke runner is `scripts/smoke_scientific_source_validator.py`;
+`--help` documents its source fixture, route snapshots and output directory.
+`scripts/preflight_scientific_routes.py` checks strict format, fixed parameters and
+image delivery. Neither is an accuracy qualification or a live-round activation.
+
+Automatic common replacement, sealed-reference fallback, exhaustive E01–E50
+conformance and the full operational pilot remain integration/verification work.
+Do not enable production based only on the smoke tests.
+
+## Diagnostic validator CLI
+
+The remaining sections describe the older diagnostic/preflight interface. Its
+`submission_ready` decision is not the source-task competition score, and its
+confidence-based reviews do not replace the categorical multi-judge source tasks.
 
 The registry exposes all V01–V27 rules from the schema guide. It also exposes
 V28–V30, the optional data/code-availability extension in the canonical repository
@@ -90,8 +259,10 @@ plotted values. No image capability is silently assumed for DeepSeek V4 Flash.
 closures and a completed review execution. `miner_diagnostic` reports never grant
 submission readiness or authoritative acceptance. `reference_preflight` can pass
 before reference packaging, but the trusted coordinator still repeats validation.
-A missing or failed reviewer remains unchecked, not passed. Known unavailable
-required sources and omission of a supplied supplement block complete coverage.
+A missing or failed reviewer remains unchecked, not passed. The `supplied_sources_only` evaluation policy excludes unsupplied supplements
+and external tables from coverage requirements. Manifest notices about unavailable
+materials are informational, even if the legacy key is `required_sources`.
+Omission of a supplied supplement still blocks complete coverage.
 Unaccounted fields require scientific review because the guide permits clearly
 contextual content; the validator does not infer dependence from storage.
 
@@ -169,3 +340,22 @@ needs live verification and calibration. Offline tests cover successful/rejected
 full gates, invented evidence, review failures/budgets, missing sources, forged
 reports, CSV transport, CLI behavior and source/package integrity. Mocked-review
 tests do not establish scientific performance.
+
+Packet-size correction (21 November): source-only cards use complete independently
+reported condition-specific requirements within each unchanged coherent parent.
+The independent source reviewer checks this granularity; interval endpoints and
+joint multivariate findings remain together. Family co-members used only for
+membership context have explicit original identity/scope headers instead of
+unrelated closures/metadata. Focused assertions, scientific endpoints and boundary
+definitions remain full. Replay rejects partial headers for focal assertions.
+Transport `claims_property_pairs_v2` additionally pools repeated long exact JSON
+literal strings. Decoding preserves original number spellings, whitespace, missing
+markers and pointers. Bounds count this lossless transport, not an abridgment.
+
+Independent index batches now use up to four request contexts per case, with the
+existing global 16-request gate and four case workers. Ordered aggregation keeps
+matching results and coverage identical to serial scanning. All attempt records
+survive a failed batch; no incomplete search becomes absence. All 133 tests pass.
+The r6 run resolved packet/table holds and scored Shukla; Genther reached the
+unchanged 30-minute generation deadline. The fresh r7 run checks this scheduling
+correction without raising evidence, request, retry, or deadline limits.

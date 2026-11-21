@@ -51,8 +51,14 @@ def read_output_json(path: Path):
     control side. It also raises RecursionError on deeply nested input. All
     are package faults, so they surface here as ValueError.
     """
+    def unique_keys(items):
+        result={}
+        for key,value in items:
+            if key in result:raise ValueError("Duplicate output JSON key")
+            result[key]=value
+        return result
     try:
-        return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_constant,
+        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_keys, parse_constant=_reject_constant,
                           parse_float=_finite_float)
     except RecursionError as exc:
         raise ValueError("output JSON nests too deeply") from exc
@@ -186,8 +192,13 @@ def run_one_paper(
                 from validator.scientific_result_v1.deterministic import validate_package
                 with tempfile.TemporaryDirectory() as work:
                     directory = Path(work) / "package"
-                    checked = materialize(payload, directory, paper_id=str(request["paper"]["paper_id"]))
-                    issues = [i for i in validate_package(checked, directory) if i.get("severity") != "review_required"]
+                    checked = materialize(payload, directory, paper_id=str(request["paper"]["paper_id"]), max_bytes=210_000_000 if payload.get("schema_version")=="claims_scientific_package_v2" else 10_000_000)
+                    if payload.get("schema_version") == "claims_scientific_package_v2":
+                        from validator.scientific_result_v1.source_tasks.packages import Package
+                        gate = Package(directory,"guest",filename="extraction.json",paper_id=str(request["paper"]["paper_id"])).gate
+                        issues = [e.model_dump(mode="json") for e in gate.errors]
+                    else:
+                        issues = [i for i in validate_package(checked, directory) if i.get("severity") != "review_required"]
             else:
                 artifact = Artifact.model_validate(payload)
                 issues = validate_agent_artifact(artifact)

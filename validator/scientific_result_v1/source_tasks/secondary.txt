@@ -1,0 +1,10 @@
+Make a complete independent assessment of this task from source evidence and original
+candidate content. No earlier assessment is supplied. Apply every required dimension;
+do not limit your work to suspected errors or assume that this task was selected
+because a pipeline failed. Return the same JudgeResponse contract.
+
+Family co-members shown only as context_headers contain original identity and scope
+properties, not their unrelated closures, numerical fields, or complete scientific
+assertions. Full matched results, necessary graph endpoints, closure members and
+boundary definitions stay complete. Headers cannot satisfy unseen scientific
+information or count as audited assertions. Family declarations remain complete.
