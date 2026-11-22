@@ -6,13 +6,64 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from datetime import datetime
 import hashlib
+import logging
 import math
-from time import monotonic
+import urllib.error
+from time import monotonic, sleep
 from typing import Any, Callable, Mapping
 
 from .production_reader import ActiveProductionPackage, ProductionReleaseReader
 from .production_runner import run_production_paper
 from .production_checkpoints import checkpoint_matches, usage_already_recorded
+from .worker_errors import WorkerTransportError
+
+
+logger = logging.getLogger(__name__)
+
+
+def _control_failure(operation: str, exc: Exception) -> str:
+    """Operation and typed causes only: never log credentials or remote bodies."""
+    labels = []
+    seen = set()
+    cause = exc
+    while cause is not None and id(cause) not in seen:
+        seen.add(id(cause))
+        label = type(cause).__name__
+        if isinstance(cause, urllib.error.HTTPError):
+            label += f"(HTTP {cause.code})"
+        elif isinstance(cause, WorkerTransportError):
+            label += f"({cause.reason})"
+        labels.append(label)
+        cause = cause.__cause__
+    return operation + ":" + "/".join(labels)
+
+
+def _transient_control_error(exc: Exception) -> bool:
+    seen = set()
+    cause = exc
+    while cause is not None and id(cause) not in seen:
+        seen.add(id(cause))
+        if isinstance(cause, urllib.error.HTTPError):
+            return cause.code in {408, 429, 500, 502, 503, 504}
+        if isinstance(cause, (urllib.error.URLError, TimeoutError, ConnectionError)):
+            return True
+        if isinstance(cause, WorkerTransportError):
+            return cause.reason == "ssh_failed"
+        cause = cause.__cause__
+    return False
+
+
+def _read_control(operation: str, callback):
+    """Retry bounded, read-only control probes; never retry inference or claims."""
+    for attempt in range(4):
+        try:
+            return callback()
+        except Exception as exc:
+            if not _transient_control_error(exc) or attempt == 3:
+                raise
+            logger.warning("production_control_retry failure=%s attempt=%s/4",
+                           _control_failure(operation, exc), attempt + 1)
+            sleep(0.5 * 2 ** attempt)
 
 
 @dataclass(frozen=True)
@@ -53,10 +104,10 @@ class ProductionWorkerCoordinator:
         return None if active is None else (active.receipt_sha256, active.package_sha256)
 
     def _enqueue(self, active: ActiveProductionPackage) -> None:
-        pending = self.backend.pending_production_papers(
+        pending = _read_control("pending_papers", lambda: self.backend.pending_production_papers(
             network=self.network, receipt_sha256=active.receipt_sha256,
             created_after=self.production_start_at, limit=self.producer_batch_size,
-        )
+        ))
         if not isinstance(pending, list):
             raise ValueError("production backend returned invalid paper backlog")
         for row in pending:
@@ -134,7 +185,7 @@ class ProductionWorkerCoordinator:
         active = self.reader.read_active()
         if active is None:
             return None
-        policy = self.rules_for_release(active)
+        policy = _read_control("release_rules", lambda: self.rules_for_release(active))
         if not isinstance(policy, Mapping):
             raise ValueError("active production release has no frozen worker policy")
         self._enqueue(active)
@@ -146,7 +197,7 @@ class ProductionWorkerCoordinator:
 
     def _parallel_limit(self) -> int:
         # Backend outage/malformed state must not silently grant full capacity.
-        rounds = self.backend.list_pending_rounds(self.network)
+        rounds = _read_control("competition_activity", lambda: self.backend.list_pending_rounds(self.network))
         if (not isinstance(rounds, list)
             or any(not isinstance(row, dict) or row.get("network") != self.network
                    or not isinstance(row.get("status"), str) for row in rounds)):
@@ -159,7 +210,7 @@ class ProductionWorkerCoordinator:
         if not callable(capacity):
             raise ValueError("parallel production requires a capacity-aware worker")
 
-        info = capacity()
+        info = _read_control("worker_capacity", capacity)
         if (not isinstance(info, dict) or info.get("schema_version") != "claims_worker_capacity_v1"
             or type(info.get("slots")) is not int or not 0 <= info["slots"] <= 64
             or type(info.get("available_slots")) is not int
@@ -175,15 +226,15 @@ class ProductionWorkerCoordinator:
         active = self.reader.read_active()
         if active is None:
             raise ValueError("production has no activated signed release")
-        policy = self.rules_for_release(active)
+        policy = _read_control("release_rules", lambda: self.rules_for_release(active))
         if not isinstance(policy, Mapping):
             raise ValueError("active production release has no frozen worker policy")
         info = self._capacity(policy)
         limit = self._parallel_limit()
-        pending = self.backend.pending_production_papers(
+        pending = _read_control("pending_papers", lambda: self.backend.pending_production_papers(
             network=self.network, receipt_sha256=active.receipt_sha256,
             created_after=self.production_start_at, limit=1,
-        )
+        ))
         if not isinstance(pending, list):
             raise ValueError("production backend returned invalid paper backlog")
         return {"status": "production_ready", "network": self.network,
@@ -207,7 +258,7 @@ class ProductionWorkerCoordinator:
         active = self.reader.read_active()
         if active is None:
             return []
-        policy = self.rules_for_release(active)
+        policy = _read_control("release_rules", lambda: self.rules_for_release(active))
         if not isinstance(policy, Mapping):
             raise ValueError("active production release has no frozen worker policy")
         initial = self._capacity(policy)
@@ -230,12 +281,15 @@ class ProductionWorkerCoordinator:
         with ThreadPoolExecutor(max_workers=min(initial["slots"], self.max_parallel_jobs)) as pool:
             running = set()
             while True:
+                operation = "release_pointer"
                 try:
                     if not paused and self._identity(self.reader.read_active()) != self._identity(active):
                         paused = True
                     if not paused and monotonic() - checked_at >= self.competition_check_seconds:
+                        operation = "competition_activity"
                         limit = self._parallel_limit()
                         checked_at = monotonic()
+                    operation = "worker_capacity"
                     info = self._capacity(policy) if not paused else {"slots": 0, "available_slots": 0}
                     # Also cap the number of leased futures, not just executing
                     # threads: queued executor futures would age their leases.
@@ -243,6 +297,7 @@ class ProductionWorkerCoordinator:
                     available = max(0, min(free_threads, info["available_slots"],
                                            self.producer_batch_size - admitted))
                     for _ in range(available):
+                        operation = "claim_job"
                         lease = self.backend.claim_production_job(
                             network=self.network, receipt_sha256=active.receipt_sha256,
                             worker_id=self.worker_id, lease_seconds=policy["lease_seconds"],
@@ -255,7 +310,7 @@ class ProductionWorkerCoordinator:
                         admitted += 1
                 except Exception as exc:
                     paused = True
-                    errors.append(type(exc).__name__)
+                    errors.append(_control_failure(operation, exc))
                 if not running:
                     break
                 completed, running = wait(running, return_when=FIRST_COMPLETED)
@@ -267,7 +322,7 @@ class ProductionWorkerCoordinator:
                             on_completed(dict(result))
                     except Exception as exc:
                         paused = True
-                        errors.append(type(exc).__name__)
+                        errors.append(_control_failure("paper_completion", exc))
         if errors:
             raise RuntimeError("production batch paused; inspect durable job leases: " + ",".join(sorted(set(errors))))
         return results

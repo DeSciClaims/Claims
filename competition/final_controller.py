@@ -78,6 +78,8 @@ def select_ready_final(
         grid[key] = row
     if set(grid) != expected:
         raise ValueError("final pair grid is incomplete")
+    from .scientific_lineage import verify_current_grid
+    verify_current_grid(round_id,stage,backend=backend,pairs=list(grid.values()))
     if round_record["status"] == "gold_closed":
         cases = backend.list_gold_cases(round_id, include_answers=True)
         escalation_cases = [case for case in cases

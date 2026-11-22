@@ -252,6 +252,44 @@ def test_pilot_setup_checks_real_judges_and_sealed_baseline_before_intake(
         )
 
 
+@pytest.mark.parametrize("reject", [False, True])
+def test_scientific_setup_validates_scientific_runtime_before_opening_intake(tmp_path, monkeypatch, reject):
+    draft = _draft()
+    draft["configuration"] = {
+        "scientific_scoring": {"protocol_id": "claims-source-task-v1"},
+        "worker_policy": {"output_schema": "scientific_result_v1.1"},
+    }
+    calls = []
+    def scientific(row, backend, configuration):
+        calls.append("scientific")
+        assert row["network"] == "testnet"
+        assert row["configuration_sha256"] == canonical_sha256(configuration)
+        assert row["rules_public"]["policy"] == draft["policy_public"]
+        if reject:
+            raise ValueError("scientific settings differ")
+        return SimpleNamespace(configuration=configuration)
+    monkeypatch.setattr("competition.scientific_factory.create_scientific_policy", scientific)
+    def legacy(**kwargs):
+        raise AssertionError("Scientific setup entered the legacy claims builder")
+    monkeypatch.setattr("competition.round_setup.build_provisional_evaluation_policy", legacy)
+    class Storage:
+        def package_for_submission(self, upload):
+            calls.append("sealed_package")
+    class Backend:
+        def create_round(self, payload):
+            calls.append("open_intake")
+            return payload
+    if reject:
+        with pytest.raises(ValueError, match="scientific settings differ"):
+            prepare_pilot_round(draft, backend=Backend(), directory=tmp_path,
+                                storage=Storage(), decision_api_key="")
+        assert calls == ["scientific"]
+    else:
+        prepare_pilot_round(draft, backend=Backend(), directory=tmp_path,
+                            storage=Storage(), decision_api_key="")
+        assert calls == ["scientific", "sealed_package", "open_intake"]
+
+
 @pytest.mark.parametrize("deferred", [False, True])
 def test_pilot_setup_generates_frozen_configuration_from_json_spec(tmp_path, monkeypatch, deferred):
     monkeypatch.setenv("OPENROUTER_API_KEY", "pilot-test-key")

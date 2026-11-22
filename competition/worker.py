@@ -51,8 +51,14 @@ def read_output_json(path: Path):
     control side. It also raises RecursionError on deeply nested input. All
     are package faults, so they surface here as ValueError.
     """
+    def unique_keys(items):
+        result={}
+        for key,value in items:
+            if key in result:raise ValueError("Duplicate output JSON key")
+            result[key]=value
+        return result
     try:
-        return json.loads(path.read_text(encoding="utf-8"), parse_constant=_reject_constant,
+        return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_keys, parse_constant=_reject_constant,
                           parse_float=_finite_float)
     except RecursionError as exc:
         raise ValueError("output JSON nests too deeply") from exc
@@ -134,6 +140,10 @@ def run_one_paper(
     if ca_bundle and Path(ca_bundle).is_file():
         environment["SSL_CERT_FILE"] = ca_bundle
         environment["REQUESTS_CA_BUNDLE"] = ca_bundle
+    for cache_key in ("DOCLING_ARTIFACTS_PATH", "TIKTOKEN_CACHE_DIR"):
+        cache_path = os.environ.get(cache_key)
+        if cache_path and Path(cache_path).is_dir():
+            environment[cache_key] = cache_path
     venv_dir = work_dir / "venv"
     started = time.monotonic()
     install_deadline = started + install_timeout_seconds
@@ -179,15 +189,29 @@ def run_one_paper(
             return WorkerResult(status, output_path, log_path, time.monotonic() - started, "miner execution failed")
         try:
             payload = read_output_json(output_path)
-            artifact = Artifact.model_validate(payload)
             request = json.loads(request_path.read_text(encoding="utf-8"))
-            issues = validate_agent_artifact(artifact)
-            if artifact.paper.paper_id != str(request["paper"]["paper_id"]):
-                issues.append({"message": "output paper ID differs from request"})
+            if request.get("output_schema") == "scientific_result_v1.1":
+                import tempfile
+                from validator.scientific_result_v1.package import materialize
+                from validator.scientific_result_v1.deterministic import validate_package
+                with tempfile.TemporaryDirectory() as work:
+                    directory = Path(work) / "package"
+                    checked = materialize(payload, directory, paper_id=str(request["paper"]["paper_id"]), max_bytes=210_000_000 if payload.get("schema_version")=="claims_scientific_package_v2" else 10_000_000)
+                    if payload.get("schema_version") == "claims_scientific_package_v2":
+                        from validator.scientific_result_v1.source_tasks.packages import Package
+                        gate = Package(directory,"guest",filename="extraction.json",paper_id=str(request["paper"]["paper_id"])).gate
+                        issues = [e.model_dump(mode="json") for e in gate.errors]
+                    else:
+                        issues = [i for i in validate_package(checked, directory) if i.get("severity") != "review_required"]
+            else:
+                artifact = Artifact.model_validate(payload)
+                issues = validate_agent_artifact(artifact)
+                if artifact.paper.paper_id != str(request["paper"]["paper_id"]):
+                    issues.append({"message": "output paper ID differs from request"})
             if issues:
                 raise ValueError("; ".join(item["message"] for item in issues))
         except (OSError, ValueError, KeyError, TypeError, RecursionError) as exc:
             log.write(f"\n[validate] invalid output: {exc}\n".encode())
             return WorkerResult("invalid_output", output_path, log_path, time.monotonic() - started, "output schema invalid")
-        log.write(b"\n[validate] agent_v1 output accepted\n")
+        log.write(b"\n[validate] scientific structural output accepted; controller validation required\n" if request.get("output_schema") == "scientific_result_v1.1" else b"\n[validate] agent_v1 output accepted\n")
     return WorkerResult("completed", output_path, log_path, time.monotonic() - started)

@@ -163,6 +163,7 @@ class PinnedSshWorkerTransport:
         if inference_base_url != self.inference_base_url or not paper_key:
             raise ValueError("worker gateway URL or scoped key differs from transport policy")
         bundle = build_worker_bundle(job=job, package=package, pdf=pdf)
+        result_limit = 1_261_000_000 if job["worker_contract"]["request"].get("output_schema")=="scientific_result_v1.1" else self.max_result_bytes
         if self._check_egress(vm):
             raise ValueError("worker VM has prior denied miner egress")
         job_id = str(job["job_id"])
@@ -231,9 +232,9 @@ class PinnedSshWorkerTransport:
                     )
                 raise
             summary_bytes = self._ssh(
-                vm, f"sudo -n head -c {self.max_result_bytes + 1} {shlex.quote(results + '/result.json')}",
+                vm, f"sudo -n head -c {result_limit + 1} {shlex.quote(results + '/result.json')}",
             )
-            if len(summary_bytes) > self.max_result_bytes:
+            if len(summary_bytes) > result_limit:
                 raise ValueError("guest result exceeds the configured limit")
             summary = json.loads(summary_bytes)
             if (not isinstance(summary, dict)
@@ -272,9 +273,15 @@ class RestrictedSshWorkerTransport(PinnedSshWorkerTransport):
     """
 
     ssh_user: str = "claims-control"
+    control_command: str = "/usr/local/sbin/claims-worker-control"
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not re.fullmatch(r"/usr/local/sbin/[A-Za-z0-9_-]+", self.control_command):
+            raise ValueError("worker control command must name a trusted root helper")
 
     def capacity(self, vm: WorkerVm) -> dict[str, int]:
-        response = self._ssh(vm, "sudo -n /usr/local/sbin/claims-worker-control run",
+        response = self._ssh(vm, "sudo -n " + self.control_command + " run",
                              input_bytes=b'{"operation":"capacity"}', timeout=30)
         if len(response) > 4096:
             raise ValueError("worker capacity response is too large")
@@ -293,15 +300,16 @@ class RestrictedSshWorkerTransport(PinnedSshWorkerTransport):
         if inference_base_url != self.inference_base_url or not paper_key:
             raise ValueError("worker gateway URL or scoped key differs from transport policy")
         bundle = build_worker_bundle(job=job, package=package, pdf=pdf)
+        result_limit = 1_261_000_000 if job["worker_contract"]["request"].get("output_schema")=="scientific_result_v1.1" else self.max_result_bytes
         job_id = job.get("job_id")
         if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-f]{64}", job_id):
             raise ValueError("worker job ID is invalid")
         archive = _tar_bytes({**bundle, "paper-key": paper_key.encode("ascii")})
         response_bytes = self._ssh(
-            vm, "sudo -n /usr/local/sbin/claims-worker-control run",
+            vm, "sudo -n " + self.control_command + " run",
             input_bytes=archive, timeout=self.command_timeout_seconds,
         )
-        if len(response_bytes) > self.max_result_bytes + 2 * self.max_log_bytes + 4096:
+        if len(response_bytes) > result_limit + 2 * self.max_log_bytes + 4096:
             raise ValueError("worker control response exceeds its size limit")
         result = json.loads(response_bytes)
         if (not isinstance(result, dict)

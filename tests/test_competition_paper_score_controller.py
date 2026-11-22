@@ -245,3 +245,33 @@ def test_independent_replay_binds_saved_result_to_the_actual_judging_revision():
     with pytest.raises(ValueError, match="inputs changed"):
         score_ready_paper("round-1", "week_one", "paper-1", **args,
                           scoring_provenance={"rules_revision": 2, "configuration_sha256": "b" * 64})
+
+
+def test_scientific_pending_review_never_freezes_a_zero_or_enters_claims_parser():
+    from competition.scientific_scoring import ScientificPaperEvaluation
+    backend=Backend();backend.jobs[1]['status']='completed'
+    def evaluate(**kwargs):
+        assert 'worker_outcomes_by_hotkey' in kwargs
+        return ScientificPaperEvaluation(SimpleNamespace(state='HOLD'),'a'*64,{},())
+    evaluate.validation_protocol='claims-source-task-v1'
+    result=score_ready_paper('round-1','week_one','paper-1',backend=backend,bronze_artifact={},evaluate=evaluate)
+    assert result['status']=='waiting_for_scientific_review'
+    assert backend.frozen is None and not backend.scores and not backend.pairs
+
+
+def test_scientific_fraction_scores_use_existing_pair_and_publication_receipts():
+    from competition.scientific_scoring import ScientificPaperEvaluation
+    backend=Backend();backend.jobs[1]['status']='completed'
+    def evaluate(**kwargs):
+        return ScientificPaperEvaluation(
+            SimpleNamespace(state='FROZEN',model_dump=lambda **_: {'state':'FROZEN','binding':{'protocol_id':'claims-source-task-v1'}}),
+            'a'*64,{'reference':1.0,'challenger':7/9},({
+                'paper_id':'paper-1','challenger_hotkey':'challenger','baseline_hotkey':'reference',
+                'challenger_score':7/9,'baseline_score':1.0,'infrastructure_fault':False,
+                'details_public':{'protocol_id':'claims-source-task-v1','silver_receipt_sha256':'a'*64}},))
+    evaluate.validation_protocol='claims-source-task-v1'
+    result=score_ready_paper('round-1','week_one','paper-1',backend=backend,bronze_artifact={},evaluate=evaluate)
+    assert result['status']=='scored'
+    assert backend.scores['challenger-job']['score']==7/9
+    assert backend.frozen['result_private']['silver']['protocol_id']=='claims-source-task-v1'
+    assert 'covered_units' not in str(backend.pairs)

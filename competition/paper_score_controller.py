@@ -159,10 +159,17 @@ def score_ready_paper(
         elif frozen["input_sha256"] != input_sha256:
             raise ValueError("frozen paper evaluation inputs changed")
         result = frozen["result_private"]
+        from .scientific_lineage import enabled,verify_current_grid
+        if enabled(round_record):
+            verify_current_grid(round_id,stage,backend=backend,pairs=result['pairs'])
     else:
         outcomes = {hotkey: job["result_private"] for hotkey, job in by_hotkey.items()}
         faults = {hotkey: _status_fault(outcome["status"]) for hotkey, outcome in outcomes.items()}
         infrastructure_fault = "infrastructure" in faults.values()
+        scientific_protocol = getattr(evaluate, "validation_protocol", None) == "claims-source-task-v1"
+        if infrastructure_fault and scientific_protocol:
+            return {"status": "waiting_for_scientific_review", "paper_id": paper_id,
+                    "scientific_state": "HOLD", "reason": "worker_infrastructure_fault"}
         if infrastructure_fault:
             scores_by_hotkey: dict[str, float] = {}
             pairs = [{
@@ -181,11 +188,19 @@ def score_ready_paper(
                 bronze_artifact=dict(bronze_artifact), artifacts_by_hotkey=artifacts,
                 baseline_hotkey=baseline[0]["hotkey"],
                 challenger_hotkeys=[row["hotkey"] for row in challengers],
+                **({"worker_outcomes_by_hotkey": outcomes} if scientific_protocol else {}),
             )
             pairs = list(evaluation.pair_rows)
-            scores_by_hotkey = {row.miner_id: row.score for row in evaluation.pipeline.scores}
+            from .scientific_scoring import ScientificPaperEvaluation
+            scientific = isinstance(evaluation, ScientificPaperEvaluation)
+            if scientific and evaluation.pipeline.state != "FROZEN":
+                return {"status": "waiting_for_scientific_review", "paper_id": paper_id,
+                        "scientific_state": evaluation.pipeline.state,
+                        "receipt_sha256": evaluation.receipt_sha256}
+            scores_by_hotkey = (dict(evaluation.scores_by_hotkey) if scientific else
+                                {row.miner_id: row.score for row in evaluation.pipeline.scores})
             gold_candidates = []
-            if scoring_stage in {"final", "week_one"} and uses_miner_review(round_record):
+            if not scientific and scoring_stage in {"final", "week_one"} and uses_miner_review(round_record):
                 gold_candidates = [{
                     "case": {
                         "case_id": claim.case.case_id,
@@ -197,21 +212,27 @@ def score_ready_paper(
                     "case_public": dict(claim.case_public),
                     "answer_private": dict(claim.answer_private),
                 } for claim in contested_claims_for_paper(round_id, evaluation, entries)]
-            silver = {
-                "silver_record": evaluation.pipeline.silver_record.model_dump(mode="json"),
-                "bronze_candidates": [row.model_dump(mode="json") for row in getattr(evaluation.pipeline, "bronze_candidates", [])],
-                "diff_cases": [row.model_dump(mode="json") for row in evaluation.pipeline.diff_cases],
-                "adjudication_consensus": [row.model_dump(mode="json")
-                                           for row in evaluation.pipeline.adjudication_consensus],
-                "gold_candidates": gold_candidates,
-                "adjudication_decisions": [row.model_dump(mode="json")
-                    for row in getattr(evaluation.pipeline, "adjudication_decisions", [])],
-                "miner_submissions": [{
-                    "miner_id": submission.miner_id,
-                    "candidates": [candidate.model_dump(mode="json") for candidate in submission.candidates],
-                    "normal_findings": [finding.model_dump(mode="json") for finding in submission.normal_findings],
-                } for submission in getattr(evaluation.pipeline, "miner_submissions", [])],
-            }
+            if scientific:
+                silver = {"protocol_id": evaluation.validation_protocol,
+                          "receipt_sha256": evaluation.receipt_sha256,
+                          "sampled_receipt": evaluation.pipeline.model_dump(mode="json"),
+                          "output_alias_by_hotkey": evaluation.output_alias_by_hotkey}
+            else:
+                silver = {
+                    "silver_record": evaluation.pipeline.silver_record.model_dump(mode="json"),
+                    "bronze_candidates": [row.model_dump(mode="json") for row in getattr(evaluation.pipeline, "bronze_candidates", [])],
+                    "diff_cases": [row.model_dump(mode="json") for row in evaluation.pipeline.diff_cases],
+                    "adjudication_consensus": [row.model_dump(mode="json")
+                                               for row in evaluation.pipeline.adjudication_consensus],
+                    "gold_candidates": gold_candidates,
+                    "adjudication_decisions": [row.model_dump(mode="json")
+                        for row in getattr(evaluation.pipeline, "adjudication_decisions", [])],
+                    "miner_submissions": [{
+                        "miner_id": submission.miner_id,
+                        "candidates": [candidate.model_dump(mode="json") for candidate in submission.candidates],
+                        "normal_findings": [finding.model_dump(mode="json") for finding in submission.normal_findings],
+                    } for submission in getattr(evaluation.pipeline, "miner_submissions", [])],
+                }
         if (len(pairs) != len(challengers)
             or {row["challenger_hotkey"] for row in pairs} != {row["hotkey"] for row in challengers}
             or any(row["paper_id"] != paper_id

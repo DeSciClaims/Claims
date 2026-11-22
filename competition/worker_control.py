@@ -7,6 +7,8 @@ key. This helper has no backend, storage, provider, or Targon credentials.
 
 from __future__ import annotations
 
+import hashlib
+
 import base64
 import fcntl
 import ipaddress
@@ -38,6 +40,10 @@ MAX_RESULT_BYTES = 10_000_000
 MAX_LOG_BYTES = 10_000_000
 LOCK_DIR = Path("/run/claims-worker")
 JOBS_DIR = Path("/var/lib/claims-worker/jobs")
+GUEST_PYTHON = "/opt/claims-worker/venv/bin/python"
+WHEELHOUSE = "/opt/claims-worker/wheelhouse"
+MODEL_ARTIFACTS_PATH: str | None = None
+TOKENIZER_CACHE_PATH: str | None = None
 
 
 def load_config(path: Path = CONFIG_PATH, *, require_root_owned: bool = True) -> dict[str, Any]:
@@ -105,10 +111,16 @@ def _read_bundle(stream: BinaryIO) -> tuple[str, dict[str, bytes]]:
     except (ValueError, UnicodeError) as exc:
         raise ValueError("worker control input or key is malformed") from exc
     filename = receipt.get("package_filename") if isinstance(receipt, dict) else None
-    if (not isinstance(filename, str) or set(files) != {
-        "input.json", "request.json", "paper.pdf", "paper-key", filename,
-    } or not re.fullmatch(r"[0-9a-f]{64}", str(receipt.get("job_id", "")))
-        or not key or any(character.isspace() or ord(character) < 33 for character in key)):
+    expected={"input.json","request.json","paper.pdf","paper-key",filename}
+    request=json.loads(files["request.json"])
+    if request.get("output_schema")=="scientific_result_v1.1":
+        additions=receipt.get("scientific_input_sha256")
+        if not isinstance(additions,dict) or not {"sources.json","claims_extraction.schema.json"}<=set(additions):raise ValueError("Scientific input manifest missing")
+        for name,digest in additions.items():
+            if name not in {"sources.json","claims_extraction.schema.json"} and not re.fullmatch(r"supplied-source-S[0-9]+\.(pdf|txt|html|csv)",name):raise ValueError("Unsafe scientific source file")
+            if name not in files or hashlib.sha256(files[name]).hexdigest()!=digest:raise ValueError("Scientific source file hash mismatch")
+        expected.update(additions)
+    if (not isinstance(filename,str) or set(files)!=expected or not re.fullmatch(r"[0-9a-f]{64}",str(receipt.get("job_id",""))) or not key or any(character.isspace() or ord(character)<33 for character in key)):
         raise ValueError("worker control bundle receipt or key is invalid")
     validated_package_filename(filename, "wheel" if filename.endswith(".whl") else "tar.gz")
     return receipt["job_id"], files
@@ -291,9 +303,11 @@ def _run_once_locked(stream: BinaryIO, config: dict[str, Any], *, slot: int | No
             "env", "-i", "PATH=/usr/bin:/bin", f"HOME={results}", "LANG=C.UTF-8",
             "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt",
             "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt",
-            "/opt/claims-worker/venv/bin/python", "-m", "competition.worker_guest",
+            *(["DOCLING_ARTIFACTS_PATH=" + MODEL_ARTIFACTS_PATH] if MODEL_ARTIFACTS_PATH else []),
+            *(["TIKTOKEN_CACHE_DIR=" + TOKENIZER_CACHE_PATH] if TOKENIZER_CACHE_PATH else []),
+            GUEST_PYTHON, "-m", "competition.worker_guest",
             "--input-dir", str(inputs), "--result-dir", str(results),
-            "--wheelhouse", "/opt/claims-worker/wheelhouse",
+            "--wheelhouse", WHEELHOUSE,
             "--inference-base-url", config["inference_base_url"],
             "--paper-key-file", str(key_file),
         ]
@@ -331,7 +345,8 @@ def _run_once_locked(stream: BinaryIO, config: dict[str, Any], *, slot: int | No
             else:
                 raise RuntimeError("worker guest did not return a result")
         else:
-            summary = json.loads(_limited_read(results / "result.json", MAX_RESULT_BYTES, miner_uid))
+            result_limit = 1_261_000_000 if json.loads(files["request.json"]).get("output_schema")=="scientific_result_v1.1" else MAX_RESULT_BYTES
+            summary = json.loads(_limited_read(results / "result.json", result_limit, miner_uid))
             if (not isinstance(summary, dict)
                 or summary.get("schema_version") != "claims_worker_result_v1"
                 or summary.get("job_id") != job_id
@@ -462,10 +477,10 @@ def run_once(stream: BinaryIO, config: dict[str, Any]) -> dict[str, Any]:
         return _run_once_locked(stream, config)
 
 
-def main() -> None:
+def main(*, config_path: Path = CONFIG_PATH) -> None:
     if sys.argv != [sys.argv[0], "run"]:
         raise SystemExit("usage: claims-worker-control run")
-    config = load_config()
+    config = load_config(config_path)
     if sys.stdin.buffer.peek(1).startswith(b"{"):
         query = sys.stdin.buffer.read(257)
         if len(query) > 256 or json.loads(query) != {"operation": "capacity"}:

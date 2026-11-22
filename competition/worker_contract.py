@@ -45,6 +45,7 @@ def build_worker_contract(
     job: Mapping[str, Any], *, allowed_models: tuple[str, ...],
     max_output_tokens: int,
     paper_token_limit: int, dollar_limit_usd: float,
+    output_schema: str = "agent_v1",
     remaining_tokens: int | None = None,
     remaining_dollar_limit_usd: float | None = None,
 ) -> dict[str, Any]:
@@ -54,6 +55,8 @@ def build_worker_contract(
     paper key is scoped to *all and only* the declared models. Packages may
     make multiple calls using those models within the separate token budget.
     """
+    if output_schema not in {"agent_v1", "scientific_result_v1.1"}:
+        raise ValueError("unsupported trusted output schema")
     manifest = job.get("manifest")
     paper = job.get("paper")
     if not isinstance(manifest, dict):
@@ -110,6 +113,11 @@ def build_worker_contract(
             },
         },
     }
+    if output_schema == "scientific_result_v1.1":
+        request["output_schema"] = output_schema
+        request.update(output_format="claims-extraction-1.1", validation_protocol="claims-source-task-v1",
+                       source_manifest_file="sources.json", extraction_schema_file="claims_extraction.schema.json",
+                       required_table_scope="supplied_sources_only")
     # Reject JSON values that would be coerced or vary across runners.
     try:
         json.dumps(request, sort_keys=True, separators=(",", ":"), allow_nan=False)

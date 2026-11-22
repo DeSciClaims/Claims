@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import math
 import re
 from typing import Any, Mapping, Protocol
 
@@ -51,10 +52,12 @@ def publish_selected_round(
         raise ValueError("final worker security audit is incomplete")
     if not finalist_hotkeys <= set(qualified_by_hotkey):
         raise ValueError("finalist qualification snapshot is incomplete")
+    from .scientific_lineage import enabled
+    maximum_checks=3 if enabled(round_record) else 5
     failed_checks = code_audit.get("failed_checks")
     digest = code_audit.get("evidence_sha256")
     if (not isinstance(failed_checks, dict) or set(failed_checks) != finalist_hotkeys
-        or any(type(value) is not int or not 0 <= value <= 5
+        or any(type(value) is not int or not 0 <= value <= maximum_checks
                for value in failed_checks.values())
         or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
         or any((row.reason == "code_failed") != (
@@ -118,10 +121,21 @@ def publish_selected_round(
         burn_uid=burn_uid, winner_gain=selection.winner_gain,
         allocation_policy=BURN_POLICY,
     )
-    judge_diagnostics = final_judge_diagnostics(
+    from .scientific_lineage import verify_current_grid,enabled
+    scientific_lineage=verify_current_grid(round_id,stages[-1]['stage'],backend=backend,pairs=list(selection.final_pair_rows))
+    if enabled(round_record) and any(row.get('is_copy') is not False or row.get('schema_version')!='claims_source_copy_diagnostic_v1' for row in copy_audit.values()):
+        raise ValueError('Scientific publication requires diagnostic-only copy receipts')
+    if enabled(round_record):
+        from .scientific_scoring import scientific_copy_diagnostics
+        fresh=scientific_copy_diagnostics(round_id=round_id,stage=stages[-1]['stage'],entries=stages[-1]['entries'],
+            paper_ids=[p['paper_id'] for p in backend.list_sample(round_id) if p['stage']==stages[-1]['stage']],backend=backend)
+        if dict(copy_audit)!=fresh:raise ValueError('Scientific copy diagnostics belong to a superseded paper generation')
+    judge_diagnostics = ({"protocol_id": "claims-source-task-v1",
+                          "source_task_receipts": scientific_lineage}
+                         if enabled(round_record) else final_judge_diagnostics(
         sample=backend.list_sample(round_id), pair_rows=list(selection.final_pair_rows),
         stage=stages[-1]["stage"], finalist_hotkeys=finalist_hotkeys,
-    )
+    ))
     duplicate_disputes = backend.list_duplicate_disputes(round_id)
     if any(row["status"] == "pending" for row in duplicate_disputes):
         raise ValueError("duplicate dispute is unresolved")
@@ -143,11 +157,16 @@ def publish_selected_round(
         if selection.decision == "reference_fallback" else None,
         "winner_hotkey": selection.production_hotkey if selection.decision == "new_crown" else None,
         "winner_gain": selection.winner_gain,
-        "finalists": [asdict(row) for row in selection.verdicts],
+        # A one-paper rehearsal has no estimated standard error. JSON has no
+        # infinity; use an explicit missing value before hashing and signing.
+        "finalists": [{**asdict(row), "standard_error": row.standard_error
+                       if math.isfinite(row.standard_error) else None}
+                      for row in selection.verdicts],
         "gold": {hotkey: asdict(result) for hotkey, result in sorted(gold_by_hotkey.items())},
         "gold_check": dict(gold_check) if gold_check else None,
         "known_answer_audit": dict(known_answer_audit) if known_answer_audit else None,
         "final_pair_scores": list(selection.final_pair_rows),
+        **({'scientific_lineage':scientific_lineage} if scientific_lineage else {}),
         "judge_diagnostics": judge_diagnostics,
         "copy_audit": {hotkey: dict(row) for hotkey, row in sorted(copy_audit.items())},
         "code_audit": {"evidence_sha256": digest,

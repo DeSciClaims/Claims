@@ -94,6 +94,11 @@ def audit_final_output_copies(round_id: str, *, backend: CopyAuditBackend) -> di
         (paper_id, hotkey) for paper_id in paper_ids for hotkey in challengers
     }:
         raise ValueError("copy audit final pair grid is incomplete or duplicated")
+    protocols={row.get("details_public",{}).get("protocol_id") for row in pairs.values()}
+    if "claims-source-task-v1" in protocols:
+        if protocols!={"claims-source-task-v1"}:raise ValueError("Final grid mixes scientific and claims protocols")
+        from .scientific_scoring import scientific_copy_diagnostics
+        return scientific_copy_diagnostics(round_id=round_id,stage=stage,entries=entries,paper_ids=paper_ids,backend=backend)
     accepted: dict[str, dict[str, set[str]]] = {hotkey: {} for hotkey in expected_hotkeys}
     for paper_id in paper_ids:
         fault = any(bool(pairs[(paper_id, hotkey)]["infrastructure_fault"])

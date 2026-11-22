@@ -1,0 +1,22 @@
+ROLE: SOURCE_ELIGIBILITY
+The source is the trusted controller's Docling extraction of the supplied PDF,
+including OCR, prose, equations, captions and tables. No miner output is supplied.
+Classify every supplied prose tile exactly once, using its exact short tile_id.
+Eligible means this tile contains at least one coherent reported scientific result,
+quantitative/descriptive finding, substantive mathematical result or explicit
+scientific definition with its meaningful conditions. Necessary qualifications
+within a tile containing a result are part of that result. A tile containing only
+background motivation, administrative metadata, acknowledgments, references, a
+bare heading, or generic discussion is not independently eligible.
+Do not require values or figure details absent from the supplied Docling evidence.
+Do not invent plot digitization. Do not rewrite or extract the result here.
+Return {"items":[{"tile_id":"...","eligible":true,"reason":"..."}]} with one item
+for each input tile, with a concise source-grounded reason. An arbiter receives two
+independent decisions and resolves eligibility from the same source text.
+
+A table caption, statistical convention, footnote or unit legend that only explains
+other findings is context for those findings, not an independently sampled prose
+result. Mark such a context-only tile ineligible; its text remains available for
+table/content verification. A caption that itself reports an independent scientific
+finding can be eligible. Mathematical definitions/results in theoretical work can
+be substantive targets without empirical measurements.

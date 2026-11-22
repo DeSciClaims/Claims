@@ -97,3 +97,12 @@ def test_pilot_worker_factory_accepts_live_bifrost_basic_admin(monkeypatch):
     monkeypatch.setenv("CLAIMS_BIFROST_ADMIN_BEARER", "other")
     with pytest.raises(ValueError, match="one Bifrost"):
         _bifrost_admin_client()
+
+
+def test_scientific_policy_requires_the_frozen_validator_and_schema():
+    from competition.pilot_worker_factory import _scientific_validator
+    policy={'output_schema':'scientific_result_v1.1','allowed_models':['test/model'],
+            'scientific_validation':{'model':'test/model','bundle_manifest_sha256_by_paper_id':{},
+                                     'validator_sha256':'0'*64,'schema_sha256':'0'*64}}
+    with pytest.raises(ValueError,match='frozen policy'):
+        _scientific_validator(policy)

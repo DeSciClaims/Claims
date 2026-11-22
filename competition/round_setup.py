@@ -298,6 +298,21 @@ def prepare_pilot_round(
     configuration = draft.get("configuration")
     if not isinstance(configuration, dict):
         raise ValueError("pilot round needs a complete configuration")
+    if configuration.get("scientific_scoring", {}).get("protocol_id") == "claims-source-task-v1":
+        # Scientific rounds bind their own source-task settings and routes. The
+        # legacy builder cannot reproduce this configuration or validate its
+        # worker contract. Validate the actual scientific factory before intake.
+        from .scientific_factory import create_scientific_policy
+        row = {"round_id": draft["round_id"], "network": draft["network"],
+               "configuration_sha256": canonical_sha256(configuration),
+               "rules_public": {"policy": draft.get("policy_public", {})}}
+        policy = create_scientific_policy(row, backend, configuration)
+        if policy.configuration != configuration:
+            raise ValueError("scientific runtime differs from proposed frozen rules")
+        for upload in (draft.get("baseline_upload"), draft.get("reference_upload")):
+            if upload is not None:
+                storage.package_for_submission(upload)
+        return prepare_round(draft, backend=backend, directory=directory)
     routing = configuration.get("decision_routing")
     if not isinstance(routing, dict):
         raise ValueError("pilot round has no frozen Decision routing")

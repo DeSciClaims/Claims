@@ -60,6 +60,14 @@ def run_bundle(
             raise ValueError("worker bundle has an invalid input digest")
         if hashlib.sha256((input_dir / name).read_bytes()).hexdigest() != digest:
             raise ValueError("worker bundle input digest mismatch")
+    if request.get("output_schema") == "scientific_result_v1.1":
+        expected = receipt.get("scientific_input_sha256")
+        if not isinstance(expected,dict) or not {"sources.json","claims_extraction.schema.json"}<=set(expected) or any(name not in {"sources.json","claims_extraction.schema.json"} and not re.fullmatch(r"supplied-source-S[0-9]+\.(pdf|txt|html|csv)",name) for name in expected):
+            raise ValueError("scientific worker input manifest/schema missing")
+        for name,digest in expected.items():
+            path=input_dir/name
+            if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest()!=digest:
+                raise ValueError("scientific input digest mismatch")
     key = paper_key_file.read_text(encoding="utf-8").strip()
     if not key:
         raise ValueError("paper-scoped inference key is missing")
@@ -89,7 +97,8 @@ def run_bundle(
         "elapsed_seconds": result.elapsed_seconds,
     }
     body = _result_body(summary)
-    if len(body) > MAX_RESULT_BYTES:
+    result_limit = 1_261_000_000 if request.get("output_schema")=="scientific_result_v1.1" else MAX_RESULT_BYTES
+    if len(body) > result_limit:
         summary.update(status="invalid_output", artifact=None,
                        detail="artifact exceeds the result size limit")
         body = _result_body(summary)

@@ -1,0 +1,139 @@
+## Appendix C. Scientific criteria and judge instructions
+
+Use these source-grounded criteria for the sampled checks in §3. The renderer in §4 supplies original assertions; §5 determines routing and final dispositions. Send the literal system and applicable role instructions below, the applicable rule text, the strict response schema, and the required immutable data. A heading or document reference is not a substitute for supplying the instruction text to the model.
+
+### Scientific checks for a selected field
+
+Apply all relevant rows below. Optional schema properties remain optional; fail their absence only when the source task requires information that is neither supplied there nor faithfully represented in another permitted property.
+
+| Property or issue | Required comparison |
+|---|---|
+| `field` and `description` | The words identify the actual quantity, statistic, outcome, condition, or mathematical object. Plain descriptive names are valid; names need not come from a fixed vocabulary. |
+| `label` | The chosen label's definition must fit the source-supported object. Apply the label table below. A typed label must not assert knowledge the source does not establish. |
+| `field_group` | Check the enum in code. Its vocabulary lists are advisory. Never reject an otherwise faithful field because its label is absent from that group's typical list, or because the property is absent. |
+| `value` | Preserve magnitude, sign, ordering, endpoints, numerator/denominator identity, units/display scale, and mathematical expression. `null` is not zero. A collection is judged as a collection, including its keyed associations. |
+| `value_operator` | Preserve the actual inequality or approximation. `p < 0.05` is not `p = 0.05`; an approximate figure value is not an exact measurement. No missing property may be interpreted as an additional operator. |
+| `units` | Preserve source units and display scale. A percent display must not silently become a proportion, and a count must retain what is counted. Units alone cannot establish whether a value is a mean, SD, SE, or estimate. |
+| `measure` | Check the numerical form, reference, and direction independently of the object's scientific role. `treatment_effect` with `measure=odds_ratio` is valid. A source risk ratio must not be classified as an odds ratio; use `other` with a faithful explanation when needed. |
+| `confidence_level` | When supplied, match the source confidence probability; code enforces `0 < value <= 1`. Convert 95% to 0.95 only when the source scale is established. Do not infer 95% from an interval that lacks a level. |
+| `context`, `references` | Preserve the outcome, group, comparator, increment, model/adjustment, time reference, parameter scope, and conditions needed to distinguish this quantity. Resolve named references without treating them as closure edges. Local qualifications may narrow shared context; contradictory bindings require a recorded resolution. |
+| `origin`, `value_status`, `notes` | Distinguish reported, source-calculated, extractor-calculated, digitized, approximate, and conflicted information where relevant. `origin` is free text, not an additional enum. A note must not relabel an unsupported calculated value as source reported. |
+| `parent_field_id`, `field_path` | Code checks path resolution, equal child content, and acyclicity. The scientific check verifies that the addressed member actually belongs to that interval, curve, expression, or interpreted collection. A parent and member are two views of one object, not independent observations. |
+| `source_snippets` | Verify that asserted quotations are present in the stated source with any OCR/transcription qualification preserved. Paraphrase belongs in description/notes/summary. Record-level snippets can support several fields; duplicates and field-specific snippets are not universally required. |
+| `table_references` | Code checks delivered T object, parsed row and column, and coordinates. The scientific check verifies the selected cell component, source display, scope, units, and operator. A number produced by calculation must not be presented as directly reported in an input cell. |
+
+Evaluate numerical equality on the meaning actually declared by the candidate. Allow exact equivalence of number formatting when the source value and display scale remain preserved; do not introduce a generic numerical tolerance. Approximate or digitized content must preserve the declared precision and source status. A reported discrepancy or suspected source typo must remain visible; an extractor must not silently correct source data. The source can contain implausible values without authorizing a validator correction.
+
+#### Object-label criteria
+
+| Label | Acceptance condition and required distinction |
+|---|---|
+| `mean` | A reported mean; the group, outcome, and conditions identify what is averaged. A median or generic group value is not automatically a mean. |
+| `count` | A number of identified units, events, reports, studies, comparisons, or other items; retain the counted set. Do not turn an event count into an analysis sample size. |
+| `proportion` | A share of an identified group or set, in fractions or percentages, with denominator and display scale preserved. A proportion of positive studies remains a proportion. |
+| `probability` | A probability or estimated probability of the identified event. Do not confuse a probability with odds, a p-value, or a proportion of a different population. |
+| `sample_size` | Units in the relevant observational or experimental sample, group, or analysis. The paper-wide sample is not automatically the sample for every result. |
+| `treatment_effect` | A reported outcome contrast between intervention and reference conditions. Preserve the study-design interpretation; do not upgrade an observational association into a causal treatment effect. |
+| `association` | A reported relationship between an exposure/predictor and outcome, including an observational regression estimate. Preserve outcome coding, adjustment, and exposure increment. |
+| `standard_error` | Source-established SE, including SEM, of the correct estimate. Do not infer SE solely from a plus/minus format. |
+| `standard_deviation` | Source-established SD of observations or values in the correct group/distribution. Keep it distinct from estimate uncertainty. |
+| `confidence_interval` | A whole interval reported as a confidence interval for the correct estimate; preserve endpoints, level when reported, and scale. Do not relabel a prediction or credible interval. |
+| `confidence_limit` | One reported confidence-interval endpoint; lower/upper identity is retained in the field name, parent interval, or context. |
+| `p_value` | A p-value for its actual test or comparison. Preserve inequalities and identify diagnostic or joint tests separately from individual effect tests. |
+| `outcome` | The measured, modeled, or calculated outcome. An operation such as iAUC is not automatically an outcome name; retain its actual meaning. |
+| `intervention` | The actual treatment, action, or experimental condition, including a comparator intervention. Evaluated/reference is a role, not a different object label. |
+| `exposure` | The studied exposure or predictor with its definition and scale. |
+| `group` | The identified sample, population, or group, with distinctions needed for the result. |
+| `time_point` | One time located relative to the stated reference event and units. |
+| `time_interval` | A duration or window, preserving endpoints, reference event, and integration/measurement/recall meaning. |
+| `parameter` | A parameter or numerical setting of the identified equation, model, or simulation. Identically printed symbols in separate scopes are not automatically the same object. |
+| `threshold` | A cutoff used to classify cases or identify a condition; preserve strictness of inequality. |
+| `increment` | The change in an exposure/input over which an effect or association is expressed. A cutoff of 10 and an effect per 10 units are different objects. |
+| `equation` | The reported equation, formula, or inequality, preserving operators, indexes, domains, conditions, and scoped symbols. Formatting differences may be equivalent; do not accept a changed mathematical assertion. |
+| `assumption` | A stated premise under which the result is derived or applied. Do not replace it with an inferred plausibility assumption. |
+| `condition` | A stated requirement attached to the result/formula, preserving logical wording, conjunction/disjunction, and scope. |
+| `absolute_change` | A difference in outcome units, preserving subtraction direction and reference. |
+| `relative_change` | A change relative to the stated reference quantity, preserving denominator, percent/fraction scale, and direction. |
+| `odds_ratio` | An odds ratio for the stated comparison or exposure increment, preserving model and outcome coding. Do not invert the reference silently. |
+| `other` | A faithful description of an unusual object, an object whose classification is not established, or a fully described item retained under the general label. Do not fail solely because a more specific common label could have been used. Required scientific meaning and source uncertainty must still be preserved. |
+
+For example, a source that reports `4.2 ± 0.8` without defining the second number can be encoded with the uncertainty type left unspecified and explained. Do not reject that faithful uncertainty because another pipeline guessed SD or SE. Conversely, a candidate asserting `standard_error` must have support for that classification.
+
+### Scientific checks for relationships and local closures
+
+Check the predicate and its target separately from the closure projection. A clearly named field or permitted context can state a scientific association without a redundant explicit relationship. Require a reviewed explicit relationship when that association participates in closure; `parent_field_id` is the specified implicit exception. Never require a universal edge for every field.
+
+| Predicate | Required scientific meaning | Closure decision to check |
+|---|---|---|
+| `uncertainty_of` | SE, CI, or limit points to the estimate whose uncertainty it describes. | Local uncertainty normally points toward that estimate. A different boundary must preserve the actual attachment and have a source-supported explanation. |
+| `spread_of` | SD points to its actual group, distribution, or group value. | Local spread can feed that result; a shared group identity can remain non-closing. |
+| `p_value_of` | P-value points to its particular test or comparison, including an explicit joint/diagnostic anchor where needed. | A joint or diagnostic p-value must not be assigned to an arbitrary individual estimate. |
+| `describes` | Value describes its actual sample, group, outcome, or result. Counts retain the set actually counted. | Result-specific characterization can be local; shared sample/context may remain non-closing. |
+| `compares` | Effect/comparison points to the evaluated target and reference. Explicit links require `evaluated` or `reference` roles. | Specific comparison inputs normally feed the comparison; shared intervention/exposure identities may remain non-closing. Role and scientific direction do not change. |
+| `derived_from` | Output points to inputs, equation, or preceding result actually used in the stated derivation. Retain the formula/calculation basis. | Inputs normally feed the local output. An independently reported preceding result can remain separate with `none` and a boundary explanation. |
+| `contributes_to` | A contributing result is actually included in a pooled or combined result. | Use the stated local pooled component, or preserve separately addressed contributors with `none`. Contribution is not independent support for every conclusion. |
+| `applies_under` | Result/equation is bound to the actual time, parameter, setting, assumption, or condition. | Usually `none`; local inclusion requires an explicitly reviewed, scientifically supported explanation. |
+| `table_for` | Source T table reports an ordinary R result, describes its sample, provides inputs, or provides context. Role must be the applicable schema role. | Always explicit `none`; no source-table node or CSV coordinate may enter a scientific closure. |
+| `other` | Endpoints and `note` establish an intelligible source-supported connection outside the common list. | No default. Review the submitted direction and explanation. |
+
+For each sampled closure, verify core eligibility, each participating relationship's scientific basis, any accepted compound cycle, and unresolved boundary statements. Code already checks terminal SCCs, reverse reachability, exact members, exact reference unions, and missing directions. A topological sink, R container, or self-loop does not establish scientific core eligibility. A source-supported comparison or compound R anchor is valid when its role and connecting inputs are explicit. A support-only sink is not a result merely because it is terminal.
+
+Repeated source reporting, parent/member views, shared inputs, and table/field views do not create independent evidence. Shared object IDs may appear in several valid closures without merging those closures. Equal numeric values alone do not establish shared identity.
+
+### Family conformance attached to sampled tasks
+
+Check the family memberships of the local results actually needed for the selected task. Include the relevant neighboring results and source scope; do not run a separate family-quality sample or compute an organization score.
+
+A failure must identify one of these witnesses:
+
+| Counterexample code | Required evidence |
+|---|---|
+| `SOURCE_SEPARATE` | Two result records are placed in one family, but source evidence establishes a distinct substantive question, independently identifiable investigation, intervention-specific evidence review, or generating mechanism that requires separation. Cite the two memberships and the source boundary. Sharing a dataset, equation, table, or broad topic is insufficient evidence for combining them. |
+| `MUST_TOGETHER` | Two result records are split despite a source-established common substantive question and identifiable investigation, and their only supported splitting basis is outcome, time, subgroup, adjustment, dose, parameter value or an analogous within-investigation variation. Rule out a genuine source-supported boundary or documented admissible qualification before failing. Cite original memberships, grouping reasons, the source-established common question/investigation and the unsupported distinction. Loss of a required comparison, joint test or dependency is also a concrete witness. A preferred granularity or different family count alone is insufficient. |
+
+An unsubstantiated statement that a different grouping would be cleaner is not a counterexample. The schema's usual keep/split guidance and preference for keeping plausible broad/narrow boundaries together do not independently create a failure condition. A failure must demonstrate violation of the required common-question/investigation boundary using one of the two witnesses. Check the submitted `grouping_reason`, source context, and genuine boundary qualifications. Do not construct a preferred partition. Do not treat different core emphasis, record counts, IDs, or storage layouts as a failure if required scientific content and the schema's boundary rules are satisfied.
+
+If multiple organizations remain admissible after these checks, return `PASS` for `GROUPING_CONFORMANCE`. A discretionary organization difference is not evaluator uncertainty and does not require an arbiter. A real source-boundary ambiguity that prevents deciding an asserted violation can remain unresolved; it must not become a negative pipeline verdict.
+
+### Tables: scientific interpretation and archive fidelity
+
+The submission must export every qualifying numerical source table from the required main and supplementary sources. Sampling controls source-fidelity inspection, not the delivery requirement. A descriptive, baseline, diagnostic, null-result, or supplementary table remains required. Several pages or panels of one source table remain one T object and one CSV.
+
+Code verifies the actual file bytes, parser behavior, header names/order, dimensions, typed coordinates, annotation bounds, and merged-span mechanics. Source comparison verifies completeness and meaning. A source table's inventory status cannot be established merely by the candidate's `table_coverage` claim.
+
+#### Column checks
+
+| Property or role | Required source comparison |
+|---|---|
+| `name` | Code enforces unique machine-readable keys and exact CSV-header order. The name may be flattened; it is not required to reproduce source typography. |
+| `header_path` | Preserve the complete outer-to-inner source heading hierarchy, including units and markers. Use `[]` only for an originally unheaded or clearly identified extractor-added descriptor column. Do not present an invented heading as source text. |
+| `role=data` | Source values, including retained textual data. |
+| `role=label` | Identifies source rows. |
+| `role=context` | Carries panel or inherited group labels. It must not invent a source value or silently change row association. |
+| `units` | Apply to the entire column only when source-supported. Row-varying units belong in scoped annotations. |
+| `description` | Explain an unheaded column, flattened hierarchy, or added descriptor accurately. It cannot replace missing source headings. |
+
+#### Annotation checks
+
+Code interprets `rows` and `columns` as a Cartesian product when both are present, all columns of the selected rows when only rows are present, all rows of the selected columns when only columns are present, and table-wide when neither is present. Scientific checks compare that scope to the source.
+
+| Kind | Required preservation |
+|---|---|
+| `footnote` | Full reported wording, correct marker, affected rows/columns, and qualifications. Preserve the marker in its source-display cell or heading. |
+| `unit` | Actual unit/display-scale wording and its scope; do not apply a row-specific unit to unrelated rows. |
+| `statistical_convention` | Meaning of parentheses, brackets, plus/minus values, confidence levels, significance markings, and other source-defined conventions. Do not infer SD/SE from typography. |
+| `panel` | Panel/group identity and the rows/columns it governs, including continuation behavior. |
+| `merged_cell` | Full covered row/column span. Store the source value once at the first covered row and leftmost covered column; covered remaining cells are blank. Do not duplicate a joint test/value across the covered cells. |
+| `missing_value` | Source-stated unavailable/not-applicable/suppressed or other missing-value meaning. Preserve its source display; do not replace it with zero. |
+| `structural_blank` | A layout blank, explicitly distinguished from a missing observation. Do not infer scientific absence from an empty covered cell. |
+| `transcription` | An explicitly identified transcription/OCR/digitization decision or discrepancy, with original uncertainty preserved. Do not silently correct source content. |
+| `other` | A faithful, scoped qualification outside the short list. A common-kind label is not mandatory when `other` accurately preserves the information. |
+
+For an archival task, compare the sampled logical row block with the entire applicable header hierarchy, caption, footnotes, units, merged cells, panel labels, and missing-value conventions. Interpret parsed records rather than physical text lines. Quoted cells may contain line breaks. An exact numeric cell with the wrong row, group, unit, or statistical convention fails.
+
+For table links, require appropriate ordinary-result links for what the table directly reports or contextualizes. Do not invent a treatment effect to attach a descriptive table. `reports_result`, `describes_sample`, `provides_inputs`, and `provides_context` are distinct. A table attached as context must not be counted as an independent finding or made a family boundary.
+
+`TABLE_LINK_CONFORMANCE` checks links to the ordinary result records actually defined in the submitted extraction. It does not require creation of an omitted result solely to obtain a table link. If source result B is absent, its omission is assessed by the selected content task; the archive task can still pass if its full CSV and links to the existing relevant results are faithful. The schema's requirement that every table have an appropriate ordinary-result link still applies.
+
+Keep archive-display fidelity separate from scientific meaning. Converting a CSV cell from source display `12.0` to `12` fails the archive fidelity requirement but does not by itself fail content or submitted-output checks when the extracted scientific value is equivalent. A `table_coverage.status=complete` claim does not turn this display-only defect into an automatic content/provenance failure. Wrong units, a changed scientific value, the wrong cell component, false provenance, or a material precision claim can independently fail a content or submitted-output task when they change its represented meaning.
+

@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
-from .code_audit import automatic_code_audit, collect_final_code_evidence, finalize_code_audit
+from .code_audit import automatic_code_audit, collect_final_code_evidence, finalize_code_audit, audit_file_prefix
 from .package_inputs import CompetitionPackageResolver
 from .publication import canonical_sha256
 from .round_setup import _canonical_bytes, _write_once
@@ -54,6 +54,7 @@ def prepare_code_audit(
     )
     evidence = collect_final_code_evidence(round_id, backend=backend, fetch_package=packages)
     digest = canonical_sha256(evidence)
+    prefix=audit_file_prefix(round_id,revision,evidence)
     _write_once(directory / f"{prefix}.audit-evidence.json", _canonical_bytes(evidence), 0o600)
     policy = (row.get("rules_public") or {}).get("policy", {}).get("code_audit")
     if row.get("network") == "mainnet" and policy is None:

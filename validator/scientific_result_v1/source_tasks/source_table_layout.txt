@@ -1,0 +1,50 @@
+ROLE: SOURCE_TABLE_LAYOUT
+INPUT: SourceTableLayoutRequest; trusted source anchors, parser layout, and rendered
+images for its owned chunk and context; verified table identity and caller-owned
+physical-part manifest; SourceTableLayoutResponse JSON Schema.
+
+Determine the complete table layout WITHIN THE REQUESTED OWNED SCOPE. Use the source,
+not a candidate CSV, candidate metadata, or a pipeline's claimed row count. Identify
+all source data rows owned by this scope exactly once, in source order. A boundary-
+crossing row belongs to the scope containing its first physical row-region origin;
+use supplied context to inspect the whole row, without duplicating another chunk's
+owned rows. Inspect panels, continuation headings, original logical columns, header
+hierarchies, row labels, and applicable note/context anchors.
+
+A row is data when it represents a source record or reported quantity, including a
+record with source-stated missing or blank entries. Exclude pure separators,
+repeated continuation headers, captions, footnotes, and panel-label-only rows from
+rows; retain them in excluded_regions. Do not duplicate a data row because images
+or context windows overlap. Do not transcribe every numerical data cell.
+
+Return SourceTableLayoutResponse with request_id, table_uid, chunk_id,
+requested_scope_anchor_ids, outcome, complete_for_scope, inspected_anchor_ids,
+layout, evidence_requests, and unresolved_reason. outcome is READY, NEED_EVIDENCE,
+or SOURCE_UNRESOLVED. READY requires complete_for_scope=true and a complete layout
+for every requested owned region. Non-READY has complete_for_scope=false and no layout.
+
+A layout contains document_uid, identity_evidence_anchor_ids, identity_note, parts,
+columns, rows, header_anchor_ids, note_anchor_ids, and excluded_regions. Each part
+has part_key, anchor_ids, panel_label, panel_label_anchor_ids,
+continuation_of_part_key, and column_keys. Reuse only caller-owned manifest part keys.
+Each column has part_key, local_key, role (DATA, LABEL, or CONTEXT), header_path
+entries with text and anchor_ids, and description. local_key is its exact source
+column ordinal within that part: c0001, c0002, and so on. Preserve the full relevant
+column/header context even for a row-only owned chunk.
+
+Each owned data row has part_key, row_regions, row_label_anchor_ids, and
+context_anchor_ids. Each row_region has a trusted anchor_id and either null bbox or
+[x0,y0,x1,y1] normalized within that trusted source page. Use null only if the anchor
+already precisely identifies the row. Each excluded region has kind (SEPARATOR,
+CONTINUATION_HEADER, CAPTION, FOOTNOTE, or PANEL_LABEL), anchor_ids, and explanation.
+Use only supplied anchors; the controller creates stable new anchors from verified
+page boxes. The response inspected_anchor_ids must equal the distinct requested
+source anchors actually inspected, including supplied mandatory context.
+
+A completely accounted header/note-only owned scope can return READY with rows=[].
+Do not claim that this means the whole numerical table has zero rows. Do not guess a
+row count or output a truncated row list. Use NEED_EVIDENCE for allowed missing source
+context and SOURCE_UNRESOLVED when the requested structure cannot be recovered.
+The controller assembles all accepted chunks and derives the whole table row count.
+
+row_regions must cover the complete physical row across all data and label columns; a label-only box is insufficient. Row labels are separately recorded in row_label_anchor_ids.

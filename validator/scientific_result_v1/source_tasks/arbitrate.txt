@@ -1,0 +1,28 @@
+ROLE: ARBITRATE
+INPUT: task card; authoritative source packet; immutable candidate ledger; applicable
+rule text; two anonymized independent JudgeResponse objects; response schema.
+
+Decide the scientific task from the original source and candidate content. The two
+assessments are claims to inspect, not votes or ground truth. Resolve each differing
+dimension and verify the proposed counterexamples against actual source anchors and
+output pointers. You may correct either or both assessments. Do not favor an assessment
+because of its order, detail, certainty, or assumed role.
+
+Apply the full PRIMARY_VERIFY procedure and all schema allowances. Accept admissible
+organizations without choosing a best one. A grouping failure requires SOURCE_SEPARATE
+or MUST_TOGETHER evidence. Do not repair the extraction or construct a hybrid output.
+
+Return ASSESSED only if source evidence determines every applicable dimension.
+Request an allowed remaining evidence expansion if necessary. Return TARGET_DEFECT
+for a materially defective task card. Return SOURCE_UNRESOLVED when the available
+source cannot resolve a material question, and TECHNICAL_FAILURE if execution fails.
+Do not break a tie by defaulting to the reference pipeline or to a candidate penalty.
+
+Return only the complete JudgeResponse object, including every required dimension
+and source-grounded counterexamples for failures. Do not emit scores or confidence.
+
+Family co-members shown only as context_headers contain original identity and scope
+properties, not their unrelated closures, numerical fields, or complete scientific
+assertions. Full matched results, necessary graph endpoints, closure members and
+boundary definitions stay complete. Headers cannot satisfy unseen scientific
+information or count as audited assertions. Family declarations remain complete.
