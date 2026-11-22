@@ -54,4 +54,19 @@ The worker request and manifest use the plain OpenRouter catalog model ID, such 
 
 ## Evaluation archives
 
-After a round is published, its entrant hotkeys can sign `GET /miner/competition/rounds/{round_id}/evaluation-export` at `https://artifacts.claims111.ai`. While the archive is building, the endpoint returns `status: "preparing"`. Once ready, it returns one 10-minute download link and SHA-256 digest for a compressed JSONL archive covering all miners. Its JSONL row types are `scores`, `paired_scores`, `eligibility_gate_decisions`, `silver_evaluations`, and `silver_coverage_matches`. The Silver rows contain the frozen reference and miner candidates, comparison cases, judge decisions, Silver units, and candidate-to-unit matches. Score rows have `hotkey`; pair rows have `challenger_hotkey`; eligibility rows include `case_miners`; coverage rows have `hotkey` and `candidate_id` (`null` for Bronze candidates). Filter locally. Package wheels, execution logs, Gold answer keys, and credentials are excluded. Verify the digest after download.
+## Evaluation downloads
+
+After a round is published, its entrant hotkeys can sign `GET /miner/competition/rounds/{round_id}/evaluation-export` at `https://artifacts.claims111.ai`. While the archive is building, the endpoint returns `status: "preparing"`. Once ready, it returns one 10-minute download link and SHA-256 digest for a compressed JSONL archive covering all miners. Verify the digest after download and filter by hotkey locally. Package wheels, execution logs, private worker transport receipts, Gold answer keys, and credentials are excluded.
+
+Scientific schema v1.1 rounds use `claims_competition_evaluation_export_v3` and include:
+
+- `scientific_evaluations`: frozen paper receipts and the hotkey-to-output-alias mapping.
+- `scientific_configuration`: the exact evaluation configuration, including its hash.
+- `scientific_score_components`: exact G/C/T/P/Q values, applicability and per-task bits. Fractions use `numerator` and `denominator`; `null` means unmeasured or not applicable.
+- `scientific_mechanical_findings` and `scientific_worker_validation`: authoritative gate findings and retained worker validation reports, including package failures.
+- `scientific_evidence`: original content-addressed bytes for sampling manifests, task cards, assertion packets, verdicts, source evidence, scientific JSON/CSVs, settings and judge run receipts with requests/raw/parsed responses. Decode `body_base64` and verify `sha256` and `byte_length`. References in these records identify related evidence by hash.
+- `scientific_evidence_omissions`: explicitly identifies private worker transport receipts excluded from the archive.
+
+All rounds include `scores` and `paired_scores`. Legacy rounds also retain `eligibility_gate_decisions`, `silver_evaluations`, and `silver_coverage_matches` for their Silver candidates, adjudications and coverage matches.
+
+For development rehearsals, use `https://claims-uploads-dev.vercel.app` with the same signed routes and `network="testnet"`. The production and dev services read separate databases; use the service where the round was submitted. The dashboard does not authenticate download requests.

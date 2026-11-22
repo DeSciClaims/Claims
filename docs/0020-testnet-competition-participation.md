@@ -277,7 +277,9 @@ for file in export["files"]:
     print(file["scope"], file["download_url"], file["sha256"])
 ```
 
-`status: "preparing"` means the background archive is still being built. A ready response contains one compressed JSONL file with all miners' per-paper scores, paired comparisons, frozen eligibility decisions, Silver units, reference and miner candidates, adjudication outcomes, and candidate-to-unit coverage matches. Filter by your hotkey locally. Package wheels, execution logs, Gold answer keys, and credentials are excluded. Verify the downloaded file against its SHA-256. The link expires after **10 minutes**.
+`status: "preparing"` means the background archive is still being built. A ready response contains one compressed JSONL file covering all miners. For schema v1.1 it contains exact G/C/T/P/Q components, mechanical findings, retained worker validation reports, sampled tasks, assertion packets, verdicts and retained judge requests/responses, with hash-checked original scientific JSON/CSV and source-evidence bytes. Use the hotkey-to-output-alias mapping to filter locally. The [export row format](./submission.md#evaluation-downloads) explains the content-addressed evidence records. Legacy rounds retain their Silver evaluation records.
+
+Package wheels, execution logs, private worker transport receipts, Gold answer keys and credentials are excluded. Verify the downloaded file against its SHA-256. The link expires after **10 minutes**. For dev rehearsal rounds use `https://claims-uploads-dev.vercel.app`; the signed routes and wallet authentication are the same. Downloads use the API/client, not a dashboard login.
 
 ## 7. Duplicate verdicts and appeals
 
