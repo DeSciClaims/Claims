@@ -566,6 +566,48 @@ those cases for each fresh final sample and live end-to-end execution remain.
 
 ## Weight heartbeat
 
+### Temporary base-burn window
+
+`neurons.competition_weights --burn-window POLICY.json` can apply an operator's
+temporary base burn after one exact round publishes its signed results. The
+policy binds the network, subnet, round ID, fraction and duration:
+
+```json
+{
+  "schema_version": "claims_burn_window_v1",
+  "network": "testnet",
+  "netuid": 530,
+  "trigger_round_id": "round_20261122T151842Z_testnet",
+  "base_burn_fraction": 0.3788,
+  "duration_seconds": 1209600,
+  "wait_for_trigger": true
+}
+```
+
+With `wait_for_trigger`, the service submits no weights before the target's
+signed results are available. It verifies the normal publication signature and
+miner-pool allocation before applying an override. Signature checks, recipient
+identity, 70/20/10 role proportions and vacant-slot burning remain unchanged.
+Only the base burn changes: 37.88% leaves 62.12% for the miner roles. Vacant or
+unregistered roles still burn, so the actual owner-UID weight can be higher.
+The signed publication remains unchanged; the operational override and its
+policy hash appear separately in heartbeat logs and durable submission state.
+
+The first accepted weight submission starts the 14-day window. A rejected
+submission does not start it. Lost RPC responses use the existing confirmation
+recovery and do not trigger a duplicate submission. Start, expiry, trigger receipt
+hash and policy hash survive restarts; a different policy cannot reset that
+window. Subsequent publications update recipients without restarting the clock.
+At expiry the service returns to the latest signed allocation's normal burn
+policy (currently 87.5758% base burn). Activation and restoration bypass the
+six-hour refresh interval, subject to the chain's submission/reveal rules.
+
+Use `--audit-only --once` to preview without submitting or activating a window.
+Keep the policy file after expiry: removing or changing a persisted policy is
+rejected rather than silently resetting its lifetime. This feature is deployed
+only in the independent weight-service release; existing frozen controller,
+validator and worker releases need no fingerprint amendment.
+
 After publication, a dedicated validator-wallet process reads the newest
 public signed receipt, verifies its signature and weekly role shares, resolves
 hotkeys against the current metagraph, and calls Bittensor `set_weights`

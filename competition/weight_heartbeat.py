@@ -20,6 +20,7 @@ from .publication import FROZEN_FIELDS, PUBLICATION_SCHEMA, canonical_sha256
 from .replay_publication import REPLAY_PUBLICATION_SCHEMA
 from .legacy_weight_carry import verify_legacy_weights, project_legacy_weights
 from .weights import BASE_BURN, BURN_POLICY, LEGACY_POLICY, MINER_ONLY_POLICY
+from .burn_window import BurnWindowPolicy
 
 LEGACY_ROLE_SHARES = {
     "operator": 0.90,
@@ -140,6 +141,7 @@ def _validated_roles(value: Any, role_shares: Mapping[str, float]) -> dict[str, 
 def project_weekly_weights(
     bundle: Mapping[str, Any], *, hotkeys_by_uid: list[str],
     owner_hotkey: str, operator_hotkey: str, burn_uid: int = 0,
+    base_burn_override: float | None = None,
 ) -> dict[int, float]:
     """Re-resolve signed role shares; burn absent or explicitly vacant slots."""
     if (not hotkeys_by_uid or not 0 <= burn_uid < len(hotkeys_by_uid)
@@ -152,6 +154,14 @@ def project_weekly_weights(
         raise ValueError("weekly publication has no weights")
     role_shares = _role_shares(weights)
     roles = _validated_roles(weights.get("roles"), role_shares)
+    if base_burn_override is not None:
+        if (weights.get('allocation_policy') != BURN_POLICY
+            or type(base_burn_override) not in {float, int}
+            or not math.isfinite(base_burn_override) or not 0 <= base_burn_override < 1):
+            raise ValueError('Temporary base burn requires a valid miner-pool allocation')
+        role_shares = {'base_burn': base_burn_override, **{
+            role: (1 - base_burn_override) * share for role, share in MINER_ROLE_SHARES.items()
+        }}
     if "operator" in roles and roles["operator"] != (operator_hotkey, False):
         raise ValueError("weekly operator differs from configured operator")
     uid_by_hotkey = {hotkey: uid for uid, hotkey in enumerate(hotkeys_by_uid)}
@@ -170,6 +180,22 @@ def project_weekly_weights(
     if not math.isclose(sum(result.values()), 1.0, abs_tol=1e-12):
         raise AssertionError("projected weekly weight vector does not sum to one")
     return dict(sorted(result.items()))
+
+
+def fetch_round_publication(*, backend_url: str, round_id: str, independent: bool = False):
+    """A result is available only after the backend publishes the signed round."""
+    parsed = urllib.parse.urlparse(backend_url)
+    if parsed.scheme != 'https' and parsed.hostname not in {'127.0.0.1', 'localhost'}:
+        raise ValueError('Competition backend must use HTTPS or loopback')
+    suffix = '/independent-results' if independent else '/results'
+    try:
+        with urllib.request.urlopen(backend_url.rstrip('/') + '/public/competition/rounds/'
+                + urllib.parse.quote(round_id, safe='') + suffix, timeout=15) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise
 
 
 def fetch_latest_publication(
@@ -223,6 +249,8 @@ class WeeklyWeightHeartbeat:
         legacy_base_burn: float = 0.0,
         state_path: Path | None = None,
         now: Callable[[], datetime] | None = None,
+        burn_window: BurnWindowPolicy | None = None,
+        burn_trigger_fetcher: Callable[[], dict[str, Any] | None] | None = None,
     ) -> None:
         if not operator_hotkey or netuid < 0 or weight_period < 1:
             raise ValueError("invalid weekly weight heartbeat configuration")
@@ -253,6 +281,13 @@ class WeeklyWeightHeartbeat:
             backend_url=backend_url, network=network, independent=independent,
         ))
         self.last_submitted_block = 0
+        if burn_window is not None and (burn_window.network, burn_window.netuid) != (network, netuid):
+            raise ValueError('Burn window belongs to another network or subnet')
+        if burn_window is not None and submission_interval_seconds is None:
+            raise ValueError('Burn window requires wall-clock heartbeat scheduling')
+        self.burn_window = burn_window
+        self.burn_trigger_fetcher = burn_trigger_fetcher or (lambda: fetch_round_publication(
+            backend_url=backend_url, round_id=burn_window.trigger_round_id, independent=independent))
 
     def _load_cache(self) -> dict[str, Any] | None:
         try:
@@ -355,6 +390,10 @@ class WeeklyWeightHeartbeat:
             or "latest_competition_receipt_sha256" not in state
         ):
             raise ValueError("invalid persisted competition publication order")
+        if state.get('burn_window') is not None:
+            if self.burn_window is None:
+                raise ValueError('Persisted burn window requires its policy; refuse silent removal')
+            self.burn_window.validate_state(state['burn_window'])
         return state
 
     def _save_state(self, state: dict[str, Any]) -> None:
@@ -382,6 +421,37 @@ class WeeklyWeightHeartbeat:
     def _step(self, *, audit_only: bool) -> dict[str, Any]:
         now = _utc_time(self.now())
         state = self._load_state()
+        new_burn_trigger = False
+        if self.burn_window is not None:
+            if state.get('burn_window') is None:
+                trigger = self.burn_trigger_fetcher()
+                if trigger is not None:
+                    bound = verify_weekly_receipt(trigger, expected_signer_hotkey=self.expected_signer,
+                        network=self.network, independent=self.independent)
+                    if bound['round_id'] != self.burn_window.trigger_round_id:
+                        raise ValueError('Burn trigger is for another round')
+                    if bound['weights'].get('allocation_policy') != BURN_POLICY:
+                        raise ValueError('Burn trigger lacks the miner-pool allocation policy')
+                    cached = self._load_cache()
+                    if (cached is not None and self._receipt_order(cached) == self._receipt_order(trigger)
+                        and cached['bundle_sha256'] != trigger['bundle_sha256']):
+                        raise ValueError('Burn trigger conflicts with cached publication order')
+                    if (not self._receipt_precedes_state(trigger, state, full_cache_available=cached is not None)
+                        and (cached is None or self._receipt_order(trigger) > self._receipt_order(cached))):
+                        # The exact-round endpoint can become current before the
+                        # public round listing. Never apply its window to an older allocation.
+                        self._save_cache(trigger)
+                    state['burn_window'] = self.burn_window.trigger(trigger['bundle_sha256'], now)
+                    new_burn_trigger = True
+                    if not audit_only:
+                        self._save_state(state)
+            window = self.burn_window.report(state.get('burn_window'), now)
+            if window['phase'] == 'waiting_for_signed_results' and self.burn_window.wait_for_trigger:
+                return {'status': 'waiting_for_burn_trigger', 'burn_window': window}
+        else:
+            window = None
+        override = (self.burn_window.base_burn_fraction if window is not None
+                    and window['phase'] in {'awaiting_first_submission', 'active'} else None)
         receipt, source = self._current_receipt(state)
         legacy_bundle = None
         if receipt is None:
@@ -409,7 +479,10 @@ class WeeklyWeightHeartbeat:
                 # this latch too so a lost cache cannot revive legacy payouts.
                 state["latest_competition_receipt_sha256"] = receipt["bundle_sha256"]
                 state["latest_competition_order"] = order
-                self._save_state(state)
+                remembered = dict(state)
+                if audit_only and new_burn_trigger:
+                    remembered.pop('burn_window', None)
+                self._save_state(remembered)
         info = self.subtensor.get_metagraph_info(netuid=self.netuid)
         if info is None:
             raise RuntimeError("subnet metagraph is unavailable")
@@ -434,6 +507,8 @@ class WeeklyWeightHeartbeat:
             raise ValueError("subnet tempo is invalid")
         due_after = min(tempo, 1800)
         if legacy_bundle is not None:
+            if override is not None:
+                raise ValueError('Temporary burn cannot replace a signed competition allocation with legacy weights')
             if (not state.get("last_submitted_at") and not state.get("pending")
                 and chain_last_update > legacy_bundle["last_update_block"]):
                 raise ValueError("chain submission changed after legacy capture; reconcile before starting")
@@ -446,6 +521,7 @@ class WeeklyWeightHeartbeat:
             weights_by_uid = project_weekly_weights(
                 bundle, hotkeys_by_uid=hotkeys, owner_hotkey=str(info.owner_hotkey),
                 operator_hotkey=self.operator_hotkey,
+                base_burn_override=override,
             )
         allocation_id = (
             canonical_sha256({"receipt_sha256": receipt["bundle_sha256"],
@@ -454,8 +530,13 @@ class WeeklyWeightHeartbeat:
             if legacy_bundle is not None and self.legacy_miner_only
             else receipt["bundle_sha256"]
         )
+        if override is not None:
+            allocation_id = canonical_sha256({'receipt_sha256': allocation_id,
+                'burn_window_policy_sha256': self.burn_window.digest, 'base_burn_fraction': override})
         result = {"allocation_kind": kind, "source": source, "current_block": block,
                   "weights": weights_by_uid}
+        if window is not None:
+            result['burn_window'] = window
         if kind == "competition":
             result["round_id"] = bundle["round_id"]
         else:
@@ -481,6 +562,9 @@ class WeeklyWeightHeartbeat:
                              allocation_id=pending["allocation_id"],
                              allocation_kind=pending["allocation_kind"])
                 state.pop("pending")
+                if pending.get('starts_burn_window'):
+                    state['burn_window'] = self.burn_window.start(state['burn_window'], accepted_at)
+                    result['burn_window'] = self.burn_window.report(state['burn_window'], now)
                 if not audit_only:
                     self._save_state(state)
             else:
@@ -539,6 +623,8 @@ class WeeklyWeightHeartbeat:
         state["pending"] = {"before_block": chain_last_update, "attempt_block": block,
                             "attempt_at": now.isoformat(), "allocation_id": allocation_id,
                             "allocation_kind": kind}
+        if window is not None and window['phase'] == 'awaiting_first_submission':
+            state['pending']['starts_burn_window'] = True
         self._save_state(state)
         try:
             response = self.subtensor.set_weights(
@@ -563,6 +649,9 @@ class WeeklyWeightHeartbeat:
             return {**result, "status": "submission_failed", "alert_stale": block - chain_last_update >= 2000}
         accepted_block = int(self.subtensor.get_current_block())
         accepted_at = _utc_time(self.now())
+        if state['pending'].get('starts_burn_window'):
+            state['burn_window'] = self.burn_window.start(state['burn_window'], accepted_at)
+            result['burn_window'] = self.burn_window.report(state['burn_window'], accepted_at)
         self.last_submitted_block = accepted_block
         state.pop("pending")
         state.update(last_submitted_block=accepted_block, last_submitted_at=accepted_at.isoformat(),

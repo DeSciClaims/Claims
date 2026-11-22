@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 from competition.weight_heartbeat import WeeklyWeightHeartbeat
+from competition.burn_window import BurnWindowPolicy
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -38,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--legacy-base-burn", type=float, default=0.0,
                         help="Fraction of miner-only carry-forward directed to owner burn UID")
     parser.add_argument("--state-path", type=Path)
+    parser.add_argument('--burn-window', type=Path,
+                        help='Operator policy for a temporary base burn after one signed round result')
     parser.add_argument("--audit-only", action="store_true")
     parser.add_argument("--independent", action="store_true",
                         help="Read the second validator's signed independent result")
@@ -67,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         legacy_miner_only=args.legacy_miner_only,
         legacy_base_burn=args.legacy_base_burn,
         state_path=args.state_path.expanduser() if args.state_path else None,
+        burn_window=BurnWindowPolicy.load(args.burn_window) if args.burn_window else None,
     )
     while True:
         try:
