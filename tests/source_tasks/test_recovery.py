@@ -82,7 +82,8 @@ def test_requesting_table_headers_does_not_attach_unrequested_data_rows():
     assert [a['anchor_id'] for a in expanded['anchors']]==['owned','header']
 
 
-def test_confirmed_inventory_defect_creates_replayable_common_frame_revision(tmp_path,monkeypatch):
+@pytest.mark.parametrize('uncertain_secondary',[False,True])
+def test_confirmed_inventory_defect_creates_replayable_common_frame_revision(tmp_path,monkeypatch,uncertain_secondary):
     import json
     from tests.source_tasks.test_docling_frame import fixture
     from validator.scientific_result_v1.source_tasks.preparation import prepare_paper
@@ -99,13 +100,16 @@ def test_confirmed_inventory_defect_creates_replayable_common_frame_revision(tmp
     binding=EvaluationBinding(protocol_id=packet.protocol_id,round_id=packet.round_id,stage='week_one',paper_id=packet.paper_id,
         source_packet_sha256=sha(canonical(packet)),source_frame_sha256=sha(canonical(frame)),input_pool_sha256='2'*64,policy_sha256='1'*64,revision=0)
     class Script:
+        def __init__(self,role):self.role=role
         def generate(self,*,payload,**kwargs):
             if 'proposal' not in payload:return {'tile_id':tile.tile_id,'outcome':'INVENTORY_DEFECT','cards':[],
                 'evidence_requests':[],'unresolved_reason':'Only a non-result introductory statement in this selected tile.'}
+            if self.role=='SECONDARY' and uncertain_secondary:
+                return dict(request_id=payload['request_id'],proposal_kind='CARD_BATCH',proposal_hash=payload['proposal_hash'],outcome='SOURCE_UNRESOLVED',checked_anchor_ids=[],checked_item_ids=[],issues=[],corrected_proposal=None,evidence_requests=[],unresolved_reason='The independent source arbiter must resolve eligibility')
             return dict(request_id=payload['request_id'],proposal_kind='CARD_BATCH',proposal_hash=payload['proposal_hash'],outcome='ACCEPT',
                 checked_anchor_ids=payload['checked_anchor_ids'],checked_item_ids=payload['checked_item_ids'],issues=[],
                 corrected_proposal=None,evidence_requests=[],unresolved_reason=None)
-    ops.runtimes={role:Script() for role in ops.routes}
+    ops.runtimes={role:Script(role) for role in ops.routes}
     with pytest.raises(SourceInventoryDefect) as captured:
         selected_cards(ops,tile,binding,evidence_for(frame,tile.owned_anchor_ids+tile.context_anchor_ids))
     proposal=captured.value.proposal
