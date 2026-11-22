@@ -105,6 +105,13 @@ JSON/CSV bytes, source tasks, sampling manifests, judge requests/responses,
 mechanical findings, scientific verdicts and score components. Current-revision
 checks prevent publication of stale score projections.
 
+Original PDFs are read from their locked paper-storage URL and checked against
+the frozen SHA-256. Trusted source preparation caches those exact bytes locally
+for Docling and worker staging; it does not upload the PDF through the evidence
+API. A cold controller cache resolves the frozen source reference and fetches
+the original again with the same host allowlist and hash check. Evidence
+derivatives and scientific receipts remain in the shared content-addressed store.
+
 Replay a retained receipt without contacting a model provider:
 
 ```sh

@@ -4,7 +4,13 @@ import json
 from urllib.request import Request, urlopen
 from urllib.parse import quote
 from urllib.error import HTTPError
-from .store import Store, Conflict
+from .store import Store, Conflict, sha
+
+
+class EvidenceTransportError(RuntimeError):
+    def __init__(self, status_code):
+        self.status_code = status_code
+        super().__init__('Scientific evidence transport HTTP ' + str(status_code))
 
 
 class RemoteStore(Store):
@@ -28,9 +34,34 @@ class RemoteStore(Store):
         except HTTPError as exc:
             if exc.code == 409:
                 raise Conflict("Remote scientific predecessor changed") from exc
-            raise RuntimeError(
-                "Scientific evidence transport HTTP " + str(exc.code)
-            ) from exc
+            raise EvidenceTransportError(exc.code) from exc
+
+    def put_existing_source(self, round_id, paper_id, data):
+        """Cache an already frozen paper locally; never relay PDF bytes via the API."""
+        from .contracts import FileRef
+        meta = self.backend.get_scientific_source(round_id, paper_id)
+        digest = sha(data)
+        if meta['source_sha256'] != digest:
+            raise ValueError('PDF differs from the frozen source')
+        Store.put_blob(self, digest, data)
+        return FileRef(relative_path='sources/' + digest + '.pdf', sha256=digest,
+                       byte_length=len(data), media_type='application/pdf')
+
+    def _fetch_original(self, meta, expected):
+        import os
+        from competition.pdf_fetch import TrustedPdfFetcher
+        from competition.hippius import hippius_s3_client
+        if meta['source_sha256'] != expected:
+            raise ValueError('Original source reference hash mismatch')
+        buckets = tuple(x for x in os.environ.get('CLAIMS_COMPETITION_PDF_S3_BUCKETS', '').split(',') if x)
+        endpoint = os.environ.get('CLAIMS_HIPPIUS_ENDPOINT', '')
+        client = hippius_s3_client(endpoint=endpoint,
+            access_key_id=os.environ['CLAIMS_HIPPIUS_ACCESS_KEY_ID'],
+            secret_access_key=os.environ['CLAIMS_HIPPIUS_SECRET_ACCESS_KEY']) if buckets else None
+        fetcher = TrustedPdfFetcher(
+            allowed_https_hosts=tuple(x for x in os.environ.get('CLAIMS_COMPETITION_PDF_HTTPS_HOSTS', '').split(',') if x),
+            allowed_s3_buckets=buckets, s3_client=client, hippius_endpoint=endpoint)
+        return fetcher.fetch(meta['source_url'], expected)
 
     def put_blob(self, expected, data):
         # Local hash validation before sending bytes; remote also verifies independently.
@@ -48,9 +79,13 @@ class RemoteStore(Store):
         try:
             return super().get_blob(expected)
         except KeyError:
-            data = self._binary(
-                "GET", "/internal/competition/scientific/blobs/" + expected
-            )
+            try:
+                data = self._binary("GET", "/internal/competition/scientific/blobs/" + expected)
+            except EvidenceTransportError as exc:
+                if exc.status_code not in {404, 413, 502}:
+                    raise
+                meta = self.backend._request('GET', '/internal/competition/scientific/source-references/' + expected)
+                data = self._fetch_original(meta, expected)
             super().put_blob(expected, data)
             return data
 

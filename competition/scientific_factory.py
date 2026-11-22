@@ -158,7 +158,7 @@ def create_source_preparer(row,backend,configuration,fetcher):
             if pool.store.head('prepared-source:'+round_id+':'+paper_id) is not None:continue
             meta=backend.get_scientific_source(round_id,paper_id)
             raw=fetcher.fetch(meta['source_url'],meta['source_sha256'])
-            file=pool.store.put_named('sources/'+meta['source_sha256']+'.pdf',raw,'application/pdf')
+            file=pool.store.put_existing_source(round_id,paper_id,raw)
             document=SourceDocument(document_uid='source-'+meta['source_sha256'],role='MAIN',title=paper_id,version=meta['source_sha256'],url=meta['source_url'] if not __import__('urllib.parse',fromlist=['urlsplit']).urlsplit(meta['source_url']).query else None,required=True,acquisition_status='SUPPLIED',availability='AVAILABLE',file=file)
             packet=SourcePacket(protocol_id='claims-source-task-v1',paper_id=paper_id,round_id=round_id,state='READY',documents=[document],errors=[])
             parsed=_root()/'parsed'/meta['source_sha256'];parsed.mkdir(parents=True,exist_ok=True)
