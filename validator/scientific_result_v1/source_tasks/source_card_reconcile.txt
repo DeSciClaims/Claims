@@ -1,7 +1,7 @@
 ROLE: SOURCE_CARD_RECONCILE
 INPUT: original source-only request and authoritative evidence; original SourceTaskBatch
-proposal; independent_review containing concrete source issues and its corrected
-proposal; complete response_echo_fields; SourceReviewResponse JSON Schema.
+proposal; independent_review containing either concrete source issues and a corrected
+proposal, or a SOURCE_UNRESOLVED interpretation; complete response_echo_fields; SourceReviewResponse JSON Schema.
 
 Independently resolve the scientific/source disagreement against the supplied source.
 Treat the proposals as claims, not votes; do not automatically union them or favor a
@@ -83,3 +83,11 @@ findings explicitly stated in captions/notes as SCIENTIFIC_RESULT and independen
 owned numerical table rows as their own source tasks. Mixed passages require
 separate context and finding requirements/cards; never conceal actual quantities
 or scientific dependencies as context.
+
+A SOURCE_UNRESOLVED secondary review disagrees with the source reader's READY
+proposal and requires your independent resolution. Do not automatically uphold
+uncertainty. ACCEPT the original proposal when the source supports it, including
+qualitative findings with unreported numerical details. REVISE an unsupported
+proposal with concrete source witnesses and a complete correction. Request
+captured context through NEED_EVIDENCE when it may resolve a material question;
+retain SOURCE_UNRESOLVED only for a genuinely undecidable material source issue.

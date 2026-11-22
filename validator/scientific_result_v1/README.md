@@ -20,7 +20,8 @@ numbers of fields, results or families earns no credit.
    selected source evidence. They check complete findings, including attachments,
    context, grouping and provenance. Separate checks assess table transcription
    and the support for submitted scientific assertions.
-4. **Review exceptions.** Independent judges review failures, unresolved findings
+4. **Review exceptions.** Source-review disagreements, including unresolved secondary
+   interpretations, go to the source arbiter. Independent judges review failures, unresolved findings
    and a reproducible 10% sample of primary passes. An arbiter resolves disagreement.
 5. **Calculate and retain the score.** Code calculates exact fractions and retains
    sources, original JSON/CSV bytes, samples, judgments and score components for replay.

@@ -62,22 +62,27 @@ def validate_defect(store,proof_ref,frame):
             proposal=SourceTaskBatch.model_validate(data['proposal'])
             if review.request_id!=data['request_id'] or review.proposal_kind!='CARD_BATCH' or review.proposal_hash!=sha(canonical(proposal)):
                 raise ValueError('Source defect independent review binding changed')
-            if review.outcome not in {'ACCEPT','REVISE'}:continue
-            if set(review.checked_anchor_ids)!=set(ids) or len(review.checked_anchor_ids)!=len(ids):
-                raise ValueError('Source defect lacks complete source inspection')
-            if review.checked_item_ids!=data['checked_item_ids']:raise ValueError('Source defect lacks complete proposal inspection')
+            if review.outcome not in {'ACCEPT','REVISE','SOURCE_UNRESOLVED'}:continue
+            if review.outcome=='SOURCE_UNRESOLVED':
+                if (not set(review.checked_anchor_ids)<=set(ids) or len(review.checked_anchor_ids)!=len(set(review.checked_anchor_ids))
+                    or not set(review.checked_item_ids)<=set(data['checked_item_ids']) or len(review.checked_item_ids)!=len(set(review.checked_item_ids))):
+                    raise ValueError('Unresolved source review has invalid inspection witnesses')
+            else:
+                if set(review.checked_anchor_ids)!=set(ids) or len(review.checked_anchor_ids)!=len(ids):
+                    raise ValueError('Source defect lacks complete source inspection')
+                if review.checked_item_ids!=data['checked_item_ids']:raise ValueError('Source defect lacks complete proposal inspection')
             expected=(['original:'+c['local_key'] for c in data.get('original_source_draft',{}).get('cards',[])]+
                 ['proposed:'+c.local_key for c in proposal.cards]) or ['tile:'+tile.tile_id]
-            if set(expected)!=set(review.checked_item_ids):raise ValueError('Source defect inspected the wrong source items')
+            if set(expected)!=set(data['checked_item_ids']):raise ValueError('Source defect inspected the wrong source items')
             reviews.append((run.role,review,proposal,data,identity))
     for role,review,proposal,data,identity in reviews:
         if role!='SECONDARY':continue
         draft=next((i for p,i in drafts if p==proposal),None)
         if draft is None or draft==identity:continue
         if review.outcome=='ACCEPT' and proposal==batch:return tile,batch,binding
-        if review.outcome=='REVISE':
+        if review.outcome in {'REVISE','SOURCE_UNRESOLVED'}:
             for arb_role,arb,arb_proposal,arb_data,arb_identity in reviews:
-                if arb_role!='ARBITER' or arb_identity in {draft,identity} or arb_proposal!=proposal:
+                if arb_role!='ARBITER' or arb.outcome not in {'ACCEPT','REVISE'} or arb_identity in {draft,identity} or arb_proposal!=proposal:
                     continue
                 if arb_data.get('independent_review')!=review.model_dump(mode='json'):continue
                 decisive=proposal if arb.outcome=='ACCEPT' else arb.corrected_proposal.payload

@@ -169,3 +169,26 @@ def test_independent_source_correction_can_remove_an_unsupported_draft_claim():
     ops=Correct();cards=selected_cards(ops,tile,binding,evidence)
     assert len(cards)==1 and cards[0].evidence_anchor_ids==['owned']
     assert ops.roles[-2:]==['SECONDARY','ARBITER']
+
+
+@pytest.mark.parametrize('arbiter_outcome',['ACCEPT','SOURCE_UNRESOLVED'])
+def test_unresolved_source_review_is_arbitrated_without_defaulting_to_pass(arbiter_outcome):
+    tile,binding,evidence=inputs()
+    class Uncertain(Script):
+        def __init__(self):super().__init__();self.arbitrated=False
+        def request(self,role,operation,data,response_type,*,validate,**kwargs):
+            if response_type is SourceTaskBatch:
+                value=response_type.model_validate(ready());validate(value);return value
+            outcome='SOURCE_UNRESOLVED' if role=='SECONDARY' else arbiter_outcome
+            if role=='ARBITER':
+                self.arbitrated=True
+                assert data['independent_review']['outcome']=='SOURCE_UNRESOLVED'
+            value=SourceReviewResponse.model_validate(dict(request_id=data['request_id'],proposal_kind='CARD_BATCH',proposal_hash=data['proposal_hash'],
+                outcome=outcome,checked_anchor_ids=data['checked_anchor_ids'],checked_item_ids=data['checked_item_ids'],issues=[],
+                corrected_proposal=None,evidence_requests=[],unresolved_reason='A material source question remains' if outcome=='SOURCE_UNRESOLVED' else None))
+            validate(value);return value
+    ops=Uncertain()
+    if arbiter_outcome=='ACCEPT':assert len(selected_cards(ops,tile,binding,evidence))==1
+    else:
+        with pytest.raises(Hold,match='Unresolved source-only'):selected_cards(ops,tile,binding,evidence)
+    assert ops.arbitrated

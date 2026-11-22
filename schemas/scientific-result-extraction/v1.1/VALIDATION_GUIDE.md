@@ -1,3 +1,8 @@
+> **Source disagreement routing:** a secondary `SOURCE_UNRESOLVED` interpretation
+> of a source proposal goes to the independent source arbiter, just like a
+> substantive `REVISE`. The arbiter may accept, correct, request captured context,
+> or retain HOLD. This is not an automatic pass or an additional technical retry.
+
 > **Source-fidelity clarification, 23 November 2026:** qualitative findings remain
 > valid at the reported level. Unreported effect sizes, exact p-values or statistic
 > types are not automatically unresolved source meaning. Independent source review

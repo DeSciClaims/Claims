@@ -67,7 +67,7 @@ def reviewed(ops, kind, proposal, request, anchors, items, *, source_limit=SOURC
     )
     if response.outcome == "ACCEPT":
         return proposal
-    if response.outcome == "REVISE":
+    if response.outcome in {"REVISE", "SOURCE_UNRESOLVED"}:
         final = ops.request(
             "ARBITER",
             name + "_reconcile",
@@ -501,7 +501,7 @@ def selected_cards(ops, tile, binding, evidence, *, expand=None):
         batch=ops.request('SOURCE_READER','source_card',request,SourceTaskBatch,validate=validate,source_limit=limit)
         try:
             if batch.outcome=='NEED_EVIDENCE':raise SourceContextRequested(batch.evidence_requests)
-            if batch.outcome=='INVENTORY_DEFECT':
+            if batch.outcome in {'INVENTORY_DEFECT','SOURCE_UNRESOLVED'}:
                 # An unreviewed source-reader decision cannot change sampling.
                 batch=reviewed(ops,'CARD_BATCH',batch,{**request,'original_source_draft':batch.model_dump(mode='json')},
                     anchor_ids,['tile:'+tile.tile_id],source_limit=limit,allow_evidence_requests=True,proposal_validator=validate)
