@@ -75,7 +75,8 @@ def create_scientific_policy(row,backend,configuration):
         if sha(canonical(snapshot))!=route.runtime_revision or snapshot['id']!=route.model:
             raise ValueError('Frozen route endpoint snapshot differs')
         providers=sorted({e['provider_name'] for e in snapshot['endpoints'] if 'structured_outputs' in e.get('supported_parameters',[])})
-        preferences[role]={'require_parameters':True,'only':providers}
+        if not providers:raise ValueError('No strict-schema provider advertised for judge model')
+        preferences[role]={'require_parameters':True,'allow_fallbacks':True}
     for role,route in routes.items():
         p=params[role]
         if p.declared_context_window_tokens!=route.context_window_tokens:raise ValueError('Scientific route context descriptor differs')

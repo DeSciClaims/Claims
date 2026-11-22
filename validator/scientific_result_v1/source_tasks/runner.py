@@ -29,6 +29,6 @@ def make_operations(*,store,settings,policy_sha256,trace_dir,deadline=None,offli
         key=os.environ.get('CLAIMS_SCIENTIFIC_'+role+'_API_KEY') or os.environ.get('OPENROUTER_API_KEY')
         if not key and not offline:raise ValueError('Judge API key missing for '+role)
         runtimes[role]=SourceTaskRuntime(model=route.model,api_key=key or '',api_base=params.api_base,max_tokens=route.max_output_tokens,
-            reasoning_effort=params.reasoning_effort,provider_preferences={'require_parameters':True,'only':providers})
+            reasoning_effort=params.reasoning_effort,provider_preferences={'require_parameters':True,'allow_fallbacks':True})
     return Operations(store=store,routes=routes,runtimes=runtimes,tokenizers={role:tokenizer for role in routes},
         trace_dir=trace_dir,deadline=deadline or time.time()+1800,policy_hash=policy_sha256,offline=offline)

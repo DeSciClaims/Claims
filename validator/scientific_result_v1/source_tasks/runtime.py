@@ -71,15 +71,24 @@ class SourceTaskRuntime(DspyRuntime):
             raise ValueError(
                 "Source-task fixed provider parameters cannot be overridden"
             )
+        self._provider_routing()
+
+    def _provider_routing(self):
+        preferences={'require_parameters':True,'allow_fallbacks':True,**(self.provider_preferences or {})}
+        if set(preferences)-{'require_parameters','allow_fallbacks'}:
+            raise ValueError('Judge provider pinning is disabled; use OpenRouter default routing')
+        if preferences['require_parameters'] is not True:
+            raise ValueError('Frozen routes must require supported parameters')
+        if preferences['allow_fallbacks'] is not True:
+            raise ValueError('Judge provider fallback must remain enabled')
+        return preferences
 
     def create_adapter(self, schema):
         return StrictAdapter(schema)
 
     def _lm(self, **kwargs):
+        preferences=self._provider_routing()
         lm = super()._lm(**kwargs)
-        preferences={'require_parameters':True,**(self.provider_preferences or {})}
-        if preferences.get('require_parameters') is not True:
-            raise ValueError('Frozen routes must require supported parameters')
         lm.kwargs.update(top_p=1, n=1, tools=[], tool_choice="none", provider=preferences)
         if self.reasoning_effort is None:
             lm.kwargs.pop("reasoning", None)

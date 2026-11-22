@@ -93,6 +93,12 @@ Judge output is capped at 16,384 tokens. These are validator settings, separate
 from miner execution budgets. Routes, limits, prompts and implementation identities
 are retained in the frozen evaluation configuration.
 
+Judge requests use OpenRouter default provider routing with fallback enabled and
+`require_parameters=true`. Provider `only`, `order` and `ignore` restrictions are
+rejected. Endpoint snapshots document model capabilities; they do not restrict
+which compatible provider OpenRouter may select. Selected model IDs, strict JSON
+schemas and provider-reported serving identities remain retained for audit.
+
 Independent index batches use up to four request contexts per case, subject to a
 global 16-request gate and four case workers. Packet splitting keeps scientific
 dependencies together. Lossless transport pools repeated literal strings and

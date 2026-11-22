@@ -79,7 +79,7 @@ def test_pdf_run_can_freeze_approved_image_reviewer_without_changing_default(tmp
                         models={**models, 'SECONDARY': models['PRIMARY']})
 
 
-def test_deepseek_strict_provider_pin_is_frozen_and_reaches_actual_runtime(tmp_path):
+def test_default_routing_keeps_all_endpoints_and_does_not_pin_judge_providers(tmp_path):
     import json
     from validator.scientific_result_v1.source_tasks.contracts import FileRef
     store=Store(tmp_path/'store')
@@ -91,13 +91,23 @@ def test_deepseek_strict_provider_pin_is_frozen_and_reaches_actual_runtime(tmp_p
         'supported_parameters':['structured_outputs']} for name in ['Baidu','DeepInfra','Cohere']]
     settings,_=freeze_settings(store,route_snapshots=snapshots,execution_policy={})
     ops=make_operations(store=store,settings=settings,policy_sha256='1'*64,trace_dir=tmp_path/'traces',offline=True)
-    assert ops.runtimes['SECONDARY'].provider_preferences['only']==['DeepInfra']
+    for runtime in ops.runtimes.values():
+        assert runtime.provider_preferences=={'require_parameters':True,'allow_fallbacks':True}
+        lm=runtime._lm(stage='test',output_dir=tmp_path/'request',program_id='test')
+        assert lm.kwargs['provider']=={'require_parameters':True,'allow_fallbacks':True}
     route=next(r for r in settings.model_routes if r.role=='SECONDARY')
     descriptor=json.loads(store.get_blob(route.route_sha256))
     original=json.loads(store.read(FileRef.model_validate(descriptor['original_snapshot'])))
     selected=json.loads(store.read(FileRef.model_validate(descriptor['snapshot'])))
     assert {e['provider_name'] for e in original['endpoints']}=={'Baidu','DeepInfra','Cohere'}
-    assert {e['provider_name'] for e in selected['endpoints']}=={'DeepInfra'}
+    assert {e['provider_name'] for e in selected['endpoints']}=={'Baidu','DeepInfra','Cohere'}
     assert len(snapshots[deepseek]['endpoints'])==3  # The original snapshot is not mutated.
-    with pytest.raises(ValueError,match='No strict-schema endpoint'):
+    with pytest.raises(ValueError,match='provider allowlists are not supported'):
         freeze_settings(store,route_snapshots=snapshots,execution_policy={},provider_allowlists={deepseek:['missing']})
+
+
+@pytest.mark.parametrize('preference',[{'only':['DeepInfra']},{'order':['Alibaba']},
+    {'ignore':['Baidu']},{'allow_fallbacks':False},{'require_parameters':False}])
+def test_runtime_rejects_provider_pins_and_preserves_strict_requirements(preference):
+    with pytest.raises(ValueError):
+        SourceTaskRuntime(model=MODELS['SECONDARY'],api_key='',provider_preferences=preference)

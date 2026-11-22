@@ -9,8 +9,6 @@ MODELS={'SOURCE_READER':'qwen/qwen3.8-flash','PRIMARY':'qwen/qwen3.8-flash',
         'SECONDARY':'deepseek/deepseek-v4-flash-0731','ARBITER':'moonshotai/kimi-k2.5'}
 
 
-PROVIDER_ALLOWLISTS={'deepseek/deepseek-v4-flash-0731':('DeepInfra',)}
-
 def literal_default(annotation):
     if get_origin(annotation) is Annotated:return literal_default(get_args(annotation)[0])
     if get_origin(annotation) is Literal and len(get_args(annotation))==1:return get_args(annotation)[0]
@@ -20,9 +18,10 @@ def literal_default(annotation):
 
 def freeze_settings(store,*,route_snapshots,execution_policy,models=None,provider_allowlists=None):
     """No credentials enter the descriptor. Caller signs/freezes the resulting round config."""
-    allowlists=dict(PROVIDER_ALLOWLISTS if provider_allowlists is None else provider_allowlists)
+    if provider_allowlists:
+        raise ValueError('Judge provider allowlists are not supported; use OpenRouter default routing')
     execution_policy={**execution_policy,'source_evidence_policy':'docling_pdf_derivatives_v1',
-        'provider_allowlists':{model:list(names) for model,names in allowlists.items()}}
+        'provider_allowlists':{},'provider_routing':'openrouter_default'}
     selected=dict(MODELS if models is None else models)
     from .runner import APPROVED_MODELS
     if set(selected)!=set(MODELS) or not set(selected.values())<=APPROVED_MODELS:
@@ -34,9 +33,7 @@ def freeze_settings(store,*,route_snapshots,execution_policy,models=None,provide
         original_snapshot=route_snapshots[model]
         snapshot=original_snapshot
         if snapshot['id']!=model:raise ValueError('Route snapshot model identity differs')
-        eligible=[e for e in snapshot['endpoints'] if 'structured_outputs' in e.get('supported_parameters',[])
-            and (model not in allowlists or e['provider_name'] in allowlists[model])]
-        if model in allowlists:snapshot={**snapshot,'endpoints':eligible}
+        eligible=[e for e in snapshot['endpoints'] if 'structured_outputs' in e.get('supported_parameters',[])]
         if not eligible:raise ValueError('No strict-schema endpoint for '+model)
         context=min(e['context_length'] for e in eligible)
         provider=ProviderParameters(api_base='https://openrouter.ai/api/v1',tokenizer_id=tokenizer.id,
