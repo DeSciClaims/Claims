@@ -1,3 +1,10 @@
+> **Source-fidelity clarification, 23 November 2026:** qualitative findings remain
+> valid at the reported level. Unreported effect sizes, exact p-values or statistic
+> types are not automatically unresolved source meaning. Independent source review
+> can correct an unsupported draft assertion and remove its draft-only citations,
+> with concrete source issues and arbiter confirmation. It must retain every
+> readable source-supported finding; candidate outputs never enter this decision.
+
 > **Owner-approved testnet recovery — 22 November 2026:** the sealed scientific
 > judging deadline can be frozen at 7,200 seconds instead of the legacy 1,800
 > seconds. The current recovery uses 7,200 seconds for all entrants. Miner

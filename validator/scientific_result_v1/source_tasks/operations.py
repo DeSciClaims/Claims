@@ -81,6 +81,27 @@ that dimension. Other outcomes require checks={}. The strict adapter losslessly
 decodes this exact map into the canonical check list; it never supplies a missing
 dimension, changes a status or manufactures a witness."""
 
+SCOPE_OVERRIDE += """\nSOURCE FIDELITY AND REPORTED UNCERTAINTY: A qualitative finding is a valid scientific
+result at its reported level. Preserve descriptions such as increased, reduced,
+no difference, or statistically significant without inventing a numerical effect,
+zero, exact p-value, threshold, test, measurement or uncertainty. If these details
+are unreported, record SOURCE_UNSPECIFIED/unknown where applicable; their absence
+alone is neither an unresolved source contradiction nor a reason for common HOLD.
+Do not demand numerical details merely because the schema can represent them.
+Under the frozen Docling policy, never infer a finding from garbled OCR or a panel
+whose scientific content the derivatives do not recover. Keep every readable,
+source-supported finding and qualifier, including qualitative descriptions of
+figures. An unsupported claim in a SOURCE_READER draft is a proposal error: an
+independent reviewer should REVISE it with a concrete witnessed SOURCE_MISSTATEMENT
+or INVENTED_ENCODING issue and a complete source-faithful batch. The source arbiter
+must confirm the correction. The original draft is not authoritative source truth;
+a correction may remove its unsupported assertions and their draft-only citations.
+This never permits omitting difficult but readable source content, suppressing a
+real source contradiction, or overlooking a material ambiguity that cannot be
+represented faithfully. Use NEED_EVIDENCE when additional captured source context
+may resolve a material question. Only genuinely unresolved material source meaning
+after the prescribed review/retrieval route warrants SOURCE_UNRESOLVED."""
+
 
 class Hold(RuntimeError):
     def __init__(self, category, message, *, retryable=False):

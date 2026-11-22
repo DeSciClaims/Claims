@@ -144,3 +144,28 @@ def test_consolidation_cannot_drop_original_source_witnesses():
     evidence['anchors'].append({'anchor_id':'context','exact_text':'A necessary definition.'})
     with pytest.raises(ValueError,match='dropped original evidence'):
         selected_cards(DropsWitness(),tile,binding,evidence)
+
+
+def test_independent_source_correction_can_remove_an_unsupported_draft_claim():
+    import copy
+    tile,binding,evidence=inputs()
+    tile=tile.model_copy(update={'owned_anchor_ids':['owned','garbled']})
+    evidence['anchors'].append({'anchor_id':'garbled','exact_text':'Illegible OCR fragment'})
+    original=ready();bad=copy.deepcopy(original['cards'][0]);bad['local_key']='unsupported'
+    bad['evidence_anchor_ids']=['garbled'];bad['requirements'][0]['evidence_anchor_ids']=['garbled']
+    original['cards'].append(bad)
+    class Correct:
+        def __init__(self):self.roles=[]
+        def request(self,role,operation,data,response_type,*,validate,**kwargs):
+            self.roles.append(role)
+            if response_type is SourceTaskBatch:value=original
+            else:
+                value=dict(request_id=data['request_id'],proposal_kind='CARD_BATCH',proposal_hash=data['proposal_hash'],
+                    outcome='REVISE',checked_anchor_ids=data['checked_anchor_ids'],checked_item_ids=data['checked_item_ids'],
+                    issues=[dict(code='SOURCE_MISSTATEMENT',proposal_pointers=['/cards/1'],evidence_anchor_ids=['garbled'],
+                        description='No readable source finding supports the extra draft assertion')],
+                    corrected_proposal={'kind':'CARD_BATCH','payload':ready()},evidence_requests=[],unresolved_reason=None)
+            result=response_type.model_validate(value);validate(result);return result
+    ops=Correct();cards=selected_cards(ops,tile,binding,evidence)
+    assert len(cards)==1 and cards[0].evidence_anchor_ids==['owned']
+    assert ops.roles[-2:]==['SECONDARY','ARBITER']

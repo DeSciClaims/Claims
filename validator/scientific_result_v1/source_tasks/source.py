@@ -530,7 +530,7 @@ def selected_cards(ops, tile, binding, evidence, *, expand=None):
             if batch.outcome=='NEED_EVIDENCE':raise SourceContextRequested(batch.evidence_requests)
             check_items=['original:'+c.local_key for c in original.cards]+['proposed:'+c.local_key for c in batch.cards]
             batch=reviewed(ops,'CARD_BATCH',batch,request,anchor_ids,check_items,
-                source_limit=limit,allow_evidence_requests=True,proposal_validator=validate_consolidated)
+                source_limit=limit,allow_evidence_requests=True,proposal_validator=validate)
             if batch.outcome=='INVENTORY_DEFECT':defect(batch)
             if batch.outcome!='READY':raise Hold('SOURCE','Selected tile requires common correction: '+batch.outcome)
             validate(batch)

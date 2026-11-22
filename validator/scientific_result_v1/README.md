@@ -76,6 +76,11 @@ was not supplied is not a coverage requirement. Supplied supplements remain in
 scope. A paper mentioning a missing supplement does not by itself block scoring.
 Submitted scientific assertions still need support in the supplied evidence.
 
+Qualitative findings are assessed at the level actually reported. An unreported
+effect size or exact p-value is not a source failure. Independently reviewed source
+corrections may remove unsupported draft claims with concrete source witnesses
+and arbiter confirmation; the original draft remains retained.
+
 The schema can represent figure-derived values. OCR recovers printed text and
 numbers; interpreting marker positions or curves needs additional capabilities.
 The current source-evidence policy is `docling_pdf_derivatives_v1`: judges rely
