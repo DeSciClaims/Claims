@@ -167,10 +167,7 @@ def score_ready_paper(
         faults = {hotkey: _status_fault(outcome["status"]) for hotkey, outcome in outcomes.items()}
         infrastructure_fault = "infrastructure" in faults.values()
         scientific_protocol = getattr(evaluate, "validation_protocol", None) == "claims-source-task-v1"
-        if infrastructure_fault and scientific_protocol:
-            return {"status": "waiting_for_scientific_review", "paper_id": paper_id,
-                    "scientific_state": "HOLD", "reason": "worker_infrastructure_fault"}
-        if infrastructure_fault:
+        if infrastructure_fault and not scientific_protocol:
             scores_by_hotkey: dict[str, float] = {}
             pairs = [{
                 "paper_id": paper_id, "challenger_hotkey": row["hotkey"],
@@ -193,10 +190,18 @@ def score_ready_paper(
             pairs = list(evaluation.pair_rows)
             from .scientific_scoring import ScientificPaperEvaluation
             scientific = isinstance(evaluation, ScientificPaperEvaluation)
-            if scientific and evaluation.pipeline.state != "FROZEN":
+            common_exclusion=getattr(evaluation,'common_exclusion',None) if scientific else None
+            if scientific and evaluation.pipeline.state != "FROZEN" and common_exclusion is None:
                 return {"status": "waiting_for_scientific_review", "paper_id": paper_id,
                         "scientific_state": evaluation.pipeline.state,
                         "receipt_sha256": evaluation.receipt_sha256}
+            if common_exclusion is not None:infrastructure_fault=True
+            replacement=getattr(backend,'request_common_replacement',None)
+            if common_exclusion is not None and callable(replacement):
+                try:replacement(round_id,stage,common_exclusion.model_dump(mode='json'))
+                except RuntimeError as exc:
+                    if 'HTTP 409' not in str(exc):raise
+                    return {'status':'waiting_for_common_replacement','paper_id':paper_id}
             scores_by_hotkey = (dict(evaluation.scores_by_hotkey) if scientific else
                                 {row.miner_id: row.score for row in evaluation.pipeline.scores})
             gold_candidates = []
@@ -217,6 +222,7 @@ def score_ready_paper(
                           "receipt_sha256": evaluation.receipt_sha256,
                           "sampled_receipt": evaluation.pipeline.model_dump(mode="json"),
                           "output_alias_by_hotkey": evaluation.output_alias_by_hotkey}
+                if common_exclusion is not None:silver['common_exclusion']=common_exclusion.model_dump(mode='json')
             else:
                 silver = {
                     "silver_record": evaluation.pipeline.silver_record.model_dump(mode="json"),
@@ -256,6 +262,7 @@ def score_ready_paper(
                     "worker_status": outcomes[hotkey]["status"],
                     "total_tokens": outcomes[hotkey].get("prompt_and_completion_tokens"),
                     "inference_cost_usd": outcomes[hotkey].get("inference_cost_usd"),
+                    **({'evaluation_status':'COMMON_EXCLUDED','scientific_score':None} if scientific_protocol and infrastructure_fault else {}),
                 },
             }})
         result = {"scores": scores, "pairs": pairs, "silver": silver,
@@ -263,7 +270,7 @@ def score_ready_paper(
                   "resources": (getattr(evaluation, "resources", None)
                                 if not infrastructure_fault else None),
                   "judge_usage": (list(getattr(evaluation, "judge_usage_events", None))
-                                  if not infrastructure_fault
+                                  if (not infrastructure_fault or scientific_protocol)
                                   and getattr(evaluation, "judge_usage_events", None) is not None else None)}
     generation = ({"expected_configuration_sha256": expected_configuration_sha256 or round_record["configuration_sha256"],
                    "expected_rules_revision": expected_rules_revision or round_record.get("rules_revision", 1)}

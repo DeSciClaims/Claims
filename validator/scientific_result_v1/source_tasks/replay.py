@@ -22,6 +22,9 @@ def replay(store,ref):
     validate_frame(source,packet)
     from .docling_frame import validate_docling_frame
     docling_evidence=validate_docling_frame(store,source,packet)
+    if docling_evidence:
+        from .source_recovery import validate_frame_scope
+        validate_frame_scope(store,source,receipt.binding)
     if any(d.file and d.file.media_type=='application/pdf' for d in packet.documents) and not docling_evidence:
         raise ValueError('PDF replay requires a bound independent Docling source frame')
     packages=[store.load(r,SubmittedPackage) for r in receipt.input_packages]

@@ -23,6 +23,7 @@ from .source import validate_frame, selected_cards
 from .judging import assess
 from .scoring import score
 from .operations import Hold
+from .source_recovery import SourceInventoryDefect
 from .errors import hold_record
 
 
@@ -226,6 +227,9 @@ class PaperEvaluator:
             policy_sha256=policy_sha256,
             revision=revision,
         )
+        if docling_evidence:
+            from .source_recovery import validate_frame_scope
+            validate_frame_scope(store,source_frame,binding)
         clock_core={k:getattr(binding,k) for k in ('protocol_id','round_id','stage','paper_id','source_packet_sha256','input_pool_sha256','policy_sha256')}
         key="generation:"+sha(canonical(clock_core))
         inherited_corrections=[]
@@ -241,7 +245,7 @@ class PaperEvaluator:
             inherited_corrections=[*prior.corrections,correction]
             if sum(c.kind in {"SOURCE_FRAME","SOURCE_TASK"} for c in inherited_corrections)>2:raise ValueError("Common correction limit exhausted")
             if prior.state=="FROZEN":key+=":authorized:"+sha(canonical(generation_authorization))
-        _,deadline=store.generation(key,sha(canonical(clock_core)))
+        _,deadline=store.generation(key,sha(canonical(clock_core)),timeout=self.ops.generation_timeout_seconds)
         self.ops.deadline=min(self.ops.deadline,deadline)
         source_ineligible=not any(t.eligible_content for t in source_frame.tiles) and not any(t.numerical for t in source_frame.tables)
         selected = samples(source_frame.tiles, secret, scope)
@@ -257,6 +261,10 @@ class PaperEvaluator:
         held = []
         allbuckets = []
         selections = []
+        if any(p.state=='INFRASTRUCTURE_FAILURE' for p in packages):
+            # An unavailable original execution is a common uncertainty. Finish
+            # the deterministic gate ledger without paying to judge competitors.
+            held.extend(e for p in packages if p.state=='INFRASTRUCTURE_FAILURE' for e in p.errors)
         tasks_initialized=False
         def ensure_shared_tasks():
             # G=0 needs no scientific judgment. The source-only task payload and
@@ -271,7 +279,7 @@ class PaperEvaluator:
                         source_frame, tile.owned_anchor_ids + tile.context_anchor_ids
                     )
                     tasks.extend(selected_cards(self.ops,tile,binding,evidence,
-                        expand=lambda current,requests,limit:expand_evidence(source_frame,current,requests,limit)))
+                        expand=lambda current,requests,limit:expand_evidence(source_frame,current,requests,limit,tokenizers=self.ops.tokenizers)))
                 for tileid in selected["archive"]:
                     tile = tilemap[tileid]
                     tasks.append(
@@ -297,6 +305,9 @@ class PaperEvaluator:
                             source_scope_note="Selected complete five-row source block; do not require an F per CSV cell.",
                         )
                     )
+            except SourceInventoryDefect as exc:
+                self.ops.pending_source_correction=exc.proposal
+                held.append(hold_record(exc,'TASK_BUILD'))
             except Hold as exc:
                 held.append(hold_record(exc,'TASK_BUILD'))
         from concurrent.futures import ThreadPoolExecutor
@@ -325,7 +336,7 @@ class PaperEvaluator:
                     packet_refs.append(store.put(rendered))
                     verdict=assess(local,task=child,packet=rendered,evidence=evidence_for(source_frame,child.evidence_anchor_ids),
                         secret=secret,scope=scope,resolve=index.resolve,
-                        expand=lambda current,requests,limit:expand_evidence(source_frame,current,requests,limit))
+                        expand=lambda current,requests,limit:expand_evidence(source_frame,current,requests,limit,tokenizers=local.tokenizers))
                     verdict_ref=store.put(verdict);verdict_refs.append(verdict_ref)
                     if verdict.state=='HOLD':errors.extend(verdict.hold_reasons)
                     else:bits.append(TaskBit(task_id=child.task_id,tile_or_bucket_id=child.source_bucket_id or child.tile_ids[0],
@@ -401,6 +412,7 @@ class PaperEvaluator:
                         score(binding, alias, 0, source_frame, per_selected, [])
                     )
                     continue
+                if held:continue  # Recover the common uncertainty before spending on another entrant.
                 index = Index(original)
                 db = document_bindings.get(alias)
                 if db is None:
@@ -544,11 +556,25 @@ class PaperEvaluator:
             hold_reasons=held,
         )
         ref = store.put(receipt)
+        proposal=getattr(self.ops,'pending_source_correction',None)
+        if proposal is not None:
+            proposal_key='source-correction-proposal:'+sha(canonical(binding))
+            old_proposal=store.head(proposal_key)
+            if old_proposal is None:store.advance(proposal_key,None,proposal.sha256)
+            elif old_proposal!=proposal.sha256:raise ValueError('Common source correction proposal changed')
         import json
         head_key="paper:"+json.dumps([source_packet.round_id,comparison_plan.stage,source_packet.paper_id])
         current=store.head(head_key)
         if current is not None and current!=ref.sha256:
             prior=SampledSilverReceipt.model_validate_json(store.get_blob(current),strict=True)
+            if (prior.state==receipt.state=='HOLD' and prior.binding==binding
+                and held and all(e.code=='DEADLINE_EXCEEDED' for e in held)
+                and {r.sha256 for r in receipt.judge_runs}<={r.sha256 for r in prior.judge_runs}):
+                # A poll after expiry must not replace useful original findings
+                # and paid-work references with a generic zero-work timeout.
+                raw=store.get_blob(current)
+                from .contracts import FileRef
+                return prior,FileRef(relative_path='blobs/'+current,sha256=current,byte_length=len(raw),media_type='application/octet-stream')
             if prior.state=="FROZEN" and generation_authorization is None:
                 raise ValueError("A frozen scientific receipt cannot change without common correction authorization")
             if prior.binding!=binding and (generation_authorization is None or generation_authorization["predecessor"].sha256!=current):
@@ -557,12 +583,13 @@ class PaperEvaluator:
         return receipt, ref
 
 
-def expand_evidence(source_frame,current,requests,limit):
+def expand_evidence(source_frame,current,requests,limit,*,tokenizers=None):
     """Retrieve only captured evidence from the same immutable source frame; never URLs."""
     from .packets import tokens
     anchors={a.anchor_id:a for a in source_frame.anchors}
     selected={a['anchor_id'] for a in current['anchors']}
     before=set(selected)
+    optional=[]
     for request in requests:
         if not set(request.anchor_ids)<=anchors.keys():raise Hold('EVALUATOR','Unknown requested source anchor')
         candidates=[a for a in source_frame.anchors if request.document_uid is None or a.document_uid==request.document_uid]
@@ -576,13 +603,25 @@ def expand_evidence(source_frame,current,requests,limit):
         if request.kind in {'TABLE_HEADERS','TABLE_NOTES'}:
             for table in source_frame.tables:
                 if set(request.anchor_ids)&set(table.anchor_ids+table.data_row_anchor_ids+table.header_anchor_ids+table.note_anchor_ids):
-                    selected.update(table.header_anchor_ids+table.note_anchor_ids+table.anchor_ids)
+                    # Headers/notes do not require every numerical row in the table.
+                    selected.update(table.header_anchor_ids+table.note_anchor_ids)
         elif request.kind=='ADJACENT_TEXT':
             indices=[i for i,a in enumerate(candidates) if a.anchor_id in request.anchor_ids]
-            for i in indices:selected.update(a.anchor_id for a in candidates[max(0,i-1):i+2])
+            for i in indices:optional.extend(a.anchor_id for a in candidates[max(0,i-1):i+2])
         else:
             query=tokens(request.query)
             ranked=sorted(candidates,key=lambda a:(-len(query&tokens(a.exact_text or '')),a.anchor_id.encode()))
-            selected.update(a.anchor_id for a in ranked[:12])
+            optional.extend(a.anchor_id for a in ranked[:12])
+    from .transport import judge_evidence
+    if tokenizers is None:
+        from .tokenization import BudgetTokenizer
+        tokenizers={'budget':BudgetTokenizer()}
+    def fits(ids):
+        wire=canonical(judge_evidence(evidence_for(source_frame,ids))).decode()
+        return max(counter(wire) for counter in tokenizers.values())<=limit
+    # Never truncate an explicit witness or silently lose the original evidence.
+    if not fits(selected):raise Hold('SOURCE','Required source evidence exceeds current evidence bound')
+    for aid in dict.fromkeys(optional):
+        if aid not in selected and fits(selected|{aid}):selected.add(aid)
     if selected==before:raise Hold('SOURCE','Requested expansion adds no captured evidence')
     return evidence_for(source_frame,[a.anchor_id for a in source_frame.anchors if a.anchor_id in selected])

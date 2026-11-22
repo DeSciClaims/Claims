@@ -16,10 +16,12 @@ def literal_default(annotation):
     raise ValueError('Required deployment value has no protocol default')
 
 
-def freeze_settings(store,*,route_snapshots,execution_policy,models=None,provider_allowlists=None):
+def freeze_settings(store,*,route_snapshots,execution_policy,models=None,provider_allowlists=None,sealed_evaluation_timeout_seconds=1800):
     """No credentials enter the descriptor. Caller signs/freezes the resulting round config."""
     if provider_allowlists:
         raise ValueError('Judge provider allowlists are not supported; use OpenRouter default routing')
+    if type(sealed_evaluation_timeout_seconds) is not int or sealed_evaluation_timeout_seconds not in {1800,7200}:
+        raise ValueError('A frozen scientific deadline must be 1800 or owner-approved 7200 seconds')
     execution_policy={**execution_policy,'source_evidence_policy':'docling_pdf_derivatives_v1',
         'provider_allowlists':{},'provider_routing':'openrouter_default'}
     selected=dict(MODELS if models is None else models)
@@ -46,7 +48,8 @@ def freeze_settings(store,*,route_snapshots,execution_policy,models=None,provide
             route_sha256=store.put(descriptor).sha256,supports_strict_json_schema=True,
             supports_images='image' in snapshot['architecture']['input_modalities'],context_window_tokens=context,
             temperature=0,top_p=1,n=1,max_output_tokens=16384,request_timeout_seconds=120,provider_parameters=parameters))
-    values={**runtime_descriptor(),'model_routes':routes,'execution_policy':store.put(execution_policy)}
+    values={**runtime_descriptor(),'model_routes':routes,'execution_policy':store.put(execution_policy),
+        'sealed_evaluation_timeout_seconds':sealed_evaluation_timeout_seconds}
     for name,field in FrozenSettings.model_fields.items():
         if name not in values:values[name]=literal_default(field.annotation)
     settings=FrozenSettings(**values)

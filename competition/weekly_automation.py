@@ -151,6 +151,10 @@ def _score_active_stage(
         # independently of the configured number of scoring threads.
         candidates = (ready_projection(round_id, stage, limit=min(64, limits.scoring_max_workers * 2))
                       if callable(ready_projection) else ready)
+        if isinstance(candidates,list) and not set(candidates)<=paper_ids:
+            refreshed={p['paper_id'] for p in backend.list_sample(round_id) if p['stage']==stage}
+            if not paper_ids<=refreshed:raise ValueError('Common replacement removed released source history')
+            paper_ids.update(refreshed)
         if not isinstance(candidates, list) or not set(candidates) <= paper_ids:
             raise ValueError("ready-paper projection differs from the frozen sample")
         return [paper for paper in candidates if paper not in submitted]
@@ -174,6 +178,11 @@ def _score_active_stage(
                     errors.append(exc)
     if errors:
         raise errors[0]
+    record=backend.get_round(round_id)
+    complete=getattr(backend,'complete_scientific_stage',None)
+    if record.get('rules_public',{}).get('policy',{}).get('validation_protocol')=='claims-source-task-v1' and callable(complete):
+        state=complete(round_id,stage)
+        if state['status']!='ready':return {**state,'scored_papers_this_tick':attempted}
     if scoring_stage in {"prescreen", "screen"}:
         result = advance_ready_stage(round_id, backend=backend, identity_preparer=identity_preparer)
         if result["status"] == "started":

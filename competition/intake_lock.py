@@ -346,6 +346,17 @@ class CompetitionBackend:
                 raise RuntimeError("competition pair pagination did not advance")
             offset = page["next_offset"]
 
+    def request_common_replacement(self,round_id,stage,exclusion_receipt):
+        scope='/'.join(urllib.parse.quote(v,safe='') for v in (round_id,stage))
+        status=self._request('GET','/internal/competition/scientific/stages/'+scope+'/recovery')
+        return self._request('POST','/internal/competition/scientific/replacements/'+scope,{
+            'exclusion_receipt':exclusion_receipt,'expected_sample_revision':status['sample_revision'],
+            'next_precommitted_paper_id':status['next_precommitted_paper_id']})
+
+    def complete_scientific_stage(self,round_id,stage):
+        scope='/'.join(urllib.parse.quote(v,safe='') for v in (round_id,stage))
+        return self._request('POST','/internal/competition/scientific/stages/'+scope+'/complete',{})
+
     def record_pair_score(
         self, round_id: str, stage: str, payload: dict[str, Any],
     ) -> dict[str, Any]:

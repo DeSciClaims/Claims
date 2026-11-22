@@ -1,0 +1,30 @@
+ROLE: SOURCE_REQUIREMENT_ATOMICITY
+Return a complete SourceTaskBatch using only authoritative_evidence,
+original_source_draft and source_consolidation_draft. No candidate extraction is
+available. Preserve every source-defined parent card and all scientific content.
+
+Within EACH parent card, make a separate COMPLETE requirement for each independently
+reported observable, assay, outcome, population, intervention/contrast, time or test.
+Do not hide separately reported findings inside a broad requirement's qualifications.
+For example, "X increased sphere formation, markers A/B, enzyme activity and tumor
+initiation" needs separate requirements for those independently reported findings,
+even when one sentence calls all of them "increased stemness" or another umbrella
+interpretation. A qualitative finding still counts. Keep the umbrella interpretation
+with its necessary source qualifications, without replacing the detailed findings.
+
+Qualifications restrict ONE finding (such as population, measurement conditions,
+adjustment or time); they must not be a list of additional findings. Different
+markers/assays and independently reported conditions stay independently checkable.
+Preserve every stated number, operator, uncertainty, classification, relationship,
+analysis/adjustment scope and evidence anchor. Each quantity retains its own SE/SD,
+interval and p-value. Never split interval endpoints, an estimate from its uncertainty,
+or a genuinely joint/multivariate result into incomplete requirements.
+
+Do not create extra parent cards merely to make smaller requirements. Every necessary
+requirement remains mandatory for the ORIGINAL parent card's one scientific bit.
+Preserve the complete union of original source witnesses. Do not infer facts, invent
+numerical detail, require a preferred miner organization, or simplify hard science.
+Return the unchanged consolidated batch when its requirements already satisfy these
+rules. Use NEED_EVIDENCE when a material source distinction cannot be resolved.
+An independent reviewer will compare the complete proposal and both prior drafts
+against the source. Return only the contracted JSON object.

@@ -1,0 +1,153 @@
+"""Recovery preserves exact evidence, successful work and immutable attempt limits."""
+from types import SimpleNamespace
+import pytest
+from validator.scientific_result_v1.source_tasks.store import Store,Exhausted,Conflict
+from validator.scientific_result_v1.source_tasks.evaluator import expand_evidence
+from validator.scientific_result_v1.source_tasks.operations import Hold
+from validator.scientific_result_v1.source_tasks.contracts import SourceAnchor,TextLocator,EvidenceRequest
+
+
+def test_expired_dispatch_reuses_success_without_allocating_an_attempt(tmp_path):
+    store=Store(tmp_path);request=store.put({'request':1});response=store.put({'answer':1})
+    ordinal,_=store.reserve('op',request.sha256,now=100)
+    store.finish('op',ordinal,response=response.sha256)
+    assert store.reserve('op',request.sha256,now=10000,allow_new=False)==(None,response.sha256)
+    with pytest.raises(Conflict):store.reserve('op',store.put({'request':2}).sha256,allow_new=False)
+    with pytest.raises(Exhausted,match='deadline'):store.reserve('new',request.sha256,allow_new=False)
+    with store.connection() as c:
+        assert c.execute("SELECT count(*) FROM attempts WHERE operation='new'").fetchone()[0]==0
+
+
+def test_remote_expired_dispatch_reuses_success_without_changing_heads(tmp_path):
+    from validator.scientific_result_v1.source_tasks.remote import RemoteStore
+    class MemoryRemote(RemoteStore):
+        put_blob=Store.put_blob
+        def head(self,key):return self.heads.get(key)
+        def advance(self,key,parent,child):
+            assert self.heads.get(key)==parent
+            self.heads[key]=child
+    store=MemoryRemote(tmp_path,SimpleNamespace());store.heads={}
+    request=store.put({'request':1});response=store.put({'answer':1})
+    n,_=store.reserve('op',request.sha256,now=100);store.finish('op',n,response=response.sha256)
+    before=dict(store.heads)
+    assert store.reserve('op',request.sha256,now=10000,allow_new=False)==(None,response.sha256)
+    with pytest.raises(Exhausted,match='deadline'):store.reserve('new',request.sha256,allow_new=False)
+    assert store.heads==before
+
+
+def test_operations_replay_after_deadline_never_dispatches_another_call(tmp_path,monkeypatch):
+    import time
+    from tests.source_tasks.test_docling_frame import fixture
+    from validator.scientific_result_v1.source_tasks.docling_frame import EligibilityResponse
+    _,_,ops=fixture(tmp_path,monkeypatch)
+    data={'tiles':[{'tile_id':'tile'}]}
+    first=ops.request('SOURCE_READER','source_eligibility',data,EligibilityResponse)
+    ops.deadline=time.time()-1;ops.offline=True
+    assert ops.request('SOURCE_READER','source_eligibility',data,EligibilityResponse)==first
+    with pytest.raises(Hold,match='deadline'):
+        ops.request('SOURCE_READER','source_eligibility',{'tiles':[{'tile_id':'new'}]},EligibilityResponse)
+
+
+def source():
+    anchors=[SourceAnchor(anchor_id=k,document_uid='d',source_sha256='1'*64,
+        locator=TextLocator(kind='text',start=i,stop=i+1),exact_text=text,rendering=None)
+        for i,(k,text) in enumerate([('owned','Estimate 3.5.'),('definition','Units mg.'),
+            ('large','Unrelated lengthy appendix. '*1000),('header','Treatment | Outcome'),('row','A | 3.5')])]
+    table=SimpleNamespace(anchor_ids=['header','row'],data_row_anchor_ids=['row'],
+        header_anchor_ids=['header'],note_anchor_ids=[])
+    return SimpleNamespace(anchors=anchors,tables=[table])
+
+
+def test_expansion_skips_oversized_optional_context_and_keeps_requested_witness():
+    frame=source();current={'anchors':[frame.anchors[0].model_dump(mode='json')]}
+    request=EvidenceRequest(request_id='e',kind='DEFINITION',anchor_ids=['definition'],document_uid='d',query='appendix')
+    # A deliberately small deterministic budget makes the full appendix unfit.
+    expanded=expand_evidence(frame,current,[request],600,tokenizers={'test':lambda s:len(s)//4})
+    ids=[a['anchor_id'] for a in expanded['anchors']]
+    assert 'owned' in ids and 'definition' in ids and 'large' not in ids
+    assert all(a==next(x for x in frame.anchors if x.anchor_id==a['anchor_id']).model_dump(mode='json') for a in expanded['anchors'])
+
+
+def test_explicit_oversized_witness_is_held_without_truncation():
+    frame=source();current={'anchors':[frame.anchors[0].model_dump(mode='json')]}
+    request=EvidenceRequest(request_id='e',kind='ADJACENT_TEXT',anchor_ids=['large'],document_uid='d',query='appendix')
+    with pytest.raises(Hold,match='Required source evidence exceeds'):
+        expand_evidence(frame,current,[request],600,tokenizers={'test':lambda s:len(s)//4})
+
+
+def test_requesting_table_headers_does_not_attach_unrequested_data_rows():
+    frame=source();current={'anchors':[frame.anchors[0].model_dump(mode='json')]}
+    request=EvidenceRequest(request_id='e',kind='TABLE_HEADERS',anchor_ids=['header'],document_uid='d',query='header')
+    expanded=expand_evidence(frame,current,[request],2000,tokenizers={'test':lambda s:len(s)//4})
+    assert [a['anchor_id'] for a in expanded['anchors']]==['owned','header']
+
+
+def test_confirmed_inventory_defect_creates_replayable_common_frame_revision(tmp_path,monkeypatch):
+    import json
+    from tests.source_tasks.test_docling_frame import fixture
+    from validator.scientific_result_v1.source_tasks.preparation import prepare_paper
+    from validator.scientific_result_v1.source_tasks.contracts import SourceFrame,FileRef,EvaluationBinding
+    from validator.scientific_result_v1.source_tasks.store import canonical,sha
+    from validator.scientific_result_v1.source_tasks.source import selected_cards
+    from validator.scientific_result_v1.source_tasks.evaluator import evidence_for
+    from validator.scientific_result_v1.source_tasks.source_recovery import SourceInventoryDefect,corrected_frame,validate_defect
+    from validator.scientific_result_v1.source_tasks.docling_frame import validate_docling_frame
+    store,packet,ops=fixture(tmp_path,monkeypatch)
+    prepared,_=prepare_paper(store=store,packet=packet,parsed_directories={},operations=ops,stages=['week_one'],policy_sha256='1'*64)
+    frame=store.load(FileRef.model_validate(prepared['source_frame']),SourceFrame)
+    tile=next(t for t in frame.tiles if t.stratum=='PROSE_OR_EQUATION')
+    binding=EvaluationBinding(protocol_id=packet.protocol_id,round_id=packet.round_id,stage='week_one',paper_id=packet.paper_id,
+        source_packet_sha256=sha(canonical(packet)),source_frame_sha256=sha(canonical(frame)),input_pool_sha256='2'*64,policy_sha256='1'*64,revision=0)
+    class Script:
+        def generate(self,*,payload,**kwargs):
+            if 'proposal' not in payload:return {'tile_id':tile.tile_id,'outcome':'INVENTORY_DEFECT','cards':[],
+                'evidence_requests':[],'unresolved_reason':'Only a non-result introductory statement in this selected tile.'}
+            return dict(request_id=payload['request_id'],proposal_kind='CARD_BATCH',proposal_hash=payload['proposal_hash'],outcome='ACCEPT',
+                checked_anchor_ids=payload['checked_anchor_ids'],checked_item_ids=payload['checked_item_ids'],issues=[],
+                corrected_proposal=None,evidence_requests=[],unresolved_reason=None)
+    ops.runtimes={role:Script() for role in ops.routes}
+    with pytest.raises(SourceInventoryDefect) as captured:
+        selected_cards(ops,tile,binding,evidence_for(frame,tile.owned_anchor_ids+tile.context_anchor_ids))
+    proposal=captured.value.proposal
+    changed=corrected_frame(store,packet,frame,proposal)
+    assert changed.revision==1 and changed.anchors==frame.anchors and changed.tables==frame.tables
+    assert not next(t for t in changed.tiles if t.tile_id==tile.tile_id).eligible_content
+    assert validate_docling_frame(store,changed,packet)
+    # The original independent parse and source artifact are unchanged.
+    assert changed.source_packet_sha256==frame.source_packet_sha256
+    proof=json.loads(store.read(proposal));proof['judge_runs']=proof['judge_runs'][:1]
+    with pytest.raises(ValueError,match='distinct independent confirmed review'):
+        validate_defect(store,store.put(proof),frame)
+    forged=changed.model_copy(update={'tiles':[t.model_copy(update={'eligible_content':True}) for t in changed.tiles]})
+    with pytest.raises(ValueError,match='differs from retained'):
+        validate_docling_frame(store,forged,packet)
+
+
+def test_judge_keyed_wire_rejects_omissions_wrong_dimension_and_duplicate_keys():
+    import json
+    from validator.scientific_result_v1.source_tasks.runtime import StrictAdapter
+    adapter=StrictAdapter({'properties':{'checks':{'type':'object','properties':{'NUMERIC_FIDELITY':{},'ATTACHMENT':{}}}}})
+    valid={'outcome':'ASSESSED','checks':{d:{'dimension':d,'status':'PASS'} for d in ['NUMERIC_FIDELITY','ATTACHMENT']}}
+    assert len(adapter.parse(None,json.dumps(valid))['checks'])==2
+    valid['checks'].pop('ATTACHMENT')
+    with pytest.raises(ValueError,match='every applicable'):adapter.parse(None,json.dumps(valid))
+    with pytest.raises(ValueError,match='every applicable'):
+        adapter.parse(None,'{"outcome":"ASSESSED","checks":{"NUMERIC_FIDELITY":{"dimension":"ATTACHMENT"},"ATTACHMENT":{"dimension":"ATTACHMENT"}}}')
+    with pytest.raises(ValueError,match='Duplicate'):
+        adapter.parse(None,'{"outcome":"ASSESSED","checks":{},"checks":{}}')
+
+
+def test_two_hour_judging_is_explicit_and_does_not_change_legacy_default(tmp_path):
+    from validator.scientific_result_v1.source_tasks.configuration import MODELS,freeze_settings
+    from validator.scientific_result_v1.source_tasks.runner import make_operations
+    snapshots={m:{'id':m,'architecture':{'input_modalities':['text']},'endpoints':[
+        {'provider_name':'test','context_length':200000,'supported_parameters':['structured_outputs']}]}
+        for m in set(MODELS.values())}
+    store=Store(tmp_path)
+    old,_=freeze_settings(store,route_snapshots=snapshots,execution_policy={})
+    new,_=freeze_settings(store,route_snapshots=snapshots,execution_policy={},sealed_evaluation_timeout_seconds=7200)
+    assert old.sealed_evaluation_timeout_seconds==1800 and new.sealed_evaluation_timeout_seconds==7200
+    ops=make_operations(store=store,settings=new,policy_sha256='1'*64,trace_dir=tmp_path/'traces',offline=True)
+    assert ops.generation_timeout_seconds==7200
+    with pytest.raises(ValueError,match='approved'):
+        freeze_settings(store,route_snapshots=snapshots,execution_policy={},sealed_evaluation_timeout_seconds=7201)

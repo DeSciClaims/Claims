@@ -103,7 +103,8 @@ def create_scientific_policy(row,backend,configuration):
             if not key:raise ValueError('Scientific judge API key missing for '+role)
             runtimes[role]=SourceTaskRuntime(model=route.model,api_key=key,api_base=params[role].api_base,max_tokens=route.max_output_tokens,reasoning_effort=params[role].reasoning_effort,provider_preferences=preferences[role])
         return Operations(store=store,routes=routes,runtimes=runtimes,tokenizers={r:tokenizer for r in routes},
-            trace_dir=_root()/'traces'/sha(canonical([round_id,stage,paper_id])),deadline=time.time()+1800,policy_hash=policy_hash)
+            trace_dir=_root()/'traces'/sha(canonical([round_id,stage,paper_id])),deadline=time.time()+settings.sealed_evaluation_timeout_seconds,policy_hash=policy_hash,
+            generation_timeout_seconds=settings.sealed_evaluation_timeout_seconds)
     pool=ScientificPoolService(store,prepared,operations)
     return FrozenScientificEvaluationPolicy(row['round_id'],row['configuration_sha256'],configuration,pool,int(row.get('rules_revision',1)))
 

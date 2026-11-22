@@ -4,6 +4,26 @@ from .contracts import ComparisonPlan, SourceGridManifest, CommonReplacement
 from .store import sha, canonical, Conflict
 
 
+def terminal_exclusion(store,receipt,receipt_ref,*,replacement_ordinal=1):
+    """Retain a common unmeasured outcome only when no prescribed work remains."""
+    from .contracts import CommonExclusionReceipt,ErrorRecord
+    if receipt.state not in {'HOLD','INELIGIBLE'}:raise ValueError('Only unresolved/ineligible common papers can be excluded')
+    if any(v.score is not None for v in receipt.paper_scores):raise ValueError('Common exclusion cannot contain measured scores')
+    if receipt.state=='INELIGIBLE':
+        reason=ErrorRecord(category='SOURCE',code='SOURCE_NO_TASKS',stage='EXCLUSION',
+            message='No eligible scientific content or numerical tables in the verified source frame',retryable=False,output_refs=[])
+    else:
+        if not receipt.hold_reasons or any(r.retryable for r in receipt.hold_reasons):return None
+        proposal=store.head('source-correction-proposal:'+sha(canonical(receipt.binding)))
+        if proposal is not None and sum(c.kind in {'SOURCE_FRAME','SOURCE_TASK'} for c in receipt.corrections)<2:
+            return None
+        reason=receipt.hold_reasons[0].model_copy(update={'stage':'EXCLUSION'})
+    exclusion=CommonExclusionReceipt(binding=receipt.binding,silver_receipt=receipt_ref,reason=reason,
+        terminal_bounds_exhausted=True,replacement_ordinal=replacement_ordinal,
+        applies_to_all_aliases=sorted(v.output_alias for v in receipt.paper_scores))
+    return store.put(exclusion)
+
+
 def correct(store, previous_ref, previous, correction, *, new_receipt, expected_parent):
     if previous_ref.sha256 != expected_parent:
         raise Conflict("Stale correction predecessor")

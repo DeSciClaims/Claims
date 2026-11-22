@@ -26,6 +26,13 @@ class StrictAdapter(JSONStageAdapter):
             # Lossless wire-to-contract decoding only: preserve every authored ref,
             # including empty matches. Never infer an omitted key or repair a decision.
             result={**result,'matches':[{'requirement_id':key,'output_refs':matches[key]} for key in expected]}
+        checks_schema=self.schema.get('properties',{}).get('checks',{})
+        if checks_schema.get('type')=='object':
+            expected=list(checks_schema['properties']);checks=result.get('checks')
+            required=set(expected) if result.get('outcome')=='ASSESSED' else set()
+            if not isinstance(checks,dict) or set(checks)!=required or any(not isinstance(v,dict) or v.get('dimension')!=k for k,v in checks.items()):
+                raise ValueError('Provider must answer every applicable dimension exactly once')
+            result={**result,'checks':[checks[k] for k in expected if k in checks]}
         return result
 
     def __call__(self, lm, lm_kwargs, signature, demos, inputs):

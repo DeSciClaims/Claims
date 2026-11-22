@@ -27,6 +27,27 @@ def response_schema(response_type,data):
         for key in ('analysis_scope','adjustment_scope'):
             requirement['properties'][key].pop('default',None)
             if key not in requirement['required']:requirement['required'].append(key)
+    if response_type.__name__=='BindingResponse':
+        node=defs['DocumentBinding']['properties']
+        node['output_alias']['const']=data['output_alias']
+        node['source_id']['enum']=[s['id'] for s in data['declared_sources']]
+        node['document_uid']['enum']=[None,*[d['document_uid'] for d in data['source_manifest']['documents'] if d['file'] is not None]]
+        node['evidence_anchor_ids']['items']['enum']=[a['anchor_id'] for a in data['authoritative_evidence']['anchors']]
+        props['bindings'].update(minItems=len(data['declared_sources']),maxItems=len(data['declared_sources']))
+        return schema
+    if response_type.__name__=='SourceReviewResponse':
+        base=copy.deepcopy(schema);base.pop('$defs',None);branches=[]
+        for outcome in ('ACCEPT','REVISE','NEED_EVIDENCE','SOURCE_UNRESOLVED'):
+            branch=copy.deepcopy(base);p=branch['properties'];p['outcome']={'type':'string','const':outcome}
+            p['issues'].update(**({'minItems':1} if outcome=='REVISE' else {'maxItems':0}))
+            p['corrected_proposal']=_nonnull(p['corrected_proposal']) if outcome=='REVISE' else {'type':'null','const':None}
+            p['evidence_requests'].update(**({'minItems':1} if outcome=='NEED_EVIDENCE' else {'maxItems':0}))
+            p['unresolved_reason']=_nonnull(p['unresolved_reason']) if outcome=='SOURCE_UNRESOLVED' else {'type':'null','const':None}
+            if outcome in {'ACCEPT','REVISE'}:
+                p['checked_anchor_ids']['const']=data['checked_anchor_ids']
+                p['checked_item_ids']['const']=data['checked_item_ids']
+            branches.append(branch)
+        return {**base,'$defs':defs,'anyOf':branches}
     if response_type.__name__=='IdentityReviewResponse':
         props['inspected_owner_ids']['const']=data['inspection_owner_ids']
         anchors=[a['anchor_id'] for a in data['authoritative_evidence']['anchors']]
@@ -62,6 +83,11 @@ def response_schema(response_type,data):
             if pointers:defs['JsonRef']['properties']['pointer']['enum']=pointers
             else:
                 for specification in props['matches']['properties'].values():specification['maxItems']=0
+        elif 'JsonRef' in defs:
+            nodes=[*data.get('components',{}).values(),*data.get('context_headers',{}).values()]
+            pointers=set(data.get('components',{}))|{p['original_ref']['pointer'] for node in nodes
+                for p in node.get('properties',[]) if p.get('present') and p.get('original_ref')}
+            if pointers:defs['JsonRef']['properties']['pointer']['enum']=sorted(pointers)
         if data.get('scan_scope')=='TABLE_IDENTITY_ONLY':
             defs['JsonRef']['properties']['pointer']['enum']=sorted(data['components'])
         return schema
@@ -99,11 +125,18 @@ def response_schema(response_type,data):
         if not use_output:branch['properties']['missing_requirement_id']={**_nonnull(missing),'enum':reqs}
         if use_output or reqs:counter_branches.append(branch)
     defs['Counterexample']={'anyOf':counter_branches}
+    checks={}
+    for dimension in required:
+        name='Check_'+dimension;check=copy.deepcopy(defs['DimensionCheck'])
+        for branch in check.get('anyOf',[check]):branch['properties']['dimension']['const']=dimension
+        defs[name]=check;checks[dimension]={'$ref':'#/$defs/'+name}
+    props['checks']={'type':'object','properties':checks,'additionalProperties':False}
     base=copy.deepcopy(schema);base.pop('$defs',None)
     branches=[]
     for outcome in ('ASSESSED','NEED_EVIDENCE','TARGET_DEFECT','SOURCE_UNRESOLVED','TECHNICAL_FAILURE'):
         branch=copy.deepcopy(base);p=branch['properties'];p['outcome']={'type':'string','const':outcome}
-        p['checks'].update(minItems=len(required) if outcome=='ASSESSED' else 0,maxItems=len(required) if outcome=='ASSESSED' else 0)
+        p['checks']=({'type':'object','properties':checks,'required':required,'additionalProperties':False} if outcome=='ASSESSED'
+            else {'type':'object','properties':{},'additionalProperties':False})
         p['evidence_requests'].update(**({'minItems':1} if outcome=='NEED_EVIDENCE' else {'maxItems':0}))
         for key,active in [('target_issue','TARGET_DEFECT'),('unresolved_reason','SOURCE_UNRESOLVED'),('technical_error','TECHNICAL_FAILURE')]:
             p[key]=_nonnull(p[key]) if outcome==active else {'type':'null','const':None}

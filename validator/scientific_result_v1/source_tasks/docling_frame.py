@@ -21,6 +21,7 @@ from .operations import Hold
 POLICY = 'docling_pdf_derivatives_v1'
 FRAME_KIND = 'claims_docling_source_frame_v1'
 LAYOUT_KIND = 'claims_docling_table_layout_v1'
+TABLE_CONTEXT_POLICY = 'explicit_docling_table_context_v2'
 
 
 class EligibilityItem(Closed):
@@ -256,10 +257,18 @@ def derive_frame(store, packet, config, config_sha256):
             table_uid = f'd{number}-table{index}'
             caption_ids = [aid for r in table.get('captions', []) if r['$ref'].startswith('#/texts/') for aid in by_record[int(r['$ref'].split('/')[-1])]]
             note_ids = [aid for r in table.get('footnotes', []) if r['$ref'].startswith('#/texts/') for aid in by_record[int(r['$ref'].split('/')[-1])]]
-            # Retain all captured text on the table's pages as available context.
+            # Every page/OCR anchor remains available for explicit retrieval.
+            # A table block initially carries its actual captions and footnotes,
+            # not duplicate OCR and every unrelated paragraph on those pages.
             table_pages = {p['page_no'] - 1 for p in table.get('prov', [])}
-            note_ids += [a.anchor_id for a in anchors if a.document_uid == uid and a.locator.kind == 'page'
-                         and a.locator.page_index in table_pages and a.anchor_id not in caption_ids]
+            if config.get('table_context_policy')==TABLE_CONTEXT_POLICY:
+                note_ids += [aid for ordinal,record in enumerate(texts) if record.get('label')=='footnote'
+                    for aid in by_record[ordinal] if lookup[aid].locator.kind=='page'
+                    and lookup[aid].locator.page_index in table_pages]
+            else:
+                # Old immutable frames replay under their recorded derivation.
+                note_ids += [a.anchor_id for a in anchors if a.document_uid == uid and a.locator.kind == 'page'
+                             and a.locator.page_index in table_pages and a.anchor_id not in caption_ids]
             headers = list(caption_ids)
             for row in header_rows + section_rows:
                 aid = f'd{number}-table{index}-context{row}'
@@ -296,12 +305,12 @@ def derive_frame(store, packet, config, config_sha256):
     for table in tables:
         for start in range(0, table.data_row_count, 5):
             tiles.append(SourceTile(tile_id=table.table_uid + '-rows' + str(start), document_uid=table.document_uid,
-                stratum='TABLE', eligible_content=True, owned_anchor_ids=table.data_row_anchor_ids[start:start+5],
+                stratum='TABLE', eligible_content=decisions.get(table.table_uid+'-rows'+str(start),True), owned_anchor_ids=table.data_row_anchor_ids[start:start+5],
                 context_anchor_ids=list(dict.fromkeys(table.header_anchor_ids + table.note_anchor_ids)),
                 table_uid=table.table_uid, first_data_row=start, stop_data_row=min(start+5, table.data_row_count)))
     return SourceFrame(protocol_id=packet.protocol_id, paper_id=packet.paper_id,
         source_packet_sha256=sha(canonical(packet)), parser_config_sha256=config_sha256,
-        revision=0, state='READY', anchors=anchors, tables=tables, tiles=tiles,
+        revision=len(config.get('eligibility_corrections',[])), state='READY', anchors=anchors, tables=tables, tiles=tiles,
         excluded_region_anchor_ids=excluded, errors=[])
 
 
@@ -345,6 +354,7 @@ def _classify(ops, frame):
 def prepare_docling_frame(store, packet, directories, ops, policy_sha256):
     documents = _capture(store, packet, directories)
     config = {'kind': FRAME_KIND, 'source_evidence_policy': POLICY,
+              'table_context_policy':TABLE_CONTEXT_POLICY,
               'source_packet_sha256': sha(canonical(packet)), 'policy_sha256': policy_sha256,
               'documents': documents, 'eligibility': [], 'eligibility_runs': []}
     draft = derive_frame(store, packet, config, '0' * 64)
@@ -380,7 +390,7 @@ def validate_docling_frame(store, frame, packet):
         if metadata['source_sha256'] != source.file.sha256 or metadata['parser'] != d['parser']:
             raise ValueError('Docling source metadata changed')
     draft=derive_frame(store,packet,{**config,'eligibility':[]},frame.parser_config_sha256)
-    _validate_eligibility(store,config,draft)
+    _validate_eligibility(store,config,draft,packet)
     expected = derive_frame(store, packet, config, frame.parser_config_sha256)
     if expected != frame:
         raise ValueError('Docling frame differs from retained parser structure and eligibility decisions')
@@ -395,7 +405,7 @@ def validate_docling_layout(store, table, frame, packet):
     return True
 
 
-def _validate_eligibility(store, config, draft):
+def _validate_eligibility(store, config, draft, packet):
     anchors={a.anchor_id:a for a in draft.anchors}
     proposed={t.tile_id:{'tile_id':t.tile_id,
         'text':'\n'.join(anchors[k].exact_text for k in t.owned_anchor_ids),
@@ -441,6 +451,8 @@ def _validate_eligibility(store, config, draft):
             if 'ARBITER' not in roles:raise ValueError('Docling eligibility disagreement lacks arbitration')
             decisive=roles['ARBITER'][0]
         expected.extend(v.model_dump(mode='json') for v in decisive.items)
+    from .source_recovery import corrected_eligibility
+    expected=corrected_eligibility(store,config,expected,packet)
     key=lambda item:item['tile_id']
     if sorted(expected,key=key)!=sorted(config['eligibility'],key=key):
         raise ValueError('Docling eligibility flags differ from retained decisions')

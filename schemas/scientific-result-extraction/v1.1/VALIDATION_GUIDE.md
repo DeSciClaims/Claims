@@ -1,3 +1,20 @@
+> **Owner-approved testnet recovery — 22 November 2026:** the sealed scientific
+> judging deadline can be frozen at 7,200 seconds instead of the legacy 1,800
+> seconds. The current recovery uses 7,200 seconds for all entrants. Miner
+> execution, cost and token limits remain governed by the unchanged worker policy.
+> Existing generation clocks are never reset; this change requires a new audited
+> scoring-policy generation. Recovery/corrections within a generation keep its
+> original start/deadline. Successful exact-request cache reads remain permitted
+> after expiry, while new dispatch remains prohibited.
+>
+> Lossless source transport `claims_source_documents_v2` stores each literal
+> document UID/hash once and uses `document_ref` on anchors; decoding reconstructs
+> every original text, identifier and locator exactly. Packet transport
+> `claims_property_columns_v5` additionally interns repeated exact output refs.
+> Returned scientific decisions must still use literal original pointers/IDs.
+> Independently confirmed source-card inventory defects create common frame
+> corrections, retain source-only review evidence, and rerank with the same secret.
+
 > Source requirement identity explicitly records analysis_scope and adjustment_scope
 > from the source, including which analysis a qualitative restatement refers to.
 > NOT_APPLICABLE and SOURCE_UNSPECIFIED preserve absent source information; these
@@ -2072,7 +2089,7 @@ class FrozenSettings(Closed):
     installation_timeout_seconds: Literal[600]
     extraction_timeout_seconds: Literal[1800]
     memory_limit_bytes: Literal[17179869184]
-    sealed_evaluation_timeout_seconds: Literal[1800]
+    sealed_evaluation_timeout_seconds: Annotated[Literal[1800,7200], BeforeValidator(exact_int)]
     max_table_layout_split_depth: Literal[8]
     replacement_limit_divisor: Literal[20]
     minimum_replacement_limit: Annotated[Literal[1], BeforeValidator(exact_int)]

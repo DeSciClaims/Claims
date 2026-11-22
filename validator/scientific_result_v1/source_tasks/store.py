@@ -165,7 +165,7 @@ class Store:
                 c.execute("INSERT INTO generations VALUES (?,?,?,?)", (key, *row))
         return row[1], row[2]
 
-    def reserve(self, operation, request, *, now=None, timeout=120):
+    def reserve(self, operation, request, *, now=None, timeout=120, allow_new=True):
         now = time.time() if now is None else now
         self.get_blob(request)
         with self.connection() as c:
@@ -179,6 +179,8 @@ class Store:
                     if request not in {row[1], rows[0][1]}:
                         raise Conflict("Successful operation request changed")
                     return None, row[3]
+            if not allow_new:
+                raise Exhausted('Unchanged scientific generation deadline elapsed')
             if rows and rows[-1][3] is None and rows[-1][4] is None:
                 if rows[-1][2] > now:
                     raise Pending("Attempt still live; dispatch may have happened")

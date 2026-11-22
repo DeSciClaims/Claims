@@ -54,11 +54,13 @@ class ScientificPoolService:
                     safe=name if Path(name).name==name and name not in {'.','..',''} and '\\' not in name and '\x00' not in name else 'received-'+sha(name.encode())+'.csv'
                     ref=self.store.put_named(alias+'/'+safe,text.encode('utf-8'),'text/csv');csv_files.append(ref)
                     collection['csv_manifest'][name]=ref
+            infrastructure=outcome['status']=='infrastructure_fault'
             record_data=dict(protocol_id='claims-source-task-v1',paper_id=paper_id,round_id=round_id,
                 output_alias=alias,pipeline_digest=prepared['pipeline_digests'][alias],roles=roles,
                 source_packet_sha256=sha(canonical(packet)),execution_receipt=self.store.put(collection),
-                state='PACKAGE_FAILURE' if failure else 'COMPLETED',
-                table_csv_files=[],errors=[ErrorRecord(category='PIPELINE',code=WORKER_CODES[outcome['status']],stage='EXECUTION',message='Terminal worker failure',retryable=False,output_refs=[])] if failure else [])
+                state='INFRASTRUCTURE_FAILURE' if infrastructure else 'PACKAGE_FAILURE' if failure else 'COMPLETED',
+                table_csv_files=[],errors=[ErrorRecord(category='EVALUATOR' if infrastructure else 'PIPELINE',code='TRANSFER_FAILED' if infrastructure else WORKER_CODES[outcome['status']],
+                    stage='EXECUTION',message='Terminal trusted worker infrastructure failure' if infrastructure else 'Terminal worker failure',retryable=False,output_refs=[])] if failure else [])
             if not failure:
                 if artifact!=artifacts_by_hotkey[hotkey]:raise ValueError('Scientific collection changed the immutable worker artifact')
                 if artifact.get('schema_version')!='claims_scientific_package_v2':raise Hold('EVALUATOR','Original JSON bytes were not retained by worker transport')
@@ -74,8 +76,21 @@ class ScientificPoolService:
             if reference is None:raise Hold('EVALUATOR','Sealed reference helper missing from complete pool')
             packages.append(reference)
         import json
-        from validator.scientific_result_v1.source_tasks.contracts import SampledSilverReceipt,FileRef
+        from validator.scientific_result_v1.source_tasks.contracts import SampledSilverReceipt,FileRef,SourceFrame
         from validator.scientific_result_v1.source_tasks.operations import retained_usage
+        from validator.scientific_result_v1.source_tasks.source_recovery import corrected_frame,correction_record
+        def reference(digest):
+            raw=self.store.get_blob(digest)
+            return FileRef(relative_path='blobs/'+digest,sha256=digest,byte_length=len(raw),media_type='application/octet-stream')
+        def runs(receipt):
+            refs=list(receipt.judge_runs);seen=set()
+            for correction in receipt.corrections:
+                digest=correction.superseded_receipt_sha256
+                if digest in seen:continue
+                seen.add(digest)
+                refs.extend(self.store.load(reference(digest),SampledSilverReceipt).judge_runs)
+            return refs
+        current=None
         head=self.store.head('paper:'+json.dumps([round_id,stage,paper_id]))
         if head is not None:
             raw=self.store.get_blob(head)
@@ -91,11 +106,40 @@ class ScientificPoolService:
                 compatible_plan(self.store,current,plan,prepared['precommitted_order'])
                 return adapt_scientific_receipt(current,ref,store=self.store,hotkey_by_alias={v:k for k,v in aliases.items()},
                     baseline_alias=plan.baseline_alias,challenger_aliases=plan.challenger_aliases,
-                    usage=retained_usage(self.store,current.judge_runs))
-        ops=self.operations_for_paper(round_id,stage,paper_id,configuration_sha256)
-        receipt,ref=PaperEvaluator(ops).evaluate(source_packet=packet,source_frame=prepared['source_frame'],packages=packages,
-            comparison_plan=plan,secret=prepared['secret'],commitment=prepared['commitment'],policy_sha256=configuration_sha256,
-            document_bindings=bindings)
+                    usage=retained_usage(self.store,runs(current)))
+        frame=prepared['source_frame'] if current is None else self.store.load(current.source_frame,SourceFrame)
+        revision=0 if current is None else current.binding.revision
+        authorization=None
+        while True:
+            if current is not None:
+                proposal=self.store.head('source-correction-proposal:'+sha(canonical(current.binding)))
+                if proposal is None and any(r.retryable for r in current.hold_reasons):
+                    pass  # A live attempt may finish; preserve the same generation and attempt ledger.
+                elif proposal is None or sum(c.kind in {'SOURCE_FRAME','SOURCE_TASK'} for c in current.corrections)>=2:
+                    # Stable bounded failures need disposition, not another paid
+                    # pass through every package on each controller poll.
+                    receipt=current
+                    break
+                else:
+                    proposal=reference(proposal)
+                    frame=corrected_frame(self.store,packet,frame,proposal)
+                    authorization={'predecessor':ref,'correction':correction_record(self.store,current,ref,proposal)}
+                    revision=current.binding.revision+1
+            ops=self.operations_for_paper(round_id,stage,paper_id,configuration_sha256)
+            receipt,ref=PaperEvaluator(ops).evaluate(source_packet=packet,source_frame=frame,packages=packages,
+                comparison_plan=plan,secret=prepared['secret'],commitment=prepared['commitment'],policy_sha256=configuration_sha256,
+                document_bindings=bindings,revision=revision,generation_authorization=authorization)
+            if receipt.state!='HOLD' or getattr(ops,'pending_source_correction',None) is None:break
+            current=receipt
+        from validator.scientific_result_v1.source_tasks.revisions import terminal_exclusion
+        from validator.scientific_result_v1.source_tasks.contracts import SourceGridManifest
+        grid=self.store.load(plan.source_grid,SourceGridManifest)
+        exclusion=terminal_exclusion(self.store,receipt,ref,replacement_ordinal=len(grid.replacements)+1) if receipt.state in {'HOLD','INELIGIBLE'} else None
+        if exclusion is not None:
+            from .scientific_scoring import adapt_common_exclusion
+            return adapt_common_exclusion(receipt,ref,exclusion,store=self.store,hotkey_by_alias={v:k for k,v in aliases.items()},
+                baseline_alias=plan.baseline_alias,challenger_aliases=plan.challenger_aliases,
+                usage=retained_usage(self.store,runs(receipt)))
         return adapt_scientific_receipt(receipt,ref,store=self.store,hotkey_by_alias={v:k for k,v in aliases.items()},
             baseline_alias=plan.baseline_alias,challenger_aliases=plan.challenger_aliases,
-            usage=retained_usage(self.store,receipt.judge_runs))
+            usage=retained_usage(self.store,runs(receipt)))

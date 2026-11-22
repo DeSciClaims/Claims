@@ -55,22 +55,33 @@ def check_runs(store, receipt, cards, packets, verdicts, secret, scope):
     generated_batches=[store.load(r.parsed_response,SourceTaskBatch) for rid,r in runs.items()
         if not r.error and r.parsed_response and requests[rid]['operation']=='source_card']
     consolidated={}
+    consolidation_outputs=[]
     for rid,run in runs.items():
         if run.error or not run.parsed_response or requests[rid]['operation']!='source_card_consolidate':continue
         payload=requests[rid]['payload']
         original=SourceTaskBatch.model_validate(payload['original_source_draft'])
         if original not in generated_batches:raise ValueError('Consolidation lacks its original source draft')
         batch=store.load(run.parsed_response,SourceTaskBatch)
+        consolidation_outputs.append(batch)
         if batch.tile_id!=original.tile_id:raise ValueError('Consolidation changed source ownership')
+        if batch.outcome=='READY':consolidated[batch.tile_id]=(original,batch)
+    for rid,run in runs.items():
+        if run.error or not run.parsed_response or requests[rid]['operation']!='source_card_atomize':continue
+        payload=requests[rid]['payload'];original=SourceTaskBatch.model_validate(payload['original_source_draft'])
+        if original not in generated_batches or SourceTaskBatch.model_validate(payload['source_consolidation_draft']) not in consolidation_outputs:
+            raise ValueError('Source atomicity pass lacks its complete original drafts')
+        batch=store.load(run.parsed_response,SourceTaskBatch)
+        if batch.tile_id!=original.tile_id:raise ValueError('Source atomicity pass changed ownership')
         if batch.outcome=='READY':consolidated[batch.tile_id]=(original,batch)
     for rid,run in runs.items():
         if run.error or run.parsed_response is None:continue
         req=requests[rid]
-        if req['operation'] in {'source_card','source_card_consolidate'}:
+        if req['operation'] in {'source_card','source_card_consolidate','source_card_atomize'}:
             batch=store.load(run.parsed_response,SourceTaskBatch)
             # NEED_EVIDENCE is a retained context request, not an authoritative
             # empty task batch. A later READY batch owns the source targets.
-            if batch.outcome=='READY' and (req['operation']=='source_card_consolidate' or batch.tile_id not in consolidated):accepted_batches[batch.tile_id]=batch
+            if batch.outcome=='READY' and (batch.tile_id not in consolidated or batch==consolidated[batch.tile_id][1]):
+                accepted_batches[batch.tile_id]=batch
         if req['operation']=='source_card_reconcile':
             review=store.load(run.parsed_response,SourceReviewResponse)
             if review.outcome=='REVISE' and review.corrected_proposal is not None:

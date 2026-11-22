@@ -1232,7 +1232,7 @@ class FrozenSettings(Closed):
     installation_timeout_seconds: Literal[600]
     extraction_timeout_seconds: Literal[1800]
     memory_limit_bytes: Literal[17179869184]
-    sealed_evaluation_timeout_seconds: Literal[1800]
+    sealed_evaluation_timeout_seconds: Annotated[Literal[1800,7200], BeforeValidator(exact_int)]
     max_table_layout_split_depth: Literal[8]
     replacement_limit_divisor: Literal[20]
     minimum_replacement_limit: Annotated[Literal[1], BeforeValidator(exact_int)]

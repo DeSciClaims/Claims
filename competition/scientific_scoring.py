@@ -21,6 +21,7 @@ class ScientificPaperEvaluation:
     resources: dict[str, Any] | None = None
     validation_protocol: str = PROTOCOL
     output_alias_by_hotkey: Mapping[str,str] | None = None
+    common_exclusion: Any = None
 
 
 def adapt_scientific_receipt(
@@ -95,6 +96,28 @@ def adapt_scientific_receipt(
     )
 
 
+def adapt_common_exclusion(receipt,receipt_ref,exclusion_ref,*,store,hotkey_by_alias,baseline_alias,challenger_aliases,usage=()):
+    from validator.scientific_result_v1.source_tasks.contracts import CommonExclusionReceipt
+    exclusion=store.load(exclusion_ref,CommonExclusionReceipt)
+    expected={baseline_alias,*challenger_aliases}
+    if (receipt.state not in {'HOLD','INELIGIBLE'} or exclusion.binding!=receipt.binding
+        or exclusion.silver_receipt!=receipt_ref or not exclusion.terminal_bounds_exhausted
+        or set(exclusion.applies_to_all_aliases)!=expected
+        or {v.output_alias for v in receipt.paper_scores}!=expected
+        or any(v.score is not None for v in receipt.paper_scores)):
+        raise ValueError('Common exclusion must preserve one unmeasured outcome for every entrant')
+    pairs=[]
+    for alias in challenger_aliases:
+        details=PairPublicDetails(protocol_id='claims-source-task-v1',silver_receipt_sha256=receipt_ref.sha256,
+            revision=receipt.binding.revision,evaluation_status='COMMON_EXCLUDED',challenger_components=None,
+            baseline_components=None,exclusion_receipt=exclusion_ref)
+        pairs.append(CompetitionPairRow(paper_id=receipt.binding.paper_id,challenger_hotkey=hotkey_by_alias[alias],
+            baseline_hotkey=hotkey_by_alias[baseline_alias],challenger_score=0.0,baseline_score=0.0,
+            infrastructure_fault=True,details_public=details).model_dump(mode='json'))
+    return ScientificPaperEvaluation(receipt,receipt_ref.sha256,{},tuple(pairs),tuple(usage),
+        output_alias_by_hotkey={v:k for k,v in hotkey_by_alias.items()},common_exclusion=exclusion_ref)
+
+
 def scientific_copy_diagnostics(*,round_id,stage,entries,paper_ids,backend):
     """Equality is a diagnostic only; never inspect claims or veto similar science."""
     from .publication import canonical_sha256
@@ -111,7 +134,7 @@ def scientific_copy_diagnostics(*,round_id,stage,entries,paper_ids,backend):
             frozen=backend.get_paper_evaluation(round_id,stage,paper_id)
             silver=frozen['result_private']['silver']
             receipt=SampledSilverReceipt.model_validate_json(canonical(silver['sampled_receipt']),strict=True)
-            if receipt.state!='FROZEN' or sha(canonical(receipt))!=silver['receipt_sha256']:
+            if (receipt.state!='FROZEN' and 'common_exclusion' not in silver) or sha(canonical(receipt))!=silver['receipt_sha256']:
                 raise ValueError('Scientific copy diagnostic has stale/corrupt receipt')
             if (receipt.binding.round_id,receipt.binding.stage,receipt.binding.paper_id)!=(round_id,stage,paper_id):raise ValueError('Scientific copy scope mismatch')
             packages=[store.load(f,SubmittedPackage) for f in receipt.input_packages]

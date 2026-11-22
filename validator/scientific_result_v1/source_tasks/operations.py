@@ -23,7 +23,7 @@ page images, visual inspection, crop coordinates and image-capable routes are no
 required. Do not request an original-page crop or require plot-derived quantities
 absent from the captured Docling output. Parser omissions and OCR errors are an
 explicit limitation of this policy, not something the judge may invent away.
-LOSSLESS ASSERTION TRANSPORT: a packet marked assertion_encoding=claims_property_columns_v4
+LOSSLESS ASSERTION TRANSPORT: a packet marked assertion_encoding=claims_property_columns_v5
 uses ordered [name, original_json_literal] pairs unless property_names_ref is present.
 With property_names_ref=N0, properties is an ordered literal-value vector: zip it
 with packet.property_name_sets.N0 to recover exactly the original property pairs.
@@ -50,6 +50,10 @@ exact identifier in literal_identifier_pool before reading the JSON literal. The
 prefix is chosen to avoid every original literal, so decoding is unambiguous.
 Only administrative object identifiers are factored; scientific numbers and text
 remain original. Use the decoded original IDs and references in your response.
+If output_reference_pool is present, {"output_ref":"J0"} is the exact original
+JSON/CSV output reference stored at packet.output_reference_pool.J0. Expand it
+before interpreting matches, ownership, objects, relations or closures. Respond
+with the original output alias and literal pointer/CSV coordinates, never J0.
 A property pointer is original_ref.pointer + '/' + JSON-Pointer-escaped name;
 property_ref_overrides contains
 any exceptions. The output_alias is inherited from original_ref. Every assertion,
@@ -65,12 +69,24 @@ LOSSLESS SOURCE TRANSPORT: authoritative_evidence with evidence_encoding=claims_
 stores source_sha256 once per document in document_source_sha256[document_uid]. Each
 anchor inherits exactly that source hash. Full document_uid, anchor_id, exact_text,
 locator and rendering remain unchanged. No source text or source identity is omitted."""
+SCOPE_OVERRIDE += """\nSource transport claims_source_documents_v2 additionally stores each original
+document_uid and source_sha256 once in authoritative_evidence.documents.D0.
+An anchor with document_ref=D0 inherits those EXACT identities. All anchor_id,
+exact_text, locator and rendering fields remain original and complete. Resolve
+document_ref before interpreting provenance or answering source correspondence.
+Return the literal document_uid from the document pool, never D0 as a document UID."""
+SCOPE_OVERRIDE += """\nThe provider wire schema uses checks as an object keyed by every applicable
+dimension exactly once for ASSESSED; each value is the complete check and echoes
+that dimension. Other outcomes require checks={}. The strict adapter losslessly
+decodes this exact map into the canonical check list; it never supplies a missing
+dimension, changes a status or manufactures a witness."""
 
 
 class Hold(RuntimeError):
-    def __init__(self, category, message):
+    def __init__(self, category, message, *, retryable=False):
         super().__init__(message)
         self.category = category
+        self.retryable=retryable
 
 
 class LayoutSubdivisionRequired(Hold):
@@ -90,6 +106,7 @@ class Operations:
         policy_hash,
         gate=None,
         offline=False,
+        generation_timeout_seconds=1800,
     ):
         self.store = store
         self.routes = routes
@@ -97,6 +114,9 @@ class Operations:
         self.tokenizers = tokenizers
         self.trace_dir = Path(trace_dir)
         self.deadline = deadline
+        if type(generation_timeout_seconds) is not int or generation_timeout_seconds not in {1800,7200}:
+            raise ValueError('Scientific deadline differs from an approved frozen policy')
+        self.generation_timeout_seconds=generation_timeout_seconds
         self.policy_hash = policy_hash
         self.gate = gate or GLOBAL_GATE
         self.offline = offline
@@ -130,6 +150,14 @@ class Operations:
         packet_tokens=None,
         source_limit=SOURCE_TOKEN_BUDGETS[0],
     ):
+        # Apply the same lossless source transport to source-card construction,
+        # matching and review as to scientific judgments. Count the actual wire
+        # representation, not repeated per-anchor source hashes.
+        if 'authoritative_evidence' in data:
+            from .transport import judge_evidence
+            evidence=data['authoritative_evidence']
+            if 'anchors' in evidence and 'evidence_encoding' not in evidence:
+                data={**data,'authoritative_evidence':judge_evidence(evidence)}
         prompt = (
             (ROOT / "criteria.txt").read_text()
             + "\n"
@@ -190,16 +218,13 @@ class Operations:
         if packet_tokens is not None and packet_tokens > STRUCTURED_PACKET_TOKENS:
             raise Hold("EVALUATOR", "Complete joint packet exceeds shard bound")
         for _ in range(2):
-            if time.time() >= self.deadline:
-                raise Hold(
-                    "EVALUATOR", "Unchanged scientific generation deadline elapsed"
-                )
             try:
                 feedback=self.store.last_error(key)
                 attempt_request=self.store.put({**request,"validation_feedback":feedback}) if feedback else request_ref
-                ordinal, cached = self.store.reserve(key, attempt_request.sha256, timeout=120)
+                ordinal, cached = self.store.reserve(key, attempt_request.sha256, timeout=120,
+                    allow_new=time.time()<self.deadline)
             except (Pending, Exhausted) as exc:
-                raise Hold("EVALUATOR", str(exc)) from exc
+                raise Hold("EVALUATOR", str(exc),retryable=isinstance(exc,Pending)) from exc
             if cached is not None:
                 result = response_type.model_validate_json(
                     self.store.get_blob(cached), strict=True
@@ -310,7 +335,8 @@ class Operations:
         runtimes={role:replace(runtime,usage=[]) if is_dataclass(runtime) else runtime
                   for role,runtime in self.runtimes.items()}
         return Operations(store=self.store,routes=self.routes,runtimes=runtimes,tokenizers=self.tokenizers,
-            trace_dir=self.trace_dir,deadline=self.deadline,policy_hash=self.policy_hash,gate=self.gate,offline=self.offline)
+            trace_dir=self.trace_dir,deadline=self.deadline,policy_hash=self.policy_hash,gate=self.gate,offline=self.offline,
+            generation_timeout_seconds=self.generation_timeout_seconds)
 
 
 def retained_usage(store, run_refs):

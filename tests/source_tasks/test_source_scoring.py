@@ -946,15 +946,16 @@ def test_match_rejects_unassigned_candidate_noise(generated):
     with pytest.raises(ValueError,match='Extra inputs are not permitted'):index.match(task,Script())
 
 
-def test_source_transport_inherits_only_the_document_hash():
+def test_source_transport_factors_exact_document_identity_and_hash():
     from validator.scientific_result_v1.source_tasks.transport import judge_evidence,audit_evidence
     evidence={'anchors':[dict(anchor_id='a'+str(i),document_uid='original-document-uid',source_sha256='a'*64,
         locator={'kind':'text','start':i,'stop':i+1},exact_text='Original text '+str(i),rendering=None) for i in range(20)]}
     wire=judge_evidence(evidence)
     assert audit_evidence(wire)==evidence
-    assert all(a['document_uid']=='original-document-uid' for a in wire['anchors'])
-    assert all('source_sha256' not in a for a in wire['anchors'])
-    wire['document_source_sha256']['original-document-uid']='b'*64
+    assert all(a['document_ref']=='D0' for a in wire['anchors'])
+    assert all('source_sha256' not in a and 'document_uid' not in a for a in wire['anchors'])
+    assert wire['documents']['D0']['document_uid']=='original-document-uid'
+    wire['documents']['D0']['source_sha256']='b'*64
     assert audit_evidence(wire)!=evidence  # Retained-source equality in replay catches this.
 
 
@@ -1054,20 +1055,20 @@ def test_request_bound_judge_schema_rejects_wrong_bindings_dimensions_and_pointe
     data=dict(task=task.model_dump(mode='json'),packet=judge_packet(packet),required_dimensions=dims,authoritative_evidence={'anchors':[{'anchor_id':'source'}]})
     schema=response_schema(JudgeResponse,data)
     valid=dict(task_id=task.task_id,packet_id=packet.packet_id,outcome='ASSESSED',
-        checks=[dict(dimension=d,status='PASS',evidence_anchor_ids=['source'],counterexamples=[]) for d in dims],
+        checks={d:dict(dimension=d,status='PASS',evidence_anchor_ids=['source'],counterexamples=[]) for d in dims},
         evidence_requests=[],target_issue=None,unresolved_reason=None,technical_error=None)
     jsonschema.validate(valid,schema)
     for key in ['task_id','packet_id']:
         bad=copy.deepcopy(valid);bad[key]='wrong'
         with pytest.raises(jsonschema.ValidationError):jsonschema.validate(bad,schema)
-    bad=copy.deepcopy(valid);bad['checks'][0]['dimension']='NUMERIC_FIDELITY'
+    bad=copy.deepcopy(valid);bad['checks'][dims[0]]['dimension']='NUMERIC_FIDELITY'
     with pytest.raises(jsonschema.ValidationError):jsonschema.validate(bad,schema)
     bad=copy.deepcopy(valid);bad['outcome']='SOURCE_UNRESOLVED';bad['unresolved_reason']='Uncertain'
     with pytest.raises(jsonschema.ValidationError):jsonschema.validate(bad,schema)
-    failure=copy.deepcopy(valid);failure['checks'][0].update(status='FAIL',counterexamples=[dict(code='TABLE_VALUE',rule_ids=['V21'],
+    failure=copy.deepcopy(valid);failure['checks'][dims[0]].update(status='FAIL',counterexamples=[dict(code='TABLE_VALUE',rule_ids=['V21'],
         description='Value differs',evidence_anchor_ids=['source'],output_refs=[dict(kind='json',output_alias='a',pointer='/tables/0')],missing_requirement_id=None)])
     jsonschema.validate(failure,schema)
-    failure['checks'][0]['counterexamples'][0]['output_refs'][0]['pointer']='/nonexistent'
+    failure['checks'][dims[0]]['counterexamples'][0]['output_refs'][0]['pointer']='/nonexistent'
     with pytest.raises(jsonschema.ValidationError):jsonschema.validate(failure,schema)
 
 

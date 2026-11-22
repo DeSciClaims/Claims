@@ -148,7 +148,7 @@ class RemoteStore(Store):
             return self.generation(key,binding,activated_at=activated_at,timeout=timeout)
         return start,start+timeout
 
-    def reserve(self,operation,request,*,now=None,timeout=120):
+    def reserve(self,operation,request,*,now=None,timeout=120,allow_new=True):
         import time
         from .store import Pending,Exhausted
         now=time.time() if now is None else now
@@ -159,6 +159,8 @@ class RemoteStore(Store):
             if item['response'] is not None and item['error'] is None:
                 if request not in {item['request'],attempts[0]['request']}:raise Conflict('Successful operation request changed')
                 return None,item['response']
+        if not allow_new:
+            raise Exhausted('Unchanged scientific generation deadline elapsed')
         if attempts and attempts[-1]['response'] is None and attempts[-1]['error'] is None:
             if attempts[-1]['expires']>now:raise Pending('Provider attempt is still live')
             attempts[-1]['error']='Dispatch outcome and billing unknown after retained timeout'

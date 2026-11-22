@@ -20,7 +20,7 @@ def hold_record(exc,stage):
     else:
         text=str(exc).lower()
         code='DEADLINE_EXCEEDED' if 'deadline' in text else 'PACKET_LIMIT' if 'shard' in text or 'packet' in text else 'EVIDENCE_LIMIT' if 'bound' in text else 'LOOKUP_UNRESOLVED'
-    return ErrorRecord(category=exc.category,code=code,stage=stage,message=str(exc),retryable=False,output_refs=[])
+    return ErrorRecord(category=exc.category,code=code,stage=stage,message=str(exc),retryable=getattr(exc,'retryable',False),output_refs=[])
 
 
 def safe_message(error,secrets=()):

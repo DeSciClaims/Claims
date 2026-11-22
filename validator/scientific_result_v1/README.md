@@ -58,7 +58,16 @@ exclusion uses explicitly flagged transport placeholders that ranking must skip.
 If a source task or judgment is corrected, the original miner outputs stay
 immutable. Every affected miner is reassessed under the common correction.
 The earlier receipt remains in history; ranking and publication must use a
-consistent current generation of scores.
+consistent current generation of scores. Independently confirmed source-inventory
+defects can revise the common source frame at most twice, within the same judging
+clock. No miner output changes.
+
+After bounded recovery is exhausted, an immutable common exclusion records null Q
+for the entire paper. The backend can atomically release the next paper in the
+precommitted reserve order and schedule every entrant, subject to the frozen
+replacement limit and available budget. The original paper remains in the audit
+history. Publication requires the original minimum number of commonly eligible
+papers; if that minimum cannot be met, the stage fails without a winner or weights.
 
 ## Which sources are in scope?
 
@@ -91,7 +100,11 @@ allows 32,000 source-evidence tokens and a separate 32,000-token structured pack
 with up to two additional source-context retrievals within the same allowance.
 Judge output is capped at 16,384 tokens. These are validator settings, separate
 from miner execution budgets. Routes, limits, prompts and implementation identities
-are retained in the frozen evaluation configuration.
+are retained in the frozen evaluation configuration. The owner-approved testnet
+recovery profile allows **two hours of validator judging per paper**; the legacy
+default remains 30 minutes. This changes no miner cost, token or runtime allowance.
+Historical clocks and attempts remain immutable when a revised policy starts a
+new common judging generation.
 
 Judge requests use OpenRouter default provider routing with fallback enabled and
 `require_parameters=true`. Provider `only`, `order` and `ignore` restrictions are
@@ -103,6 +116,12 @@ Independent index batches use up to four request contexts per case, subject to a
 global 16-request gate and four case workers. Packet splitting keeps scientific
 dependencies together. Lossless transport pools repeated literal strings and
 round-trips to the original retained assertion packet; it does not rewrite values.
+Source transport similarly factors repeated document identities while preserving
+every anchor, coordinate and literal. Retrieval keeps all mandatory witnesses and
+adds optional nearby context only when it fits. Independently reviewable scientific
+findings are separated by source-only task construction before any candidate matching.
+Strict judge responses key checks by dimension to prevent duplicate dimensions;
+replay retains their unchanged canonical verdicts.
 
 ## Retained evidence and replay
 

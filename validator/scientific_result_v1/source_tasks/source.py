@@ -469,6 +469,14 @@ SOURCE_REQUIREMENT_POLICY = 'Preserve each coherent parent card and all its requ
 
 def selected_cards(ops, tile, binding, evidence, *, expand=None):
     """Build a source target, with up to two expansions of captured source context."""
+    run_start=len(getattr(ops,'run_refs',[]))
+    def cards(batch):
+        return [TaskCard(task_id='task-'+sha(canonical([tile.tile_id,card])),task_kind='CONTENT',binding=binding,
+            tile_ids=[tile.tile_id],output_alias=None,source_bucket_id=None,scope_kind=card.scope_kind,requirements=card.requirements,
+            evidence_anchor_ids=card.evidence_anchor_ids,source_scope_note=card.source_scope_note) for card in batch.cards]
+    def defect(batch):
+        from .source_recovery import SourceInventoryDefect,retain_defect
+        raise SourceInventoryDefect(retain_defect(ops,tile,binding,batch,run_start))
     for expansion in range(3):
         limit=SOURCE_TOKEN_BUDGETS[expansion]
         request={"request_id":"cards-"+sha(canonical([tile,binding])),
@@ -493,6 +501,12 @@ def selected_cards(ops, tile, binding, evidence, *, expand=None):
         batch=ops.request('SOURCE_READER','source_card',request,SourceTaskBatch,validate=validate,source_limit=limit)
         try:
             if batch.outcome=='NEED_EVIDENCE':raise SourceContextRequested(batch.evidence_requests)
+            if batch.outcome=='INVENTORY_DEFECT':
+                # An unreviewed source-reader decision cannot change sampling.
+                batch=reviewed(ops,'CARD_BATCH',batch,{**request,'original_source_draft':batch.model_dump(mode='json')},
+                    anchor_ids,['tile:'+tile.tile_id],source_limit=limit,allow_evidence_requests=True,proposal_validator=validate)
+                if batch.outcome=='INVENTORY_DEFECT':defect(batch)
+                if batch.outcome=='READY':return cards(batch)
             if batch.outcome!='READY':raise Hold('SOURCE','Selected tile requires common correction: '+batch.outcome)
             original=batch
             def cited(cards):
@@ -510,14 +524,17 @@ def selected_cards(ops, tile, binding, evidence, *, expand=None):
                 validate=validate_consolidated,source_limit=limit)
             if batch.outcome=='NEED_EVIDENCE':raise SourceContextRequested(batch.evidence_requests)
             if batch.outcome!='READY':raise Hold('SOURCE','Source consolidation unresolved: '+batch.outcome)
+            request={**request,'source_consolidation_draft':batch.model_dump(mode='json')}
+            batch=ops.request('SOURCE_READER','source_card_atomize',request,SourceTaskBatch,
+                validate=validate_consolidated,source_limit=limit)
+            if batch.outcome=='NEED_EVIDENCE':raise SourceContextRequested(batch.evidence_requests)
             check_items=['original:'+c.local_key for c in original.cards]+['proposed:'+c.local_key for c in batch.cards]
             batch=reviewed(ops,'CARD_BATCH',batch,request,anchor_ids,check_items,
                 source_limit=limit,allow_evidence_requests=True,proposal_validator=validate_consolidated)
+            if batch.outcome=='INVENTORY_DEFECT':defect(batch)
             if batch.outcome!='READY':raise Hold('SOURCE','Selected tile requires common correction: '+batch.outcome)
             validate(batch)
-            return [TaskCard(task_id='task-'+sha(canonical([tile.tile_id,card])),task_kind='CONTENT',binding=binding,
-                tile_ids=[tile.tile_id],output_alias=None,source_bucket_id=None,scope_kind=card.scope_kind,requirements=card.requirements,
-                evidence_anchor_ids=card.evidence_anchor_ids,source_scope_note=card.source_scope_note) for card in batch.cards]
+            return cards(batch)
         except SourceContextRequested as need:
             if expand is None or expansion==2:raise Hold('SOURCE','Source-task context remains unresolved after permitted evidence expansions')
             evidence=expand(evidence,need.requests,SOURCE_TOKEN_BUDGETS[1:][expansion])

@@ -36,13 +36,13 @@ def reference(store,digest):
     return FileRef(relative_path='blobs/'+digest,sha256=digest,byte_length=len(raw),media_type='application/octet-stream')
 
 
-def compatible_plan(store,receipt,current,precommitted_order):
+def compatible_plan(store,receipt,current,precommitted_order,*,allow_excluded=False):
     old=store.load(receipt.comparison_plan,ComparisonPlan)
     seen=set();child=current
     grid=store.load(current.source_grid,SourceGridManifest)
     active=set(grid.initial_paper_ids)|{r.replacement_paper_id for r in grid.replacements}
     active-={r.excluded_paper_id for r in grid.replacements}
-    if receipt.binding.paper_id not in active:raise ValueError('Excluded scientific paper cannot return to the score denominator')
+    if receipt.binding.paper_id not in active and not allow_excluded:raise ValueError('Excluded scientific paper cannot return to the score denominator')
     while child!=old:
         if child.reason!='COMMON_REPLACEMENT' or child.parent_plan_sha256 is None:
             raise ValueError('Scientific score belongs to a superseded baseline or incompatible plan')
@@ -61,7 +61,7 @@ def verify_current_grid(round_id,stage,*,backend,pairs,round_record=None):
     # Use that policy rather than assuming its local backend exposes get_round.
     record=backend.get_round(round_id) if round_record is None else round_record
     if not enabled(record):return []
-    from .scientific_scoring import adapt_scientific_receipt
+    from .scientific_scoring import adapt_scientific_receipt,adapt_common_exclusion
     evidence=[]
     with evidence_store(backend) as store:
         stage_head=store.head('scientific-plan:'+round_id+':'+stage)
@@ -77,13 +77,22 @@ def verify_current_grid(round_id,stage,*,backend,pairs,round_record=None):
             if store.head('paper:'+json.dumps([round_id,stage,paper_id]))!=digest:
                 raise ValueError('Scientific score projection is stale; current common revision must be published first')
             ref=reference(store,digest);receipt=replay(store,ref)
-            if receipt.state!='FROZEN' or receipt.binding.policy_sha256!=record['configuration_sha256']:
+            excluded='common_exclusion' in silver
+            if (receipt.state!='FROZEN' and not excluded) or receipt.binding.policy_sha256!=record['configuration_sha256']:
                 raise ValueError('Scientific paper is unresolved or uses a different policy')
-            compatible_plan(store,receipt,current,plan_data['precommitted_order'])
+            compatible_plan(store,receipt,current,plan_data['precommitted_order'],allow_excluded=excluded)
             if silver['sampled_receipt']!=receipt.model_dump(mode='json') or silver['output_alias_by_hotkey']!=aliases:
                 raise ValueError('Scientific projection changed the original receipt or alias mapping')
-            expected=adapt_scientific_receipt(receipt,ref,store=store,hotkey_by_alias=hotkeys,
-                baseline_alias=current.baseline_alias,challenger_aliases=current.challenger_aliases)
+            if excluded:
+                exclusion_ref=FileRef.model_validate(silver['common_exclusion'],strict=True)
+                grid=store.load(current.source_grid,SourceGridManifest)
+                replacement=next((r for r in grid.replacements if r.excluded_paper_id==paper_id),None)
+                if replacement is not None and replacement.exclusion_receipt!=exclusion_ref:raise ValueError('Excluded paper has different replacement evidence')
+                expected=adapt_common_exclusion(receipt,ref,exclusion_ref,store=store,hotkey_by_alias=hotkeys,
+                    baseline_alias=current.baseline_alias,challenger_aliases=current.challenger_aliases)
+            else:
+                expected=adapt_scientific_receipt(receipt,ref,store=store,hotkey_by_alias=hotkeys,
+                    baseline_alias=current.baseline_alias,challenger_aliases=current.challenger_aliases)
             rows={r['challenger_hotkey']:r for r in expected.pair_rows}
             actual=[r for r in pairs if r['paper_id']==paper_id]
             if len(rows)!=len(actual):raise ValueError('Scientific pair grid is incomplete')
