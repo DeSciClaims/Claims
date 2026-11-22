@@ -10,6 +10,7 @@ from competition.production_handoff import (
 )
 from competition.handoff_controller import activate_published_round
 from competition.publication import canonical_sha256, publication_bundle, sign_publication
+from competition.weights import BURN_POLICY, weekly_weight_plan
 
 
 PACKAGE = b"sealed-production-package"
@@ -293,6 +294,60 @@ def test_failed_incumbent_hands_production_to_unpaid_reference(tmp_path):
     )
     assert active["hotkey"] == "team-reference"
     assert active["package_sha256"] == reference_hash
+
+
+def _burn_policy_reference_fallback(production_burned_share=None):
+    signer, round_record, _, _ = _fixture()
+    reference_hash = round_record["reference_package_sha256"]
+    stage = {"stage": "final", "entries": [
+        {"hotkey": "team-reference", "role": "reference",
+         "team_id": "claims-reference", "package_sha256": reference_hash},
+        {"hotkey": "winner", "role": "challenger",
+         "team_id": "new-team", "package_sha256": PACKAGE_SHA},
+    ]}
+    # No production payee, as the publisher allocates a reference fallback week.
+    weight_plan = weekly_weight_plan(
+        operator_hotkey="operator", production=None, finalists=[],
+        uid_by_hotkey={"operator": 9}, allocation_policy=BURN_POLICY,
+    )
+    roles = [{"hotkey": hotkey, "role": role, "share": share}
+             for hotkey, role, share in weight_plan.roles]
+    if production_burned_share is not None:
+        next(row for row in roles
+             if row["role"] == "production_burned")["share"] = production_burned_share
+    receipt = sign_publication(publication_bundle(round_record, results={
+        "decision": "reference_fallback", "production_hotkey": None,
+        "fallback_reference_hotkey": "team-reference",
+        "worker_security_audit": {"team-reference": {"passed": True}},
+        "final_pair_scores": [{
+            "round_id": "week2", "stage": "final", "paper_id": "paper-1",
+            "baseline_hotkey": "team-reference",
+            "baseline_package_sha256": reference_hash,
+            "challenger_hotkey": "winner", "challenger_package_sha256": PACKAGE_SHA,
+        }],
+    }, weights={
+        "allocation_policy": BURN_POLICY,
+        "vector": [{"uid": uid, "weight": weight}
+                   for uid, weight in weight_plan.weights_by_uid.items()],
+        "roles": roles,
+    }), signer)
+    return signer, round_record, stage, receipt
+
+
+def test_failed_incumbent_hands_off_to_reference_under_burn_policy():
+    signer, round_record, stage, receipt = _burn_policy_reference_fallback()
+    plan = _plan(signer, round_record, stage, receipt,
+                 datetime(2026, 11, 9, 9, tzinfo=UTC))
+    assert (plan.hotkey, plan.package_sha256) == (
+        "team-reference", round_record["reference_package_sha256"])
+
+
+def test_reference_handoff_still_rejects_share_from_another_policy():
+    # 0.07 is the legacy production share; the receipt check refuses it under the burn policy.
+    signer, round_record, stage, receipt = _burn_policy_reference_fallback(
+        production_burned_share=0.07)
+    with pytest.raises(ValueError, match="weekly payout role or share is invalid"):
+        _plan(signer, round_record, stage, receipt, datetime(2026, 11, 9, 9, tzinfo=UTC))
 
 
 def test_week_one_no_crown_activates_reference_package(tmp_path):
