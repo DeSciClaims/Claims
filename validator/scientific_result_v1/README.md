@@ -235,6 +235,8 @@ python -m validator.scientific_result_v1.source_tasks.recovery \
 
 `CLAIMS_COMPETITION_CONTROLLER_TOKEN` and the approved judge API keys come from
 the existing protected service environment. They never enter the manifest.
+Ordinary source preparation also honors the frozen OCR profile and performs one independent Docling parse, without a redundant preliminary parse. An optional frozen `request_budget` applies the same reservation guard to ordinary source and judging calls.
+
 The runner reads sealed packages, keeps the original sampling secret, binds its
 commitment to the revised policy, and never executes a miner. It reuses retained
 independent Docling captures, or reparses the same supplied PDFs under the frozen
@@ -244,7 +246,7 @@ An unchanged-policy FROZEN result can be retained. A changed scientific policy
 requires re-evaluation for every entrant on its affected common sample. Exact
 request caches remain reusable only when prompts, routes, policy, schema and
 payload match. Paper checkpoints and judging clocks use recovery-specific keys.
-Restarting the same recovery does not reset deadlines or spend. A new policy
+Source preparation and post-preparation judging have separate persistent clocks, matching the ordinary competition flow. Restarting the same recovery does not reset either deadline or spend. A new policy
 requires another audited recovery manifest rather than overwriting a completed
 result. Provider-free replay verifies a FROZEN result before it is checkpointed.
 

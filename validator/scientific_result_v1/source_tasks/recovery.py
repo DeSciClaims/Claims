@@ -68,6 +68,13 @@ def reference(store,digest):
     return FileRef(relative_path='blobs/'+digest,sha256=digest,byte_length=len(raw),media_type='application/octet-stream')
 
 
+def phase_deadline(store,manifest,paper,name,timeout):
+    if name not in {'source_preparation','scientific_verification'}:raise ValueError('Unknown recovery phase')
+    key='recovery-phase:'+sha(canonical([manifest['run_id'],paper['stage'],paper['paper_id'],name]))
+    binding=sha(canonical([manifest['configuration_sha256'],paper['input_pool_sha256'],paper['source_packet_sha256']]))
+    return store.generation(key,binding,timeout=timeout)[1]
+
+
 def evaluate_paper(*,store,manifest,paper,settings,offline=False):
     """Same immutable packages, comparison grid and secret; no miner execution path."""
     from .docling_frame import prepare_docling_frame
@@ -92,14 +99,15 @@ def evaluate_paper(*,store,manifest,paper,settings,offline=False):
         previous=store.head(phase_key)
         store.advance(phase_key,previous,store.put(value).sha256)
     phase('source_preparation')
-    clock_key='recovery-paper-clock:'+sha(canonical([manifest['run_id'],paper['stage'],paper['paper_id']]))
-    _,deadline=store.generation(clock_key,sha(canonical([policy,paper['input_pool_sha256'],paper['source_packet_sha256']])),
-        timeout=settings.sealed_evaluation_timeout_seconds)
-    ops=make_operations(store=store,settings=settings,policy_sha256=policy,trace_dir=store.root/'traces'/path_id,deadline=deadline,offline=offline)
+    def operations_for_phase(name):
+        deadline=phase_deadline(store,manifest,paper,name,settings.sealed_evaluation_timeout_seconds)
+        configured=make_operations(store=store,settings=settings,policy_sha256=policy,trace_dir=store.root/'traces'/path_id,deadline=deadline,offline=offline)
+        configured.runtimes={role:BudgetedRuntime(runtime,budget) for role,runtime in configured.runtimes.items()}
+        return configured
     from .billing import BudgetedRuntime, RecoveryBudget
     budget_policy=manifest['configuration']['scientific_scoring']['recovery']['diagnostic_budget']
     budget=RecoveryBudget(store.root/'budget.sqlite3',limit_usd=budget_policy['limit_usd'],reserve_usd=budget_policy['per_request_reserve_usd'])
-    ops.runtimes={role:BudgetedRuntime(runtime,budget) for role,runtime in ops.runtimes.items()}
+    ops=operations_for_phase('source_preparation')
     parser=manifest['configuration']['scientific_scoring']['recovery'].get('source_parser',{})
     ops.ocr_scale=parser.get('ocr_scale',3.0)
     current_head=store.head('paper:'+json.dumps([packet.round_id,paper['stage'],packet.paper_id]))
@@ -126,6 +134,9 @@ def evaluate_paper(*,store,manifest,paper,settings,offline=False):
         frame=prepare_docling_frame(store,packet,directories,ops,policy)
         store.advance('recovery-frame:'+paper['paper_id'],None,store.put(frame).sha256)
     if current is not None:frame=store.load(current.source_frame,SourceFrame)
+    # Source preparation has its own clock, matching the ordinary competition
+    # pipeline. It does not consume the approved post-preparation judging window.
+    ops=operations_for_phase('scientific_verification')
     phase('scientific_verification',budget=budget.summary())
     ref=reference(store,current_head) if current_head else None
     for _ in range(3):

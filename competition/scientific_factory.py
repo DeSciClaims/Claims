@@ -119,6 +119,15 @@ def create_scientific_policy(row,backend,configuration):
             key=os.environ.get('CLAIMS_SCIENTIFIC_'+role+'_API_KEY') or os.environ.get('OPENROUTER_API_KEY')
             if not key:raise ValueError('Scientific judge API key missing for '+role)
             runtimes[role]=SourceTaskRuntime(model=route.model,api_key=key,api_base=params[role].api_base,max_tokens=route.max_output_tokens,reasoning_effort=params[role].reasoning_effort,provider_preferences=preferences[role])
+        budget_policy=spec.get('recovery',{}).get('request_budget')
+        if budget_policy is not None:
+            from validator.scientific_result_v1.source_tasks.billing import (
+                BudgetedRuntime,
+                RecoveryBudget,
+            )
+            budget=RecoveryBudget(_root()/'budgets'/(sha(canonical([round_id,policy_hash]))+'.sqlite3'),
+                limit_usd=budget_policy['limit_usd'],reserve_usd=budget_policy['per_request_reserve_usd'])
+            runtimes={role:BudgetedRuntime(runtime,budget) for role,runtime in runtimes.items()}
         return Operations(store=store,routes=routes,runtimes=runtimes,tokenizers={r:tokenizer for r in routes},
             trace_dir=_root()/'traces'/sha(canonical([round_id,stage,paper_id])),deadline=time.time()+settings.sealed_evaluation_timeout_seconds,policy_hash=policy_hash,
             generation_timeout_seconds=settings.sealed_evaluation_timeout_seconds)
@@ -159,9 +168,6 @@ def bind_scientific_worker_sources(base,backend):
 
 def create_source_preparer(row,backend,configuration,fetcher):
     """The former Bronze preparation slot prepares source tasks, never claim-unit truth."""
-    import time
-
-    from miner.scientific_result_v1.docling_source import parse_pdf
     from validator.scientific_result_v1.source_tasks.contracts import SourceDocument
     from validator.scientific_result_v1.source_tasks.operations import Hold
     from validator.scientific_result_v1.source_tasks.preparation import prepare_paper
@@ -183,12 +189,13 @@ def create_source_preparer(row,backend,configuration,fetcher):
             document=SourceDocument(document_uid='source-'+meta['source_sha256'],role='MAIN',title=paper_id,version=meta['source_sha256'],url=meta['source_url'] if not __import__('urllib.parse',fromlist=['urlsplit']).urlsplit(meta['source_url']).query else None,required=True,acquisition_status='SUPPLIED',availability='AVAILABLE',file=file)
             packet=SourcePacket(protocol_id='claims-source-task-v1',paper_id=paper_id,round_id=round_id,state='READY',documents=[document],errors=[])
             parsed=_root()/'parsed'/meta['source_sha256'];parsed.mkdir(parents=True,exist_ok=True)
-            pdf=parsed/'input.pdf'
-            if not pdf.exists():pdf.write_bytes(raw)
-            if not (parsed/'source_payload.json').exists():parse_pdf(pdf,parsed)
             ops=pool.operations_for_paper(round_id,stages[0],paper_id,row['configuration_sha256'])
             # Source preparation is measured separately from the immutable post-seal deadline.
-            ops.deadline=time.time()+7200
+            parser_options=configuration['scientific_scoring'].get('recovery',{}).get('source_parser',{})
+            ops.ocr_scale=parser_options.get('ocr_scale',3.0)
+            preparation_scope=sha(canonical([round_id,paper_id,meta['source_sha256'],row['configuration_sha256']]))
+            _,source_deadline=pool.store.generation('source-preparation:'+preparation_scope,preparation_scope,timeout=7200)
+            ops.deadline=source_deadline
             try:
                 prepare_paper(store=pool.store,packet=packet,parsed_directories={document.document_uid:parsed},operations=ops,stages=stages,policy_sha256=row['configuration_sha256'])
                 prepared.append(paper_id)

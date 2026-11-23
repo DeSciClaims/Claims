@@ -216,3 +216,19 @@ def test_recovery_store_isolates_paper_and_clock_heads_but_reuses_exact_provider
     assert a._key('model-operation:request-hash')==b._key('model-operation:request-hash')
     assert a._key('provider-usage:request-hash:1')=='provider-usage:request-hash:1'
     assert a.root!=b.root
+
+
+def test_preparation_and_judging_clocks_are_separate_and_resume_never_extends_either(tmp_path,monkeypatch):
+    import time
+
+    from validator.scientific_result_v1.source_tasks.recovery import phase_deadline
+    store=Store(tmp_path/'clocks');manifest={'run_id':'a'*32,'configuration_sha256':'b'*64}
+    paper={'stage':'week_one','paper_id':'p','input_pool_sha256':'c'*64,'source_packet_sha256':'d'*64}
+    monkeypatch.setattr(time,'time',lambda:100)
+    source=phase_deadline(store,manifest,paper,'source_preparation',7200)
+    monkeypatch.setattr(time,'time',lambda:3700)
+    judge=phase_deadline(store,manifest,paper,'scientific_verification',7200)
+    assert source==7300 and judge==10900
+    monkeypatch.setattr(time,'time',lambda:8000)
+    assert phase_deadline(store,manifest,paper,'source_preparation',7200)==source
+    assert phase_deadline(store,manifest,paper,'scientific_verification',7200)==judge
