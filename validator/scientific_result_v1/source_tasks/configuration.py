@@ -1,6 +1,7 @@
 """Construct explicit frozen settings from approved route snapshots and execution policy."""
 from typing import get_args,get_origin,Annotated,Literal
 from .contracts import FrozenSettings,ModelRoute,ProviderParameters
+from .budgets import SOURCE_TOKEN_BUDGETS,STRUCTURED_PACKET_TOKENS
 from .identity import runtime_descriptor
 from .tokenization import BudgetTokenizer
 from .store import sha,canonical
@@ -49,7 +50,8 @@ def freeze_settings(store,*,route_snapshots,execution_policy,models=None,provide
             supports_images='image' in snapshot['architecture']['input_modalities'],context_window_tokens=context,
             temperature=0,top_p=1,n=1,max_output_tokens=16384,request_timeout_seconds=120,provider_parameters=parameters))
     values={**runtime_descriptor(),'model_routes':routes,'execution_policy':store.put(execution_policy),
-        'sealed_evaluation_timeout_seconds':sealed_evaluation_timeout_seconds}
+        'sealed_evaluation_timeout_seconds':sealed_evaluation_timeout_seconds,
+        'source_token_budgets':SOURCE_TOKEN_BUDGETS,'structured_packet_tokens_per_shard':STRUCTURED_PACKET_TOKENS}
     for name,field in FrozenSettings.model_fields.items():
         if name not in values:values[name]=literal_default(field.annotation)
     settings=FrozenSettings(**values)

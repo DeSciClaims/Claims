@@ -7,6 +7,7 @@ from .identity import runtime_descriptor
 from .operations import Operations
 from .runtime import SourceTaskRuntime
 from .store import canonical,sha
+from .budgets import SOURCE_TOKEN_BUDGETS,STRUCTURED_PACKET_TOKENS
 from .tokenization import BudgetTokenizer
 
 APPROVED_MODELS=frozenset({'deepseek/deepseek-v4-flash-0731','minimax/minimax-m3.1-flash','qwen/qwen3.8-flash','z-ai/glm-5.3-flash','moonshotai/kimi-k2.5'})
@@ -15,6 +16,9 @@ APPROVED_MODELS=frozenset({'deepseek/deepseek-v4-flash-0731','minimax/minimax-m3
 def make_operations(*,store,settings,policy_sha256,trace_dir,deadline=None,offline=False):
     for field,value in runtime_descriptor().items():
         if getattr(settings,field)!=value:raise ValueError('Runtime differs from frozen '+field)
+    if (settings.source_token_budgets!=SOURCE_TOKEN_BUDGETS
+        or settings.structured_packet_tokens_per_shard!=STRUCTURED_PACKET_TOKENS):
+        raise ValueError('Runtime review budgets differ from frozen settings')
     tokenizer=BudgetTokenizer();routes={r.role:r for r in settings.model_routes};runtimes={}
     for role,route in routes.items():
         params=store.load(route.provider_parameters,ProviderParameters)

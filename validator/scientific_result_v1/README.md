@@ -109,7 +109,7 @@ The older diagnostic interface remains available for miner preflight.
 
 The default source reader and primary judge use Qwen3.8 Flash, the independent
 secondary uses DeepSeek V4 Flash 0731, and arbitration uses Kimi K2.5. Each request
-allows 32,000 source-evidence tokens and a separate 32,000-token structured packet,
+allows 128,000 source-evidence tokens and a separate 64,000-token structured packet,
 with up to two additional source-context retrievals within the same allowance.
 Judge output is capped at 16,384 tokens. These are validator settings, separate
 from miner execution budgets. Routes, limits, prompts and implementation identities
@@ -117,9 +117,12 @@ are retained in the frozen evaluation configuration. The owner-approved testnet
 recovery profile allows **two hours of validator judging per paper**; the legacy
 default remains 30 minutes. This changes no miner cost, token or runtime allowance.
 Historical clocks and attempts remain immutable when a revised policy starts a
-new common judging generation.
+new common judging generation. The 24 November owner-approved 128k/64k profile
+supersedes the earlier 32k/32k profile for new runs; historical settings can be
+read for replay, but cannot be executed under different effective limits.
 
-The 32,000-token allowance applies to each request, not the whole paper. When
+These allowances apply to each request, not the whole paper. The complete request
+plus its reserved response must still fit each model route's declared context window. When
 source evidence is too large, complete independent findings or table rows are
 checked separately with their shared definitions and qualifiers. For a check
 that needs to search a larger source scope, primary and secondary models each
@@ -295,7 +298,7 @@ Bounded evidence requests search beyond adjacent text already present in a tile.
 Table-note and adjacent-text requests can retrieve original parsed text and OCR
 from the same captured page, including notes that Docling did not link to a table.
 Every added anchor remains complete, hash-bound source evidence within the existing
-32k allowance. The reader never invents missing text or fetches outside sources.
+128k source allowance. The reader never invents missing text or fetches outside sources.
 Diagnostic recovery supports ten concurrent paper reviews while limiting the
 memory-heavy source-preparation phase to two slots; the shared per-process model
 request gate remains sixteen. This changes scheduling, not sample size or credit.
@@ -303,7 +306,7 @@ request gate remains sixteen. This changes scheduling, not sample size or credit
 The v6 judge transport also encodes consecutive source anchor IDs as exact,
 readable ranges. It preserves every ID, its order, zero padding and source scope;
 replay expands the ranges back to the identical immutable packet. This avoids
-spending most of a 32k assertion allowance on repeated administrative identifiers.
+spending most of a 64k assertion allowance on repeated administrative identifiers.
 The canonical source, scientific assertions, qualifications and scoring bits do
 not change. Source-card generation also exposes its existing outcome/card
 consistency requirements in the provider schema, including corrected proposals.

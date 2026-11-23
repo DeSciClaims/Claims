@@ -21,7 +21,7 @@ from validator.scientific_result_v1.source_tasks.preparation import prepare_pape
 from validator.scientific_result_v1.source_tasks.store import Store, canonical, sha
 
 
-def fixture(tmp_path,monkeypatch):
+def fixture(tmp_path,monkeypatch,*,context_window_tokens=100000):
     store=Store(tmp_path/'store')
     raw=b'%PDF-1.4 independently supplied source fixture'
     pdf=store.put_named('sources/main.pdf',raw,'application/pdf')
@@ -53,7 +53,7 @@ def fixture(tmp_path,monkeypatch):
     routes={}
     for role,model in [('SOURCE_READER','p'),('PRIMARY','p'),('SECONDARY','s'),('ARBITER','a')]:
         routes[role]=ModelRoute(role=role,provider='script',model=model,runtime_revision='test',route_sha256='0'*64,
-            supports_strict_json_schema=True,supports_images=False,context_window_tokens=100000,temperature=0,top_p=1,n=1,
+            supports_strict_json_schema=True,supports_images=False,context_window_tokens=context_window_tokens,temperature=0,top_p=1,n=1,
             max_output_tokens=16384,request_timeout_seconds=120,provider_parameters=store.put({}))
     ops=Operations(store=store,routes=routes,runtimes={role:Runtime() for role in routes},tokenizers={role:lambda value:len(value.split()) for role in routes},trace_dir=tmp_path/'traces',deadline=time.time()+1800,policy_hash='1'*64)
     return store,packet,ops

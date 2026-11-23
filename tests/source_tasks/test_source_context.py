@@ -40,7 +40,7 @@ class Script:
         self.always_requests = always_requests
         self.wrong_owner = wrong_owner
 
-    def request(self, role, operation, data, response_type, *, validate, source_limit=32000):
+    def request(self, role, operation, data, response_type, *, validate, source_limit=128000):
         self.calls.append((role, operation, source_limit))
         assert data["controller_requirement_policy"]
         assert "Preserve each coherent parent card" in data["controller_requirement_policy"]
@@ -82,8 +82,8 @@ def test_source_reader_or_independent_review_can_request_retained_context(review
     cards = selected_cards(ops, tile, binding, evidence, expand=expand)
     assert len(cards) == 1 and cards[0].tile_ids == ['tile']
     assert cards[0].evidence_anchor_ids == ['owned']
-    assert len(expanded) == 1 and expanded[0][1] == 32000
-    assert ops.calls[-1] == ('SECONDARY', 'source_card_review', 32000)
+    assert len(expanded) == 1 and expanded[0][1] == 128000
+    assert ops.calls[-1] == ('SECONDARY', 'source_card_review', 128000)
 
 
 def test_source_card_context_expansion_is_bounded():
@@ -95,8 +95,8 @@ def test_source_card_context_expansion_is_bounded():
         return current
     with pytest.raises(Hold, match='context remains unresolved'):
         selected_cards(ops, tile, binding, evidence, expand=expand)
-    assert limits == [32000, 32000]
-    assert [call[2] for call in ops.calls] == [32000, 32000, 32000]
+    assert limits == [128000, 128000]
+    assert [call[2] for call in ops.calls] == [128000, 128000, 128000]
 
 
 def test_expanded_context_cannot_become_an_unrelated_owned_target():
@@ -132,7 +132,7 @@ def test_scientific_shard_cannot_change_analysis_identity():
 
 def test_consolidation_cannot_drop_original_source_witnesses():
     class DropsWitness(Script):
-        def request(self, role, operation, data, response_type, *, validate, source_limit=32000):
+        def request(self, role, operation, data, response_type, *, validate, source_limit=128000):
             if operation in {'source_card','source_card_consolidate'}:
                 value=ready()
                 if operation=='source_card':value['cards'][0]['evidence_anchor_ids'].append('context')

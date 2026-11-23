@@ -191,7 +191,7 @@
 > JSON null. Original property pointers derive from the object/relation pointer and
 > escaped name, with explicit exceptions. Source SHA-256 is factored once per
 > document; full source document and anchor IDs remain literal. Rich audit packets
-> and original bytes remain retained. The 32k caps count the actual lossless judge
+> and original bytes remain retained. The active source/structured caps count the actual lossless judge
 > transport; replay verifies the transported assertions against the retained packet.
 
 > **Owner-approved validator budget amendment — 21 November 2026:** source
@@ -202,6 +202,16 @@
 > miner models, cost and execution limits are unchanged. Legacy visual table-layout
 > subdivision instructions are inactive for the independently parsed Docling PDF
 > path. Retained earlier runs keep their original policy and results.
+
+> **Owner-approved validator budget amendment — 24 November 2026:** new policies
+> allow **128,000 source-evidence tokens** and a separate **64,000-token complete
+> structured packet** per request. Both source-context retrievals use the same
+> 128,000-token allowance. This supersedes the 21 November 32k policy for new
+> runs only. The full rendered request, its instructions/schema and 16,384-token
+> output reservation must still fit the frozen route's declared context window.
+> Older settings remain readable for retained evidence; a runtime must reject
+> settings whose review limits differ from its effective implementation. Existing
+> runs, clocks, judgments and miner limits are not edited or reset.
 
 # Claims validator implementation guide
 
@@ -594,7 +604,7 @@ A C case includes one card, all candidate representations, and necessary depende
 
 Join discrepancies sharing a result, attachment target, parent expression/interval, joint test, contrast, bound equation definition, or grouping witness. Keep interval endpoints with interval/estimate and evaluated/reference sides with their comparison. Independent results may use separate cards despite shared storage; reusable context creates no extra weighted evidence.
 
-Partition oversized cases only at complete independent assertion groups into at most 32,000-token shards, repeating necessary shared definitions and retaining common task/evidence identity. A task/bucket passes only when every required shard passes coherently. Never split a relation from necessary endpoints/context or omit content to claim completeness. If a legal complete partition cannot fit within the evidence/evaluator bounds, hold the paper. Apply package caps before rendering to bound adversarial payloads.
+Partition oversized cases only at complete independent assertion groups into at most 64,000-token structured shards, repeating necessary shared definitions and retaining common task/evidence identity. A task/bucket passes only when every required shard passes coherently. Never split a relation from necessary endpoints/context or omit content to claim completeness. If a legal complete partition cannot fit within the evidence/evaluator bounds, hold the paper. Apply package caps before rendering to bound adversarial payloads.
 
 ## 5. Judge decisions and failure handling
 
@@ -608,7 +618,7 @@ Use the four frozen routes and all request/concurrency limits in Appendix A. A p
 
 Compare complete dimension-status vectors and material scientific interpretations. Identical PASS/FAIL words alone are insufficient. Matching vectors with valid counterexamples and compatible source interpretations can be finalized. Any differing vector, resolved/unresolved disagreement or incompatible interpretation goes to the arbiter. Its valid complete ASSESSED response is final for that task/packet revision; never average categorical verdicts or default to Bronze. A confirmed source-task defect invokes common correction before scoring affected outputs.
 
-Allow 32,000 source tokens from the first call and at most two context retrievals within that same allowance; the structured packet has a separate 32,000-token bound. Preserve necessary headers, notes, equation definitions and joint dependencies. Expansion creates an immutable packet revision; re-evaluate affected decisions, and compare primary/secondary judgments only on the same revision. Use the bounded source-index retrieval and table-layout subdivision rules in Appendix C. No request authorizes another pipeline execution, arbitrary internet retrieval or silently truncated evidence.
+Allow 128,000 source tokens from the first call and at most two context retrievals within that same allowance; the structured packet has a separate 64,000-token bound. Preserve necessary headers, notes, equation definitions and joint dependencies. Expansion creates an immutable packet revision; re-evaluate affected decisions, and compare primary/secondary judgments only on the same revision. Use the bounded source-index retrieval and table-layout subdivision rules in Appendix C. No request authorizes another pipeline execution, arbitrary internet retrieval or silently truncated evidence.
 
 A provider error, timeout, invalid JSON, unknown pointer or malformed response receives one technical retry using the same immutable task/packet, with the validation error outside source data. A second failure is an evaluator hold. Scientific disagreement uses independent roles, not repeated attempts to obtain a PASS. Explicit table-layout output-length truncation follows the prescribed scope subdivision rule instead of accepting a partial layout. Model confidence never supplies an acceptance threshold.
 
@@ -805,10 +815,10 @@ These values are fixed for `claims-source-task-v1`. Freeze them before intake an
 | `pass_audit_numerator`, `pass_audit_denominator` | `1`, `10`; exact seeded primary-PASS audit selection (§4). |
 | `initial_lexical_matches`, `exhaustive_scan_batch_size` | `12`, `32`; include all exact hits, and complete the required fallback before certifying absence. |
 | `embeddings_enabled` | `false`. |
-| `source_token_budgets`, `maximum_evidence_expansions` | `[32000,32000,32000]`, `2`; one shared evidence-expansion allowance across drafting, review, and arbitration of the source request. |
+| `source_token_budgets`, `maximum_evidence_expansions` | `[128000,128000,128000]`, `2`; one shared evidence-expansion allowance across drafting, review, and arbitration of the source request. |
 | Source-table-layout calls | At most `8000` source tokens per generation, review, or reconciliation request, including mandatory context. Subdivide owned scope after evidence retrieval as needed. |
 | `max_table_layout_split_depth` | `8`; deterministic region subdivision is separate from provider-error retry. |
-| `structured_packet_tokens_per_shard` | `32000`; preserve joint dependencies and all original assertions (§4). |
+| `structured_packet_tokens_per_shard` | `64000`; preserve joint dependencies and all original assertions (§4). |
 | `technical_retries` | `1` per technical failure sequence, using the same immutable request payload; then common hold. |
 | Model call parameters | `temperature=0`, `top_p=1`, `n=1`, `max_output_tokens=16384`, `request_timeout_seconds=120`, `tools=[]`, `tool_choice="none"`. Unsupported fixed parameters block configuration. |
 | `primary_independent_requests_per_batch` | `4` concurrent primary requests for a source task; one pipeline per request. |
@@ -2150,8 +2160,8 @@ class FrozenSettings(Closed):
     maximum_common_corrections: Literal[2]
     maximum_evidence_expansions: Literal[2]
     technical_retries: Annotated[Literal[1], BeforeValidator(exact_int)]
-    source_token_budgets: tuple[Literal[32000], Literal[32000], Literal[32000]]
-    structured_packet_tokens_per_shard: Literal[32000]
+    source_token_budgets: tuple[Literal[32000,128000], Literal[32000,128000], Literal[32000,128000]]
+    structured_packet_tokens_per_shard: Literal[32000,64000]
     max_global_inflight_requests: Literal[16]
     max_case_workers: Literal[4]
     primary_independent_requests_per_batch: Literal[4]
@@ -2185,6 +2195,12 @@ class FrozenSettings(Closed):
 
     @model_validator(mode="after")
     def judge_routes_distinct(self):
+        # Read historical settings for replay/cache binding, while prohibiting
+        # unpublished combinations of old and new policy allowances.
+        if (self.source_token_budgets,self.structured_packet_tokens_per_shard) not in {
+            ((32000,32000,32000),32000),((128000,128000,128000),64000)
+        }:
+            raise ValueError("Unsupported combination of frozen review budgets")
         if {x.role for x in self.model_routes} != {
             "SOURCE_READER",
             "PRIMARY",
@@ -3436,7 +3452,7 @@ Use the approved routes, fixed provider parameters, capacity checks, and bounds 
 | `INDEPENDENT_VERIFY` | `secondary` | `JudgeResponse` |
 | `ARBITRATE` | `arbiter` | `JudgeResponse` |
 
-Allow 32,000 source tokens from the first call. A task has at most two context retrievals within that same allowance, retaining the original evidence and adding requested source context. The complete structured candidate packet has a separate maximum of 32,000 tokens. Neither source nor candidate content may be silently truncated. If a required source region or candidate component cannot fit the applicable limit, hold the common task. Resolve requests by the prescribed deterministic source indexes. Include necessary table headings/notes and equation scope before unrelated surrounding prose. If a requested source or required output ledger cannot be retrieved, return a common hold rather than silently dropping evidence.
+Allow 128,000 source tokens from the first call. A task has at most two context retrievals within that same allowance, retaining the original evidence and adding requested source context. The complete structured candidate packet has a separate maximum of 64,000 tokens. Neither source nor candidate content may be silently truncated. If a required source region or candidate component cannot fit the applicable limit, hold the common task. Resolve requests by the prescribed deterministic source indexes. Include necessary table headings/notes and equation scope before unrelated surrounding prose. If a requested source or required output ledger cannot be retrieved, return a common hold rather than silently dropping evidence.
 
 Source-table layout generation, review, and reconciliation use the stricter chunk input bound above. After retrieving additional layout evidence, subdivide the owned scope as needed to keep each such call within 8,000 source tokens while preserving mandatory context. Do not expand a layout call to an unbounded whole-table request. If the mandatory context alone cannot fit, use `HOLD_SOURCE`; do not omit headers/notes to make the call fit. The two authorized evidence-expansion limit still applies to evidence retrieval for that layout request.
 
@@ -3769,7 +3785,7 @@ Create deterministic tests using the fixture generator in this appendix, the emb
 | E31 | Unanchored genuine claim with valid broad original locator; fabricated claim; false quote recoverable elsewhere; provider lookup outage. | Reassign only compliant provenance; confirmed unsupported/false provenance P=0; evaluator outage common HOLD. |
 | E32 | Relevant result at descriptor position 13 and 33; zero lexical overlap; missing qualifier in another referenced record. | Initial12/next32/full fallback finds it; ABSENT only after complete manifest scan. |
 | E33 | Contradictory duplicate representations; one-to-many valid match; two source-admissible interpretations. | Do not cherry-pick correct duplicate; valid alternative/compound PASS; unresolved lookup not omission. |
-| E34 | Evidence outside tile, footnote expansion, source type ambiguity, >32k indivisible case, missing image-capable route. | Bounded expansion, source uncertainty preserved when appropriate; no truncation; limits HOLD, route CONFIG_INVALID. |
+| E34 | Evidence outside tile, footnote expansion, source type ambiguity, indivisible case above the active review allowance, missing image-capable route. | Bounded expansion, source uncertainty preserved when appropriate; no truncation; limits HOLD, route CONFIG_INVALID. |
 | E35 | Invalid model JSON/pointer; missing dimension; unsupported FAIL without witness; timeout twice. | One identical technical retry; reject bad response; then common HOLD, never scientific zero. |
 | E36 | Primary FAIL/secondary PASS; primary PASS selected in 10% audit; arbiter disagrees; source task defective. | Exact independent routing; material coherent final verdict or common correction/HOLD; producer identity never exposed. |
 | E37 | G=0 skipped components; no scientific assertions; no C/no T; one failure among four P buckets; one failure in a two-bucket census; numeric cases in §6. | Null versus measured score correct; exact fractions 47/54,3/4,1/2,11/36,5/6 and empty-state rules. |

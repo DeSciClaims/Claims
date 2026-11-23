@@ -25,8 +25,8 @@ def test_deepseek_secondary_and_larger_output_allowance_reach_runtime(tmp_path):
     assert all(runtime.max_tokens == 16384 for runtime in ops.runtimes.values())
     assert all(runtime.reasoning_effort == 'none' for runtime in ops.runtimes.values())
     assert not ops.routes['SECONDARY'].supports_images
-    assert settings.source_token_budgets == (32000, 32000, 32000)
-    assert settings.structured_packet_tokens_per_shard == 32000
+    assert settings.source_token_budgets == (128000, 128000, 128000)
+    assert settings.structured_packet_tokens_per_shard == 64000
     # The full larger response allowance is reserved before any provider call.
     ops.tokenizers = {role: lambda _: 84000 for role in ops.routes}
     with pytest.raises(Hold, match='Route context window exceeded'):
@@ -38,10 +38,12 @@ def test_deepseek_secondary_and_larger_output_allowance_reach_runtime(tmp_path):
 @pytest.mark.parametrize('source_tokens,packet_tokens,message', [
     (31000, 31000, 'uncached model operation'),
     (32000, 32000, 'uncached model operation'),
-    (32001, 0, 'Source scope exceeds'),
-    (0, 32001, 'Complete joint packet exceeds'),
+    (81000, 50000, 'uncached model operation'),
+    (128000, 64000, 'uncached model operation'),
+    (128001, 0, 'Source scope exceeds'),
+    (0, 64001, 'Complete joint packet exceeds'),
 ])
-def test_32k_review_guards_accept_above_old_limit_and_reject_over_new_limit(
+def test_larger_review_guards_preserve_complete_bundles_and_reject_over_limit(
         tmp_path, source_tokens, packet_tokens, message):
     store = Store(tmp_path / 'store')
     snapshots = {
@@ -111,3 +113,21 @@ def test_default_routing_keeps_all_endpoints_and_does_not_pin_judge_providers(tm
 def test_runtime_rejects_provider_pins_and_preserves_strict_requirements(preference):
     with pytest.raises(ValueError):
         SourceTaskRuntime(model=MODELS['SECONDARY'],api_key='',provider_preferences=preference)
+
+
+def test_historical_review_settings_are_readable_but_not_run_under_new_limits(tmp_path):
+    from validator.scientific_result_v1.source_tasks.contracts import FrozenSettings
+    store=Store(tmp_path/'store')
+    snapshots={model:{'id':model,'architecture':{'input_modalities':['text']},
+        'endpoints':[{'provider_name':'test','context_length':262144,'supported_parameters':['structured_outputs']}]}
+        for model in set(MODELS.values())}
+    settings,_=freeze_settings(store,route_snapshots=snapshots,execution_policy={})
+    old=settings.model_dump(mode='json')
+    old.update(source_token_budgets=[32000,32000,32000],structured_packet_tokens_per_shard=32000)
+    import json
+    historical=FrozenSettings.model_validate_json(json.dumps(old),strict=True)
+    with pytest.raises(ValueError,match='Runtime review budgets differ'):
+        make_operations(store=store,settings=historical,policy_sha256='1'*64,trace_dir=tmp_path/'traces',offline=True)
+    old['structured_packet_tokens_per_shard']=64000
+    with pytest.raises(ValueError,match='Unsupported combination'):
+        FrozenSettings.model_validate_json(json.dumps(old),strict=True)

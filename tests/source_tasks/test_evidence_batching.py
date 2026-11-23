@@ -13,13 +13,16 @@ from validator.scientific_result_v1.source_tasks.packages import Package
 from validator.scientific_result_v1.source_tasks.evidence_batching import prepare,validate_search,source_size
 from validator.scientific_result_v1.source_tasks.sharding import partition
 from validator.scientific_result_v1.source_tasks.operations import Hold
+from validator.scientific_result_v1.source_tasks.budgets import SOURCE_TOKEN_BUDGETS
+SOURCE_LIMIT=SOURCE_TOKEN_BUDGETS[0]
+SCALE=SOURCE_LIMIT//32000
 
 
 def case(generated,tmp_path,monkeypatch):
-    path,_,_=generated;index=Index(Package(path,'a'));store,source,ops=fixture(tmp_path,monkeypatch)
+    path,_,_=generated;index=Index(Package(path,'a'));store,source,ops=fixture(tmp_path,monkeypatch,context_window_tokens=262144)
     anchors=[]
     for i in range(8):
-        text=('Reported estimate 3.50. ' if i==0 else 'Contradictory adjusted estimate 2.15. ' if i==7 else 'Other source context. ')+('original source material '*1300)
+        text=('Reported estimate 3.50. ' if i==0 else 'Contradictory adjusted estimate 2.15. ' if i==7 else 'Other source context. ')+('original source material '*(1300*SCALE))
         anchors.append(SourceAnchor(anchor_id='anchor-'+str(i),document_uid='doc',source_sha256=source.documents[0].file.sha256,
             locator=TextLocator(kind='text',start=i*50000,stop=i*50000+len(text)),exact_text=text,rendering=None))
     frame=SourceFrame(protocol_id=source.protocol_id,paper_id=source.paper_id,source_packet_sha256=sha(canonical(source)),parser_config_sha256='1'*64,
@@ -53,7 +56,7 @@ def runs(store,ops):
 
 def test_both_roles_scan_every_batch_and_late_contradiction_is_not_dropped(generated,tmp_path,monkeypatch):
     _,store,ops,frame,task,packet=case(generated,tmp_path,monkeypatch)
-    assert source_size(frame,task.evidence_anchor_ids,ops.tokenizers)>32000
+    assert source_size(frame,task.evidence_anchor_ids,ops.tokenizers)>SOURCE_LIMIT
     [(child,rendered,evidence,summary)]=prepare(ops,frame,[(task,packet)])
     assert child==task and rendered.objects==packet.objects and rendered.closures==packet.closures
     assert rendered.evidence_anchor_ids==['anchor-0','anchor-7']
@@ -90,14 +93,14 @@ def test_source_only_size_triggers_complete_requirement_shards(generated,tmp_pat
     requirements=[SourceRequirement(requirement_id=str(i),statement='Complete independent finding '+str(i),qualifications=[],
         evidence_anchor_ids=[a.anchor_id for a in frame.anchors[i*4:(i+1)*4]],encoding_constraints=[]) for i in range(2)]
     # Smaller original anchors give two scientifically complete source groups.
-    frame=frame.model_copy(update={'anchors':[a.model_copy(update={'exact_text':a.exact_text[:18000]}) for a in frame.anchors]})
+    frame=frame.model_copy(update={'anchors':[a.model_copy(update={'exact_text':a.exact_text[:18000*SCALE]}) for a in frame.anchors]})
     task=task.model_copy(update={'task_kind':'CONTENT','requirements':requirements,'tile_ids':['tile'],'output_alias':None,'source_bucket_id':None})
     match=packet.match.model_copy(update={'matches':[RequirementMatch(requirement_id=str(i),output_refs=[f.original_ref]) for i,f in enumerate(fields)],'candidate_refs':[f.original_ref for f in fields]})
     packet=index.packet(task,task.binding,match,'5'*64,[])
     children=partition(index,task,packet,tokenizers=ops.tokenizers,source_frame=frame)
     assert len(children)==2
     assert {r.requirement_id for t,_ in children for r in t.requirements}=={'0','1'}
-    assert all(source_size(frame,t.evidence_anchor_ids,ops.tokenizers)<=32000 for t,_ in children)
+    assert all(source_size(frame,t.evidence_anchor_ids,ops.tokenizers)<=SOURCE_LIMIT for t,_ in children)
     assert set(children[0][0].evidence_anchor_ids).isdisjoint(children[1][0].evidence_anchor_ids)
     assert all(p.packet_complete and not p.omitted_due_to_limit_refs for _,p in children)
 
@@ -129,7 +132,7 @@ def test_source_only_archive_shards_repeat_headers_and_notes(generated,tmp_path,
     from validator.scientific_result_v1.source_tasks.contracts import SourceTable
     index,store,ops,frame,task,_=case(generated,tmp_path,monkeypatch)
     ids=[a.anchor_id for a in frame.anchors[:4]]
-    anchors=[a.model_copy(update={'exact_text':a.exact_text[:12000] if i in (0,3) else a.exact_text*2}) for i,a in enumerate(frame.anchors[:4])]
+    anchors=[a.model_copy(update={'exact_text':a.exact_text[:12000*SCALE] if i in (0,3) else a.exact_text*2}) for i,a in enumerate(frame.anchors[:4])]
     uid=next(iter(index.package.csv))
     table=SourceTable(table_uid='trusted',document_uid='doc',anchor_ids=[ids[0]],numerical=True,
         data_row_count=2,layout_receipt=store.put({'fixture':True}),data_row_anchor_ids=ids[1:3],
@@ -144,4 +147,4 @@ def test_source_only_archive_shards_repeat_headers_and_notes(generated,tmp_path,
     children=partition(index,task,packet,tokenizers=ops.tokenizers,table_ranges={uid:(0,2)},source_frame=frame)
     assert len(children)==2
     assert [set(t.evidence_anchor_ids) for t,_ in children]==[{ids[0],ids[1],ids[3]},{ids[0],ids[2],ids[3]}]
-    assert all(source_size(frame,t.evidence_anchor_ids,ops.tokenizers)<=32000 for t,_ in children)
+    assert all(source_size(frame,t.evidence_anchor_ids,ops.tokenizers)<=SOURCE_LIMIT for t,_ in children)

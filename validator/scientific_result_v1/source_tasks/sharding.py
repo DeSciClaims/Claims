@@ -63,7 +63,7 @@ def partition(index,task,packet,*,tokenizers,owned_refs=None,table_ranges=None,s
             for row in range(first,stop):groups.append((task.requirements,None,{table:(row,row+1)},None))
     if len(groups)<2 and output_fits:return [(task,packet)]  # Stream a genuinely joint source scope without cutting dependencies.
     if len(groups)<2:
-        raise Hold('EVALUATOR','No complete independent partition fits the 32000-token bound')
+        raise Hold('EVALUATOR',f'No complete independent partition fits the {STRUCTURED_PACKET_TOKENS}-token bound')
     shards=[]
     for ordinal,(requirements,refs,ranges,extras) in enumerate(groups):
         child=task.model_copy(update={'task_id':task.task_id+MARKER+sha(index.alias.encode())[:16]+'-'+str(ordinal),'requirements':requirements})

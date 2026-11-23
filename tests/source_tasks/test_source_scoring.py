@@ -310,7 +310,7 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
         # Unanchored output audits must search the complete captured source,
         # including context well beyond a single scientific request allowance.
         extra=[header.model_copy(update={'anchor_id':'extra-'+str(i),
-            'exact_text':('Complete unrelated source context. '*2000),
+            'exact_text':('Complete unrelated source context. '*8000),
             'locator':TextLocator(kind='text',start=0,stop=len(source_text))}) for i in range(8)]
         source_frame=source_frame.model_copy(update={'anchors':[*source_frame.anchors,*extra]})
     grid = SourceGridManifest(
@@ -622,7 +622,7 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
             route_sha256="0" * 64,
             supports_strict_json_schema=True,
             supports_images=False,
-            context_window_tokens=100000,
+            context_window_tokens=262144,
             temperature=0,
             top_p=1,
             n=1,
@@ -637,7 +637,7 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
         except ValueError:return len(text.split())
         if variant=='sharded' and isinstance(node,dict) and 'packet_id' in node and 'objects' in node:
             from validator.scientific_result_v1.source_tasks.transport import audit_packet
-            return 1000+4000*sum(o.kind=='FIELD' for o in audit_packet(node).objects)
+            return 1000+8000*sum(o.kind=='FIELD' for o in audit_packet(node).objects)
         return len(text.split())
 
     def ops(offline=False):
@@ -1043,7 +1043,7 @@ def test_context_requirements_share_definitions_without_forcing_a_giant_joint_ca
     packet=index.packet(task,task.binding,match,'5'*64,[])
     def budget(text):
         node=json.loads(text)
-        return 1000+20000*len(node['match']['matches'])
+        return 1000+40000*len(node['match']['matches'])
     shards=partition(index,task,packet,tokenizers={'test':budget})
     assert len(shards)==2
     assert {r.requirement_id for child,_ in shards for r in child.requirements}=={r.requirement_id for r in reqs}
@@ -1273,7 +1273,7 @@ def test_shared_table_context_does_not_join_independent_scientific_requirements(
     matches=[RequirementMatch(requirement_id=r.requirement_id,output_refs=[o.original_ref,table.original_ref]) for r,o in zip(requirements,results)]
     match=base.match.model_copy(update={'matches':matches})
     packet=index.packet(task,task.binding,match,'5'*64,[])
-    def bound(text):return 32001 if len(audit_packet(json.loads(text)).closures)>1 else 1000
+    def bound(text):return 64001 if len(audit_packet(json.loads(text)).closures)>1 else 1000
     shards=partition(index,task,packet,tokenizers={'test':bound})
     assert len(shards)==2
     assert {r.requirement_id for child,_ in shards for r in child.requirements}=={'first','second'}
@@ -1293,7 +1293,7 @@ def test_one_complete_scientific_requirement_cannot_be_split_into_partial_candid
     task,base=packet_case(index,store,refs=refs)
     match=base.match.model_copy(update={'matches':[RequirementMatch(requirement_id=task.requirements[0].requirement_id,output_refs=refs)]})
     packet=index.packet(task,task.binding,match,'5'*64,[])
-    def bound(text):return 32001 if len(audit_packet(json.loads(text)).closures)>1 else 1000
+    def bound(text):return 64001 if len(audit_packet(json.loads(text)).closures)>1 else 1000
     with pytest.raises(Hold,match='No complete independent partition'):
         partition(index,task,packet,tokenizers={'test':bound})
 

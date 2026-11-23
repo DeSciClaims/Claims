@@ -1213,8 +1213,8 @@ class FrozenSettings(Closed):
     maximum_common_corrections: Literal[2]
     maximum_evidence_expansions: Literal[2]
     technical_retries: Annotated[Literal[1], BeforeValidator(exact_int)]
-    source_token_budgets: tuple[Literal[32000], Literal[32000], Literal[32000]]
-    structured_packet_tokens_per_shard: Literal[32000]
+    source_token_budgets: tuple[Literal[32000,128000], Literal[32000,128000], Literal[32000,128000]]
+    structured_packet_tokens_per_shard: Literal[32000,64000]
     max_global_inflight_requests: Literal[16]
     max_case_workers: Literal[4]
     primary_independent_requests_per_batch: Literal[4]
@@ -1248,6 +1248,12 @@ class FrozenSettings(Closed):
 
     @model_validator(mode="after")
     def judge_routes_distinct(self):
+        # Read historical settings for replay/cache binding, while prohibiting
+        # unpublished combinations of old and new policy allowances.
+        if (self.source_token_budgets,self.structured_packet_tokens_per_shard) not in {
+            ((32000,32000,32000),32000),((128000,128000,128000),64000)
+        }:
+            raise ValueError("Unsupported combination of frozen review budgets")
         if {x.role for x in self.model_routes} != {
             "SOURCE_READER",
             "PRIMARY",

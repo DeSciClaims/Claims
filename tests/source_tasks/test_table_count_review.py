@@ -10,7 +10,7 @@ from validator.scientific_result_v1.source_tasks.transport import audit_evidence
 
 
 def setup(tmp_path,monkeypatch,uncertain=()):
-    store,packet,ops=fixture(tmp_path,monkeypatch)
+    store,packet,ops=fixture(tmp_path,monkeypatch,context_window_tokens=262144)
     frame=prepare_docling_frame(store,packet,{},ops,ops.policy_hash)
     if isinstance(frame,tuple):frame=frame[0]
     if isinstance(frame,dict):frame=store.load(FileRef.model_validate(frame['source_frame']),SourceFrame)
@@ -67,7 +67,7 @@ def test_large_source_layout_is_reviewed_in_complete_nonoverlapping_batches(tmp_
     store,frame,ops=setup(tmp_path,monkeypatch)
     def budget(text):
         value=json.loads(text)
-        return 9000*len(value['anchors']) if 'anchors' in value else len(text.split())
+        return 36000*len(value['anchors']) if 'anchors' in value else len(text.split())
     ops.tokenizers={role:budget for role in ops.routes}
     verify_source_count(ops,frame,frame.tables[0])
     assert len(ops.run_refs)==4
