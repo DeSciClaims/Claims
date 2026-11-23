@@ -1,7 +1,7 @@
 ROLE: SOURCE_ELIGIBILITY
 The source is the trusted controller's Docling extraction of the supplied PDF,
 including OCR, prose, equations, captions and tables. No miner output is supplied.
-Classify every supplied prose tile exactly once, using its exact short tile_id.
+Classify every supplied source tile exactly once, using its exact short tile_id.
 Eligible means this tile contains at least one coherent reported scientific result,
 quantitative/descriptive finding, substantive mathematical result or explicit
 scientific definition with its meaningful conditions. Necessary qualifications
@@ -20,3 +20,19 @@ result. Mark such a context-only tile ineligible; its text remains available for
 table/content verification. A caption that itself reports an independent scientific
 finding can be eligible. Mathematical definitions/results in theoretical work can
 be substantive targets without empirical measurements.
+
+For source_kind=TABLE, inspect the actual rows together with their headers and
+caption. Eligible means the block belongs to a scientific numerical table: it
+preserves reported measurements, estimates, observations, experimental settings,
+or substantive mathematical quantities. Missing-value rows and descriptive rows
+inside such a table remain part of it. Digits alone do not establish eligibility.
+Tables of contents, lists of figures/tables with page numbers, reference lists,
+affiliation lists and navigation menus are not scientific numerical tables.
+Classify every block independently using its supplied source context. An excluded
+block remains retained source evidence; no source is deleted or silently repaired.
+
+Fragmentary OCR, disconnected axis labels, reagent names or panel labels alone
+do not constitute a coherent reported result. If no result is actually stated
+in a prose tile, classify it ineligible rather than inventing quantities or
+requiring graphical values not captured by Docling. Its anchors remain available
+as context and for checking assertions that a pipeline actually submitted.

@@ -1,10 +1,16 @@
 """Recovery preserves exact evidence, successful work and immutable attempt limits."""
 from types import SimpleNamespace
+
 import pytest
-from validator.scientific_result_v1.source_tasks.store import Store,Exhausted,Conflict
+
+from validator.scientific_result_v1.source_tasks.contracts import (
+    EvidenceRequest,
+    SourceAnchor,
+    TextLocator,
+)
 from validator.scientific_result_v1.source_tasks.evaluator import expand_evidence
 from validator.scientific_result_v1.source_tasks.operations import Hold
-from validator.scientific_result_v1.source_tasks.contracts import SourceAnchor,TextLocator,EvidenceRequest
+from validator.scientific_result_v1.source_tasks.store import Conflict, Exhausted, Store
 
 
 def test_expired_dispatch_reuses_success_without_allocating_an_attempt(tmp_path):
@@ -37,8 +43,11 @@ def test_remote_expired_dispatch_reuses_success_without_changing_heads(tmp_path)
 
 def test_operations_replay_after_deadline_never_dispatches_another_call(tmp_path,monkeypatch):
     import time
+
     from tests.source_tasks.test_docling_frame import fixture
-    from validator.scientific_result_v1.source_tasks.docling_frame import EligibilityResponse
+    from validator.scientific_result_v1.source_tasks.docling_frame import (
+        EligibilityResponse,
+    )
     _,_,ops=fixture(tmp_path,monkeypatch)
     data={'tiles':[{'tile_id':'tile'}]}
     first=ops.request('SOURCE_READER','source_eligibility',data,EligibilityResponse)
@@ -85,14 +94,25 @@ def test_requesting_table_headers_does_not_attach_unrequested_data_rows():
 @pytest.mark.parametrize('uncertain_secondary',[False,True])
 def test_confirmed_inventory_defect_creates_replayable_common_frame_revision(tmp_path,monkeypatch,uncertain_secondary):
     import json
+
     from tests.source_tasks.test_docling_frame import fixture
-    from validator.scientific_result_v1.source_tasks.preparation import prepare_paper
-    from validator.scientific_result_v1.source_tasks.contracts import SourceFrame,FileRef,EvaluationBinding
-    from validator.scientific_result_v1.source_tasks.store import canonical,sha
-    from validator.scientific_result_v1.source_tasks.source import selected_cards
+    from validator.scientific_result_v1.source_tasks.contracts import (
+        EvaluationBinding,
+        FileRef,
+        SourceFrame,
+    )
+    from validator.scientific_result_v1.source_tasks.docling_frame import (
+        validate_docling_frame,
+    )
     from validator.scientific_result_v1.source_tasks.evaluator import evidence_for
-    from validator.scientific_result_v1.source_tasks.source_recovery import SourceInventoryDefect,corrected_frame,validate_defect
-    from validator.scientific_result_v1.source_tasks.docling_frame import validate_docling_frame
+    from validator.scientific_result_v1.source_tasks.preparation import prepare_paper
+    from validator.scientific_result_v1.source_tasks.source import selected_cards
+    from validator.scientific_result_v1.source_tasks.source_recovery import (
+        SourceInventoryDefect,
+        corrected_frame,
+        validate_defect,
+    )
+    from validator.scientific_result_v1.source_tasks.store import canonical, sha
     store,packet,ops=fixture(tmp_path,monkeypatch)
     prepared,_=prepare_paper(store=store,packet=packet,parsed_directories={},operations=ops,stages=['week_one'],policy_sha256='1'*64)
     frame=store.load(FileRef.model_validate(prepared['source_frame']),SourceFrame)
@@ -129,6 +149,7 @@ def test_confirmed_inventory_defect_creates_replayable_common_frame_revision(tmp
 
 def test_judge_keyed_wire_rejects_omissions_wrong_dimension_and_duplicate_keys():
     import json
+
     from validator.scientific_result_v1.source_tasks.runtime import StrictAdapter
     adapter=StrictAdapter({'properties':{'checks':{'type':'object','properties':{'NUMERIC_FIDELITY':{},'ATTACHMENT':{}}}}})
     valid={'outcome':'ASSESSED','checks':{d:{'dimension':d,'status':'PASS'} for d in ['NUMERIC_FIDELITY','ATTACHMENT']}}
@@ -142,7 +163,10 @@ def test_judge_keyed_wire_rejects_omissions_wrong_dimension_and_duplicate_keys()
 
 
 def test_two_hour_judging_is_explicit_and_does_not_change_legacy_default(tmp_path):
-    from validator.scientific_result_v1.source_tasks.configuration import MODELS,freeze_settings
+    from validator.scientific_result_v1.source_tasks.configuration import (
+        MODELS,
+        freeze_settings,
+    )
     from validator.scientific_result_v1.source_tasks.runner import make_operations
     snapshots={m:{'id':m,'architecture':{'input_modalities':['text']},'endpoints':[
         {'provider_name':'test','context_length':200000,'supported_parameters':['structured_outputs']}]}
@@ -155,3 +179,40 @@ def test_two_hour_judging_is_explicit_and_does_not_change_legacy_default(tmp_pat
     assert ops.generation_timeout_seconds==7200
     with pytest.raises(ValueError,match='approved'):
         freeze_settings(store,route_snapshots=snapshots,execution_policy={},sealed_evaluation_timeout_seconds=7201)
+
+
+def test_provider_not_dispatched_is_known_zero_but_timeout_remains_unknown(tmp_path,monkeypatch):
+    import json
+    import time
+
+    from tests.source_tasks.test_docling_frame import fixture
+    from validator.scientific_result_v1.source_tasks.docling_frame import (
+        EligibilityResponse,
+    )
+    store,_,ops=fixture(tmp_path,monkeypatch)
+    class Queue:
+        def __enter__(self):ops.deadline=time.time()-1
+        def __exit__(self,*args):return False
+    ops.gate=Queue()
+    with pytest.raises(Hold,match='Deadline expired in queue'):
+        ops.request('SOURCE_READER','source_eligibility',{'tiles':[{'tile_id':'late'}]},EligibilityResponse)
+    run=ops.used[-1];usage=json.loads(store.get_blob(store.head('provider-usage:'+run)))
+    assert usage['billing_available'] is True and usage['usage']['cost']==0 and usage['dispatch_outcome']=='not_dispatched'
+    ops.deadline=time.time()+100;ops.gate=__import__('threading').BoundedSemaphore(1)
+    def timeout(**kwargs):raise TimeoutError('Response unknown after dispatch')
+    ops.runtimes['SOURCE_READER'].generate=timeout
+    with pytest.raises(Hold):ops.request('SOURCE_READER','source_eligibility',{'tiles':[{'tile_id':'timeout'}]},EligibilityResponse)
+    usage=json.loads(store.get_blob(store.head('provider-usage:'+ops.used[-1])))
+    assert usage['billing_available'] is False and usage['dispatch_outcome']=='unknown'
+
+
+def test_recovery_store_isolates_paper_and_clock_heads_but_reuses_exact_provider_requests(tmp_path):
+    from validator.scientific_result_v1.source_tasks.recovery import RecoveryStore
+    class Backend:
+        def _request(self,*args):raise AssertionError('No network required')
+    a=RecoveryStore(tmp_path,Backend(),{'run_id':'a'*32});b=RecoveryStore(tmp_path,Backend(),{'run_id':'b'*32})
+    assert a._key('paper:["r","week_one","p"]')!=b._key('paper:["r","week_one","p"]')
+    assert a._key('generation-clock:g')!=b._key('generation-clock:g')
+    assert a._key('model-operation:request-hash')==b._key('model-operation:request-hash')
+    assert a._key('provider-usage:request-hash:1')=='provider-usage:request-hash:1'
+    assert a.root!=b.root

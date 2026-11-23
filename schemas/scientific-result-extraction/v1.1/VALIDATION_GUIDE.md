@@ -595,7 +595,7 @@ Recovering a claim's true source location does not repair a false submitted quot
 
 After all applicable evidence, retry and correction bounds are exhausted, persist `CommonExclusionReceipt` with the terminal Silver HOLD and null Q values. Verified INELIGIBLE sources require no pointless retries. Emit one `CompetitionPairRow` per challenger with `infrastructure_fault=true`, both numeric score fields `0.0`, and `evaluation_status=COMMON_EXCLUDED`. These zeros are compatibility placeholders, not measurements; ranking skips the row before reading them. An eligible package failure instead has measured Q=0 and `infrastructure_fault=false`, retaining its competitor's actual score.
 
-Replace an excluded selected paper for the entire compared set with the next unused eligible paper in the precommitted order. Preflight exclusions before selection are source-selection diagnostics. Post-selection exclusions consume an allowance of `max(1, floor(N/20))` replacement papers for a stage requiring N eligible papers. `CommonExclusionReceipt.replacement_ordinal` counts replacements from 1 within the stage; the replacement entry's ordinal identifies its position, also from 1, in the full precommitted order. Exceeding the allowance, or lacking frozen budget to meet the stage minimum, blocks stage finalization and produces a failure report. Do not select easier tasks, unequal paper sets, or additional draws until a desired winner appears.
+For a new percentage-minimum policy, first complete the scheduled common grid. If it meets its frozen eligible-paper minimum, exclusions do not require additional draws. Otherwise replace an excluded selected paper for the entire compared set with the next unused eligible paper in the precommitted order. Historical policies retain their existing replacement procedure. Preflight exclusions before selection are source-selection diagnostics. Post-selection exclusions consume an allowance of `max(1, floor(N/20))` replacement papers for a stage requiring N eligible papers. `CommonExclusionReceipt.replacement_ordinal` counts replacements from 1 within the stage; the replacement entry's ordinal identifies its position, also from 1, in the full precommitted order. Exceeding the allowance, or lacking frozen budget to meet the stage minimum, blocks stage finalization and produces a failure report. Do not select easier tasks, unequal paper sets, or additional draws until a desired winner appears.
 
 Replacement scheduling is atomic: validate the exclusion, current sample revision, committed order, complete entrant set, allowance and budget; append the replacement/exclusion history and schedule all entrants together. A stale predecessor schedules nothing; reload authoritative state without duplicating the replacement or choosing a different reserve paper. Preserve excluded rows and prior grid revisions. Never reuse excluded-paper outputs against changed source bytes.
 
@@ -635,7 +635,7 @@ Required arithmetic examples: all checks pass gives 1; one of six equally weight
 
 Give eligible papers equal weight. For each challenger compute `d_p=Q_challenger,p−Q_incumbent,p` on the same ordered eligible grid, mean gain, and sample-standard-deviation of gains divided by `sqrt(n)`. SE is infinite for n<2. Pipeline execution/gate failures remain zero; common exclusions are skipped for everyone. Sampled cases within a paper are not independent ranking observations.
 
-Week-one challengers clear when mean gain is positive. With an incumbent, require n≥2 and mean gain greater than `2.13×SE`, subject to the required audits. Incumbent-team version swaps use nonnegative mean gain. Rank eligible finalists by mean gain; those within one paired SE of the leader tie for selection, with earliest commitment then hotkey lexical order winning. The paired SE between finalists uses per-paper differences of their gains, not added independent SEs. Preserve the stage minima: prescreen 20, screen 120, final 500, launch/week-one 320, and the existing entrant-count stage scheduling. Read these minima from the frozen competition policy, require equality with the configured round policy, and include them in runtime hashing.
+Week-one challengers clear when mean gain is positive. With an incumbent, require n≥2 and mean gain greater than `2.13×SE`, subject to the required audits. Incumbent-team version swaps use nonnegative mean gain. Rank eligible finalists by mean gain; those within one paired SE of the leader tie for selection, with earliest commitment then hotkey lexical order winning. The paired SE between finalists uses per-paper differences of their gains, not added independent SEs. Preserve the existing entrant-count stage scheduling and mainnet absolute stage minima: prescreen 20, screen 120, final 500, launch/week-one 320. Before intake, freeze the planned sample size, an exact minimum-eligible fraction and absolute stage minima in the competition policy. For `claims_common_eligibility_v1`, require `max(ceil(planned_papers × numerator / denominator), absolute_stage_minimum)` eligible papers; the owner-approved starting fraction is 1/2. A custom testnet smoke evaluation may declare smaller absolute minima (at least one), so ten planned testnet papers can require five. Historical policies without this extension retain their original full-sample requirement. Include the policy in runtime hashing; never lower it after inspecting results.
 
 For incumbent execution-failure fallback, exclude common-fault papers and require one terminal incumbent result per eligible paper. Trigger only when `5×failed_papers > eligible_papers`; 4/20 does not trigger, 5/20 does. Count build_failed, package_failed, invalid_output, timeout, cap_exceeded and security_violation. A delivered G=0 package contributes derived effective status invalid_output while its raw worker receipt remains unchanged. A low scientific score with G=1 is completed, not an execution failure.
 
@@ -7927,3 +7927,30 @@ identifies a table/cohort and says how values are reported is SOURCE_CONTEXT.
 It does not make every referenced table result one scientific target. Findings
 explicitly reported in captions/notes remain SCIENTIFIC_RESULT, and independently
 owned numerical table rows remain eligible. Mixed spans retain both kinds.
+
+## Owner-approved diagnostic recovery extension — 23 November 2026
+
+A released round may have a separately identified diagnostic recovery evaluation.
+Keep its original status, receipts, scores, sample and miner outputs unchanged.
+Freeze the recovery's target configuration, original source/output-pool hashes,
+actor and reason in an immutable manifest. Preserve the original sampling secret;
+commit it against the target policy. Source interpretation changes apply commonly
+to all entrants. A changed policy requires re-evaluation, while only an identical
+policy may retain FROZEN scores. Recovery paper heads and clocks are isolated;
+ordinary resumes do not reset elapsed time or provider-attempt bounds. Retain
+previous generations and report recovery progress separately from original progress.
+Diagnostic recovery cannot select a competition winner or issue on-chain weights.
+
+Docling source classification covers numerical-table blocks as well as prose.
+Navigation tables and contents lists are retained evidence but are not qualifying
+scientific numerical tables. OCR fragments without a coherent stated result are
+not independently sampled prose results; their anchors remain available for
+context and output-support checks. A higher-resolution Docling OCR profile may be
+frozen before recovery; no model image crops or invented plot values are required.
+
+Preserve unknown billing. Provider generation metadata may resolve a captured
+generation ID with a retained proof; an absent ID or rate-limit message alone
+does not prove zero cost. A request proven not to have reached dispatch has known
+zero cost. Diagnostic budgets retain frozen per-request reservations for unobserved
+charges across crashes and block additional requests when committed spend leaves
+insufficient reserve. Reservations and measured spend are reported separately.

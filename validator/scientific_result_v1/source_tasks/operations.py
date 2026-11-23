@@ -1,14 +1,16 @@
 """Bounded independent DSPy operations with durable request ownership and replay."""
 
 from __future__ import annotations
-from .budgets import SOURCE_TOKEN_BUDGETS, STRUCTURED_PACKET_TOKENS
-from pathlib import Path
+
+import json
 import threading
 import time
-from .store import canonical, sha, Pending, Exhausted
+from pathlib import Path
+
+from .budgets import SOURCE_TOKEN_BUDGETS, STRUCTURED_PACKET_TOKENS
+from .contracts import ErrorRecord, FileRef, JudgeRunReceipt
 from .literals import LiteralDocument
-from .contracts import FileRef,JudgeRunReceipt,ErrorRecord
-import json
+from .store import Exhausted, Pending, canonical, sha
 
 ROOT = Path(__file__).parent
 GLOBAL_GATE=threading.BoundedSemaphore(16)
@@ -292,11 +294,13 @@ class Operations:
                     payload["source_images"].append({"path":str(path),"source_id":source,"page":page,"sha256":digest})
             raw_ref = None
             started=time.monotonic()
+            dispatched=False
             try:
                 # A distinct provider context for each role and candidate. No earlier verdict to secondary.
                 with self.gate:
                     if time.time() >= self.deadline:
                         raise Hold("EVALUATOR", "Deadline expired in queue")
+                    dispatched=True
                     answer = runtime.generate(
                         instructions=prompt,
                         payload=payload,
@@ -311,9 +315,10 @@ class Operations:
                     validate(result)
                 self.store.finish(key, ordinal, response=raw_ref.sha256)
                 self.response_refs[key] = raw_ref
-                self.record_run(key,ordinal,role,attempt_request,raw_ref,count,started,None)
+                self.record_run(key,ordinal,role,attempt_request,raw_ref,count,started,None,dispatched=dispatched)
                 return result
             except Exception as exc:
+                if getattr(exc,'not_dispatched',False):dispatched=False
                 from .errors import safe_message
                 message=safe_message(exc,[getattr(r,'api_key',None) for r in self.runtimes.values()])
                 self.store.finish(
@@ -322,7 +327,7 @@ class Operations:
                     response=raw_ref.sha256 if raw_ref else None,
                     error=type(exc).__name__ + ": " + message[:2000],
                 )
-                self.record_run(key,ordinal,role,attempt_request,raw_ref,count,started,exc)
+                self.record_run(key,ordinal,role,attempt_request,raw_ref,count,started,exc,dispatched=dispatched)
                 from ..runtime import TruncatedStageError
                 if operation == 'source_table_layout' and isinstance(exc, TruncatedStageError):
                     raise LayoutSubdivisionRequired('SOURCE', 'Provider explicitly truncated table layout') from exc
@@ -333,11 +338,12 @@ class Operations:
         )
 
 
-    def record_run(self,key,ordinal,role,request,response,count,started,error):
+    def record_run(self,key,ordinal,role,request,response,count,started,error,*,dispatched=True):
         usage=getattr(self.runtimes[role],"usage",[])
         if usage and not usage[-1].get('stage','').endswith(key[:16]):
             usage=[]
-        last=usage[-1].get("usage",{}) if usage else {}
+        if not dispatched:usage=[]
+        last=usage[-1].get("usage",{}) if usage else ({"cost":0,"prompt_tokens":0,"completion_tokens":0} if not dispatched else {})
         raw_response=response
         if usage:
             call=usage[-1].get("call_id")
@@ -356,7 +362,7 @@ class Operations:
             'usage':last,'billing_available':last.get('cost') is not None,
             'provider_request_id':usage[-1].get('provider_request_id') if usage else None,
             'provider':usage[-1].get('provider') if usage else None,
-            'tokens_observed':bool(last),'dispatch_outcome':'confirmed' if usage else 'unknown'}
+            'tokens_observed':bool(last),'dispatch_outcome':'not_dispatched' if not dispatched else 'confirmed' if usage else 'unknown'}
         usage_ref=self.store.put(usage_record)
         self.store.advance('provider-usage:'+receipt.run_id,None,usage_ref.sha256)
         ref=self.store.put(receipt);self.store.advance("judge-run:"+key+":"+str(ordinal),None,ref.sha256)
@@ -366,7 +372,7 @@ class Operations:
 
     def scoped(self):
         from dataclasses import is_dataclass, replace
-        runtimes={role:replace(runtime,usage=[]) if is_dataclass(runtime) else runtime
+        runtimes={role:runtime.scoped() if callable(getattr(runtime,'scoped',None)) else replace(runtime,usage=[]) if is_dataclass(runtime) else runtime
                   for role,runtime in self.runtimes.items()}
         return Operations(store=self.store,routes=self.routes,runtimes=runtimes,tokenizers=self.tokenizers,
             trace_dir=self.trace_dir,deadline=self.deadline,policy_hash=self.policy_hash,gate=self.gate,offline=self.offline,

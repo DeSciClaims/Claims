@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 
-def parse_pdf(pdf_path: Path, output_dir: Path) -> dict[str, Any]:
+def parse_pdf(pdf_path: Path, output_dir: Path, *, ocr_scale: float = 3.0) -> dict[str, Any]:
     from docling.datamodel.base_models import InputFormat
     from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
     from docling.document_converter import DocumentConverter, PdfFormatOption
@@ -21,6 +21,9 @@ def parse_pdf(pdf_path: Path, output_dir: Path) -> dict[str, Any]:
     options = PdfPipelineOptions()
     if artifacts := os.environ.get("DOCLING_ARTIFACTS_PATH"):
         options.artifacts_path = Path(artifacts)
+    if not 1.0 <= ocr_scale <= 4.0:
+        raise ValueError("OCR scale must be between 1 and 4")
+    options.ocr_options.scale = ocr_scale
     options.do_ocr = True
     # Some publisher PDFs map ±/minus glyphs to ordinary digits. OCR only on
     # bitmap regions leaves these substitutions intact, corrupting numeric values.
@@ -41,7 +44,7 @@ def parse_pdf(pdf_path: Path, output_dir: Path) -> dict[str, Any]:
                    for page in result.pages],
         parser_metadata={
             "name": "docling", "version": version("docling"),
-            "ocr": True, "full_page_ocr": True, "retain_page_cells": True,
+            "ocr": True, "ocr_scale": ocr_scale, "full_page_ocr": True, "retain_page_cells": True,
             "table_structure": True, "table_mode": "accurate",
             "conversion_status": str(result.status),
         },

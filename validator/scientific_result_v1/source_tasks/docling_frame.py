@@ -6,17 +6,24 @@ structure is the source evidence. Parser omissions are a disclosed limitation.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import re
 import tempfile
 import time
+from pathlib import Path
 
 from .contracts import (
-    Closed, FileRef, SourceAnchor, SourceFrame, SourceTable, SourceTile,
-    PageLocator, TextLocator, TableLocator,
+    Closed,
+    FileRef,
+    PageLocator,
+    SourceAnchor,
+    SourceFrame,
+    SourceTable,
+    SourceTile,
+    TableLocator,
+    TextLocator,
 )
-from .store import canonical, sha
 from .operations import Hold
+from .store import canonical, sha
 
 POLICY = 'docling_pdf_derivatives_v1'
 FRAME_KIND = 'claims_docling_source_frame_v1'
@@ -128,7 +135,7 @@ def _table_grid(table):
     return grid, header_rows, section_rows, data_rows, blank_rows
 
 
-def _capture(store, packet, directories):
+def _capture(store, packet, directories, *, ocr_scale=3.0):
     documents = []
     for number, source in enumerate(packet.documents, 1):
         if source.file is None:
@@ -145,7 +152,8 @@ def _capture(store, packet, directories):
             trusted=False
             if stamp.exists():
                 run=json.loads(stamp.read_text())
-                trusted=run.get('independent_validator_parse') is True and run.get('source_sha256')==source.file.sha256
+                trusted=(run.get('independent_validator_parse') is True and run.get('source_sha256')==source.file.sha256
+                    and run.get('ocr_scale',3.0)==ocr_scale)
             if not trusted or not (directory / 'source_payload.json').exists():
                 # Never accept a miner's parsed text/CSV merely because it names the PDF hash.
                 # Existing untrusted caches are left unchanged; parse original bytes separately.
@@ -155,9 +163,9 @@ def _capture(store, packet, directories):
                 original = Path(work) / 'source.pdf'
                 original.write_bytes(raw)
                 started=time.time()
-                parse_pdf(original, directory)
+                parse_pdf(original, directory, **({'ocr_scale':ocr_scale} if ocr_scale!=3.0 else {}))
                 (directory/'validator_parse_run.json').write_text(json.dumps({
-                    'source_sha256':source.file.sha256,'independent_validator_parse':True,
+                    'source_sha256':source.file.sha256,'independent_validator_parse':True,'ocr_scale':ocr_scale,
                     'started_at':started,'finished_at':time.time(),'source_evidence_policy':POLICY}))
             metadata_bytes = (directory / 'source_payload.json').read_bytes()
             metadata = json.loads(metadata_bytes)
@@ -301,6 +309,13 @@ def derive_frame(store, packet, config, config_sha256):
                 anchor_ids=list(dict.fromkeys(headers + note_ids + row_ids)), numerical=True,
                 data_row_count=len(row_ids), layout_receipt=store.put(proof), data_row_anchor_ids=row_ids,
                 logical_column_names=proof['column_names'], header_anchor_ids=proof['header_anchor_ids'], note_anchor_ids=proof['note_anchor_ids']))
+    if config.get('table_eligibility_policy') == TABLE_ELIGIBILITY_POLICY:
+        retained=[]
+        for table in tables:
+            ids=[table.table_uid+'-rows'+str(start) for start in range(0,table.data_row_count,5)]
+            if any(decisions.get(tile_id,True) for tile_id in ids):retained.append(table)
+            else:excluded.extend(table.anchor_ids)
+        tables=retained
     tiles = list(prose)
     for table in tables:
         for start in range(0, table.data_row_count, 5):
@@ -314,15 +329,21 @@ def derive_frame(store, packet, config, config_sha256):
         excluded_region_anchor_ids=excluded, errors=[])
 
 
-def _classify(ops, frame):
+TABLE_ELIGIBILITY_POLICY = 'scientific_table_eligibility_v1'
+
+
+def eligibility_tiles(frame, *, tables=False):
+    """Original source blocks only; no candidate output or guessed table type."""
     by_id = {a.anchor_id: a for a in frame.anchors}
-    proposed = []
-    for tile in frame.tiles:
-        if tile.stratum != 'PROSE_OR_EQUATION':
-            continue
-        proposed.append({'tile_id': tile.tile_id,
-            'text': '\n'.join(by_id[k].exact_text for k in tile.owned_anchor_ids),
-            'context': '\n'.join(by_id[k].exact_text for k in tile.context_anchor_ids)})
+    return [{'tile_id': tile.tile_id,
+        'text': '\n'.join(by_id[k].exact_text for k in tile.owned_anchor_ids),
+        'context': '\n'.join(by_id[k].exact_text for k in tile.context_anchor_ids),
+        **({'source_kind': tile.stratum, 'table_uid': tile.table_uid} if tables else {})}
+        for tile in frame.tiles if tables or tile.stratum == 'PROSE_OR_EQUATION']
+
+
+def _classify(ops, frame, *, tables=False):
+    proposed = eligibility_tiles(frame, tables=tables)
     accepted = []
     batches=[];batch=[]
     for tile in proposed:
@@ -352,14 +373,15 @@ def _classify(ops, frame):
 
 
 def prepare_docling_frame(store, packet, directories, ops, policy_sha256):
-    documents = _capture(store, packet, directories)
+    documents = _capture(store, packet, directories, ocr_scale=getattr(ops,'ocr_scale',3.0))
     config = {'kind': FRAME_KIND, 'source_evidence_policy': POLICY,
               'table_context_policy':TABLE_CONTEXT_POLICY,
+              'table_eligibility_policy':TABLE_ELIGIBILITY_POLICY,
               'source_packet_sha256': sha(canonical(packet)), 'policy_sha256': policy_sha256,
               'documents': documents, 'eligibility': [], 'eligibility_runs': []}
     draft = derive_frame(store, packet, config, '0' * 64)
     before = len(ops.run_refs)
-    config['eligibility'] = _classify(ops, draft)
+    config['eligibility'] = _classify(ops, draft, tables=True)
     config['eligibility_runs'] = [r.model_dump(mode='json') for r in ops.run_refs[before:]]
     ref = store.put(config)
     result = derive_frame(store, packet, config, ref.sha256)
@@ -406,11 +428,8 @@ def validate_docling_layout(store, table, frame, packet):
 
 
 def _validate_eligibility(store, config, draft, packet):
-    anchors={a.anchor_id:a for a in draft.anchors}
-    proposed={t.tile_id:{'tile_id':t.tile_id,
-        'text':'\n'.join(anchors[k].exact_text for k in t.owned_anchor_ids),
-        'context':'\n'.join(anchors[k].exact_text for k in t.context_anchor_ids)}
-        for t in draft.tiles if t.stratum=='PROSE_OR_EQUATION'}
+    proposed={tile['tile_id']:tile for tile in eligibility_tiles(draft,
+        tables=config.get('table_eligibility_policy')==TABLE_ELIGIBILITY_POLICY)}
     covered=set()
     from .contracts import JudgeRunReceipt
     successful = {}

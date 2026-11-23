@@ -1,8 +1,9 @@
 """Credential-free identities of every effective scientific scoring component."""
 from pathlib import Path
-from .store import canonical,sha
-from .packages import SCHEMA_HASH
+
 from ..engine import implementation_hashes
+from .packages import SCHEMA_HASH
+from .store import canonical, sha
 
 
 def runtime_descriptor():
@@ -12,6 +13,7 @@ def runtime_descriptor():
                 'competition':{p.name:sha(p.read_bytes()) for p in competition.glob('*.py')}})),
             'prompt_bundle_digest':sha(canonical({p.name:sha(p.read_bytes()) for p in root.glob('*.txt')})),
             'renderer_digest':sha((root/'packets.py').read_bytes()),
-            'source_parser_digest':sha(canonical({name:sha((root/name).read_bytes()) for name in ('parsing.py','docling_frame.py')})),
+            'source_parser_digest':sha(canonical({**{name:sha((root/name).read_bytes()) for name in ('parsing.py','docling_frame.py')},
+                'docling_source.py':sha((competition.parent/'miner/scientific_result_v1/docling_source.py').read_bytes())})),
             'normalization_digest':sha((root/'literals.py').read_bytes()),
             'extraction_schema_sha256':SCHEMA_HASH}

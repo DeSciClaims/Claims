@@ -130,6 +130,21 @@ def response_schema(response_type,data):
         branch['properties']['output_refs']['minItems' if use_output else 'maxItems']=1 if use_output else 0
         if not use_output:branch['properties']['missing_requirement_id']={**_nonnull(missing),'enum':reqs}
         if use_output or reqs:counter_branches.append(branch)
+    family_codes={'SOURCE_SEPARATE','MUST_TOGETHER'}
+    for branch in counter_branches:
+        codes=branch['properties']['code'].get('enum',[])
+        branch['properties']['code']['enum']=[code for code in codes if code not in family_codes]
+    result_roots=sorted(o.original_ref.pointer for o in case.objects if o.kind=='RESULT')
+    if len(result_roots)>=2:
+        for code in sorted(family_codes):
+            branch=copy.deepcopy(counter)
+            branch['properties']['code']={'type':'string','const':code}
+            branch['properties']['rule_ids']={'type':'array','items':{'type':'string','const':'V10'},'minItems':1,'maxItems':1}
+            witness=copy.deepcopy(defs['JsonRef'])
+            witness['properties']['pointer']={'type':'string','enum':result_roots}
+            branch['properties']['output_refs']={'type':'array','items':witness,'minItems':2}
+            branch['properties']['missing_requirement_id']={'type':'null','const':None}
+            counter_branches.append(branch)
     defs['Counterexample']={'anyOf':counter_branches}
     checks={}
     for dimension in required:

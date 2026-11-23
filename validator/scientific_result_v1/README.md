@@ -14,7 +14,7 @@ numbers of fields, results or families earns no credit.
    references, graph closures and the actual separate CSV files.
 2. **Select checks from the source.** The validator runs Docling on the supplied PDFs
    independently and freezes its text/OCR, captions and native tables. Source-only
-   eligibility checks identify scientific prose before sampling. A committed
+   eligibility checks identify scientific prose and numerical-table blocks before sampling. Contents pages and navigation lists are retained as source evidence but excluded from the scientific table population. A committed
    random seed selects common content and table checks for every miner.
 3. **Check the science.** DSPy programs compare each original output with the
    selected source evidence. They check complete findings, including attachments,
@@ -67,8 +67,15 @@ After bounded recovery is exhausted, an immutable common exclusion records null 
 for the entire paper. The backend can atomically release the next paper in the
 precommitted reserve order and schedule every entrant, subject to the frozen
 replacement limit and available budget. The original paper remains in the audit
-history. Publication requires the original minimum number of commonly eligible
-papers; if that minimum cannot be met, the stage fails without a winner or weights.
+history. Old rounds retain their original full-sample minimum. New rounds can
+freeze `claims_common_eligibility_v1`: the greater of the declared absolute stage
+minimum and the planned sample multiplied by an exact fraction, rounded up. The
+owner-approved starting fraction is **1/2**: a ten-paper testnet requires five
+eligible papers. Mainnet retains absolute floors of 20/120/500/320 for
+prescreen/screen/final/week-one. The fraction, absolute floors and planned counts
+must be frozen before intake; none are applied retroactively. Replacements are
+requested only after the scheduled grid finishes and falls below its minimum.
+An unmet minimum produces a failed stage with diagnostic results and no weights.
 
 ## Which sources are in scope?
 
@@ -208,3 +215,44 @@ have separate billing records. This is validator expense, separate from miner li
 
 **Scientific judge accuracy is unmeasured.** Full conformance/pilot work and remaining
 production integration are separate from this execution and replay check.
+
+## Recovering a failed testnet evaluation
+
+An authenticated administrator creates a linked recovery using the backend's
+`POST /admin/competition/rounds/{round_id}/scientific-recoveries`. The immutable
+manifest names the original sample, exact source/output-pool hashes, original
+receipts, target configuration, reason and actor. It cannot change extraction
+limits or activation mode. The original failed round stays intact and issues no
+new weights. Public recovery progress appears separately on that round's page.
+
+The runner is:
+
+```sh
+python -m validator.scientific_result_v1.source_tasks.recovery \
+  --backend-url https://api.claims111.ai --round-id ROUND --run-id RECOVERY_ID \
+  --root /protected/evidence --max-workers 2
+```
+
+`CLAIMS_COMPETITION_CONTROLLER_TOKEN` and the approved judge API keys come from
+the existing protected service environment. They never enter the manifest.
+The runner reads sealed packages, keeps the original sampling secret, binds its
+commitment to the revised policy, and never executes a miner. It reuses retained
+independent Docling captures, or reparses the same supplied PDFs under the frozen
+OCR profile. No supplement is fetched and no image crop is sent to a judge.
+
+An unchanged-policy FROZEN result can be retained. A changed scientific policy
+requires re-evaluation for every entrant on its affected common sample. Exact
+request caches remain reusable only when prompts, routes, policy, schema and
+payload match. Paper checkpoints and judging clocks use recovery-specific keys.
+Restarting the same recovery does not reset deadlines or spend. A new policy
+requires another audited recovery manifest rather than overwriting a completed
+result. Provider-free replay verifies a FROZEN result before it is checkpointed.
+
+A durable diagnostic budget reserves the declared per-request envelope before
+dispatch. Unobserved costs keep that reservation across process crashes. Actual
+costs remain separate from reservations; unknown calls are never reported as free.
+Captured OpenRouter generation IDs can be reconciled against [generation
+metadata](https://openrouter.ai/docs/api/api-reference/generations/get-generation),
+retaining both the old usage record and the provider proof. A request that never
+reached provider dispatch records known zero. Miner limits remain $0.10, 2M tokens
+and one hour. Diagnostic recovery results do not crown or publish weights.

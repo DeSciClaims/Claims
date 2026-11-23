@@ -2,13 +2,22 @@
 import json
 import os
 from pathlib import Path
-from validator.scientific_result_v1.source_tasks.contracts import (FrozenSettings,ProviderParameters,SourcePacket,SourceFrame,
-    ComparisonPlan,FileRef,SubmittedPackage)
-from validator.scientific_result_v1.source_tasks.store import sha,canonical
+
+from validator.scientific_result_v1.source_tasks.contracts import (
+    ComparisonPlan,
+    FileRef,
+    FrozenSettings,
+    ProviderParameters,
+    SourceFrame,
+    SourcePacket,
+    SubmittedPackage,
+)
+from validator.scientific_result_v1.source_tasks.operations import Operations
 from validator.scientific_result_v1.source_tasks.remote import RemoteStore
 from validator.scientific_result_v1.source_tasks.runtime import SourceTaskRuntime
-from validator.scientific_result_v1.source_tasks.operations import Operations
+from validator.scientific_result_v1.source_tasks.store import canonical, sha
 from validator.scientific_result_v1.source_tasks.tokenization import BudgetTokenizer
+
 from .scientific_policy import FrozenScientificEvaluationPolicy
 from .scientific_pool import ScientificPoolService
 from .scientific_validation import TrustedScientificDeliveryValidator
@@ -52,11 +61,19 @@ def create_scientific_policy(row,backend,configuration):
         raise ValueError('Scientific round rules must freeze protocol dispatch and Silver-only selection')
     from .code_audit import SOURCE_AUDIT_POLICY
     if public_policy.get('code_audit')!=SOURCE_AUDIT_POLICY:raise ValueError('Scientific round must freeze the three-check code audit policy')
+    from .round_evaluation import round_evaluation
+    from .scientific_eligibility import required_eligible_papers
+    evaluation=round_evaluation(row)
+    if evaluation is not None:
+        for stage in evaluation.stages:
+            required_eligible_papers(configuration,row['network'],stage.name,stage.papers)
     mode=spec.get('mode')
     if mode not in {'testnet_smoke','production'} or (mode=='testnet_smoke' and row.get('network')!='testnet'):
         raise ValueError('Scientific activation mode is invalid')
     if mode=='production':
-        from validator.scientific_result_v1.source_tasks.qualification import activation_failures
+        from validator.scientific_result_v1.source_tasks.qualification import (
+            activation_failures,
+        )
         if not isinstance(spec.get('activation_receipt'),dict):raise ValueError('Production requires signed scientific qualification evidence')
         activation=json.loads(store.read(FileRef.model_validate(spec['activation_receipt'],strict=True)))
         from substrateinterface import Keypair
@@ -143,11 +160,13 @@ def bind_scientific_worker_sources(base,backend):
 def create_source_preparer(row,backend,configuration,fetcher):
     """The former Bronze preparation slot prepares source tasks, never claim-unit truth."""
     import time
-    from .scientific_factory import create_scientific_policy
-    from validator.scientific_result_v1.source_tasks.contracts import SourceDocument
-    from validator.scientific_result_v1.source_tasks.preparation import prepare_paper
-    from validator.scientific_result_v1.source_tasks.operations import Hold
+
     from miner.scientific_result_v1.docling_source import parse_pdf
+    from validator.scientific_result_v1.source_tasks.contracts import SourceDocument
+    from validator.scientific_result_v1.source_tasks.operations import Hold
+    from validator.scientific_result_v1.source_tasks.preparation import prepare_paper
+
+    from .scientific_factory import create_scientific_policy
     policy=create_scientific_policy(row,backend,configuration);pool=policy.evaluate_pool
     def prepare(round_id):
         if round_id!=row['round_id']:raise ValueError('Scientific preparation round mismatch')

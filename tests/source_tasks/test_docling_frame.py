@@ -1,14 +1,24 @@
 """PDF byte binding, native table structure and replay without page crops."""
-import json
 import copy
+import json
 import time
+
 import pytest
-from validator.scientific_result_v1.source_tasks.contracts import SourceDocument, SourcePacket, ModelRoute
-from validator.scientific_result_v1.source_tasks.store import Store,canonical,sha
+
+from validator.scientific_result_v1.source_tasks.contracts import (
+    ModelRoute,
+    SourceDocument,
+    SourcePacket,
+)
+from validator.scientific_result_v1.source_tasks.docling_frame import (
+    validate_docling_frame,
+)
+from validator.scientific_result_v1.source_tasks.layout_validation import (
+    validate_layout,
+)
 from validator.scientific_result_v1.source_tasks.operations import Operations
 from validator.scientific_result_v1.source_tasks.preparation import prepare_paper
-from validator.scientific_result_v1.source_tasks.docling_frame import validate_docling_frame
-from validator.scientific_result_v1.source_tasks.layout_validation import validate_layout
+from validator.scientific_result_v1.source_tasks.store import Store, canonical, sha
 
 
 def fixture(tmp_path,monkeypatch):
@@ -50,7 +60,10 @@ def fixture(tmp_path,monkeypatch):
 
 
 def test_docling_parses_supplied_pdf_and_projects_native_rows_without_crops(tmp_path,monkeypatch):
-    from validator.scientific_result_v1.source_tasks.contracts import FileRef,SourceFrame
+    from validator.scientific_result_v1.source_tasks.contracts import (
+        FileRef,
+        SourceFrame,
+    )
     store,packet,ops=fixture(tmp_path,monkeypatch)
     prepared,_=prepare_paper(store=store,packet=packet,parsed_directories={},operations=ops,stages=['week_one'],policy_sha256='1'*64)
     frame=store.load(FileRef.model_validate(prepared['source_frame'],strict=True),SourceFrame)
@@ -71,7 +84,10 @@ def test_docling_parses_supplied_pdf_and_projects_native_rows_without_crops(tmp_
 
 
 def test_docling_eligibility_cannot_be_flipped_after_review(tmp_path,monkeypatch):
-    from validator.scientific_result_v1.source_tasks.contracts import FileRef,SourceFrame
+    from validator.scientific_result_v1.source_tasks.contracts import (
+        FileRef,
+        SourceFrame,
+    )
     store,packet,ops=fixture(tmp_path,monkeypatch)
     prepared,_=prepare_paper(store=store,packet=packet,parsed_directories={},operations=ops,stages=['week_one'],policy_sha256='1'*64)
     frame=store.load(FileRef.model_validate(prepared['source_frame'],strict=True),SourceFrame)
@@ -85,7 +101,10 @@ def test_docling_eligibility_cannot_be_flipped_after_review(tmp_path,monkeypatch
 
 
 def test_miner_supplied_parser_cache_is_not_source_evidence(tmp_path,monkeypatch):
-    from validator.scientific_result_v1.source_tasks.contracts import FileRef,SourceFrame
+    from validator.scientific_result_v1.source_tasks.contracts import (
+        FileRef,
+        SourceFrame,
+    )
     store,packet,ops=fixture(tmp_path,monkeypatch)
     untrusted=tmp_path/'miner-cache';untrusted.mkdir()
     (untrusted/'source_payload.json').write_text(json.dumps({'source_sha256':packet.documents[0].file.sha256}))
@@ -98,11 +117,16 @@ def test_miner_supplied_parser_cache_is_not_source_evidence(tmp_path,monkeypatch
 
 
 def test_pdf_diagnostic_gate_failure_freezes_and_replays_without_scientific_calls(tmp_path,monkeypatch):
-    from validator.scientific_result_v1.structural import load_schema
-    from validator.scientific_result_v1.source_tasks.contracts import FileRef,SourceFrame,SubmittedPackage,SourceGridManifest
+    from scripts.verify_scientific_example_papers import diagnostic_comparison
+    from validator.scientific_result_v1.source_tasks.contracts import (
+        FileRef,
+        SourceFrame,
+        SourceGridManifest,
+        SubmittedPackage,
+    )
     from validator.scientific_result_v1.source_tasks.evaluator import PaperEvaluator
     from validator.scientific_result_v1.source_tasks.replay import replay
-    from scripts.verify_scientific_example_papers import diagnostic_comparison
+    from validator.scientific_result_v1.structural import load_schema
     store,packet,ops=fixture(tmp_path,monkeypatch)
     prepared,_=prepare_paper(store=store,packet=packet,parsed_directories={},operations=ops,stages=['week_one'],policy_sha256='1'*64)
     frame=store.load(FileRef.model_validate(prepared['source_frame'],strict=True),SourceFrame)
@@ -124,3 +148,32 @@ def test_pdf_diagnostic_gate_failure_freezes_and_replays_without_scientific_call
     assert actual.gate==0 and actual.score.numerator==0
     assert not receipt.scientific_verdicts
     assert replay(store,ref)==receipt
+
+
+def test_tables_of_contents_are_classified_before_sampling_and_replay_is_complete(tmp_path,monkeypatch):
+    from validator.scientific_result_v1.source_tasks.docling_frame import (
+        prepare_docling_frame,
+    )
+    store,packet,ops=fixture(tmp_path,monkeypatch)
+    original=__import__('miner.scientific_result_v1.docling_source',fromlist=['parse_pdf']).parse_pdf
+    def parse(path,output):
+        original(path,output)
+        p=output/'docling_document.json';doc=json.loads(p.read_text());table=doc['tables'][0]
+        table['captions']=[{'$ref':'#/texts/1'}]
+        doc['texts'].append({'self_ref':'#/texts/1','label':'caption','text':'Table of contents','prov':[]})
+        for cell in table['data']['table_cells']:
+            if cell['text']=='1.2300':cell['text']='15'
+        p.write_text(json.dumps(doc))
+    monkeypatch.setattr('miner.scientific_result_v1.docling_source.parse_pdf',parse)
+    for runtime in ops.runtimes.values():
+        def generate(*,payload,**kwargs):
+            return {'items':[{'tile_id':t['tile_id'],'eligible':t.get('source_kind')!='TABLE','reason':'Navigation page numbers, not measurements' if t.get('source_kind')=='TABLE' else 'Scientific prose'} for t in payload['tiles']]}
+        runtime.generate=generate
+    frame=prepare_docling_frame(store,packet,{},ops,'1'*64)
+    assert not frame.tables and not any(t.stratum=='TABLE' for t in frame.tiles)
+    assert any(a.anchor_id.startswith('d1-table0-row') for a in frame.anchors)
+    assert any(a.anchor_id.startswith('d1-table0-row') for a in frame.anchors if a.anchor_id in frame.excluded_region_anchor_ids)
+    assert validate_docling_frame(store,frame,packet)
+    cfg=json.loads(store.get_blob(frame.parser_config_sha256));cfg['eligibility']=[d for d in cfg['eligibility'] if 'table' not in d['tile_id']]
+    tampered=frame.model_copy(update={'parser_config_sha256':store.put(cfg).sha256})
+    with pytest.raises(ValueError):validate_docling_frame(store,tampered,packet)

@@ -99,3 +99,11 @@ properties, not their unrelated closures, numerical fields, or complete scientif
 assertions. Full matched results, necessary graph endpoints, closure members and
 boundary definitions stay complete. Headers cannot satisfy unseen scientific
 information or count as audited assertions. Family declarations remain complete.
+
+A SOURCE_SEPARATE or MUST_TOGETHER finding must cite at least TWO DISTINCT
+original local-result records shown in this packet and rule V10. Cite the result
+root pointers, not just a family/group pointer or field, and identify the concrete
+source boundary or mandatory connection. Do not infer grouping failure from the
+number of families or preferred granularity. If the required witness records are
+not in the packet, request their captured evidence; do not fabricate pointers or
+return an unwitnessed FAIL.

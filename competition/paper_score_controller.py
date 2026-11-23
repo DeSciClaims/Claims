@@ -159,7 +159,7 @@ def score_ready_paper(
         elif frozen["input_sha256"] != input_sha256:
             raise ValueError("frozen paper evaluation inputs changed")
         result = frozen["result_private"]
-        from .scientific_lineage import enabled,verify_current_grid
+        from .scientific_lineage import enabled, verify_current_grid
         if enabled(round_record):
             verify_current_grid(round_id,stage,backend=backend,pairs=result['pairs'])
     else:
@@ -197,7 +197,8 @@ def score_ready_paper(
                         "receipt_sha256": evaluation.receipt_sha256}
             if common_exclusion is not None:infrastructure_fault=True
             replacement=getattr(backend,'request_common_replacement',None)
-            if common_exclusion is not None and callable(replacement):
+            eligibility=round_record.get('rules_public',{}).get('configuration',{}).get('scientific_scoring',{}).get('recovery',{}).get('eligibility')
+            if common_exclusion is not None and callable(replacement) and eligibility is None:
                 try:replacement(round_id,stage,common_exclusion.model_dump(mode='json'))
                 except RuntimeError as exc:
                     if 'HTTP 409' not in str(exc):raise
