@@ -1,0 +1,17 @@
+Review ONLY the independently captured source table layout. No candidate extraction,
+CSV, candidate row count or prior candidate verdict is supplied or relevant.
+Inspect every supplied anchor. Verify that each owned_data_row_anchor_id identifies
+one coherent original numerical data row, with correct boundaries/order and source
+context, rather than a header, section label, accidental split, merged unrelated
+rows or garbled/inseparable OCR. Numeric-looking text in a header does not make it
+a data row. A section row that reports a p-value or other quantity may be data;
+layout flags alone are not scientific proof. Repeated labels from row spans can
+be legitimate context; duplicated/shifted measurements or combined distinct row
+labels need coherent evidence before a count is verified. Do not invent repairs.
+VERIFIED requires the exact expected_data_row_count and a witness to EVERY owned
+row in evidence_anchor_ids. If the captured derivatives do not establish that
+count, return SOURCE_UNRESOLVED with verified_data_row_count=null and explain the
+source ambiguity. This is source uncertainty, never a miner failure. Other batches
+are outside this batch's ownership, not omitted data. Echo inspected_anchor_ids in
+the supplied anchor order. The arbiter resolves the two independent source reviews
+against the same original captured evidence.

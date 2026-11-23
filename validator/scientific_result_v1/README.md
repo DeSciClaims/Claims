@@ -280,3 +280,12 @@ transport faults with the exact original body, never conflict/auth failures,
 worker claims, administrative changes or awards. Confirmed immutable blob uploads
 are reused after hash/receipt checks. This changes transport only: the original
 runtime, policy, deadlines, requests and saved judgments remain unchanged.
+
+
+When a delivered CSV's data-row count disagrees with Docling, two independent
+judges first check the source layout, with an arbiter for disagreements. They see
+only the captured source rows and headers, never the candidate CSV/count. A verified
+source count can support a mechanical failure; uncertain source boundaries hold
+or exclude the paper for everyone. CSV/declaration errors still fail directly.
+Retained header rows are mapped as context without rewriting the CSV or its row
+coordinates. Review coverage and witnesses are checked again during replay.

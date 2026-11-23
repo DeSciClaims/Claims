@@ -153,6 +153,18 @@ def replay(store,ref):
                     if verdict.packet_sha256==sha(canonical(case)) and verdict.state!='HOLD':
                         response=JudgeResponse.model_validate_json(store.get_blob(verdict.decisive_response_sha256),strict=True)
                         validate_judgment(response,cards[case.task_id],case,{a.anchor_id for a in source.anchors},index.resolve)
+    from .table_count_review import FAILURE_PREFIX,replay_source_count
+    try:row_review_policy=__import__('json').loads(store.get_blob(source.parser_config_sha256)).get('source_row_count_review_policy')
+    except (KeyError,ValueError):row_review_policy=None
+    for gate in receipt.deterministic_gates:
+        for finding in gate.errors:
+            legacy_prefix='Delivered data-row count differs from the trusted source table: '
+            prefix=FAILURE_PREFIX if finding.message.startswith(FAILURE_PREFIX) else legacy_prefix if row_review_policy=='source_row_count_review_v1' and finding.message.startswith(legacy_prefix) else None
+            if finding.code=='CSV_FORMAT_OR_DIMENSIONS' and prefix is not None:
+                uid=finding.message[len(prefix):]
+                table=next((t for t in source.tables if t.table_uid==uid),None)
+                if table is None:raise ValueError('Verified row-count finding has no source table')
+                replay_source_count(store,receipt,source,table)
     gates={g.output_alias:g for g in receipt.deterministic_gates}
     if receipt.state=='FROZEN':
         from .replay_checks import check_selections,check_runs

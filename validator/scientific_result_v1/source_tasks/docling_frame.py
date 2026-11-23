@@ -377,6 +377,7 @@ def prepare_docling_frame(store, packet, directories, ops, policy_sha256):
     config = {'kind': FRAME_KIND, 'source_evidence_policy': POLICY,
               'table_context_policy':TABLE_CONTEXT_POLICY,
               'table_eligibility_policy':TABLE_ELIGIBILITY_POLICY,
+              'source_row_count_review_policy':'source_row_count_review_v1',
               'source_packet_sha256': sha(canonical(packet)), 'policy_sha256': policy_sha256,
               'documents': documents, 'eligibility': [], 'eligibility_runs': []}
     draft = derive_frame(store, packet, config, '0' * 64)

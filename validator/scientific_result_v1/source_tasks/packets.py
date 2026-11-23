@@ -641,7 +641,7 @@ class Index:
         return AssertionPacket(packet_id='packet-'+sha(canonical(data)),**data)
 
 
-def source_data_rows(table, csv_rows, expected_count):
+def source_data_rows(table, csv_rows, expected_count, *, source_header_texts=()):
     """Map scientific source-row ordinals to original CSV record coordinates.
 
     Archive row_count still counts every delivered CSV record. Extra records that
@@ -652,5 +652,20 @@ def source_data_rows(table, csv_rows, expected_count):
     if len(all_rows)==expected_count:return all_rows
     columns=[i for i,c in enumerate(table['columns']) if c['role']=='data']
     if not columns:return None
-    data=[row for row in all_rows if any(csv_rows[row][column].strip() for column in columns)]
+    normalize=lambda text:''.join(text.split()).casefold()
+    source_headers={normalize(cell) for text in source_header_texts for cell in text.split(' | ') if cell.strip()}
+    candidates=[]
+    for column in table['columns']:
+        path=column.get('header_path',[]);values=set()
+        for start in range(len(path)):
+            for stop in range(start+1,len(path)+1):
+                parts=[normalize(value) for value in path[start:stop]]
+                if all(part in source_headers for part in parts):values.add(''.join(parts))
+        candidates.append(values)
+    def header(row):
+        values=csv_rows[row]
+        if values==csv_rows[0]:return True
+        return bool(source_headers and any(value.strip() for value in values)) and all(
+            not value.strip() or normalize(value) in candidates[i] for i,value in enumerate(values))
+    data=[row for row in all_rows if not header(row) and any(csv_rows[row][column].strip() for column in columns)]
     return data if len(data)==expected_count else None

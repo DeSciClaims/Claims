@@ -182,6 +182,8 @@ def test_lossless_packet_index_and_gate_separate_from_science(generated):
         ("stale_closure", Fraction(0)),
         ("unreviewed_link", Fraction(0)),
         ("bad_annotation_range", Fraction(0)),
+        ("extra_csv_row_verified_source", Fraction(0)),
+        ("extra_csv_row_ambiguous_source", None),
         ("source_hold", None),
         ("invalid_judge_pointer", None),
     ],
@@ -337,6 +339,9 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
         candidate = copy.deepcopy(doc)
         delivered = csv
         if alias == "b":
+            if variant in {'extra_csv_row_verified_source','extra_csv_row_ambiguous_source'}:
+                delivered=csv+'Extra unreported outcome,9.0 ± 1.0,8.0 ± 1.0,0.2\n'
+                candidate['tables'][0]['row_count']=3
             if variant == "wrong_value":
                 candidate["results"][1]["fields"][0]["value"] = 35
             if variant == "wrong_label":
@@ -434,6 +439,13 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
 
         def generate(self, *, instructions, payload, output_dir, stage):
             self.calls += 1
+            if 'source_table_count' in stage:
+                from validator.scientific_result_v1.source_tasks.transport import audit_evidence
+                evidence=audit_evidence(payload['authoritative_evidence'])
+                unresolved=variant=='extra_csv_row_ambiguous_source'
+                return dict(request_id=payload['request_id'],table_uid=payload['table_uid'],source_frame_sha256=payload['source_frame_sha256'],
+                    outcome='SOURCE_UNRESOLVED' if unresolved else 'VERIFIED',verified_data_row_count=None if unresolved else payload['expected_data_row_count'],
+                    inspected_anchor_ids=[a['anchor_id'] for a in evidence['anchors']],evidence_anchor_ids=payload['owned_data_row_anchor_ids'],explanation='Independent source layout inspection')
             if 'source_evidence_lookup' in stage:
                 return dict(request_id=payload['request_id'],inspected_anchor_ids=payload['inspected_anchor_ids'],
                     inspected_query_ids=payload['inspected_query_ids'],witnesses={key:['header'] if 'header' in payload['inspected_anchor_ids'] else [] for key in payload['inspected_query_ids']})

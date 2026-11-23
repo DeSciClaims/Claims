@@ -465,9 +465,12 @@ class PaperEvaluator:
                             table_uid_by_output[output_table]=source_table.table_uid
                             declared=next(t for t in original.payload["tables"] if t["id"]==output_table)
                             from .packets import source_data_rows
-                            physical_rows=source_data_rows(declared,index.package.csv[output_table],source_table.data_row_count)
+                            physical_rows=source_data_rows(declared,index.package.csv[output_table],source_table.data_row_count,
+                                source_header_texts=[a.exact_text for a in source_frame.anchors if a.anchor_id in source_table.header_anchor_ids])
                             if physical_rows is None:
-                                delivery_errors.append(error("CSV_FORMAT_OR_DIMENSIONS","Delivered data-row count differs from the trusted source table: "+source_table.table_uid))
+                                from .table_count_review import verify_source_count,FAILURE_PREFIX
+                                verify_source_count(self.ops,source_frame,source_table)
+                                delivery_errors.append(error("CSV_FORMAT_OR_DIMENSIONS",FAILURE_PREFIX+source_table.table_uid))
                             else:index.table_data_rows[output_table]=physical_rows
                     except Hold as exc:
                         held.append(hold_record(exc,"MATCHING"))

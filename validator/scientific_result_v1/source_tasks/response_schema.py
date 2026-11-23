@@ -27,6 +27,11 @@ def response_schema(response_type,data):
         for key in ('analysis_scope','adjustment_scope'):
             requirement['properties'][key].pop('default',None)
             if key not in requirement['required']:requirement['required'].append(key)
+    if response_type.__name__=='TableCountReview':
+        props['source_frame_sha256']['const']=data['source_frame_sha256']
+        props['inspected_anchor_ids']['const']=[a['anchor_id'] for a in data['authoritative_evidence']['anchors']]
+        props['evidence_anchor_ids']['items']['enum']=props['inspected_anchor_ids']['const']
+        return schema
     if response_type.__name__=='EvidenceBatchResponse':
         props['inspected_anchor_ids']['const']=data['inspected_anchor_ids']
         props['inspected_query_ids']['const']=data['inspected_query_ids']

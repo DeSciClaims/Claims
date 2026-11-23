@@ -198,6 +198,25 @@
 > unchanged. Miner models and the $0.10 miner inference cap remain unchanged.
 
 
+> **Owner row-count clarification, 23 November 2026 — `source_row_count_review_v1`:**
+> CSV file shape, declared dimensions and original coordinates remain mechanically
+> enforced. A disagreement with Docling's source data-row count is not, by itself,
+> evidence of a miner error: source rows may have been merged, split or classified
+> as headings. Before that disagreement can set G=0, PRIMARY and SECONDARY blindly
+> inspect the original source rows and header/context anchors in complete bounded
+> batches. ARBITER resolves any disagreement. Verified counts require witnesses to
+> every owned source row and complete, nonoverlapping table coverage. The review
+> contains no candidate CSV, candidate row count or candidate scientific assertions.
+> If the captured source layout cannot establish the count, record a common source
+> hold and apply the same recovery/exclusion to every entrant. Do not assign zero
+> to a miner on the basis of an unresolved parser layout. Additional CSV rows that
+> exactly retain the CSV header or source-supported declared header levels are
+> context; preserve their bytes and physical coordinates. Scientific values are
+> never dropped, repaired or changed by this formatting map. Strict source-count
+> failures carry independently replayable review receipts. Earlier frozen receipts
+> retain their original policy; this clarification applies to newly frozen policies.
+
+
 > **Judge-route amendment, 21 November 2026:** use DeepSeek V4 Flash 0731
 > (`deepseek/deepseek-v4-flash-0731`) for SECONDARY in place of GLM. Increase
 > the frozen per-call judge output allowance to 16,384 tokens. Source reading
