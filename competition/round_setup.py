@@ -304,6 +304,7 @@ def prepare_pilot_round(
         # worker contract. Validate the actual scientific factory before intake.
         from .scientific_factory import create_scientific_policy
         row = {"round_id": draft["round_id"], "network": draft["network"],
+               "deadline_at": draft["deadline_at"],"incumbent_hotkey":draft.get("incumbent_hotkey"),
                "configuration_sha256": canonical_sha256(configuration),
                "rules_public": {"policy": draft.get("policy_public", {})}}
         policy = create_scientific_policy(row, backend, configuration)

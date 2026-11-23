@@ -263,6 +263,8 @@ def test_scientific_setup_validates_scientific_runtime_before_opening_intake(tmp
     def scientific(row, backend, configuration):
         calls.append("scientific")
         assert row["network"] == "testnet"
+        assert row["deadline_at"] == draft["deadline_at"]
+        assert row["incumbent_hotkey"] == draft.get("incumbent_hotkey")
         assert row["configuration_sha256"] == canonical_sha256(configuration)
         assert row["rules_public"]["policy"] == draft["policy_public"]
         if reject:
