@@ -264,3 +264,15 @@ metadata](https://openrouter.ai/docs/api/api-reference/generations/get-generatio
 retaining both the old usage record and the provider proof. A request that never
 reached provider dispatch records known zero. Miner limits remain $0.10, 2M tokens
 and one hour. Diagnostic recovery results do not crown or publish weights.
+
+
+For a pinned testnet runtime with unreliable backend connections, operators can
+run `python -m competition.scientific_evidence_relay --port 18765 --upstream
+https://api.claims111.ai --round-id ROUND --run-id RECOVERY` and point that
+recovery's `--backend-url` at `http://127.0.0.1:18765`. The relay binds loopback,
+requires the existing controller credential, and permits only the declared
+recovery's evidence/checkpoints and immutable model audit objects. It retries
+transport faults with the exact original body, never conflict/auth failures,
+worker claims, administrative changes or awards. Confirmed immutable blob uploads
+are reused after hash/receipt checks. This changes transport only: the original
+runtime, policy, deadlines, requests and saved judgments remain unchanged.

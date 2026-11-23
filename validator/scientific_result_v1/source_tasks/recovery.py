@@ -15,6 +15,7 @@ from .contracts import (
     SubmittedPackage,
 )
 from .remote import RemoteStore
+from .evidence_transport import evidence_request
 from .store import Conflict, Store, canonical, sha
 
 
@@ -43,10 +44,10 @@ class RecoveryStore(RemoteStore):
         return 'recovery:'+self.run_id+':'+key
 
     def head(self,key):
-        return self.backend._request('GET','/internal/competition/scientific/heads/'+quote(self._key(key),safe=''))['sha256']
+        return evidence_request(self.backend,'GET','/internal/competition/scientific/heads/'+quote(self._key(key),safe=''))['sha256']
 
     def advance(self,key,parent,child):
-        response=self.backend._request('POST','/internal/competition/scientific/heads/'+quote(self._key(key),safe=''),
+        response=evidence_request(self.backend,'POST','/internal/competition/scientific/heads/'+quote(self._key(key),safe=''),
             {'expected_parent_hash':parent,'new_hash':child})
         if response!={'sha256':child}:raise Conflict('Recovery head changed')
         return child
@@ -58,7 +59,7 @@ class RecoveryStore(RemoteStore):
             from .replay import replay
             replay(self,FileRef(relative_path='blobs/'+new_hash,sha256=new_hash,byte_length=len(raw),media_type='application/octet-stream'))
         path='/internal/competition/scientific/recoveries/'+round_id+'/'+self.run_id+'/papers/'+stage+'/'+quote(paper_id,safe='')
-        response=self.backend._request('POST',path,{'expected_parent_hash':expected_parent_hash,'new_hash':new_hash})
+        response=evidence_request(self.backend,'POST',path,{'expected_parent_hash':expected_parent_hash,'new_hash':new_hash})
         if response!={'sha256':new_hash}:raise Conflict('Recovery paper checkpoint changed')
         return new_hash
 
@@ -179,7 +180,7 @@ def main():
     args=parser.parse_args()
     if not 1<=args.max_workers<=10:parser.error('Paper concurrency must be between 1 and 10')
     backend=CompetitionBackend(base_url=args.backend_url,controller_token=os.environ['CLAIMS_COMPETITION_CONTROLLER_TOKEN'])
-    manifest=backend._request('GET','/internal/competition/scientific/recoveries/'+args.round_id+'/'+args.run_id)
+    manifest=evidence_request(backend,'GET','/internal/competition/scientific/recoveries/'+args.round_id+'/'+args.run_id)
     if manifest['round_id']!=args.round_id or manifest['run_id']!=args.run_id:raise ValueError('Recovery identity differs')
     selected=[p for p in manifest['papers'] if args.paper_id is None or p['paper_id'] in args.paper_id]
     if args.paper_id and {p['paper_id'] for p in selected}!=set(args.paper_id):raise ValueError('Requested paper is outside the frozen recovery sample')

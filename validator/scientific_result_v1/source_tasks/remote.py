@@ -5,6 +5,7 @@ from urllib.request import Request, urlopen
 from urllib.parse import quote
 from urllib.error import HTTPError
 from .store import Store, Conflict, sha
+from .evidence_transport import evidence_request,retry_evidence
 
 
 class EvidenceTransportError(RuntimeError):
@@ -16,6 +17,7 @@ class EvidenceTransportError(RuntimeError):
 class RemoteStore(Store):
     def __init__(self, root, backend):
         self.backend = backend
+        self._confirmed_uploads=set()
         super().__init__(root)
 
     def _binary(self, method, path, body=None):
@@ -29,8 +31,9 @@ class RemoteStore(Store):
             },
         )
         try:
-            with urlopen(req, timeout=120) as response:
-                return response.read()
+            def fetch():
+                with urlopen(req,timeout=120) as response:return response.read()
+            return retry_evidence(fetch)
         except HTTPError as exc:
             if exc.code == 409:
                 raise Conflict("Remote scientific predecessor changed") from exc
@@ -66,6 +69,7 @@ class RemoteStore(Store):
     def put_blob(self, expected, data):
         # Local hash validation before sending bytes; remote also verifies independently.
         ref = super().put_blob(expected, data)
+        if expected in self._confirmed_uploads:return ref
         result = json.loads(
             self._binary(
                 "PUT", "/internal/competition/scientific/blobs/" + expected, data
@@ -73,6 +77,7 @@ class RemoteStore(Store):
         )
         if result != {"sha256": expected, "byte_length": len(data)}:
             raise ValueError("Remote changed evidence receipt")
+        self._confirmed_uploads.add(expected)
         return ref
 
     def get_blob(self, expected):
@@ -84,7 +89,7 @@ class RemoteStore(Store):
             except EvidenceTransportError as exc:
                 if exc.status_code not in {404, 413, 502}:
                     raise
-                meta = self.backend._request('GET', '/internal/competition/scientific/source-references/' + expected)
+                meta = evidence_request(self.backend,'GET', '/internal/competition/scientific/source-references/' + expected)
                 data = self._fetch_original(meta, expected)
             super().put_blob(expected, data)
             return data
@@ -101,7 +106,7 @@ class RemoteStore(Store):
             + "/revision"
         )
         try:
-            result = self.backend._request(
+            result = evidence_request(self.backend,
                 "POST", path,
                 {"expected_parent_hash": expected_parent_hash, "new_hash": new_hash},
             )
@@ -118,14 +123,14 @@ class RemoteStore(Store):
             round_id, stage, paper_id = json.loads(key[len('paper:'):])
             path = '/internal/competition/scientific/papers/' + '/'.join(
                 quote(x, safe='') for x in (round_id, stage, paper_id)) + '/revision'
-            return self.backend._request('GET', path)['sha256']
-        response=self.backend._request('GET','/internal/competition/scientific/heads/'+quote(key,safe=''))
+            return evidence_request(self.backend,'GET', path)['sha256']
+        response=evidence_request(self.backend,'GET','/internal/competition/scientific/heads/'+quote(key,safe=''))
         return response['sha256']
 
     def advance(self,key,parent,child):
         self.get_blob(child)
         try:
-            response=self.backend._request('POST','/internal/competition/scientific/heads/'+quote(key,safe=''),
+            response=evidence_request(self.backend,'POST','/internal/competition/scientific/heads/'+quote(key,safe=''),
                 {'expected_parent_hash':parent,'new_hash':child})
         except RuntimeError as exc:
             if 'HTTP 409' in str(exc):raise Conflict('Remote evidence predecessor changed') from exc
