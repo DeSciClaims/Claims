@@ -43,3 +43,32 @@ def test_only_provider_bound_metadata_can_resolve_unknown_billing(tmp_path):
     absent={**old,'run_id':'missing','provider_request_id':None};store.advance('provider-usage:missing',None,store.put(absent).sha256)
     def forbidden(*a,**k):raise AssertionError('Cannot invent a generation identity')
     assert reconcile_usage(store,'missing','secret',opener=forbidden)['status']=='unresolved'
+
+
+def test_concurrent_reservations_wait_for_observed_cost_instead_of_failing_a_paper(tmp_path):
+    import time
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
+    from validator.scientific_result_v1.source_tasks.billing import BudgetedRuntime
+    budget=RecoveryBudget(tmp_path/'budget.db',limit_usd=1.1,reserve_usd=1)
+    first=budget.start('model','already running');started=threading.Event();runtime=SimpleNamespace(model='model',usage=[])
+    def generate(**kwargs):started.set();runtime.usage.append({'usage':{'cost':.01}});return {'answer':'saved'}
+    runtime.generate=generate;wrapped=BudgetedRuntime(runtime,budget);wrapped.set_deadline(time.time()+2)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future=pool.submit(wrapped.generate,stage='queued')
+        assert not started.wait(.1)
+        budget.finish(first,{'cost':.01})
+        assert future.result(timeout=2)=={'answer':'saved'}
+    assert budget.summary()['known_usd']==.02 and budget.summary()['request_count']==2
+
+
+def test_waiting_for_budget_cannot_extend_the_frozen_deadline_or_dispatch(tmp_path):
+    import time
+    from types import SimpleNamespace
+    from validator.scientific_result_v1.source_tasks.billing import BudgetedRuntime
+    budget=RecoveryBudget(tmp_path/'budget.db',limit_usd=1,reserve_usd=1);budget.start('model','in flight')
+    runtime=SimpleNamespace(model='model',usage=[],generate=lambda **k:pytest.fail('No dispatch'))
+    wrapped=BudgetedRuntime(runtime,budget);wrapped.set_deadline(time.time()-1)
+    with pytest.raises(Hold,match='Deadline expired') as exc:wrapped.generate(stage='queued')
+    assert exc.value.not_dispatched and budget.summary()['request_count']==1

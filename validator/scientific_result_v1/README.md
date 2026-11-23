@@ -259,6 +259,10 @@ successful response into a model failure.
 A durable diagnostic budget reserves the declared per-request envelope before
 dispatch. Unobserved costs keep that reservation across process crashes. Actual
 costs remain separate from reservations; unknown calls are never reported as free.
+When in-flight reservations temporarily fill the allowance, queued calls wait
+within the existing judging deadline. Only settled costs and unresolved charges
+can exhaust it permanently; temporary concurrency pressure is not a scientific
+failure.
 Captured OpenRouter generation IDs can be reconciled against [generation
 metadata](https://openrouter.ai/docs/api/api-reference/generations/get-generation),
 retaining both the old usage record and the provider proof. A request that never

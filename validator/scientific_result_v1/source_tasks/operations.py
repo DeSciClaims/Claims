@@ -302,6 +302,7 @@ class Operations:
                 with self.gate:
                     if time.time() >= self.deadline:
                         raise Hold("EVALUATOR", "Deadline expired in queue")
+                    if callable(getattr(runtime,"set_deadline",None)):runtime.set_deadline(self.deadline)
                     dispatched=True
                     answer = runtime.generate(
                         instructions=prompt,

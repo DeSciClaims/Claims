@@ -7,6 +7,7 @@ import copy
 import json
 import math
 import sqlite3
+import time
 from contextlib import contextmanager
 from dataclasses import is_dataclass, replace
 from decimal import Decimal
@@ -38,6 +39,12 @@ def reconcile_usage(store,run_id,api_key,*,opener=urlopen):
     return {'status':'reconciled','run_id':run_id,'cost_usd':cost}
 
 
+class BudgetBusy(Hold):
+    def __init__(self):
+        super().__init__('EVALUATOR','Waiting for in-flight spend reservations',retryable=True)
+        self.not_dispatched=True
+
+
 class RecoveryBudget:
     """Unknown dispatches retain a frozen reservation across crashes; never become zero."""
     def __init__(self,path,*,limit_usd,reserve_usd):
@@ -62,8 +69,11 @@ class RecoveryBudget:
     def start(self,model,stage):
         with self.connection() as c:
             c.execute('begin immediate')
-            committed=sum((Decimal(cost if cost is not None else reserve) for reserve,cost in c.execute('select reservation,cost from attempts')),Decimal(0))
+            rows=list(c.execute('select reservation,cost,status from attempts'))
+            committed=sum((Decimal(cost if cost is not None else reserve) for reserve,cost,_ in rows),Decimal(0))
             if committed+self.reserve>self.limit:
+                settled=sum((Decimal(cost if cost is not None else reserve) for reserve,cost,status in rows if status!='in_flight'),Decimal(0))
+                if settled+self.reserve<=self.limit and any(status=='in_flight' for _,_,status in rows):raise BudgetBusy()
                 exc=Hold('EVALUATOR','Recovery budget exhausted including unresolved dispatch reservations')
                 exc.not_dispatched=True
                 raise exc
@@ -85,14 +95,26 @@ class RecoveryBudget:
 
 
 class BudgetedRuntime:
-    def __init__(self,runtime,budget):self.runtime=runtime;self.budget=budget
+    def __init__(self,runtime,budget):self.runtime=runtime;self.budget=budget;self.admission_deadline=None
+    def set_deadline(self,deadline):self.admission_deadline=deadline
     def __getattr__(self,name):return getattr(self.runtime,name)
     def scoped(self):
         runtime=replace(self.runtime,usage=[]) if is_dataclass(self.runtime) else copy.copy(self.runtime)
         if not is_dataclass(self.runtime) and hasattr(runtime,'usage'):runtime.usage=[]
-        return BudgetedRuntime(runtime,self.budget)
+        result=BudgetedRuntime(runtime,self.budget);result.admission_deadline=self.admission_deadline
+        return result
     def generate(self,**kwargs):
-        attempt=self.budget.start(getattr(self.runtime,'model','unknown'),kwargs['stage'])
+        while True:
+            if self.admission_deadline is not None and time.time()>=self.admission_deadline:
+                exc=Hold('EVALUATOR','Deadline expired waiting for in-flight spend reservations',retryable=True)
+                exc.not_dispatched=True;raise exc
+            try:
+                attempt=self.budget.start(getattr(self.runtime,'model','unknown'),kwargs['stage']);break
+            except BudgetBusy:
+                if self.admission_deadline is None or time.time()>=self.admission_deadline:
+                    exc=Hold('EVALUATOR','Deadline expired waiting for in-flight spend reservations',retryable=True)
+                    exc.not_dispatched=True;raise exc
+                time.sleep(min(.1,max(0,self.admission_deadline-time.time())))
         before=len(getattr(self.runtime,'usage',[]))
         try:return self.runtime.generate(**kwargs)
         finally:
