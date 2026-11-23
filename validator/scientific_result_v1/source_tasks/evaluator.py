@@ -331,10 +331,11 @@ class PaperEvaluator:
                     match=refine_identity(index,local,task,match,source_frame)
                     packet=index.packet(task,binding,match,package_hash,db)
                     shards=partition(index,task,packet,tokenizers=local.tokenizers,source_frame=source_frame)
-                for child,rendered in shards:
-                    if child!=task:children.append(child)
+                children.extend(child for child,_ in shards if child!=task)
+                from .evidence_batching import prepare
+                for child,rendered,source_evidence,lookup in prepare(local,source_frame,shards):
                     packet_refs.append(store.put(rendered))
-                    verdict=assess(local,task=child,packet=rendered,evidence=evidence_for(source_frame,child.evidence_anchor_ids),
+                    verdict=assess(local,task=child,packet=rendered,evidence=source_evidence,source_lookup=lookup,
                         secret=secret,scope=scope,resolve=index.resolve,
                         expand=lambda current,requests,limit:expand_evidence(source_frame,current,requests,limit,tokenizers=local.tokenizers))
                     verdict_ref=store.put(verdict);verdict_refs.append(verdict_ref)

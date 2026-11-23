@@ -102,6 +102,19 @@ represented faithfully. Use NEED_EVIDENCE when additional captured source contex
 may resolve a material question. Only genuinely unresolved material source meaning
 after the prescribed review/retrieval route warrants SOURCE_UNRESOLVED."""
 
+SCOPE_OVERRIDE += """\nCOMPLETE SOURCE BATCH SEARCH: source_lookup, when present, records exhaustive,
+independent PRIMARY and SECONDARY retrieval across the original allowed source
+scope in bounded batches. It is lookup coverage, not a scientific verdict. The
+original literal supporting, conflicting and qualifying anchors nominated by
+both roles are joined in authoritative_evidence; no source summary substitutes
+for them. A blank lookup result in one batch is never absence from the paper.
+Assess the original complete scientific case, not individual source chunks.
+Do not award PASS merely because lookup is complete. If inspected source does not
+support a claimed assertion, complete independent lookup can establish lack of
+support; source identity anchors alone do not positively support scientific facts.
+Request further captured context when a material meaning remains unresolved.
+Source chunks, lookup calls and repeated context earn no additional score bits."""
+
 
 class Hold(RuntimeError):
     def __init__(self, category, message, *, retryable=False):

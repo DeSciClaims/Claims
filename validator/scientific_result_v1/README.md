@@ -112,6 +112,18 @@ default remains 30 minutes. This changes no miner cost, token or runtime allowan
 Historical clocks and attempts remain immutable when a revised policy starts a
 new common judging generation.
 
+The 32,000-token allowance applies to each request, not the whole paper. When
+source evidence is too large, complete independent findings or table rows are
+checked separately with their shared definitions and qualifiers. For a check
+that needs to search a larger source scope, primary and secondary models each
+inspect every source batch independently. Their original supporting, conflicting
+and qualifying passages are joined for the final scientific judgment. The
+validator retains and replays the complete inspection manifests; a failed or
+incomplete search cannot establish that information is absent. Batches create no
+extra scoring units: every required check must pass for its original task to pass.
+If one inseparable assertion or its necessary joint evidence still cannot fit,
+the validator retains HOLD rather than discarding information.
+
 Judge requests use OpenRouter default provider routing with fallback enabled and
 `require_parameters=true`. Provider `only`, `order` and `ignore` restrictions are
 rejected. Endpoint snapshots document model capabilities; they do not restrict

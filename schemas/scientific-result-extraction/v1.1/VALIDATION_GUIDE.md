@@ -1,3 +1,25 @@
+> **Complete source batching, 23 November 2026:** source and structured-packet
+> allowances are per request, not per paper. Source size alone triggers complete
+> independent requirement/archival-row/assertion-group partitions, retaining shared
+> definitions, qualifications and joint estimate/uncertainty dependencies. For a
+> remaining oversized source scope, both PRIMARY and SECONDARY independently
+> inspect every source batch for every complete assertion query. Queries retain
+> exact original asserted properties, relations, identity/context and ownership;
+> final scientific packets retain their complete closure ledgers and dependencies.
+> Retrieval returns only original anchor IDs for support, contradictions, definitions,
+> conditions and provenance, never summaries or verdicts. Join both roles' selected
+> anchors and all mandatory source witnesses before judging the complete case.
+> Empty individual batches do not prove absence. Complete independent inspection
+> receipts can establish that no support was found; document-identity anchors alone
+> do not positively support any scientific assertion. Failed or incomplete scans
+> hold rather than certifying absence. Replay verifies every role/query has exact,
+> disjoint, exhaustive original-source coverage, the retained provider responses,
+> independent model/runtime identities and unchanged original assertions. No batch
+> earns an additional scientific bit: each original parent requires every necessary
+> shard. An inseparable assertion or mandatory joint witness set still exceeding
+> the per-call allowance retains HOLD without truncation. This implementation change
+> requires a new frozen policy generation; prior requests and clocks stay immutable.
+
 > **Source disagreement routing:** a secondary `SOURCE_UNRESOLVED` interpretation
 > of a source proposal goes to the independent source arbiter, just like a
 > substantive `REVISE`. The arbiter may accept, correct, request captured context,
@@ -2426,6 +2448,37 @@ class ComparisonPlan(Closed):
                 raise ValueError(
                     "common replacement must bind a new source grid manifest"
                 )
+
+
+class EvidenceBatchResponse(Closed):
+    request_id: Id
+    inspected_anchor_ids: list[Id]
+    inspected_query_ids: list[Id]
+    witnesses: dict[Id, list[Id]]
+
+
+class EvidenceSearchQuery(Closed):
+    query_id: Id
+    task: FileRef
+    original_packet: FileRef
+    required_anchor_ids: list[Id]
+
+
+class EvidenceSearchScan(Closed):
+    role: Literal['PRIMARY', 'SECONDARY']
+    query_ids: list[Id]
+    anchor_ids: list[Id]
+    judge_runs: Annotated[list[FileRef], Field(min_length=1)]
+    response: FileRef
+
+
+class EvidenceSearchReceipt(Closed):
+    kind: Literal['complete_source_batch_search_v1']
+    binding: EvaluationBinding
+    scope_anchor_ids: list[Id]
+    queries: list[EvidenceSearchQuery]
+    scans: list[EvidenceSearchScan]
+    selected_anchor_ids: dict[Id, list[Id]]
 ```
 
 ## Appendix C. Scientific criteria and judge instructions

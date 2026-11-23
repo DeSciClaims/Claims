@@ -170,6 +170,7 @@ def test_lossless_packet_index_and_gate_separate_from_science(generated):
     [
         ("perfect", Fraction(1)),
         ("sharded", Fraction(1)),
+        ("source_batches", Fraction(1)),
         ("wrong_value", Fraction(0)),
         ("wrong_label", Fraction(0)),
         ("wrong_operator", Fraction(0)),
@@ -298,6 +299,13 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
         excluded_region_anchor_ids=[],
         errors=[],
     )
+    if variant=='source_batches':
+        # Unanchored output audits must search the complete captured source,
+        # including context well beyond a single scientific request allowance.
+        extra=[header.model_copy(update={'anchor_id':'extra-'+str(i),
+            'exact_text':('Complete unrelated source context. '*2000),
+            'locator':TextLocator(kind='text',start=0,stop=len(source_text))}) for i in range(8)]
+        source_frame=source_frame.model_copy(update={'anchors':[*source_frame.anchors,*extra]})
     grid = SourceGridManifest(
         protocol_id=PROTOCOL,
         round_id="r1",
@@ -379,6 +387,11 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
                 del candidate["relationships"][0]["closure_direction"]
             if variant == "bad_annotation_range":
                 candidate["tables"][0]["annotations"][1]["rows"] = [3]
+        if variant=='source_batches':
+            # The assertion is supported in the source but supplied without an
+            # exact quote locator, exercising mandatory whole-source P lookup.
+            candidate['results'][0]['summary']='Marker A was compared across groups.'
+            candidate['results'][0]['source_snippets'][0]['text']='Marker A comparison'
         packages.append(
             SubmittedPackage(
                 protocol_id=PROTOCOL,
@@ -411,7 +424,7 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
                 source_id="P005.E001.S001",
                 state="BOUND",
                 document_uid="d1",
-                evidence_anchor_ids=["header"],
+                evidence_anchor_ids=[] if variant=='source_batches' else ["header"],
                 explanation="Trusted execution input",
             )
         ]
@@ -421,6 +434,9 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
 
         def generate(self, *, instructions, payload, output_dir, stage):
             self.calls += 1
+            if 'source_evidence_lookup' in stage:
+                return dict(request_id=payload['request_id'],inspected_anchor_ids=payload['inspected_anchor_ids'],
+                    inspected_query_ids=payload['inspected_query_ids'],witnesses={key:['header'] if 'header' in payload['inspected_anchor_ids'] else [] for key in payload['inspected_query_ids']})
             if "source_card_consolidate" in stage:
                 return payload["original_source_draft"]
             if "source_card_review" in stage:
@@ -599,6 +615,7 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
         )
 
     def budget(text):
+        if variant=='source_batches':return len(text)//4
         try:node=json.loads(text)
         except ValueError:return len(text.split())
         if variant=='sharded' and isinstance(node,dict) and 'packet_id' in node and 'objects' in node:
@@ -662,6 +679,12 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
     assert runtime.calls == calls
     if variant=='sharded':
         assert any('::shard:' in bit.task_id for vector in receipt.paper_scores for bit in vector.task_bits)
+    if variant=='source_batches':
+        from validator.scientific_result_v1.source_tasks.contracts import JudgeRunReceipt
+        requests=[json.loads(store.read(store.load(r,JudgeRunReceipt).request)) for r in receipt.judge_runs]
+        lookups=[r for r in requests if r['operation']=='source_evidence_lookup']
+        assert lookups and {r['role'] for r in lookups}=={'PRIMARY','SECONDARY'}
+        assert all('source_lookup' in r['payload'] for r in requests if r['operation']=='primary_verify' and r['payload']['task']['source_bucket_id']=='UNANCHORED')
     if variant=='perfect':
         from validator.scientific_result_v1.source_tasks.replay import replay as verify
         from validator.scientific_result_v1.source_tasks.contracts import SampleManifest,JudgeRunReceipt

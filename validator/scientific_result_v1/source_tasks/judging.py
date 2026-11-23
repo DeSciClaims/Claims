@@ -85,7 +85,7 @@ class NeedEvidence(Exception):
     def __init__(self,requests):self.requests=requests
 
 
-def assess(ops, *, task, packet, evidence, secret, scope, resolve, expand=None):
+def assess(ops, *, task, packet, evidence, secret, scope, resolve, expand=None, source_lookup=None):
     initial=len(ops.used);force_secondary=False
     def passed(r):return r.outcome=="ASSESSED" and not any(c.status=="FAIL" for c in r.checks)
     try:
@@ -93,6 +93,7 @@ def assess(ops, *, task, packet, evidence, secret, scope, resolve, expand=None):
             anchors={a["anchor_id"] for a in evidence["anchors"]}
             data={"task":task.model_dump(mode="json"),"packet":judge_packet(packet),"authoritative_evidence":judge_evidence(evidence),
                   "required_dimensions":sorted(ARCHIVE if task.task_kind=="ARCHIVE" else SCIENCE)}
+            if source_lookup is not None:data['source_lookup']=source_lookup
             packet_hash=sha(canonical(packet));fingerprint=sha(canonical(data))
             def validate(response):validate_judgment(response,task,packet,anchors,resolve)
             def call(role,operation,request):

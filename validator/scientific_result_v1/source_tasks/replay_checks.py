@@ -122,6 +122,12 @@ def check_runs(store, receipt, cards, packets, verdicts, secret, scope):
             evidence=audit_evidence(p['authoritative_evidence'])
             if any(a!=source_anchors.get(a['anchor_id']) for a in evidence['anchors']):
                 raise ValueError('Judge transport changed the independently captured source evidence')
+            lookup=p.get('source_lookup')
+            if lookup is not None:
+                from .evidence_batching import validate_search
+                validate_search(store,lookup,source,case,cards[case.task_id],runs,requests)
+            elif not set(cards[case.task_id].evidence_anchor_ids)<=set(case.evidence_anchor_ids):
+                raise ValueError('Scientific case dropped source scope without complete batched-search evidence')
             applicable.append((run,req,store.load(run.parsed_response,JudgeResponse)))
         roles={r.role for r,_,_ in applicable}
         if 'PRIMARY' not in roles:raise ValueError('Scientific verdict lacks primary verification')

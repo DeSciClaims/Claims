@@ -34,7 +34,11 @@ def validate_child(child,parent):
 
 def partition(index,task,packet,*,tokenizers,owned_refs=None,table_ranges=None,source_frame=None):
     def size(p):return max(f(canonical(judge_packet(p)).decode()) for f in tokenizers.values())
-    if size(packet)<=STRUCTURED_PACKET_TOKENS:return [(task,packet)]
+    output_fits=size(packet)<=STRUCTURED_PACKET_TOKENS
+    from .evidence_batching import source_size
+    from .budgets import SOURCE_TOKEN_BUDGETS
+    source_fits=source_frame is None or source_size(source_frame,task.evidence_anchor_ids,tokenizers)<=SOURCE_TOKEN_BUDGETS[0]
+    if output_fits and source_fits:return [(task,packet)]
     groups=[]
     if task.task_kind=='CONTENT' and task.scope_kind=='SOURCE_CONTEXT':
         # Source-only reviewers distinguish conventions/conditions from findings.
@@ -57,6 +61,7 @@ def partition(index,task,packet,*,tokenizers,owned_refs=None,table_ranges=None,s
     else:
         for table,(first,stop) in sorted((table_ranges or {}).items()):
             for row in range(first,stop):groups.append((task.requirements,None,{table:(row,row+1)},None))
+    if len(groups)<2 and output_fits:return [(task,packet)]  # Stream a genuinely joint source scope without cutting dependencies.
     if len(groups)<2:
         raise Hold('EVALUATOR','No complete independent partition fits the 32000-token bound')
     shards=[]
@@ -64,6 +69,10 @@ def partition(index,task,packet,*,tokenizers,owned_refs=None,table_ranges=None,s
         child=task.model_copy(update={'task_id':task.task_id+MARKER+sha(index.alias.encode())[:16]+'-'+str(ordinal),'requirements':requirements})
         match=packet.match
         if task.task_kind=='CONTENT':
+            all_required={a for r in task.requirements for a in r.evidence_anchor_ids}
+            shared=set(task.evidence_anchor_ids)-all_required
+            relevant=shared|{a for r in requirements for a in r.evidence_anchor_ids}
+            child=child.model_copy(update={'evidence_anchor_ids':[a for a in task.evidence_anchor_ids if a in relevant]})
             ids={r.requirement_id for r in requirements}
             matches=[m for m in match.matches if m.requirement_id in ids]
             candidates=list({canonical(r):r for r in [*extras,*(r for m in matches for r in m.output_refs)]}.values())

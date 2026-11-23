@@ -1557,3 +1557,34 @@ class ComparisonPlan(Closed):
                 raise ValueError(
                     "common replacement must bind a new source grid manifest"
                 )
+
+
+class EvidenceBatchResponse(Closed):
+    request_id: Id
+    inspected_anchor_ids: list[Id]
+    inspected_query_ids: list[Id]
+    witnesses: dict[Id, list[Id]]
+
+
+class EvidenceSearchQuery(Closed):
+    query_id: Id
+    task: FileRef
+    original_packet: FileRef
+    required_anchor_ids: list[Id]
+
+
+class EvidenceSearchScan(Closed):
+    role: Literal['PRIMARY', 'SECONDARY']
+    query_ids: list[Id]
+    anchor_ids: list[Id]
+    judge_runs: Annotated[list[FileRef], Field(min_length=1)]
+    response: FileRef
+
+
+class EvidenceSearchReceipt(Closed):
+    kind: Literal['complete_source_batch_search_v1']
+    binding: EvaluationBinding
+    scope_anchor_ids: list[Id]
+    queries: list[EvidenceSearchQuery]
+    scans: list[EvidenceSearchScan]
+    selected_anchor_ids: dict[Id, list[Id]]

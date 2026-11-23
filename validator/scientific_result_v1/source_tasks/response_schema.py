@@ -27,6 +27,12 @@ def response_schema(response_type,data):
         for key in ('analysis_scope','adjustment_scope'):
             requirement['properties'][key].pop('default',None)
             if key not in requirement['required']:requirement['required'].append(key)
+    if response_type.__name__=='EvidenceBatchResponse':
+        props['inspected_anchor_ids']['const']=data['inspected_anchor_ids']
+        props['inspected_query_ids']['const']=data['inspected_query_ids']
+        props['witnesses']={'type':'object','properties':{key:{'type':'array','items':{'type':'string','enum':data['inspected_anchor_ids']}} for key in data['inspected_query_ids']},
+            'required':data['inspected_query_ids'],'additionalProperties':False}
+        return schema
     if response_type.__name__=='BindingResponse':
         node=defs['DocumentBinding']['properties']
         node['output_alias']['const']=data['output_alias']

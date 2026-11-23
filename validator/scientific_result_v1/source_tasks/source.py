@@ -473,7 +473,7 @@ def selected_cards(ops, tile, binding, evidence, *, expand=None):
     def cards(batch):
         return [TaskCard(task_id='task-'+sha(canonical([tile.tile_id,card])),task_kind='CONTENT',binding=binding,
             tile_ids=[tile.tile_id],output_alias=None,source_bucket_id=None,scope_kind=card.scope_kind,requirements=card.requirements,
-            evidence_anchor_ids=card.evidence_anchor_ids,source_scope_note=card.source_scope_note) for card in batch.cards]
+            evidence_anchor_ids=list(dict.fromkeys(card.evidence_anchor_ids+[a for r in card.requirements for a in r.evidence_anchor_ids])),source_scope_note=card.source_scope_note) for card in batch.cards]
     def defect(batch):
         from .source_recovery import SourceInventoryDefect,retain_defect
         raise SourceInventoryDefect(retain_defect(ops,tile,binding,batch,run_start))
