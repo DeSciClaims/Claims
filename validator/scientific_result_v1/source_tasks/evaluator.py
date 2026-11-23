@@ -604,18 +604,36 @@ def expand_evidence(source_frame,current,requests,limit,*,tokenizers=None):
         for table in source_frame.tables:
             if set(request.anchor_ids)&set(table.anchor_ids+table.data_row_anchor_ids+table.header_anchor_ids+table.note_anchor_ids):
                 selected.update(table.header_anchor_ids+table.note_anchor_ids)
+        pages={anchors[aid].locator.page_index for aid in request.anchor_ids if anchors[aid].locator.kind=='page'}
         if request.kind in {'TABLE_HEADERS','TABLE_NOTES'}:
             for table in source_frame.tables:
                 if set(request.anchor_ids)&set(table.anchor_ids+table.data_row_anchor_ids+table.header_anchor_ids+table.note_anchor_ids):
-                    # Headers/notes do not require every numerical row in the table.
-                    selected.update(table.header_anchor_ids+table.note_anchor_ids)
+                    # Native links can miss a footnote that Docling captured as
+                    # ordinary page text. Keep the links and retrieve that page.
+                    context=table.header_anchor_ids+table.note_anchor_ids
+                    selected.update(context)
+                    pages.update(anchors[aid].locator.page_index for aid in context if anchors[aid].locator.kind=='page')
         elif request.kind=='ADJACENT_TEXT':
             indices=[i for i,a in enumerate(candidates) if a.anchor_id in request.anchor_ids]
-            for i in indices:optional.extend(a.anchor_id for a in candidates[max(0,i-1):i+2])
+            for i in indices:
+                # Immediate neighbors may already be in the owned tile. Find
+                # the nearest unseen original anchor on each side instead.
+                for direction in (-1,1):
+                    for j in range(i+direction,len(candidates) if direction==1 else -1,direction):
+                        if candidates[j].anchor_id not in selected:
+                            optional.append(candidates[j].anchor_id);break
         else:
             query=tokens(request.query)
-            ranked=sorted(candidates,key=lambda a:(-len(query&tokens(a.exact_text or '')),a.anchor_id.encode()))
+            ranked=sorted((a for a in candidates if a.anchor_id not in selected and query&tokens(a.exact_text or '')),
+                key=lambda a:(-len(query&tokens(a.exact_text or '')),a.anchor_id.encode()))
             optional.extend(a.anchor_id for a in ranked[:12])
+        if request.kind in {'TABLE_HEADERS','TABLE_NOTES','ADJACENT_TEXT'} and pages:
+            same_page=[a for a in candidates if a.anchor_id not in selected and a.locator.kind=='page' and a.locator.page_index in pages]
+            # Prefer explicit note text and independent page OCR, then nearby
+            # parsed paragraphs. Every addition remains an original full anchor.
+            same_page.sort(key=lambda a:(not (a.exact_text or '').lstrip().startswith(('*','†','‡','§')),
+                '-ocr-page' not in a.anchor_id,a.anchor_id.encode()))
+            optional.extend(a.anchor_id for a in same_page)
     from .transport import judge_evidence
     if tokenizers is None:
         from .tokenization import BudgetTokenizer

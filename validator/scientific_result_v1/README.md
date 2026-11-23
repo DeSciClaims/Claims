@@ -289,3 +289,13 @@ source count can support a mechanical failure; uncertain source boundaries hold
 or exclude the paper for everyone. CSV/declaration errors still fail directly.
 Retained header rows are mapped as context without rewriting the CSV or its row
 coordinates. Review coverage and witnesses are checked again during replay.
+
+
+Bounded evidence requests search beyond adjacent text already present in a tile.
+Table-note and adjacent-text requests can retrieve original parsed text and OCR
+from the same captured page, including notes that Docling did not link to a table.
+Every added anchor remains complete, hash-bound source evidence within the existing
+32k allowance. The reader never invents missing text or fetches outside sources.
+Diagnostic recovery supports ten concurrent paper reviews while limiting the
+memory-heavy source-preparation phase to two slots; the shared per-process model
+request gate remains sixteen. This changes scheduling, not sample size or credit.

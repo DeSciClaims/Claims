@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import time
+import threading
 from pathlib import Path
 from urllib.parse import quote
 
@@ -17,6 +18,16 @@ from .contracts import (
 from .remote import RemoteStore
 from .evidence_transport import evidence_request
 from .store import Conflict, Store, canonical, sha
+
+
+# PDF conversion has a much larger memory footprint than text-only judging.
+# Ten paper reviewers may overlap while at most two converters prepare sources.
+PARSER_GATE=threading.BoundedSemaphore(2)
+
+
+def prepare_recovery_frame(*args,**kwargs):
+    from .docling_frame import prepare_docling_frame
+    with PARSER_GATE:return prepare_docling_frame(*args,**kwargs)
 
 
 class RecoveryStore(RemoteStore):
@@ -78,7 +89,6 @@ def phase_deadline(store,manifest,paper,name,timeout):
 
 def evaluate_paper(*,store,manifest,paper,settings,offline=False):
     """Same immutable packages, comparison grid and secret; no miner execution path."""
-    from .docling_frame import prepare_docling_frame
     from .evaluator import PaperEvaluator
     from .runner import make_operations
     from .sampling import PROTOCOL, seed_commitment
@@ -132,7 +142,7 @@ def evaluate_paper(*,store,manifest,paper,settings,offline=False):
             (directory/'validator_parse_run.json').write_text(json.dumps({'independent_validator_parse':True,'source_sha256':spec['source_sha256'],
                 'ocr_scale':spec['parser'].get('ocr_scale',3.0)}))
             directories[spec['document_uid']]=directory
-        frame=prepare_docling_frame(store,packet,directories,ops,policy)
+        frame=prepare_recovery_frame(store,packet,directories,ops,policy)
         store.advance('recovery-frame:'+paper['paper_id'],None,store.put(frame).sha256)
     if current is not None:frame=store.load(current.source_frame,SourceFrame)
     # Source preparation has its own clock, matching the ordinary competition

@@ -299,3 +299,49 @@ def test_response_upload_failure_keeps_paid_response_and_original_usage(tmp_path
         ops.request('SOURCE_READER','source_eligibility',data,EligibilityResponse)
     assert ops.request('SOURCE_READER','source_eligibility',data,EligibilityResponse).items[0].eligible
     assert len(calls)==1
+
+
+def test_adjacent_retrieval_moves_beyond_already_supplied_neighbors_and_includes_page_ocr():
+    from validator.scientific_result_v1.source_tasks.contracts import PageLocator
+    anchors=[SourceAnchor(anchor_id=k,document_uid='d',source_sha256='1'*64,
+        locator=PageLocator(kind='page',page_index=2,bbox=(0.,0.,1.,1.)),exact_text=text,rendering=None)
+        for k,text in [('previous','Previous context'),('owned','The sentence is split'),('next','Its first continuation'),('complete','Additional readable continuation'),('d1-ocr-page2','The complete original OCR sentence and figure axis label.')]]
+    frame=SimpleNamespace(anchors=anchors,tables=[])
+    current={'anchors':[a.model_dump(mode='json') for a in anchors[:3]]}
+    request=EvidenceRequest(request_id='e',kind='ADJACENT_TEXT',anchor_ids=['owned'],document_uid='d',query='Complete sentence and axis label')
+    result=expand_evidence(frame,current,[request],8000,tokenizers={'test':lambda s:len(s)//4})
+    ids={a['anchor_id'] for a in result['anchors']}
+    assert {'previous','owned','next','complete','d1-ocr-page2'}<=ids
+    assert all(a==next(v for v in anchors if v.anchor_id==a['anchor_id']).model_dump(mode='json') for a in result['anchors'])
+
+
+def test_table_notes_retrieves_unlinked_note_text_and_page_ocr_without_other_pages():
+    from validator.scientific_result_v1.source_tasks.contracts import PageLocator,TableLocator
+    def page(key,text,p):return SourceAnchor(anchor_id=key,document_uid='d',source_sha256='1'*64,
+        locator=PageLocator(kind='page',page_index=p,bbox=(0.,0.,1.,1.)),exact_text=text,rendering=None)
+    header=page('caption','Table 4. Treatment options',3)
+    row=SourceAnchor(anchor_id='row',document_uid='d',source_sha256='1'*64,locator=TableLocator(kind='table',table_uid='t',first_row=0,stop_row=1,column_names=[]),exact_text='Treatment A* | 20 mg',rendering=None)
+    note=page('ordinary-text','* Only under the stated conditions.',3)
+    ocr=page('d1-ocr-page3','Treatment A* 20 mg. * Only under the stated conditions.',3)
+    unrelated=page('other-page','Unrelated appendix',9)
+    table=SimpleNamespace(anchor_ids=['caption','row'],header_anchor_ids=['caption'],note_anchor_ids=[],data_row_anchor_ids=['row'])
+    frame=SimpleNamespace(anchors=[header,row,note,ocr,unrelated],tables=[table])
+    request=EvidenceRequest(request_id='e',kind='TABLE_NOTES',anchor_ids=['row'],document_uid='d',query='Missing asterisk definition')
+    result=expand_evidence(frame,{'anchors':[header.model_dump(mode='json'),row.model_dump(mode='json')]},[request],8000,tokenizers={'test':lambda s:len(s)//4})
+    assert {a['anchor_id'] for a in result['anchors']}=={'caption','row','ordinary-text','d1-ocr-page3'}
+
+
+def test_ten_recovery_reviewers_share_two_memory_heavy_parser_slots(monkeypatch):
+    import threading,time
+    from concurrent.futures import ThreadPoolExecutor
+    from validator.scientific_result_v1.source_tasks.recovery import prepare_recovery_frame
+    lock=threading.Lock();active=0;peak=0;completed=[]
+    def parse(identity):
+        nonlocal active,peak
+        with lock:active+=1;peak=max(peak,active)
+        time.sleep(.02)
+        with lock:active-=1;completed.append(identity)
+        return identity
+    monkeypatch.setattr('validator.scientific_result_v1.source_tasks.docling_frame.prepare_docling_frame',parse)
+    with ThreadPoolExecutor(max_workers=10) as pool:assert list(pool.map(prepare_recovery_frame,range(10)))==list(range(10))
+    assert peak==2 and sorted(completed)==list(range(10))
