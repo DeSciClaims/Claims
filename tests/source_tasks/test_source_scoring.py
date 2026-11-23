@@ -29,6 +29,11 @@ SCOPE = (PROTOCOL, "r1", "final", "p1")
 SECRET = b"x" * 32
 
 
+def wire_nodes(wire, section):
+    """Inspect documented wrapper columns; nested values still belong to wire."""
+    return [dict(zip(wire['assertion_column_sets'][row[0]],row[1:])) for row in wire[section]]
+
+
 @pytest.mark.parametrize(
     "c,t,p,ac,at,expected",
     [
@@ -631,7 +636,8 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
         try:node=json.loads(text)
         except ValueError:return len(text.split())
         if variant=='sharded' and isinstance(node,dict) and 'packet_id' in node and 'objects' in node:
-            return 1000+4000*sum(o['kind']=='FIELD' for o in node['objects'])
+            from validator.scientific_result_v1.source_tasks.transport import audit_packet
+            return 1000+4000*sum(o.kind=='FIELD' for o in audit_packet(node).objects)
         return len(text.split())
 
     def ops(offline=False):
@@ -910,10 +916,10 @@ def test_lossless_judge_transport_preserves_literals_absence_edges_and_sidecars(
     assert audit_packet(wire)==packet
     assert len(canonical(wire))<len(canonical(packet))*.65
     pairs=lambda node:list(zip(wire['property_name_sets'][node['property_names_ref']],node['properties'])) if 'property_names_ref' in node else node['properties']
-    assert any(literal=='12.0000' for node in wire['objects'] for _,literal in pairs(node))
-    assert any(literal is None for node in wire['objects'] for _,literal in pairs(node))
-    assert any(node['property_ref_overrides'] for node in wire['objects'])  # Root sidecar pointers.
-    node=next(o for o in wire['objects'] if 'property_names_ref' in o)
+    assert any(literal=='12.0000' for node in wire_nodes(wire,'objects') for _,literal in pairs(node))
+    assert any(literal is None for node in wire_nodes(wire,'objects') for _,literal in pairs(node))
+    assert any(node.get('property_ref_overrides') for node in wire_nodes(wire,'objects'))  # Root sidecar pointers.
+    node=next(o for o in wire_nodes(wire,'objects') if 'property_names_ref' in o)
     node['properties'].pop()
     with pytest.raises(ValueError,match='mismatched value count'):audit_packet(wire)
 
@@ -1139,7 +1145,7 @@ def test_pooled_literals_preserve_exact_original_strings_and_reject_unknown_refs
     packet=AssertionPacket.model_validate(data);wire=judge_packet(packet)
     assert literal in wire['literal_pool'].values()
     assert audit_packet(wire)==packet
-    damaged=copy.deepcopy(wire);node=damaged['objects'][0]
+    damaged=copy.deepcopy(wire);node=wire_nodes(damaged,'objects')[0]
     if 'property_names_ref' in node:node['properties'][0]={'literal_ref':'not-retained'}
     else:node['properties'][0][1]={'literal_ref':'not-retained'}
     with pytest.raises(ValueError,match='Unknown original literal'):
@@ -1233,8 +1239,9 @@ def test_property_name_templates_roundtrip_and_reject_invalid_templates(generate
     wire=judge_packet(packet)
     assert wire['property_name_sets'] and audit_packet(wire)==packet
     corrupted=copy.deepcopy(wire)
-    node=next(o for o in corrupted['objects'] if 'property_names_ref' in o)
-    node['property_names_ref']='not-retained'
+    row=next(o for o in corrupted['objects'] if 'property_names_ref' in corrupted['assertion_column_sets'][o[0]])
+    position=corrupted['assertion_column_sets'][row[0]].index('property_names_ref')+1
+    row[position]='not-retained'
     with pytest.raises(ValueError,match='Unknown property-name set'):audit_packet(corrupted)
 
 
@@ -1319,9 +1326,9 @@ def test_v4_transport_factors_only_exact_headers_and_closure_views(generated,pap
     index=Index(Package(path,'long-output-alias-'+'a'*64))
     _,packet=packet_case(index,Store(path.parent/'v4-transport'),refs=[o.original_ref for o in index.objects if o.kind=='RESULT'])
     wire=judge_packet(packet)
-    assert any(o.get('object_id_from_property') for o in wire['objects'])
-    assert any(e.get('headers_from_properties') for e in wire['relations'])
-    assert any(c.get('submitted_from_original_closure') for c in wire['closures'])
+    assert any(o.get('object_id_from_property') for o in wire_nodes(wire,'objects'))
+    assert any(e.get('headers_from_properties') for e in wire_nodes(wire,'relations'))
+    assert any(c.get('submitted_from_original_closure') for c in wire_nodes(wire,'closures'))
     assert wire['literal_identifier_pool']
     assert audit_packet(wire)==packet
     # A different recomputation order is evidence, and must remain explicit.
@@ -1329,7 +1336,7 @@ def test_v4_transport_factors_only_exact_headers_and_closure_views(generated,pap
     assert len(closure.recomputed_member_ids)>1
     changed=packet.model_copy(update={'closures':[closure.model_copy(update={'recomputed_member_ids':list(reversed(closure.recomputed_member_ids))}),*packet.closures[1:]]})
     encoded=judge_packet(changed)
-    assert 'recomputed_member_ids' in encoded['closures'][0]
+    assert 'recomputed_member_ids' in wire_nodes(encoded,'closures')[0]
     assert audit_packet(encoded)==changed
 
 
@@ -1367,3 +1374,24 @@ def test_anchor_manifest_ranges_are_lossless_and_keep_complete_scientific_packet
     assert token(json.dumps(encoded['evidence_anchor_id_runs']))<token(json.dumps(anchors))//3
     for run in [[[ 'x',0,1000000,'',0 ]], [['x',0,3,'',True]], [['x',0,3,'',257]]]:
         with pytest.raises(ValueError):_expand_anchor_runs(run)
+
+
+def test_assertion_wrapper_columns_preserve_every_original_and_reject_bad_rows(generated):
+    import copy
+    from validator.scientific_result_v1.source_tasks.transport import judge_packet,audit_packet,_restore_assertion_rows,V6
+    path,_,_=generated;index=Index(Package(path,'a'))
+    _,packet=packet_case(index,Store(path.parent/'assertion-rows'),refs=[o.original_ref for o in index.objects if o.kind=='RESULT'])
+    wire=judge_packet(packet)
+    assert all(isinstance(row,list) for section in ['objects','relations','context_headers','closures'] for row in wire[section])
+    assert audit_packet(wire)==packet
+    wrong=copy.deepcopy(wire);wrong['objects'][0][0]='absent-template'
+    with pytest.raises(ValueError,match='Unknown assertion columns'):audit_packet(wrong)
+    wrong=copy.deepcopy(wire);wrong['objects'][0].pop()
+    with pytest.raises(ValueError,match='mismatched value count'):audit_packet(wrong)
+    wrong=copy.deepcopy(wire);key=wrong['objects'][0][0];wrong['assertion_column_sets'][key].append(wrong['assertion_column_sets'][key][0])
+    with pytest.raises(ValueError,match='Invalid original assertion columns'):audit_packet(wrong)
+    # Earlier wire receipts remain readable, including empty override maps and
+    # every original property-presence flag, original literal and closure set.
+    earlier=copy.deepcopy(wire);_restore_assertion_rows(earlier);earlier['assertion_encoding']=V6
+    for node in earlier['objects']+earlier['relations']+earlier['context_headers']:node.setdefault('property_ref_overrides',{})
+    assert audit_packet(earlier)==packet

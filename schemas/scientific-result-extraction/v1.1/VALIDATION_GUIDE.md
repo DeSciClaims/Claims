@@ -1,3 +1,19 @@
+> **Exact assertion rows and retained parser captures, 23 November 2026:**
+> packet transport `claims_property_columns_v7` stores assertion-wrapper keys once
+> per column template. Ordered row values, original literal properties, explicit
+> absence markers, relation endpoints and closure views are unchanged. Replay
+> expands the rows and checks exact reconstruction; older transport versions
+> remain decodable. Source retrieval for an audit follows its owned assertions
+> and material dependencies, rather than independently verifying every unrelated
+> partial family-member header. All source batches still receive independent,
+> exhaustive inspection and all nominated relevant witnesses are retained.
+> A new diagnostic can freeze earlier independent Docling frame/config references
+> for raw capture reuse. Original PDF hashes, parser-code digest, Docling version,
+> OCR settings and the full capture proof must match. Source eligibility and
+> scientific review run anew. Prior mutable heads, model judgments and clocks are
+> never imported. Incompatible captures trigger a fresh parse. This requires a
+> new frozen runtime/policy, leaving earlier generations intact.
+
 > **Lossless anchor manifests, 23 November 2026:** packet transport
 > `claims_property_columns_v6` additionally encodes consecutive anchor IDs with
 > exact `[prefix, first, stop, suffix, width]` ranges. Expansion preserves every

@@ -345,3 +345,73 @@ def test_ten_recovery_reviewers_share_two_memory_heavy_parser_slots(monkeypatch)
     monkeypatch.setattr('validator.scientific_result_v1.source_tasks.docling_frame.prepare_docling_frame',parse)
     with ThreadPoolExecutor(max_workers=10) as pool:assert list(pool.map(prepare_recovery_frame,range(10)))==list(range(10))
     assert peak==2 and sorted(completed)==list(range(10))
+
+
+def test_retained_independent_capture_reuses_parser_bytes_but_runs_fresh_source_review(tmp_path,monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from tests.source_tasks.test_docling_frame import fixture
+    from validator.scientific_result_v1.source_tasks import recovery
+    from validator.scientific_result_v1.source_tasks.docling_frame import prepare_docling_frame
+    from validator.scientific_result_v1.source_tasks.identity import runtime_descriptor
+    from validator.scientific_result_v1.source_tasks.store import canonical,sha
+    store,packet,ops=fixture(tmp_path,monkeypatch)
+    import miner.scientific_result_v1.docling_source as parser
+    actual_parse=parser.parse_pdf;calls=[]
+    def capture(*args,**kwargs):calls.append(1);return actual_parse(*args,**kwargs)
+    monkeypatch.setattr(parser,'parse_pdf',capture);monkeypatch.setattr(recovery,'parser_version',lambda:'test')
+    settings=store.put({'source_parser_digest':runtime_descriptor()['source_parser_digest']})
+    origin={'scientific_scoring':{'settings':settings.model_dump(mode='json')}}
+    old_policy=sha(canonical(origin));ops.policy_hash=old_policy
+    original_frame=prepare_docling_frame(store,packet,{},ops,old_policy)
+    original=SimpleNamespace(source_frame=store.put(original_frame))
+    retained={'frame':original.source_frame.model_dump(mode='json'),'configuration':store.put(origin).model_dump(mode='json')}
+    options={'ocr_scale':3.0,'retained_capture_frames':{packet.paper_id:retained}}
+    manifest={'configuration':{'scientific_scoring':{'recovery':{'source_parser':options}}}}
+    config=recovery.capture_configuration(store,manifest,{'paper_id':packet.paper_id},original,packet)
+    directories={}
+    for n,spec in enumerate(config['documents']):
+        d=tmp_path/'retained'/str(n);d.mkdir(parents=True)
+        for name,ref in spec['artifacts'].items():
+            path=d/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(store.get_blob(ref['sha256']))
+        directories[spec['document_uid']]=d
+    fresh=ops.scoped();fresh.policy_hash='a'*64
+    rebuilt=prepare_docling_frame(store,packet,directories,fresh,fresh.policy_hash)
+    assert len(calls)==1 and rebuilt.anchors==original_frame.anchors
+    assert rebuilt.parser_config_sha256!=original_frame.parser_config_sha256
+    new_config=json.loads(store.get_blob(rebuilt.parser_config_sha256))
+    assert new_config['policy_sha256']==fresh.policy_hash and fresh.used
+    for ref in new_config['eligibility_runs']:
+        run=json.loads(store.get_blob(ref['sha256']));request=json.loads(store.get_blob(run['request']['sha256']))
+        assert request['policy_sha256']==fresh.policy_hash
+    # A cache cannot be rebound to another paper or origin policy.
+    wrong=original_frame.model_copy(update={'source_packet_sha256':'b'*64})
+    retained['frame']=store.put(wrong).model_dump(mode='json')
+    with pytest.raises(ValueError,match='another source packet'):recovery.capture_configuration(store,manifest,{'paper_id':packet.paper_id},original,packet)
+    retained['frame']=original.source_frame.model_dump(mode='json');retained['configuration']=store.put({'wrong':'origin'}).model_dump(mode='json')
+    with pytest.raises(ValueError,match='different origin policy'):recovery.capture_configuration(store,manifest,{'paper_id':packet.paper_id},original,packet)
+    retained['configuration']=store.put(origin).model_dump(mode='json')
+    fallback_config={'independent_fallback':'fresh parse required'}
+    original=SimpleNamespace(source_frame=store.put(original_frame.model_copy(update={'parser_config_sha256':store.put(fallback_config).sha256})))
+    options['ocr_scale']=4.0
+    assert recovery.capture_configuration(store,manifest,{'paper_id':packet.paper_id},original,packet)==fallback_config
+    options['ocr_scale']=3.0;monkeypatch.setattr(recovery,'parser_version',lambda:'changed-version')
+    assert recovery.capture_configuration(store,manifest,{'paper_id':packet.paper_id},original,packet)==fallback_config
+    monkeypatch.setattr(recovery,'parser_version',lambda:'test')
+    import validator.scientific_result_v1.source_tasks.identity as identity
+    monkeypatch.setattr(identity,'runtime_descriptor',lambda:{'source_parser_digest':'f'*64})
+    assert recovery.capture_configuration(store,manifest,{'paper_id':packet.paper_id},original,packet)==fallback_config
+
+
+def test_recovery_capture_cache_is_read_only_and_does_not_share_mutable_heads(tmp_path):
+    from validator.scientific_result_v1.source_tasks.recovery import RecoveryStore
+    old=Store(tmp_path/'recoveries'/('a'*32));ref=old.put({'verified':'source bytes'})
+    old.advance('paper:original',None,ref.sha256)
+    class Backend:
+        def _request(self,*args):raise AssertionError('Immutable source cache needs no network')
+    manifest={'run_id':'b'*32,'configuration':{'scientific_scoring':{'recovery':{'source_parser':{'retained_source_run_id':'a'*32}}}}}
+    new=RecoveryStore(tmp_path,Backend(),manifest)
+    assert new.get_blob(ref.sha256)==old.read(ref)
+    assert Store.head(new,'paper:original') is None and old.head('paper:original')==ref.sha256
+    manifest['configuration']['scientific_scoring']['recovery']['source_parser']['retained_source_run_id']='../../unsafe'
+    with pytest.raises(ValueError,match='Invalid retained source cache'):RecoveryStore(tmp_path,Backend(),manifest)

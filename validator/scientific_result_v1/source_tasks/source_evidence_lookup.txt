@@ -23,3 +23,15 @@ this batch. Do not infer values, invent source IDs or decide PASS/FAIL.
 Independent roles scan all batches separately. Their witness sets will be joined
 with mandatory source witnesses before a separate scientific judge decides the
 original complete case. Source batches create no extra scoring units.
+
+SCOPE AND OWNERSHIP: For OUTPUT_AUDIT, query.ownership is the exact assertion
+ledger to verify. Other objects, relations and partial context_headers explain
+those owned assertions and their actual dependencies; they are not new targets.
+In particular, co-member result headers do not require retrieving the entire
+paper to verify every other family's quantitative finding. Inspect every source
+batch, but nominate evidence for the owned result, its material qualifiers,
+attachments, contradictions and source-supported family boundaries only. Include
+additional neighboring evidence when it actually changes that meaning or shows a
+concrete boundary violation. Do not omit evidence just to meet a size target.
+For CONTENT, the unchanged source requirements and their genuine competing
+representations define the target; unrelated context remains interpretive.

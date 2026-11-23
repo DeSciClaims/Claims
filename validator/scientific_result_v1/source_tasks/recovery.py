@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import time
 import threading
+import re
+import sqlite3
 from pathlib import Path
 from urllib.parse import quote
 
@@ -36,13 +38,25 @@ class RecoveryStore(RemoteStore):
         self.manifest=manifest
         self.run_id=manifest['run_id']
         self.shared=Store(root)
+        retained=(manifest.get('configuration',{}).get('scientific_scoring',{}).get('recovery',{}).get('source_parser',{}).get('retained_source_run_id'))
+        if retained is not None and (not isinstance(retained,str) or not re.fullmatch(r'[a-f0-9]{32}',retained)):
+            raise ValueError('Invalid retained source cache identity')
+        self.capture_cache=Path(root)/'recoveries'/retained/'evidence.sqlite3' if retained else None
         super().__init__(Path(root)/'recoveries'/self.run_id,backend)
 
     def get_blob(self,expected):
         try:return Store.get_blob(self,expected)
         except KeyError:
             try:raw=self.shared.get_blob(expected)
-            except KeyError:return super().get_blob(expected)
+            except KeyError:
+                raw=None
+                if self.capture_cache is not None and self.capture_cache.is_file():
+                    with sqlite3.connect('file:'+str(self.capture_cache)+'?mode=ro',uri=True) as c:
+                        row=c.execute('select data from blobs where sha=?',(expected,)).fetchone()
+                    if row is not None:
+                        raw=bytes(row[0])
+                        if sha(raw)!=expected:raise ValueError('Corrupt retained source cache blob')
+                if raw is None:return super().get_blob(expected)
             Store.put_blob(self,expected,raw)
             return raw
 
@@ -85,6 +99,38 @@ def phase_deadline(store,manifest,paper,name,timeout):
     key='recovery-phase:'+sha(canonical([manifest['run_id'],paper['stage'],paper['paper_id'],name]))
     binding=sha(canonical([manifest['configuration_sha256'],paper['input_pool_sha256'],paper['source_packet_sha256']]))
     return store.generation(key,binding,timeout=timeout)[1]
+
+
+def parser_version():
+    from importlib.metadata import version
+    return version('docling')
+
+
+def capture_configuration(store,manifest,paper,original,packet):
+    """Reuse only hash-bound independent parser bytes, never old source judgments."""
+    options=manifest['configuration']['scientific_scoring']['recovery'].get('source_parser',{})
+    frame=store.load(original.source_frame,SourceFrame)
+    fallback=json.loads(store.get_blob(frame.parser_config_sha256))
+    retained=options.get('retained_capture_frames',{}).get(paper['paper_id'])
+    if retained is None:return fallback
+    frame=store.load(FileRef.model_validate(retained['frame'],strict=True),SourceFrame)
+    config=json.loads(store.get_blob(frame.parser_config_sha256))
+    origin=json.loads(store.read(FileRef.model_validate(retained['configuration'],strict=True)))
+    if sha(canonical(origin))!=config['policy_sha256']:
+        raise ValueError('Retained Docling capture has a different origin policy')
+    if frame.source_packet_sha256!=sha(canonical(packet)):
+        raise ValueError('Retained Docling capture belongs to another source packet')
+    prior_settings=json.loads(store.read(FileRef.model_validate(origin['scientific_scoring']['settings'],strict=True)))
+    from .identity import runtime_descriptor
+    if prior_settings['source_parser_digest']!=runtime_descriptor()['source_parser_digest']:
+        return fallback
+    scale=options.get('ocr_scale',3.0)
+    if any(d['parser'].get('ocr_scale',3.0)!=scale or d['parser'].get('version')!=parser_version()
+           for d in config['documents']):return fallback
+    from .docling_frame import validate_docling_frame
+    if not validate_docling_frame(store,frame,packet):
+        raise ValueError('Retained capture lacks independent Docling proof')
+    return config
 
 
 def evaluate_paper(*,store,manifest,paper,settings,offline=False):
@@ -131,8 +177,7 @@ def evaluate_paper(*,store,manifest,paper,settings,offline=False):
         frame=store.load(reference(store,frame_head),SourceFrame)
     else:
         directories={}
-        old_frame=store.load(original.source_frame,SourceFrame)
-        config=json.loads(store.get_blob(old_frame.parser_config_sha256))
+        config=capture_configuration(store,manifest,paper,original,packet)
         for number,spec in enumerate(config['documents']):
             directory=store.root/'retained-docling'/path_id/str(number);directory.mkdir(parents=True,exist_ok=True)
             for name,ref in spec['artifacts'].items():

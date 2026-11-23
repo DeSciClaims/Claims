@@ -49,7 +49,7 @@ def lookup_query(packet,task):
     wire=judge_packet(packet)
     # Retrieval sees exact asserted properties and dependencies, without repeating
     # administrative manifests, long source-ID lists or computed closure ledgers.
-    keep={'assertion_encoding','objects','relations','context_headers','csv_blocks','document_bindings',
+    keep={'assertion_encoding','assertion_column_sets','objects','relations','context_headers','csv_blocks','document_bindings',
         'property_name_sets','literal_pool','literal_identifier_pool','literal_identifier_prefix',
         'output_reference_pool','reference_output_alias'}
     return {'query_id':task.task_id,'task_kind':task.task_kind,'scope_kind':task.scope_kind,

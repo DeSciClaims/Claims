@@ -145,6 +145,17 @@ result. Partial co-member headers supply context, never an unseen full witness.
 If that concrete two-result witness is unavailable, do not manufacture a family
 failure; assess the supported dimensions or request the needed source context."""
 
+SCOPE_OVERRIDE += """\nPacket transport claims_property_columns_v7 stores assertion wrappers as rows in
+objects, relations, context_headers and closures. Each row is [C0, value1, ...].
+Zip its values with assertion_column_sets.C0 IN ORDER to recover exactly the
+original wrapper keys and values. Templates are literal key lists, not scientific
+summaries. A string original_ref is the unchanged original JSON pointer, with
+kind=json and the packet's reference_output_alias. An absent property_ref_overrides
+means the empty override map; all original property values and presence markers
+are still present. Expand rows before applying the property/literal/reference
+transport rules. Unknown templates and mismatched row lengths are invalid.
+Query assertions use these same row templates without changing ownership."""
+
 class Operations:
     def __init__(
         self,

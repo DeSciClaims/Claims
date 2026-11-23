@@ -3,7 +3,8 @@ import json
 import re
 from .contracts import AssertionPacket
 
-ENCODING = 'claims_property_columns_v6'
+ENCODING = 'claims_property_columns_v7'
+V6 = 'claims_property_columns_v6'
 V5 = 'claims_property_columns_v5'
 V4 = 'claims_property_columns_v4'
 
@@ -149,6 +150,45 @@ def _expand_anchor_runs(runs):
     return anchors
 
 
+def _assertion_rows(value):
+    """Retain every wrapper field once per row template, not once per assertion."""
+    templates = {}
+    for section in ('objects', 'relations', 'context_headers', 'closures'):
+        rows = []
+        for original in value.get(section, []):
+            node = dict(original)
+            if node.get('property_ref_overrides') == {}:
+                del node['property_ref_overrides']
+            ref = node.get('original_ref')
+            if isinstance(ref, dict) and set(ref) == {'kind', 'pointer'} and ref['kind'] == 'json':
+                node['original_ref'] = ref['pointer']
+            names = tuple(node)
+            if names not in templates:
+                templates[names] = 'C' + str(len(templates))
+            rows.append([templates[names], *node.values()])
+        value[section] = rows
+    value['assertion_column_sets'] = {key: list(names) for names, key in templates.items()}
+
+
+def _restore_assertion_rows(value):
+    templates = value.pop('assertion_column_sets')
+    if (not isinstance(templates, dict) or any(not isinstance(key, str) or not isinstance(names, list)
+        or any(not isinstance(name, str) for name in names) or len(names) != len(set(names))
+        for key, names in templates.items())):
+        raise ValueError('Invalid original assertion columns')
+    for section in ('objects', 'relations', 'context_headers', 'closures'):
+        nodes = []
+        for row in value.get(section, []):
+            if (not isinstance(row, list) or not row or not isinstance(row[0], str)
+                or row[0] not in templates or len(row)-1 != len(templates[row[0]])):
+                raise ValueError('Unknown assertion columns or mismatched value count')
+            node = dict(zip(templates[row[0]], row[1:]))
+            if isinstance(node.get('original_ref'), str):
+                node['original_ref'] = {'kind': 'json', 'pointer': node['original_ref']}
+            nodes.append(node)
+        value[section] = nodes
+
+
 def judge_packet(packet):
     """Remove repeated property-key/reference syntax, never scientific assertions."""
     value = packet.model_dump(mode='json')
@@ -188,6 +228,7 @@ def judge_packet(packet):
     runs=_anchor_runs(value['evidence_anchor_ids'])
     if len(json.dumps(runs))<len(json.dumps(value['evidence_anchor_ids'])):
         del value['evidence_anchor_ids'];value['evidence_anchor_id_runs']=runs
+    _assertion_rows(value)
     return value
 
 
@@ -196,9 +237,13 @@ def audit_packet(value):
     import copy
     value = copy.deepcopy(value)
     encoding=value.pop('assertion_encoding')
-    if encoding not in {ENCODING,V5,V4,'claims_property_columns_v3','claims_property_pairs_v1','claims_property_pairs_v2'}:
+    if encoding not in {ENCODING,V6,V5,V4,'claims_property_columns_v3','claims_property_pairs_v1','claims_property_pairs_v2'}:
         raise ValueError('Unknown scientific property encoding')
-    if encoding in {ENCODING,V5}:
+    if encoding == ENCODING:
+        _restore_assertion_rows(value)
+    elif 'assertion_column_sets' in value:
+        raise ValueError('Assertion columns require transport v7')
+    if encoding in {ENCODING,V6,V5}:
         pool=value.pop('output_reference_pool',{})
         if not isinstance(pool,dict) or any(not isinstance(k,str) or not isinstance(v,dict) or v.get('kind') not in {'json','csv'} for k,v in pool.items()):
             raise ValueError('Invalid original output-reference pool')
@@ -212,7 +257,7 @@ def audit_packet(value):
             if isinstance(node,list):return [expand(v) for v in node]
             return node
         value=expand(value)
-    if encoding in {ENCODING,V5,V4}:
+    if encoding in {ENCODING,V6,V5,V4}:
         alias=value.pop('reference_output_alias')
         if alias!=value['output_alias']:raise ValueError('Transport reference alias differs')
         _reference_alias(value,alias,restore=True)
@@ -224,7 +269,7 @@ def audit_packet(value):
     if not isinstance(identifiers,dict):
         raise ValueError('Invalid original-identifier pool')
     if identifiers:
-        if (encoding not in {ENCODING,V5,V4} or not isinstance(prefix,str) or not prefix
+        if (encoding not in {ENCODING,V6,V5,V4} or not isinstance(prefix,str) or not prefix
             or not isinstance(identifiers,dict) or any(not isinstance(k,str) or not k.isdecimal() or not isinstance(v,str) for k,v in identifiers.items())):
             raise ValueError('Invalid original-identifier pool')
         pattern=re.compile(re.escape(prefix)+r'(\d+);')
@@ -248,7 +293,7 @@ def audit_packet(value):
             node['properties']=list(zip(name_sets[key],node['properties']))
         properties = []
         root = node['original_ref']
-        overrides = node.pop('property_ref_overrides')
+        overrides = node.pop('property_ref_overrides', {}) if encoding == ENCODING else node.pop('property_ref_overrides')
         names = set()
         for name, literal in node['properties']:
             if isinstance(literal,dict):
@@ -265,7 +310,7 @@ def audit_packet(value):
         if not set(overrides) <= names:
             raise ValueError('Unknown property reference override')
         node['properties'] = properties
-    if encoding in {ENCODING,V5,V4}:
+    if encoding in {ENCODING,V6,V5,V4}:
         originals={}
         for node in value['objects']+value.get('context_headers',[]):
             props={p['name']:p for p in node['properties'] if p['present']}
@@ -293,7 +338,7 @@ def audit_packet(value):
                 if name not in computed or name in closure:raise ValueError('Ambiguous transported computed closure')
                 closure[name]=list(closure[computed[name]])
     if 'evidence_anchor_id_runs' in value:
-        if encoding!=ENCODING or 'evidence_anchor_ids' in value:
+        if encoding not in {ENCODING,V6} or 'evidence_anchor_ids' in value:
             raise ValueError('Ambiguous original anchor manifest')
         value['evidence_anchor_ids']=_expand_anchor_runs(value.pop('evidence_anchor_id_runs'))
     return AssertionPacket.model_validate(value, strict=True)

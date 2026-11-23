@@ -307,3 +307,19 @@ spending most of a 32k assertion allowance on repeated administrative identifier
 The canonical source, scientific assertions, qualifications and scoring bits do
 not change. Source-card generation also exposes its existing outcome/card
 consistency requirements in the provider schema, including corrected proposals.
+
+Transport v7 stores repeated assertion-wrapper keys in column templates. All
+original properties, explicit absence markers, relations and closure views stay
+unchanged; decoding reconstructs the exact rich packet. Scientific quantities
+are never summarized or split apart to make the packet fit. The source lookup
+checks audit ownership and its material dependencies rather than independently
+verifying every unrelated partial co-member header.
+
+A diagnostic may freeze `source_parser.retained_capture_frames` and an optional
+`retained_source_run_id` to reuse earlier independent Docling captures. Each
+capture must match the original source-packet hash, its origin configuration,
+parser implementation, installed Docling version and requested OCR scale. The
+full original frame proof is replayed before reuse. Incompatible parser settings
+fall back to parsing the original supplied PDF; mismatched source/policy bindings
+are rejected. Only immutable bytes are shared from a read-only cache. New source
+eligibility decisions, tasks, scientific judgments and clocks remain independent.
