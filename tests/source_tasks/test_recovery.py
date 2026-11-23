@@ -232,3 +232,70 @@ def test_preparation_and_judging_clocks_are_separate_and_resume_never_extends_ei
     monkeypatch.setattr(time,'time',lambda:8000)
     assert phase_deadline(store,manifest,paper,'source_preparation',7200)==source
     assert phase_deadline(store,manifest,paper,'scientific_verification',7200)==judge
+
+
+@pytest.mark.parametrize('fail_at,reply_lost', [('provider-usage:',False),('judge-run:',False),('judge-run:',True)])
+def test_audit_transport_failure_resumes_saved_completion_without_another_provider_call(tmp_path,monkeypatch,fail_at,reply_lost):
+    from tests.source_tasks.test_docling_frame import fixture
+    from validator.scientific_result_v1.source_tasks.docling_frame import EligibilityResponse
+    store,_,ops=fixture(tmp_path,monkeypatch)
+    generate=ops.runtimes['SOURCE_READER'].generate;calls=[]
+    def counted(**kwargs):calls.append(kwargs);return generate(**kwargs)
+    ops.runtimes['SOURCE_READER'].generate=counted
+    advance=store.advance;failed=[]
+    def flaky(key,parent,child):
+        if key.startswith(fail_at) and not failed:
+            failed.append(key)
+            if reply_lost:advance(key,parent,child)
+            raise OSError('Audit transport interrupted')
+        return advance(key,parent,child)
+    monkeypatch.setattr(store,'advance',flaky)
+    data={'tiles':[{'tile_id':'one'}]}
+    with pytest.raises(OSError,match='Audit transport'):
+        ops.request('SOURCE_READER','source_eligibility',data,EligibilityResponse)
+    answer=ops.request('SOURCE_READER','source_eligibility',data,EligibilityResponse)
+    assert answer.items[0].eligible is True and len(calls)==1
+    with store.connection() as c:
+        rows=c.execute('select response,error from attempts').fetchall()
+    assert len(rows)==1 and rows[0][0] is not None and rows[0][1] is None
+    assert len(set(ops.used))==1
+
+
+def test_lost_terminal_write_reply_does_not_redispatch_or_change_saved_response(tmp_path,monkeypatch):
+    from tests.source_tasks.test_docling_frame import fixture
+    from validator.scientific_result_v1.source_tasks.docling_frame import EligibilityResponse
+    store,_,ops=fixture(tmp_path,monkeypatch);calls=[]
+    generate=ops.runtimes['SOURCE_READER'].generate
+    def counted(**kwargs):calls.append(kwargs);return generate(**kwargs)
+    ops.runtimes['SOURCE_READER'].generate=counted
+    finish=store.finish;failed=[]
+    def lost_reply(*args,**kwargs):
+        finish(*args,**kwargs)
+        if not failed:failed.append(True);raise OSError('Terminal commit reply lost')
+    monkeypatch.setattr(store,'finish',lost_reply)
+    data={'tiles':[{'tile_id':'one'}]}
+    with pytest.raises(OSError,match='Terminal commit reply'):
+        ops.request('SOURCE_READER','source_eligibility',data,EligibilityResponse)
+    assert ops.request('SOURCE_READER','source_eligibility',data,EligibilityResponse).items[0].eligible
+    assert len(calls)==1
+
+
+def test_response_upload_failure_keeps_paid_response_and_original_usage(tmp_path,monkeypatch):
+    import json
+    from tests.source_tasks.test_docling_frame import fixture
+    from validator.scientific_result_v1.source_tasks.docling_frame import EligibilityResponse
+    store,_,ops=fixture(tmp_path,monkeypatch);calls=[];failed=[]
+    generate=ops.runtimes['SOURCE_READER'].generate
+    def counted(**kwargs):calls.append(kwargs);return generate(**kwargs)
+    ops.runtimes['SOURCE_READER'].generate=counted
+    put=store.put_blob
+    def unavailable(digest,raw):
+        if isinstance(json.loads(raw),dict) and 'items' in json.loads(raw) and not failed:
+            failed.append(True);raise OSError('Response blob upload interrupted')
+        return put(digest,raw)
+    monkeypatch.setattr(store,'put_blob',unavailable)
+    data={'tiles':[{'tile_id':'one'}]}
+    with pytest.raises(OSError,match='Response blob'):
+        ops.request('SOURCE_READER','source_eligibility',data,EligibilityResponse)
+    assert ops.request('SOURCE_READER','source_eligibility',data,EligibilityResponse).items[0].eligible
+    assert len(calls)==1

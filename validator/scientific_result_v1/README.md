@@ -250,6 +250,12 @@ Source preparation and post-preparation judging have separate persistent clocks,
 requires another audited recovery manifest rather than overwriting a completed
 result. Provider-free replay verifies a FROZEN result before it is checkpointed.
 
+Each completed model attempt has a durable completion journal before its audit
+heads and terminal status are published. If an evidence write or its HTTP reply
+fails, resuming on the same evidence store finishes those writes from the saved
+response, usage and receipt. It does not issue another model call or turn a
+successful response into a model failure.
+
 A durable diagnostic budget reserves the declared per-request envelope before
 dispatch. Unobserved costs keep that reservation across process crashes. Actual
 costs remain separate from reservations; unknown calls are never reported as free.

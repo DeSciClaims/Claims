@@ -10,7 +10,7 @@ from pathlib import Path
 from .budgets import SOURCE_TOKEN_BUDGETS, STRUCTURED_PACKET_TOKENS
 from .contracts import ErrorRecord, FileRef, JudgeRunReceipt
 from .literals import LiteralDocument
-from .store import Exhausted, Pending, canonical, sha
+from .store import Conflict, Exhausted, Pending, Store, canonical, sha
 
 ROOT = Path(__file__).parent
 GLOBAL_GATE=threading.BoundedSemaphore(16)
@@ -254,6 +254,7 @@ class Operations:
         if packet_tokens is not None and packet_tokens > STRUCTURED_PACKET_TOKENS:
             raise Hold("EVALUATOR", "Complete joint packet exceeds shard bound")
         for _ in range(2):
+            self.recover_completions(key)
             try:
                 feedback=self.store.last_error(key)
                 attempt_request=self.store.put({**request,"validation_feedback":feedback}) if feedback else request_ref
@@ -295,6 +296,7 @@ class Operations:
             raw_ref = None
             started=time.monotonic()
             dispatched=False
+            failure=None
             try:
                 # A distinct provider context for each role and candidate. No earlier verdict to secondary.
                 with self.gate:
@@ -309,30 +311,25 @@ class Operations:
                     )
                 raw = canonical(answer)
                 LiteralDocument(raw)
-                raw_ref = self.store.put_blob(sha(raw), raw)
+                raw_ref = Store.put_blob(self.store,sha(raw),raw)
                 result = response_type.model_validate_json(raw, strict=True)
                 if validate:
                     validate(result)
-                self.store.finish(key, ordinal, response=raw_ref.sha256)
-                self.response_refs[key] = raw_ref
-                self.record_run(key,ordinal,role,attempt_request,raw_ref,count,started,None,dispatched=dispatched)
-                return result
             except Exception as exc:
+                failure=exc
                 if getattr(exc,'not_dispatched',False):dispatched=False
-                from .errors import safe_message
-                message=safe_message(exc,[getattr(r,'api_key',None) for r in self.runtimes.values()])
-                self.store.finish(
-                    key,
-                    ordinal,
-                    response=raw_ref.sha256 if raw_ref else None,
-                    error=type(exc).__name__ + ": " + message[:2000],
-                )
-                self.record_run(key,ordinal,role,attempt_request,raw_ref,count,started,exc,dispatched=dispatched)
-                from ..runtime import TruncatedStageError
-                if operation == 'source_table_layout' and isinstance(exc, TruncatedStageError):
-                    raise LayoutSubdivisionRequired('SOURCE', 'Provider explicitly truncated table layout') from exc
-                if isinstance(exc, Hold):
-                    raise
+            # Persistence failures are not model failures. Save a durable completion
+            # before publishing audit heads or making the attempt terminal; resume
+            # repairs that completion without dispatching the paid request again.
+            self.record_run(key,ordinal,role,attempt_request,raw_ref,count,started,failure,dispatched=dispatched)
+            if failure is None:
+                self.response_refs[key] = raw_ref
+                return result
+            from ..runtime import TruncatedStageError
+            if operation == 'source_table_layout' and isinstance(failure, TruncatedStageError):
+                raise LayoutSubdivisionRequired('SOURCE', 'Provider explicitly truncated table layout') from failure
+            if isinstance(failure, Hold):
+                raise failure
         raise Hold(
             "MODEL", "Technical response failure after one identical-request retry"
         )
@@ -348,7 +345,9 @@ class Operations:
         if usage:
             call=usage[-1].get("call_id")
             path=self.trace_dir/role/(str(call)+".response.txt")
-            if path.is_file():raw_response=self.store.put_named("provider-responses/"+str(call)+".txt",path.read_bytes(),"text/plain")
+            if path.is_file():
+                data=path.read_bytes();saved=Store.put_blob(self.store,sha(data),data)
+                raw_response=FileRef(relative_path="provider-responses/"+str(call)+".txt",sha256=saved.sha256,byte_length=len(data),media_type="text/plain")
         from .errors import safe_message
         message=safe_message(error,[getattr(r,'api_key',None) for r in self.runtimes.values()]) if error else None
         receipt=JudgeRunReceipt(run_id=key+":"+str(ordinal),role=role,
@@ -363,11 +362,46 @@ class Operations:
             'provider_request_id':usage[-1].get('provider_request_id') if usage else None,
             'provider':usage[-1].get('provider') if usage else None,
             'tokens_observed':bool(last),'dispatch_outcome':'not_dispatched' if not dispatched else 'confirmed' if usage else 'unknown'}
-        usage_ref=self.store.put(usage_record)
-        self.store.advance('provider-usage:'+receipt.run_id,None,usage_ref.sha256)
-        ref=self.store.put(receipt);self.store.advance("judge-run:"+key+":"+str(ordinal),None,ref.sha256)
-        self.run_refs.append(ref)
-        self.used.append(receipt.run_id)
+        completion={'key':key,'ordinal':ordinal,'receipt':receipt.model_dump(mode='json'),
+            'usage':usage_record,'response':response.sha256 if response else None,
+            'error':type(error).__name__+": "+message[:2000] if error else None}
+        raw=canonical(completion)
+        ref=Store.put_blob(self.store,sha(raw),raw)
+        journal='model-completion:'+key+':'+str(ordinal)
+        Store.advance(self.store,journal,None,ref.sha256)
+        self.publish_completion(ref.sha256)
+
+    def publish_completion(self,digest,*,remember=True):
+        completion=json.loads(Store.get_blob(self.store,digest))
+        receipt=JudgeRunReceipt.model_validate(completion['receipt'],strict=True)
+        key=completion['key'];ordinal=completion['ordinal']
+        if receipt.run_id!=key+':'+str(ordinal) or receipt.attempt!=ordinal:
+            raise Conflict('Completion journal identity changed')
+        if completion['usage']['run_id']!=receipt.run_id:
+            raise Conflict('Completion usage identity changed')
+        # Immutable blobs and CAS heads make retries safe after a lost HTTP reply.
+        self.store.put_blob(digest,canonical(completion))
+        for evidence in (receipt.raw_response,receipt.parsed_response):
+            if evidence is not None:self.store.put_blob(evidence.sha256,self.store.read(evidence))
+        for prefix,value in [('provider-usage:',completion['usage']),('judge-run:',receipt)]:
+            ref=self.store.put(value);head_key=prefix+receipt.run_id
+            current=self.store.head(head_key)
+            if current is None:self.store.advance(head_key,None,ref.sha256)
+            elif current!=ref.sha256:raise Conflict('Completion audit head changed')
+        journal='model-completion:'+receipt.run_id
+        current=self.store.head(journal)
+        if current is None:self.store.advance(journal,None,digest)
+        elif current!=digest:raise Conflict('Completion journal changed')
+        self.store.finish(key,ordinal,response=completion['response'],error=completion['error'])
+        ref=self.store.put(receipt)
+        if remember:
+            self.run_refs.append(ref);self.used.append(receipt.run_id)
+
+    def recover_completions(self,key):
+        for ordinal in (1,2):
+            journal='model-completion:'+key+':'+str(ordinal)
+            digest=Store.head(self.store,journal)
+            if digest is not None:self.publish_completion(digest,remember=False)
 
 
     def scoped(self):

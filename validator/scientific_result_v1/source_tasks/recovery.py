@@ -39,7 +39,7 @@ class RecoveryStore(RemoteStore):
     def _key(self,key):
         # Exact immutable request identities may reuse work across sessions. The
         # request hash includes policy, route, prompt, schema and complete payload.
-        if key.startswith(('judge-run:','provider-usage:','model-operation:')):return key
+        if key.startswith(('judge-run:','provider-usage:','model-operation:','model-completion:')):return key
         return 'recovery:'+self.run_id+':'+key
 
     def head(self,key):
