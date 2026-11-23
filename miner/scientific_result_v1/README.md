@@ -40,6 +40,13 @@ temperature, batch size, vision setting, and runtime identity. Validated model s
 with request/instruction fingerprints. `--prepared-dir` separately caches Docling
 outputs and verifies source hashes.
 
+Graph review runs separately for independent local results. Direct scientific
+links and cross-result cores keep their owners together; shared table/context
+links alone do not combine all results. Each review keeps original source text
+and other defined objects as context. The pipeline merges and validates the full
+graph afterward, preserving all field values and IDs. This reduces response size
+without increasing the worker's token, cost or time limits.
+
 ## Pipeline and output
 
 1. Docling parses the article and supplements using full-page OCR and accurate

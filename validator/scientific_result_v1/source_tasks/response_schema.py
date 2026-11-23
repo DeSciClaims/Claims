@@ -27,6 +27,23 @@ def response_schema(response_type,data):
         for key in ('analysis_scope','adjustment_scope'):
             requirement['properties'][key].pop('default',None)
             if key not in requirement['required']:requirement['required'].append(key)
+    # Make the existing canonical outcome contract visible to strict generation,
+    # including nested corrected CARD_BATCH proposals. Otherwise a provider can
+    # emit authoritative cards under NEED_EVIDENCE and fail only after billing.
+    if response_type.__name__ in {'SourceTaskBatch', 'SourceReviewResponse'}:
+        batch = schema if response_type.__name__ == 'SourceTaskBatch' else defs['SourceTaskBatch']
+        template = copy.deepcopy(batch)
+        template.pop('$defs', None)
+        branches = []
+        for outcome in ('READY', 'NEED_EVIDENCE', 'SOURCE_UNRESOLVED', 'INVENTORY_DEFECT'):
+            branch = copy.deepcopy(template); p = branch['properties']
+            p['outcome'] = {'type': 'string', 'const': outcome}
+            p['cards'].update(**({'minItems': 1} if outcome == 'READY' else {'maxItems': 0}))
+            p['evidence_requests'].update(**({'minItems': 1} if outcome == 'NEED_EVIDENCE' else {'maxItems': 0}))
+            p['unresolved_reason'] = (_nonnull(p['unresolved_reason'])
+                if outcome in {'SOURCE_UNRESOLVED', 'INVENTORY_DEFECT'} else {'type': 'null', 'const': None})
+            branches.append(branch)
+        batch['anyOf'] = branches
     if response_type.__name__=='TableCountReview':
         props['source_frame_sha256']['const']=data['source_frame_sha256']
         props['inspected_anchor_ids']['const']=[a['anchor_id'] for a in data['authoritative_evidence']['anchors']]

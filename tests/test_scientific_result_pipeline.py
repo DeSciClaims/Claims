@@ -352,3 +352,37 @@ def test_repair_can_correct_annotation_coordinates_without_changing_table_data()
         assert not Draft202012Validator({'type':'string','pattern':REPAIR_PATH_PATTERN}).is_valid(forbidden)
         with pytest.raises(ValueError,match='Repair cannot change'):
             apply_edits(payload,[{'op':'replace','path':forbidden,'value':'changed'}])
+
+
+@pytest.mark.parametrize('connected', [False, True])
+def test_graph_review_batches_independent_results_but_preserves_joint_owners(tmp_path, connected):
+    from copy import deepcopy
+    from miner.scientific_result_v1.graph_review import review_batch_graph
+    records=[]
+    for i in range(1,4):
+        rid=f'P001.E001.R{i:03d}';mean=rid+'.F001';sem=rid+'.F002'
+        records.append({'id':rid,'fields':[{'id':mean,'field':'mean','label':'mean','value':i},
+            {'id':sem,'field':'sem','label':'standard_error','value':.1}],
+            'closure':{'core_ids':[mean],'member_ids':[mean],'reference_ids':[],'status':'closed'}})
+    edge={'source_id':records[0]['fields'][0]['id'],'target_id':records[1]['fields'][0]['id'],
+          'relation':'compares','closure_direction':'none','basis':'Independent source-reported comparison.'}
+    batch={'results':records,'relationships':[edge] if connected else []}
+    original=deepcopy(batch);calls=[]
+    class Runtime:
+        def generate(self,**kwargs):
+            current=kwargs['payload']['records'];calls.append([r['id'] for r in current])
+            # The other owners remain visible as read-only context.
+            defined={o['id'] for o in kwargs['payload']['defined_scientific_objects']}
+            assert all(r['fields'][0]['id'] in defined for r in records)
+            return {'add_relationships':[{'source_id':r['fields'][1]['id'],
+                'target_id':r['fields'][0]['id'],'relation':'uncertainty_of',
+                'closure_direction':'source_to_target','basis':'This standard error qualifies this mean.'} for r in current],
+                'remove_relationship_indexes':[],'core_assignments':{},'review_notes':'Reviewed complete source-supported attachments.'}
+    result=review_batch_graph(batch,context={},documents=[],runtime=Runtime(),directory=tmp_path,
+        stage='graph-review',attempts=1)
+    assert batch==original
+    assert calls==([[r['id'] for r in records[:2]],[records[2]['id']]] if connected else [[r['id']] for r in records])
+    assert [r['fields'] for r in result['results']]==[r['fields'] for r in records]
+    assert all(len(r['closure']['member_ids'])==2 for r in result['results'])
+    assert len(result['relationships'])==3+int(connected)
+    if connected:assert edge in result['relationships']

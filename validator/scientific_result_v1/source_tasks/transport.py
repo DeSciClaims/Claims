@@ -3,7 +3,8 @@ import json
 import re
 from .contracts import AssertionPacket
 
-ENCODING = 'claims_property_columns_v5'
+ENCODING = 'claims_property_columns_v6'
+V5 = 'claims_property_columns_v5'
 V4 = 'claims_property_columns_v4'
 
 
@@ -112,6 +113,42 @@ def _factor_literal_identifiers(value,packet):
     value['literal_identifier_pool']={key:identifier for identifier,key in pool.items()}
 
 
+def _anchor_runs(anchors):
+    """Lossless, readable consecutive ID ranges; preserve exact order and padding."""
+    runs=[];i=0
+    while i<len(anchors):
+        current=anchors[i];best=None
+        for match in re.finditer(r'[0-9]+',current):
+            prefix,suffix=current[:match.start()],current[match.end():]
+            number=match.group();start=int(number)
+            width=len(number) if len(number)>1 and number.startswith('0') else 0
+            stop=i+1
+            while stop<len(anchors) and anchors[stop]==prefix+str(start+stop-i).zfill(width)+suffix:
+                stop+=1
+            run=[prefix,start,start+stop-i,suffix,width]
+            if stop-i>=3 and len(json.dumps(run))<len(json.dumps(anchors[i:stop])):
+                if best is None or stop>best[0]:best=(stop,run)
+        if best is None:runs.append(current);i+=1
+        else:i,run=best;runs.append(run)
+    return runs
+
+
+def _expand_anchor_runs(runs):
+    if not isinstance(runs,list):raise ValueError('Invalid original anchor runs')
+    anchors=[]
+    for run in runs:
+        if isinstance(run,str):anchors.append(run)
+        else:
+            if (not isinstance(run,list) or len(run)!=5 or not isinstance(run[0],str)
+                or not isinstance(run[3],str) or any(type(run[i]) is not int for i in (1,2,4))
+                or not 0<=run[1]<run[2] or not 0<=run[4]<=256 or run[2]-run[1]>200000):
+                raise ValueError('Invalid original anchor range')
+            prefix,first,stop,suffix,width=run
+            anchors.extend(prefix+str(n).zfill(width)+suffix for n in range(first,stop))
+        if len(anchors)>200000:raise ValueError('Original anchor manifest exceeds bound')
+    return anchors
+
+
 def judge_packet(packet):
     """Remove repeated property-key/reference syntax, never scientific assertions."""
     value = packet.model_dump(mode='json')
@@ -148,6 +185,9 @@ def judge_packet(packet):
     _reference_alias(value,value['output_alias'])
     value['reference_output_alias']=value['output_alias']
     _factor_references(value)
+    runs=_anchor_runs(value['evidence_anchor_ids'])
+    if len(json.dumps(runs))<len(json.dumps(value['evidence_anchor_ids'])):
+        del value['evidence_anchor_ids'];value['evidence_anchor_id_runs']=runs
     return value
 
 
@@ -156,9 +196,9 @@ def audit_packet(value):
     import copy
     value = copy.deepcopy(value)
     encoding=value.pop('assertion_encoding')
-    if encoding not in {ENCODING,V4,'claims_property_columns_v3','claims_property_pairs_v1','claims_property_pairs_v2'}:
+    if encoding not in {ENCODING,V5,V4,'claims_property_columns_v3','claims_property_pairs_v1','claims_property_pairs_v2'}:
         raise ValueError('Unknown scientific property encoding')
-    if encoding==ENCODING:
+    if encoding in {ENCODING,V5}:
         pool=value.pop('output_reference_pool',{})
         if not isinstance(pool,dict) or any(not isinstance(k,str) or not isinstance(v,dict) or v.get('kind') not in {'json','csv'} for k,v in pool.items()):
             raise ValueError('Invalid original output-reference pool')
@@ -172,7 +212,7 @@ def audit_packet(value):
             if isinstance(node,list):return [expand(v) for v in node]
             return node
         value=expand(value)
-    if encoding in {ENCODING,V4}:
+    if encoding in {ENCODING,V5,V4}:
         alias=value.pop('reference_output_alias')
         if alias!=value['output_alias']:raise ValueError('Transport reference alias differs')
         _reference_alias(value,alias,restore=True)
@@ -184,7 +224,7 @@ def audit_packet(value):
     if not isinstance(identifiers,dict):
         raise ValueError('Invalid original-identifier pool')
     if identifiers:
-        if (encoding not in {ENCODING,V4} or not isinstance(prefix,str) or not prefix
+        if (encoding not in {ENCODING,V5,V4} or not isinstance(prefix,str) or not prefix
             or not isinstance(identifiers,dict) or any(not isinstance(k,str) or not k.isdecimal() or not isinstance(v,str) for k,v in identifiers.items())):
             raise ValueError('Invalid original-identifier pool')
         pattern=re.compile(re.escape(prefix)+r'(\d+);')
@@ -225,7 +265,7 @@ def audit_packet(value):
         if not set(overrides) <= names:
             raise ValueError('Unknown property reference override')
         node['properties'] = properties
-    if encoding in {ENCODING,V4}:
+    if encoding in {ENCODING,V5,V4}:
         originals={}
         for node in value['objects']+value.get('context_headers',[]):
             props={p['name']:p for p in node['properties'] if p['present']}
@@ -252,6 +292,10 @@ def audit_packet(value):
             for name in closure.pop('computed_sets_equal_submitted',[]):
                 if name not in computed or name in closure:raise ValueError('Ambiguous transported computed closure')
                 closure[name]=list(closure[computed[name]])
+    if 'evidence_anchor_id_runs' in value:
+        if encoding!=ENCODING or 'evidence_anchor_ids' in value:
+            raise ValueError('Ambiguous original anchor manifest')
+        value['evidence_anchor_ids']=_expand_anchor_runs(value.pop('evidence_anchor_id_runs'))
     return AssertionPacket.model_validate(value, strict=True)
 
 

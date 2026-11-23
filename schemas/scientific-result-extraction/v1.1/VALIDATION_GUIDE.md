@@ -1,3 +1,14 @@
+> **Lossless anchor manifests, 23 November 2026:** packet transport
+> `claims_property_columns_v6` additionally encodes consecutive anchor IDs with
+> exact `[prefix, first, stop, suffix, width]` ranges. Expansion preserves every
+> literal ID, order, duplicate and numeric zero padding. It does not reduce the
+> source scope or omit scientific information. All canonical packet fields remain
+> unchanged and replay checks exact reconstruction. Earlier v5 receipts remain
+> decodable. Source-card provider schemas explicitly enforce the existing READY,
+> NEED_EVIDENCE and unresolved-outcome rules for original and corrected batches.
+> New runtime hashes require a separate frozen policy; old clocks and scores stay
+> in their original generation.
+
 > **Complete source batching, 23 November 2026:** source and structured-packet
 > allowances are per request, not per paper. Source size alone triggers complete
 > independent requirement/archival-row/assertion-group partitions, retaining shared

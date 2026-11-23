@@ -129,6 +129,22 @@ class LayoutSubdivisionRequired(Hold):
     """Explicit length truncation requires a smaller owned source scope."""
 
 
+SCOPE_OVERRIDE += """\nPacket transport claims_property_columns_v6 can encode the complete original
+anchor manifest as evidence_anchor_id_runs. Each string is one unchanged anchor ID.
+Each [prefix, first, stop, suffix, width] entry expands, IN ORDER, to prefix + the
+integer n rendered with zero padding to width + suffix, for first <= n < stop.
+A width of zero uses ordinary decimal formatting. This is the exact source-scope
+ID list, never a summary or a sample. Use literal expanded anchor IDs as witnesses.
+All scientific values, relationships and qualifications remain unchanged."""
+
+
+SCOPE_OVERRIDE += """\nFamily-boundary counterexamples SOURCE_SEPARATE and MUST_TOGETHER must identify
+at least TWO DIFFERENT complete RESULT roots shown in packet.objects and cite V10.
+Two properties of the same result, or the same root repeated twice, are only one
+result. Partial co-member headers supply context, never an unseen full witness.
+If that concrete two-result witness is unavailable, do not manufacture a family
+failure; assess the supported dimensions or request the needed source context."""
+
 class Operations:
     def __init__(
         self,

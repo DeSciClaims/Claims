@@ -192,3 +192,22 @@ def test_unresolved_source_review_is_arbitrated_without_defaulting_to_pass(arbit
     else:
         with pytest.raises(Hold,match='Unresolved source-only'):selected_cards(ops,tile,binding,evidence)
     assert ops.arbitrated
+
+
+@pytest.mark.parametrize('nested', [False, True])
+def test_provider_schema_enforces_source_batch_outcome_contract(nested):
+    import copy,jsonschema
+    from validator.scientific_result_v1.source_tasks.response_schema import response_schema
+    response_type=SourceReviewResponse if nested else SourceTaskBatch
+    schema=response_schema(response_type,{'tile_id':'tile','checked_anchor_ids':['owned'],'checked_item_ids':['finding']})
+    scoped={'$defs':schema['$defs'],'$ref':'#/$defs/SourceTaskBatch'} if nested else schema
+    answer=SourceTaskBatch.model_validate(ready()).model_dump(mode='json')
+    jsonschema.validate(answer,scoped)
+    # The actual retained arbiter failure paired non-READY with authoritative cards.
+    invalid=copy.deepcopy(answer);invalid['outcome']='NEED_EVIDENCE';invalid['evidence_requests']=[need()]
+    with pytest.raises(jsonschema.ValidationError):jsonschema.validate(invalid,scoped)
+    invalid['cards']=[];jsonschema.validate(invalid,scoped)
+    invalid['outcome']='SOURCE_UNRESOLVED';invalid['evidence_requests']=[]
+    with pytest.raises(jsonschema.ValidationError):jsonschema.validate(invalid,scoped)
+    invalid['unresolved_reason']='The captured source cannot resolve this issue.'
+    jsonschema.validate(invalid,scoped)

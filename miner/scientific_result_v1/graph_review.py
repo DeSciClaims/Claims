@@ -8,6 +8,70 @@ from .validation import objects, recompute_closures, resolve_terminal_comparison
 
 
 def review_batch_graph(batch, *, context, documents, runtime, directory, stage, attempts):
+    """Review connected results separately, then verify the complete merged graph.
+
+    Reusable context/table links do not join unrelated results. Direct scientific
+    relationships and cross-result core references keep their owners together.
+    Every original field and relationship remains available; only review work is
+    divided, never the submitted scientific result or its final validation.
+    """
+    from .pipeline import _result_batch_issues
+    if not _result_batch_issues(batch):
+        return batch
+    records = batch['results']
+    owners = {key: record['id'] for record in records
+              for key in [record['id'], *(field['id'] for field in record['fields'])]}
+    parent = {record['id']: record['id'] for record in records}
+    def root(key):
+        while parent[key] != key:
+            key = parent[key]
+        return key
+    def join(left, right):
+        if left in owners and right in owners:
+            parent[root(owners[right])] = root(owners[left])
+    for edge in batch['relationships']:
+        if edge['relation'] not in {'table_for', 'applies_under'}:
+            join(edge['source_id'], edge['target_id'])
+    for record in records:
+        for key in record['closure']['core_ids']:
+            join(record['id'], key)
+        for field in record['fields']:
+            join(field['id'], field.get('parent_field_id'))
+    groups = {}
+    for record in records:
+        groups.setdefault(root(record['id']), []).append(record)
+    if len(groups) == 1:
+        return _review_joint_graph(batch, context=context, documents=documents, runtime=runtime,
+                                   directory=directory, stage=stage, attempts=attempts)
+    result = deepcopy(batch)
+    replacements = {}; edges = []; reviews = []
+    for ordinal, group in enumerate(groups.values(), 1):
+        owned = {record['id'] for record in group}
+        selected = [edge for edge in batch['relationships'] if
+            owners.get(edge['source_id']) in owned or owners.get(edge['target_id']) in owned or
+            (ordinal == 1 and edge['source_id'] not in owners and edge['target_id'] not in owners)]
+        part = {'results': deepcopy(group), 'relationships': selected,
+                'closure_review': [item for item in batch.get('closure_review', [])
+                                   if owners.get(item['object_id']) in owned]}
+        # Other results are read-only context, with all original values intact.
+        scope = {**context, 'results': [*context.get('results', []),
+                  *(record for record in records if record['id'] not in owned)]}
+        reviewed = _review_joint_graph(part, context=scope, documents=documents, runtime=runtime,
+            directory=directory, stage=f'{stage}-component-{ordinal:03d}', attempts=attempts)
+        replacements.update({record['id']: record for record in reviewed['results']})
+        edges.extend(reviewed['relationships']); reviews.extend(reviewed.get('closure_review', []))
+    result['results'] = [replacements[record['id']] for record in records]
+    result['relationships'] = list({json.dumps(edge, sort_keys=True): edge for edge in edges}.values())
+    result['closure_review'] = list({json.dumps(item, sort_keys=True): item for item in reviews}.values())
+    resolve_terminal_comparison_cores(result)
+    recompute_closures(result)
+    issues = _result_batch_issues(result)
+    if issues:
+        raise ValueError('Merged graph review is invalid: ' + '; '.join(i['message'] for i in issues[:3]))
+    return result
+
+
+def _review_joint_graph(batch, *, context, documents, runtime, directory, stage, attempts):
     from .pipeline import SYSTEM, _call, _stage_schema, _result_batch_issues
     diagnostics = _result_batch_issues(batch)
     if not diagnostics:
@@ -47,7 +111,8 @@ def review_batch_graph(batch, *, context, documents, runtime, directory, stage, 
                 record['closure']['core_ids'] = review['core_assignments'][record['id']]
             if record['id'] in flagged:
                 record['closure'].update(status='review_required', notes=review['review_notes'])
-        trial['closure_review'] = review.get('closure_review', [])
+        trial['closure_review'] = list({json.dumps(item, sort_keys=True): item for item in [
+            *batch.get('closure_review', []), *review.get('closure_review', [])]}.values())
         resolve_terminal_comparison_cores(trial)
         recompute_closures(trial)
         return trial

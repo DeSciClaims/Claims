@@ -299,3 +299,11 @@ Every added anchor remains complete, hash-bound source evidence within the exist
 Diagnostic recovery supports ten concurrent paper reviews while limiting the
 memory-heavy source-preparation phase to two slots; the shared per-process model
 request gate remains sixteen. This changes scheduling, not sample size or credit.
+
+The v6 judge transport also encodes consecutive source anchor IDs as exact,
+readable ranges. It preserves every ID, its order, zero padding and source scope;
+replay expands the ranges back to the identical immutable packet. This avoids
+spending most of a 32k assertion allowance on repeated administrative identifiers.
+The canonical source, scientific assertions, qualifications and scoring bits do
+not change. Source-card generation also exposes its existing outcome/card
+consistency requirements in the provider schema, including corrected proposals.

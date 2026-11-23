@@ -1349,3 +1349,21 @@ def test_v4_identifier_pool_avoids_literal_marker_collision_and_rejects_unknown_
     with pytest.raises(ValueError,match='Unknown original identifier reference'):audit_packet(corrupted)
     corrupted=copy.deepcopy(wire);corrupted['literal_identifier_pool']=[]
     with pytest.raises(ValueError,match='Invalid original-identifier pool'):audit_packet(corrupted)
+
+
+def test_anchor_manifest_ranges_are_lossless_and_keep_complete_scientific_packets(generated):
+    from validator.scientific_result_v1.source_tasks.transport import judge_packet,audit_packet,_anchor_runs,_expand_anchor_runs
+    from validator.scientific_result_v1.source_tasks.tokenization import BudgetTokenizer
+    path,_,_=generated;index=Index(Package(path,'a'));store=Store(path.parent/'anchor-ranges')
+    task,packet=packet_case(index,store)
+    anchors=[f'd1-text{i}-s{j}' for i in range(40) for j in range(35)]
+    anchors+=['literal-no-number',*['d1-ocr-page'+str(i).zfill(3) for i in range(12)],'d1-text1-s0']
+    packet=packet.model_copy(update={'evidence_anchor_ids':anchors})
+    encoded=judge_packet(packet)
+    assert 'evidence_anchor_ids' not in encoded
+    assert _expand_anchor_runs(_anchor_runs(anchors))==anchors
+    assert audit_packet(encoded)==packet
+    token=BudgetTokenizer()
+    assert token(json.dumps(encoded['evidence_anchor_id_runs']))<token(json.dumps(anchors))//3
+    for run in [[[ 'x',0,1000000,'',0 ]], [['x',0,3,'',True]], [['x',0,3,'',257]]]:
+        with pytest.raises(ValueError):_expand_anchor_runs(run)
