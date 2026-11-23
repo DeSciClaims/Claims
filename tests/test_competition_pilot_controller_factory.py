@@ -319,3 +319,14 @@ def test_current_round_accepts_only_payout_source_changes(monkeypatch):
     runtime["judge_specs"]["model"] = "unchanged"
     runtime["competition_policy_runtime"]["source_sha256"]["pair_evaluator.py"] = "changed"
     assert not factory._payout_only_runtime_cutover(round_id, frozen, runtime)
+
+
+def test_registration_metadata_uses_actual_sparse_uids_not_neuron_order():
+    from types import SimpleNamespace
+    from competition.pilot_controller_factory import _registered_uids
+    import pytest
+    assert _registered_uids([SimpleNamespace(hotkey='later',uid=23),SimpleNamespace(hotkey='earlier',uid=7)])=={'later':23,'earlier':7}
+    for neurons in [[SimpleNamespace(hotkey='a',uid=7),SimpleNamespace(hotkey='b',uid=7)],
+                    [SimpleNamespace(hotkey='a')],[SimpleNamespace(hotkey='a',uid=True)],
+                    [SimpleNamespace(hotkey='a',uid=1.5)]]:
+        with pytest.raises(ValueError):_registered_uids(neurons)

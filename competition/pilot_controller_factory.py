@@ -68,6 +68,22 @@ def _payout_only_runtime_cutover(
     return {"weights.py", "result_controller.py"} <= changed <= _PAYOUT_ONLY_SOURCE_FILES
 
 
+def _registered_uids(neurons):
+    """Use actual chain UIDs, never the order of a sparse neuron list."""
+    result = {}
+    for neuron in neurons:
+        value = getattr(neuron, 'uid', None)
+        try:
+            uid = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError('Chain registration UID unavailable') from exc
+        hotkey = str(neuron.hotkey)
+        if str(uid) != str(value) or uid < 0 or uid > 2147483647 or hotkey in result or uid in result.values():
+            raise ValueError('Chain registration UID ambiguous')
+        result[hotkey] = uid
+    return result
+
+
 def prepare_evaluation(row, backend):
     from .evaluation_binding import prepare_evaluation as prepare
     return prepare(row, backend)
@@ -383,9 +399,16 @@ def create_controller_inputs(row: Mapping[str, Any], backend: Any) -> Competitio
         if saved is not None:
             return saved
         graph = chain.subtensor.metagraph(netuid=netuid, block=int(backend.get_round(rid)["deadline_block"]))
-        return backend.runtime_request(rid, "/teams", {"netuid": netuid,
+        payload = {"netuid": netuid,
             "members": [{"hotkey": str(n.hotkey), "coldkey": str(n.coldkey)} for n in graph.neurons],
-            "reviewed_code_links": _team_code_links(backend, rid)})
+            "reviewed_code_links": _team_code_links(backend, rid)}
+        try:
+            payload['uid_by_hotkey'] = _registered_uids(graph.neurons)
+        except ValueError:
+            # Optional display metadata cannot block team resolution or intake.
+            import logging
+            logging.getLogger(__name__).warning('Registration UID metadata unavailable; retaining team identity snapshot')
+        return backend.runtime_request(rid, "/teams", payload)
     return CompetitionControllerInputs(
         archive=chain, chain=chain, netuid=netuid, signer=signer,
         operator_hotkey=operator, paper_inputs=papers, packages=packages,

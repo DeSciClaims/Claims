@@ -17,6 +17,14 @@ private `<round_id>.evaluation.json` supplies the sealed package receipt; public
 intake rules retain their original hash, and the final publication signs the
 binding as well. Legacy rounds keep their existing pre-bound baseline behaviour.
 
+The controller also records actual registration UIDs from the same deadline-block
+metagraph used for team resolution. These optional display identities survive a
+failed round and do not depend on publishing awards or consensus assignments.
+Sparse metagraph lists use each neuron's UID, never its array position. Existing
+frozen team snapshots stay unchanged; unavailable optional UID metadata does not
+block intake or scoring. The backend preserves signed publication identities
+when adding missing display labels.
+
 ## Selection and asynchronous consensus
 
 Current round configs set `policy.winner_selection: silver_tiebreak`. The
