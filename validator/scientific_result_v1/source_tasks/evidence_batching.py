@@ -69,6 +69,43 @@ def selected(frame,scope,required,nominations):
     return [a.anchor_id for a in frame.anchors if a.anchor_id in ids]
 
 
+def fit_lookup_request(ops, role, data):
+    """Split retrieval work until the actual DSPy request AND reply fit.
+
+    Every query still inspects every original anchor independently in each role.
+    This only changes batch geometry; no assertion, source byte or witness is
+    dropped. Reply sizing reserves the valid worst case: every inspected anchor
+    is relevant to every query, including the mandatory inspection echoes.
+    """
+    request=ops.prepare_request(role,'source_evidence_lookup',data,EvidenceBatchResponse)
+    route=ops.routes[role];counter=ops.tokenizers[role]
+    reply={'request_id':data['request_id'],'inspected_anchor_ids':data['inspected_anchor_ids'],
+           'inspected_query_ids':data['inspected_query_ids'],
+           'witnesses':{q:data['inspected_anchor_ids'] for q in data['inspected_query_ids']}}
+    # Leave space for ordinary output whitespace; this is a batch-planning target,
+    # not a new scoring cap or permission to discard a returned witness.
+    reply_fits=counter(canonical(reply).decode())<=route.max_output_tokens*7//8
+    if ops.request_tokens(request)+route.max_output_tokens<=route.context_window_tokens and reply_fits:
+        return [data]
+    queries=data['inspected_query_ids'];anchors=data['inspected_anchor_ids']
+    if len(queries)>1:
+        middle=len(queries)//2;parts=[(anchors,queries[:middle]),(anchors,queries[middle:])]
+    elif len(anchors)>1:
+        middle=len(anchors)//2;parts=[(anchors[:middle],queries),(anchors[middle:],queries)]
+    else:
+        raise Hold('SOURCE','One complete source anchor and lookup query exceed the full request or response capacity')
+    captured=audit_evidence(data['authoritative_evidence']) if 'evidence_encoding' in data['authoritative_evidence'] else data['authoritative_evidence']
+    result=[]
+    for anchor_ids,query_ids in parts:
+        ids=set(anchor_ids);query_set=set(query_ids)
+        child={**data,'request_id':'source-lookup-'+sha(canonical([data['request_id'],role,anchor_ids,query_ids])),
+               'inspected_anchor_ids':anchor_ids,'inspected_query_ids':query_ids,
+               'queries':[q for q in data['queries'] if q['query_id'] in query_set],
+               'authoritative_evidence':{**captured,'anchors':[a for a in captured['anchors'] if a['anchor_id'] in ids]}}
+        result.extend(fit_lookup_request(ops,role,child))
+    return result
+
+
 def prepare(ops,frame,shards):
     """Return complete assertion cases with bounded, independently retrieved evidence."""
     limit=SOURCE_TOKEN_BUDGETS[0]
@@ -83,10 +120,8 @@ def prepare(ops,frame,shards):
     qb=pack(list(queries),query_size,STRUCTURED_PACKET_TOKENS)
     aggregate=Lock();journals={}
     def scan(item):
-        ordinal,(role,anchor_ids,query_ids)=item;local=ops.scoped()
-        data={'request_id':'source-lookup-'+sha(canonical([frame.source_packet_sha256,needed[0][0].binding,role,anchor_ids,[queries[k] for k in query_ids]])),
-            'inspected_anchor_ids':anchor_ids,'inspected_query_ids':query_ids,
-            'queries':[queries[k] for k in query_ids],'authoritative_evidence':evidence(frame,anchor_ids)}
+        ordinal,(role,data)=item;local=ops.scoped()
+        anchor_ids=data['inspected_anchor_ids'];query_ids=data['inspected_query_ids']
         def validate(response):
             if (response.request_id!=data['request_id'] or response.inspected_anchor_ids!=anchor_ids
                 or response.inspected_query_ids!=query_ids or set(response.witnesses)!=set(query_ids)):
@@ -102,7 +137,14 @@ def prepare(ops,frame,shards):
         receipt=EvidenceSearchScan(role=role,query_ids=query_ids,anchor_ids=anchor_ids,
             judge_runs=list(local.run_refs),response=local.store.put(response))
         return receipt,response
-    items=[(role,anchors,ids) for role in ROLES for anchors in sb for ids in qb]
+    items=[]
+    for role in ROLES:
+        for anchors in sb:
+            for ids in qb:
+                data={'request_id':'source-lookup-'+sha(canonical([frame.source_packet_sha256,needed[0][0].binding,role,anchors,[queries[k] for k in ids]])),
+                      'inspected_anchor_ids':anchors,'inspected_query_ids':ids,
+                      'queries':[queries[k] for k in ids],'authoritative_evidence':evidence(frame,anchors)}
+                items.extend((role,child) for child in fit_lookup_request(ops,role,data))
     scans=[];nominees={key:set() for key in queries}
     try:
         with ThreadPoolExecutor(max_workers=4) as executor:
@@ -118,6 +160,7 @@ def prepare(ops,frame,shards):
     for ids in choices.values():
         if source_size(frame,ids,ops.tokenizers)>limit:
             raise Hold('SOURCE','One complete joint source witness set exceeds the per-request bound after exhaustive batched lookup')
+    source_batch_count=len({tuple(scan.anchor_ids) for scan in scans})
     search=EvidenceSearchReceipt(kind='complete_source_batch_search_v1',binding=needed[0][0].binding,scope_anchor_ids=scope,
         queries=[EvidenceSearchQuery(query_id=task.task_id,task=ops.store.put(task),original_packet=ops.store.put(packet),required_anchor_ids=sorted(mandatory(frame,task))) for task,packet in needed],
         scans=scans,selected_anchor_ids=choices)
@@ -129,7 +172,7 @@ def prepare(ops,frame,shards):
         packet=packet.model_copy(update={'evidence_anchor_ids':ids})
         packet=packet.model_copy(update={'packet_id':'packet-'+sha(canonical(packet.model_dump(exclude={'packet_id'})))})
         summary={'kind':search.kind,'query_id':task.task_id,'receipt':ref.model_dump(mode='json'),
-            'complete_for_scope':True,'source_anchor_count':len(scope),'source_batch_count':len(sb),
+            'complete_for_scope':True,'source_anchor_count':len(scope),'source_batch_count':source_batch_count,
             'independent_roles':list(ROLES),'selected_anchor_count':len(ids)}
         result.append((task,packet,evidence(frame,ids),summary))
     return result

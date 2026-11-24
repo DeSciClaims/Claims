@@ -66,7 +66,8 @@ def test_large_source_layout_is_reviewed_in_complete_nonoverlapping_batches(tmp_
     import json
     store,frame,ops=setup(tmp_path,monkeypatch)
     def budget(text):
-        value=json.loads(text)
+        try:value=json.loads(text)
+        except ValueError:return len(text.split())
         return 36000*len(value['anchors']) if 'anchors' in value else len(text.split())
     ops.tokenizers={role:budget for role in ops.routes}
     verify_source_count(ops,frame,frame.tables[0])

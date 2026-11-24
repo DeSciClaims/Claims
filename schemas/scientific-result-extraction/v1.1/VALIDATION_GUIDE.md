@@ -213,6 +213,19 @@
 > settings whose review limits differ from its effective implementation. Existing
 > runs, clocks, judgments and miner limits are not edited or reset.
 
+> **Request-rendering and batch-planning clarification — 24 November 2026:** the
+> strict provider schema is supplied once in `response_format`, not duplicated
+> inside the user payload. Repeated large enum constraints may share `$defs` with
+> every original allowed value retained. Request planning and execution use the
+> same DSPy adapter rendering; context accounting includes decoded message text,
+> the response schema, protocol framing and the reserved response. Retry feedback
+> is rechecked before dispatch. Source-lookup batches must also allow a complete
+> valid reply with all inspection echoes and all nominated original anchors. Split
+> queries or source anchors when necessary, retaining each original query/anchor
+> pair exactly once per independent role. Rejoin all returned witnesses; neither
+> smaller batches nor repeated shared definitions change scientific weights.
+> Existing review allowances, judge-output limits and miner limits are unchanged.
+
 # Claims validator implementation guide
 
 > **Owner source-evidence decision, 21 November 2026 — `docling_pdf_derivatives_v1`:**

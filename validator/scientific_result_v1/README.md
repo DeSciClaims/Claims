@@ -134,6 +134,23 @@ extra scoring units: every required check must pass for its original task to pas
 If one inseparable assertion or its necessary joint evidence still cannot fit,
 the validator retains HOLD rather than discarding information.
 
+The validator controls the entire DSPy request. `Operations.prepare_request`
+builds the instructions, source/assertion payload and strict response schema.
+`StageProgram` executes `dspy.Predict`; `StrictAdapter` serializes compact system/user
+messages and supplies the schema once through `response_format`. `dspy.LM` and
+LiteLLM send that request to OpenRouter. The schema is not repeated in the user
+message. Repeated large enum schemas share `$defs` without removing allowed IDs.
+
+Source-lookup batching uses the same adapter rendering as dispatch and counts the
+message text, provider schema and response reservation. It also checks the largest
+valid lookup reply, including every inspection echo and every anchor relevant to
+every query. Requests split by queries and then source anchors when needed. Both
+independent roles still inspect every original source/query pair exactly once;
+replay checks that coverage and the unchanged original source and assertions.
+Reply headroom is a planning target, not permission to truncate a returned witness.
+The source/packet allowances, 16k judge output, provider routing and miner caps are
+unchanged by this implementation correction.
+
 Judge requests use OpenRouter default provider routing with fallback enabled and
 `require_parameters=true`. Provider `only`, `order` and `ignore` restrictions are
 rejected. Endpoint snapshots document model capabilities; they do not restrict

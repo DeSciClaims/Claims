@@ -1,5 +1,49 @@
 """Request-specific constraints for strict provider generation, without repairing decisions."""
 import copy
+import hashlib
+import json
+from collections import Counter
+
+
+def compact_schema(schema):
+    """Factor repeated large enum schemas; retain every original allowed value.
+
+    An anchor enum repeated once per query used to cost O(anchors * queries).
+    $defs/$ref keeps exactly the same constraints with O(anchors + queries).
+    const/default/enum values are data and must never be rewritten as schemas.
+    """
+    ignored = {'const', 'enum', 'default', 'examples'}
+    nodes = {}; counts = Counter()
+    def key(node):
+        if isinstance(node, dict) and isinstance(node.get('enum'), list) and len(node['enum']) >= 16:
+            return json.dumps(node, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+    def collect(node):
+        identity = key(node)
+        if identity is not None:
+            counts[identity] += 1; nodes[identity] = node
+        if isinstance(node, dict):
+            for name, value in node.items():
+                if name not in ignored: collect(value)
+        elif isinstance(node, list):
+            for value in node: collect(value)
+    collect(schema)
+    shared = {identity: 'CapturedEnum_' + hashlib.sha256(identity.encode()).hexdigest()[:24]
+              for identity, count in counts.items() if count > 1}
+    def rewrite(node):
+        identity = key(node)
+        if identity in shared: return {'$ref': '#/$defs/' + shared[identity]}
+        if isinstance(node, dict):
+            return {name: copy.deepcopy(value) if name in ignored else rewrite(value)
+                    for name, value in node.items()}
+        if isinstance(node, list): return [rewrite(value) for value in node]
+        return node
+    result = rewrite(schema)
+    if shared:
+        definitions = result.setdefault('$defs', {})
+        for identity, name in shared.items():
+            if name in definitions: raise ValueError('Shared schema definition collision')
+            definitions[name] = copy.deepcopy(nodes[identity])
+    return result
 
 
 def _nonnull(prop):
@@ -52,7 +96,9 @@ def response_schema(response_type,data):
     if response_type.__name__=='EvidenceBatchResponse':
         props['inspected_anchor_ids']['const']=data['inspected_anchor_ids']
         props['inspected_query_ids']['const']=data['inspected_query_ids']
-        props['witnesses']={'type':'object','properties':{key:{'type':'array','items':{'type':'string','enum':data['inspected_anchor_ids']}} for key in data['inspected_query_ids']},
+        schema.setdefault('$defs',{})['LookupAnchorId']={'type':'string','enum':data['inspected_anchor_ids']}
+        props['witnesses']={'type':'object','properties':{key:{'type':'array','maxItems':len(data['inspected_anchor_ids']),
+            'items':{'$ref':'#/$defs/LookupAnchorId'}} for key in data['inspected_query_ids']},
             'required':data['inspected_query_ids'],'additionalProperties':False}
         return schema
     if response_type.__name__=='BindingResponse':

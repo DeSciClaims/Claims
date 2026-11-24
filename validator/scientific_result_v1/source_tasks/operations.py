@@ -201,18 +201,8 @@ class Operations:
         if set(tokenizers) != set(routes) or set(runtimes) != set(routes):
             raise ValueError("Pinned tokenizers and runtimes required for all routes")
 
-    def request(
-        self,
-        role,
-        operation,
-        data,
-        response_type,
-        *,
-        validate=None,
-        source_tokens=None,
-        packet_tokens=None,
-        source_limit=SOURCE_TOKEN_BUDGETS[0],
-    ):
+    def prepare_request(self, role, operation, data, response_type):
+        """Build the same immutable request used for preflight and execution."""
         # Apply the same lossless source transport to source-card construction,
         # matching and review as to scientific judgments. Count the actual wire
         # representation, not repeated per-anchor source hashes.
@@ -234,10 +224,10 @@ class Operations:
             prompt += "\n" + (ROOT / "primary_verify.txt").read_text()
         prompt += "\nSCHEMA RULES:\n" + json.dumps(json.loads((ROOT/"extraction_schema.json").read_text())["x-validation_checks"], ensure_ascii=False)
         prompt += "\nSTRICT OUTPUT: Return exactly one JSON object matching stage_schema. No Markdown fences, prose, partial objects or ellipses, including after validation_feedback. Echo all supplied binding/inspection IDs exactly; do not shorten lists. A retry must produce the complete corrected response."
-        from .response_schema import response_schema
-        schema = response_schema(response_type,data)
+        from .response_schema import response_schema, compact_schema
+        schema = compact_schema(response_schema(response_type,data))
         route = self.routes[role]
-        request = {
+        return {
             "role": role,
             "operation": operation,
             "route": route.model_dump(mode="json"),
@@ -246,6 +236,30 @@ class Operations:
             "payload": data,
             "stage_schema": schema,
         }
+
+    def request_tokens(self, request, *, feedback=None):
+        from .runtime import provider_request, provider_input_tokens
+        payload={**request['payload'],'stage_schema':request['stage_schema']}
+        if feedback:payload['validation_feedback']=feedback
+        wire=provider_request(request['instructions'],payload,self.routes[request['role']],
+            reasoning_effort=getattr(self.runtimes[request['role']],'reasoning_effort',None))
+        return provider_input_tokens(wire,self.tokenizers[request['role']])
+
+    def request(
+        self,
+        role,
+        operation,
+        data,
+        response_type,
+        *,
+        validate=None,
+        source_tokens=None,
+        packet_tokens=None,
+        source_limit=SOURCE_TOKEN_BUDGETS[0],
+    ):
+        request=self.prepare_request(role,operation,data,response_type)
+        data=request['payload'];prompt=request['instructions'];schema=request['stage_schema']
+        route=self.routes[role]
         images = {}
         def renderings(node):
             if isinstance(node,dict):
@@ -271,7 +285,7 @@ class Operations:
             if type(image_tokens)!=int or image_tokens<0:raise ValueError("Invalid image token accounting")
         request_ref = self.store.put(request)
         key = request_ref.sha256
-        count = self.tokenizers[role](canonical(request).decode())
+        count = self.request_tokens(request)
         if type(count) != int or count < 0:
             raise ValueError("Invalid pinned tokenizer result")
         if count + image_tokens + route.max_output_tokens > route.context_window_tokens:
@@ -284,6 +298,10 @@ class Operations:
             self.recover_completions(key)
             try:
                 feedback=self.store.last_error(key)
+                if feedback:
+                    count=self.request_tokens(request,feedback=feedback)
+                    if count+image_tokens+route.max_output_tokens>route.context_window_tokens:
+                        raise Hold('EVALUATOR','Retry request context window exceeded')
                 attempt_request=self.store.put({**request,"validation_feedback":feedback}) if feedback else request_ref
                 ordinal, cached = self.store.reserve(key, attempt_request.sha256, timeout=120,
                     allow_new=time.time()<self.deadline)
