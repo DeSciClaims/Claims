@@ -100,6 +100,7 @@ def _claim_count(artifact: Mapping[str, Any], paper_id: str) -> int:
 
 def collect_final_code_evidence(
     round_id: str, *, backend: Any, fetch_package: Callable[[Mapping[str, Any]], bytes],
+    scientific_lineage_verifier: Callable[..., list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Read frozen final jobs and package bytes without executing miner code."""
     scientific = (backend.get_round(round_id).get("rules_public",{}).get("policy",{}).get("validation_protocol")=="claims-source-task-v1")
@@ -216,7 +217,8 @@ def collect_final_code_evidence(
     lineage=[]
     if scientific:
         from .scientific_lineage import verify_current_grid
-        lineage=verify_current_grid(round_id,stage,backend=backend,pairs=backend.list_stage_pairs(round_id,stage))
+        verifier=scientific_lineage_verifier or verify_current_grid
+        lineage=verifier(round_id,stage,backend=backend,pairs=backend.list_stage_pairs(round_id,stage))
     return {
         "schema_version": "claims_source_code_audit_v1" if scientific else AUDIT_SCHEMA,
         **({'scientific_lineage':lineage} if scientific else {}),

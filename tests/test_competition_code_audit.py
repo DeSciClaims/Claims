@@ -117,6 +117,24 @@ def test_code_audit_binds_review_to_packages_and_worker_receipts():
         )
 
 
+def test_scientific_code_audit_can_bind_an_independently_verified_conservative_assessment():
+    package=_wheel();backend=Backend(hashlib.sha256(package).hexdigest())
+    old=backend.get_round
+    backend.get_round=lambda rid:{**old(rid),'rules_public':{'policy':{'validation_protocol':'claims-source-task-v1'}}}
+    backend.list_stage_pairs=lambda *_:[]
+    lineage=[{'paper_id':p,'assessment_sha256':'a'*64} for p in ('paper-1','paper-2')]
+    def verified(round_id,stage,**kwargs):
+        assert (round_id,stage)==('week1','final')
+        return lineage
+    evidence=collect_final_code_evidence('week1',backend=backend,fetch_package=lambda _:package,
+        scientific_lineage_verifier=verified)
+    assert evidence['scientific_lineage']==lineage
+    assert evidence['packages'][0]['build_passed']
+    policy={'schema_version':'claims_source_code_audit_policy_v1','checks':['build','evaluation_context','cap_evasion']}
+    receipt=automatic_code_audit(evidence,policy)
+    assert verify_code_audit_receipt(receipt,evidence,policy=policy)=={'miner':True}
+
+
 def test_code_audit_accepts_only_unmetered_bronze_source_exclusions():
     package = _wheel()
 
