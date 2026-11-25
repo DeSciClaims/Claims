@@ -103,10 +103,36 @@ def portable_response_schema(schema, data):
 SUPPORTED = {'source_match', 'primary_verify', 'secondary', 'arbitrate'}
 
 
-def decode_result(raw, response_type, data):
+def witness_aliases(payload, key):
+    """Resolve only exact source entries explicitly supplied to this case."""
+    cases=[c for c in payload['cases'] if c['case_id']==key]
+    if len(cases)!=1:raise ValueError('Ambiguous source-alias case binding')
+    source=cases[0]['payload'].get('authoritative_evidence',{})
+    aliases={}
+    for token in source.get('shared_source_anchor_refs',[]):
+        anchor=payload['shared_source_anchors'][token]
+        if sha(canonical(anchor))!=token:raise ValueError('Source alias does not bind its exact original anchor')
+        aliases[token]=anchor['anchor_id']
+    if any(token in aliases.values() and token!=original for token,original in aliases.items()):
+        raise ValueError('Source alias collides with an original anchor identity')
+    return aliases
+
+
+def decode_result(raw, response_type, data, *, source_aliases=None):
     """Decode the existing keyed wire forms without repairing scientific content."""
     from .literals import LiteralDocument
     parsed=LiteralDocument(raw.encode()).value
+    if response_type is JudgeResponse and source_aliases:
+        def remap(values):return [source_aliases.get(value,value) for value in values]
+        checks=parsed.get('checks',[])
+        for check in checks.values() if isinstance(checks,dict) else checks:
+            if 'evidence_anchor_ids'in check:check['evidence_anchor_ids']=remap(check['evidence_anchor_ids'])
+            for counter in check.get('counterexamples',[]):
+                if 'evidence_anchor_ids'in counter:counter['evidence_anchor_ids']=remap(counter['evidence_anchor_ids'])
+        if parsed.get('target_issue') and 'evidence_anchor_ids'in parsed['target_issue']:
+            parsed['target_issue']['evidence_anchor_ids']=remap(parsed['target_issue']['evidence_anchor_ids'])
+        for request in parsed.get('evidence_requests',[]):
+            if 'anchor_ids'in request:request['anchor_ids']=remap(request['anchor_ids'])
     if response_type is MatchResponse and isinstance(parsed.get('inspected_component_ids'),dict):
         declared=parsed['inspected_component_ids']
         if (data.get('scan_scope')!='COMPLETE_ORIGINAL_JSON' or set(declared)!={'manifest_sha256'}
@@ -236,12 +262,16 @@ class Coordinator:
             expected={case['case_id'] for case in payload['cases']}
             ids=[record.case_id for record in answer.items]
             if len(ids)!=len(set(ids)) or not set(ids)<=expected or ids.count(key)!=1:return saved
-            result=decode_result(next(result_json(r) for r in answer.items if r.case_id==key),response_type,data)
+            aliases=witness_aliases(payload,key)
+            result=decode_result(next(result_json(r) for r in answer.items if r.case_id==key),response_type,data,
+                source_aliases=aliases)
             if validate:validate(result)
         except Exception:
             return saved
         recovered={**saved,'result':result.model_dump(mode='json'),'error':None,
-            'wire_recovery':dict(previous_receipt_sha256=previous,decoder='canonical_lists_or_exact_keyed_maps_v1',provider_calls=0)}
+            'wire_recovery':dict(previous_receipt_sha256=previous,
+                decoder='canonical_lists_keyed_maps_and_case_scoped_source_aliases_v2',
+                source_aliases=ops.store.put(aliases).model_dump(mode='json'),provider_calls=0)}
         ref=ops.store.put(recovered);ops.store.advance('budgeted-case:'+key,previous,ref.sha256)
         return recovered
 
@@ -298,7 +328,8 @@ class Coordinator:
             if failure is None:
                 try:
                     if raw is None: raise ValueError('Batch omitted this case; other cases remain usable')
-                    result=decode_result(raw,item['response_type'],item['data'])
+                    result=decode_result(raw,item['response_type'],item['data'],
+                        source_aliases=witness_aliases(data,item['key']))
                     if item['validate']: item['validate'](result)
                 except Exception as exc: failure = exc
             saved = dict(kind='budgeted_case_receipt_v1', case_id=item['key'],
@@ -306,6 +337,7 @@ class Coordinator:
                 output_alias=item['data'].get('output_alias') or item['data'].get('packet',{}).get('output_alias'),
                 batch_response_sha256=batch_ref.sha256 if batch_ref else None,
                 batch_payload=ops.store.put(data).model_dump(mode='json'),
+                source_aliases=ops.store.put(witness_aliases(data,item['key'])).model_dump(mode='json'),
                 result=result.model_dump(mode='json') if result else None,
                 error=type(failure).__name__ if failure else None,
                 run_refs=[ref.model_dump(mode='json') for ref in ops.run_refs], run_ids=ops.used)

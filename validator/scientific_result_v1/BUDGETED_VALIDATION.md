@@ -56,6 +56,12 @@ use the same lossless conversion as the existing DSPy adapter. Missing decisions
 duplicate keys and trailing text are rejected. A decoder correction can recover
 a previously paid response without another provider call; its earlier receipt is
 retained in an explicit recovery link.
+Scientific source witnesses may name the original anchor ID or the exact shared
+source alias explicitly supplied to that case. The decoder checks the alias's
+content hash and expands it to the original ID, recording the mapping. It never
+borrows another case's source, supplies missing response fields, or guesses an
+unknown identifier. Saved paid responses can use this same audited decoder
+without another request; previously unreached independent reviews still run.
 Complete JSON matching may echo the provided component-manifest hash instead of
 repeating its full ID list. The decoder expands only that exact, explicit hash
 reference to the supplied manifest; missing or incorrect certifications fail.

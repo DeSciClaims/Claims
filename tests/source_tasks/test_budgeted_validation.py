@@ -188,6 +188,48 @@ def test_portable_batch_preview_matches_actual_dspy_adapter_transport(tmp_path,m
     assert source_adapter(MatchResponse.model_json_schema()).response_format()['type']=='json_schema'
 
 
+def test_scoped_source_aliases_recover_paid_judgment_without_a_model_retry(tmp_path,monkeypatch):
+    store,_,ops=optimized(tmp_path,monkeypatch);calls=[]
+    data=dict(task={'task_id':'t'},packet={'packet_id':'p','output_alias':'a'},
+        required_dimensions=['NUMERIC_FIDELITY'],
+        authoritative_evidence={'anchors':[dict(anchor_id='original-a',exact_text='Original source witness.')]})
+    class Runtime:
+        def generate(self,*,payload,**kwargs):
+            calls.append(1);case=payload['cases'][0]
+            alias=case['payload']['authoritative_evidence']['shared_source_anchor_refs'][0]
+            return {'items':[wire(case,dict(task_id='t',packet_id='p',outcome='ASSESSED',checks=[dict(
+                dimension='NUMERIC_FIDELITY',status='PASS',evidence_anchor_ids=[alias],counterexamples=[])],
+                evidence_requests=[],target_issue=None,unresolved_reason=None,technical_error=None))]}
+    ops.runtimes['PRIMARY']=Runtime()
+    def validate(answer):assert answer.checks[0].evidence_anchor_ids==['original-a']
+    result=ops.request('PRIMARY','primary_verify',data,JudgeResponse,validate=validate)
+    key=case_key(ops,'PRIMARY','primary_verify',data);head=store.head('budgeted-case:'+key)
+    saved=json.loads(store.get_blob(head));saved.update(result=None,error='ValueError')
+    broken=store.put(saved);store.advance('budgeted-case:'+key,head,broken.sha256)
+    recovered=ops.request('PRIMARY','primary_verify',data,JudgeResponse,validate=validate)
+    assert recovered==result and len(calls)==1
+    receipt=json.loads(store.get_blob(store.head('budgeted-case:'+key)))
+    assert receipt['wire_recovery']['provider_calls']==0
+    assert receipt['wire_recovery']['previous_receipt_sha256']==broken.sha256
+
+
+def test_source_alias_decoder_cannot_borrow_another_cases_witness_or_fill_missing_fields():
+    from validator.scientific_result_v1.source_tasks.budgeted_batches import witness_aliases
+    a=request('miner','a');b=request('miner','b')
+    b['authoritative_evidence']['anchors'][0]['anchor_id']='other-original'
+    payload=pooled([dict(key='a',data=a),dict(key='b',data=b)])
+    own=payload['cases'][0]['payload']['authoritative_evidence']['shared_source_anchor_refs'][0]
+    foreign=payload['cases'][1]['payload']['authoritative_evidence']['shared_source_anchor_refs'][0]
+    aliases=witness_aliases(payload,'a')
+    raw=dict(task_id='t',packet_id='p',outcome='ASSESSED',checks=[dict(dimension='NUMERIC_FIDELITY',
+        status='PASS',evidence_anchor_ids=[own,foreign],counterexamples=[])],evidence_requests=[],
+        target_issue=None,unresolved_reason=None,technical_error=None)
+    result=decode_result(json.dumps(raw),JudgeResponse,{},source_aliases=aliases)
+    assert result.checks[0].evidence_anchor_ids==['a',foreign]
+    del raw['checks'][0]['evidence_anchor_ids']
+    with pytest.raises(ValueError):decode_result(json.dumps(raw),JudgeResponse,{},source_aliases=aliases)
+
+
 def test_local_source_lookup_keeps_complete_small_scope_and_zero_llm_searches(generated,tmp_path,monkeypatch):
     from tests.source_tasks.test_evidence_batching import case
     index,store,ops,frame,task,packet=case(generated,tmp_path,monkeypatch)
