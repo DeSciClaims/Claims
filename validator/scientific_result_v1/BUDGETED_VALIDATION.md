@@ -153,7 +153,7 @@ stage skipping applies. At least 10 / 60 / 250 common usable papers are required
 This 50% paper floor is separate from the advisory 80% C/T/P completion target.
 
 Runtime limits: 10 source preparation workers, 10 scoring papers, four miner
-outputs per paper and 20 root checks per output. A host-wide file-lock gate
+outputs per paper and 20 root checks shared across those outputs per paper. A host-wide file-lock gate
 limits preparation and scoring together to 500 in-flight model requests.
 These are ceilings, not guaranteed utilization. Provider routing remains automatic,
 with one provider attempt per request. Completed case receipts are reusable.
