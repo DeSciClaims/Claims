@@ -209,6 +209,9 @@ def create_source_preparer(row,backend,configuration,fetcher):
     policy=create_scientific_policy(row,backend,configuration);pool=policy.evaluate_pool
     def prepare(round_id):
         if round_id!=row['round_id']:raise ValueError('Scientific preparation round mismatch')
+        ledger=backend.list_stages(round_id)
+        if not ledger:return {'status':'waiting_for_scientific_stage','prepared_papers':[],'holds':[]}
+        active_stage=ledger[-1]['stage']
         sample=backend.list_sample(round_id);groups={}
         for paper in sample:
             if paper['stage']=='rerun':continue
@@ -237,7 +240,7 @@ def create_source_preparer(row,backend,configuration,fetcher):
         from concurrent.futures import ThreadPoolExecutor,as_completed
         from .execution_policy import execution_policy
         executor=ThreadPoolExecutor(max_workers=execution_policy(row).bronze_max_workers)
-        futures=[executor.submit(prepare_one,item) for item in groups.items()]
+        futures=[executor.submit(prepare_one,item) for item in groups.items() if active_stage in item[1]]
         try:
             for future in as_completed(futures):
                 result=future.result()

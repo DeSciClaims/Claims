@@ -55,7 +55,7 @@ def test_optimized_profile_must_be_publicly_advertised(tmp_path,monkeypatch):
     with pytest.raises(ValueError,match='differs from frozen'):factory.create_scientific_policy(row,object(),config)
 
 
-def test_source_preparation_honors_workers_and_isolates_duplicate_pdf_paths(tmp_path,monkeypatch):
+def test_source_preparation_prioritizes_active_stage_and_isolates_duplicate_pdf_paths(tmp_path,monkeypatch):
     store=Store(tmp_path/'source-store');barrier=Barrier(2);paths=[]
     wrapper=SimpleNamespace(head=store.head,generation=store.generation,
         put_existing_source=lambda r,p,raw:store.put_named(p+'.pdf',raw,'application/pdf'))
@@ -67,7 +67,9 @@ def test_source_preparation_honors_workers_and_isolates_duplicate_pdf_paths(tmp_
         paths.append(next(iter(kwargs['parsed_directories'].values())))
         barrier.wait(timeout=3)
     monkeypatch.setattr('validator.scientific_result_v1.source_tasks.preparation.prepare_paper',prepare)
-    backend=SimpleNamespace(list_sample=lambda _: [{'paper_id':p,'stage':'prescreen'} for p in ['a','b']],
+    backend=SimpleNamespace(list_stages=lambda _:[{'stage':'prescreen'}],
+        list_sample=lambda _: [{'paper_id':'future-final','stage':'final'},
+            *[{'paper_id':p,'stage':'prescreen'} for p in ['a','b']],{'paper_id':'future-screen','stage':'screen'}],
         get_scientific_source=lambda *a:{'source_url':'https://example.test/paper','source_sha256':sha(b'pdf')})
     row={'round_id':'round','configuration_sha256':'1'*64,'rules_public':{'policy':{'execution':{
         'schema_version':'claims_competition_execution_v1','bronze_max_workers':2,'scoring_max_workers':10,'decision_max_workers':20}}}}
