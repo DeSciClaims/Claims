@@ -275,3 +275,34 @@ def test_scientific_fraction_scores_use_existing_pair_and_publication_receipts()
     assert backend.scores['challenger-job']['score']==7/9
     assert backend.frozen['result_private']['silver']['protocol_id']=='claims-source-task-v1'
     assert 'covered_units' not in str(backend.pairs)
+
+
+@pytest.mark.parametrize('enabled',[True,False])
+def test_first_round_scores_incomplete_reviews_and_retains_completion_metadata(enabled):
+    from competition.scientific_scoring import ScientificPaperEvaluation
+    from competition.scientific_first_round import first_round_policy
+    from validator.scientific_result_v1.source_tasks.contracts import FileRef
+    backend=Backend();backend.jobs[1]['status']='completed'
+    config={'scientific_scoring':{'first_round_scoring':first_round_policy('round-1')}} if enabled else {}
+    backend.get_round=lambda _: {'configuration_sha256':'b'*64,'rules_public':{'configuration':config}}
+    ref=FileRef(relative_path='score.json',sha256='f'*64,byte_length=1,media_type='application/json')
+    def evaluate(**_):
+        return ScientificPaperEvaluation(
+            SimpleNamespace(state='HOLD',model_dump=lambda **_: {'state':'HOLD'}),
+            'a'*64,{'reference':1.0,'challenger':.25},({
+                'paper_id':'paper-1','challenger_hotkey':'challenger','baseline_hotkey':'reference',
+                'challenger_score':.25,'baseline_score':1.0,'infrastructure_fault':False,
+                'details_public':{}},), first_round_score=ref,
+            score_details_by_hotkey={'challenger':{'evaluation_status':'CONSERVATIVE',
+                'coverage_target_met':False,'failure_counts':{'unresolved_cases':3}}})
+    evaluate.validation_protocol='claims-source-task-v1'
+    call=lambda:score_ready_paper('round-1','week_one','paper-1',backend=backend,bronze_artifact={},evaluate=evaluate)
+    if not enabled:
+        with pytest.raises(ValueError,match='not enabled'):call()
+        assert backend.frozen is None
+        return
+    assert call()['status']=='scored'
+    assert backend.scores['challenger-job']['score']==.25
+    details=backend.scores['challenger-job']['details_public']
+    assert details['coverage_target_met'] is False and details['failure_counts']['unresolved_cases']==3
+    assert backend.frozen['result_private']['silver']['first_round_score']==ref.model_dump(mode='json')

@@ -17,7 +17,8 @@ def literal_default(annotation):
     raise ValueError('Required deployment value has no protocol default')
 
 
-def freeze_settings(store,*,route_snapshots,execution_policy,models=None,provider_allowlists=None,sealed_evaluation_timeout_seconds=1800):
+def freeze_settings(store,*,route_snapshots,execution_policy,models=None,provider_allowlists=None,sealed_evaluation_timeout_seconds=1800,
+                    harness='dspy',hermes_python=None,diagnostic_profiles=None):
     """No credentials enter the descriptor. Caller signs/freezes the resulting round config."""
     if provider_allowlists:
         raise ValueError('Judge provider allowlists are not supported; use OpenRouter default routing')
@@ -25,30 +26,51 @@ def freeze_settings(store,*,route_snapshots,execution_policy,models=None,provide
         raise ValueError('A frozen scientific deadline must be 1800 or owner-approved 7200 seconds')
     execution_policy={**execution_policy,'source_evidence_policy':'docling_pdf_derivatives_v1',
         'provider_allowlists':{},'provider_routing':'openrouter_default'}
+    from .proprietary_diagnostic import execution_profiles
+    if diagnostic_profiles is not None:execution_policy['diagnostic_model_profiles']=diagnostic_profiles
+    diagnostic_profiles=execution_profiles(execution_policy)
+    from .harness import freeze_harness,TOOLS
+    harness_contract=freeze_harness(harness,python=hermes_python)
+    if harness_contract and any(p['kind']=='claims_local_proprietary_comparison_v3' for p in diagnostic_profiles.values()):
+        raise ValueError('Parallel proprietary diagnostics currently require DSPy')
+    if harness_contract is not None:execution_policy['judge_harness']=harness_contract
+    elif execution_policy.get('judge_harness') is not None:
+        raise ValueError('Select the harness explicitly when freezing new settings')
     selected=dict(MODELS if models is None else models)
     from .runner import APPROVED_MODELS
-    if set(selected)!=set(MODELS) or not set(selected.values())<=APPROVED_MODELS:
+    if set(selected)!=set(MODELS) or not set(selected.values())<=APPROVED_MODELS|{v['model'] for v in diagnostic_profiles.values()}:
         raise ValueError("Frozen routes require all four roles and approved models")
     if len({selected[r] for r in ("PRIMARY","SECONDARY","ARBITER")})!=3 or len({selected[r] for r in ("SOURCE_READER","SECONDARY","ARBITER")})!=3:
         raise ValueError("Independent judge model identities required")
     tokenizer=BudgetTokenizer();routes=[]
     for role,model in selected.items():
+        diagnostic=diagnostic_profiles.get(role)
+        if diagnostic and diagnostic['model']!=model:raise ValueError('Diagnostic model binding differs')
         original_snapshot=route_snapshots[model]
         snapshot=original_snapshot
         if snapshot['id']!=model:raise ValueError('Route snapshot model identity differs')
-        eligible=[e for e in snapshot['endpoints'] if 'structured_outputs' in e.get('supported_parameters',[])]
+        eligible=[e for e in snapshot['endpoints'] if 'structured_outputs' in e.get('supported_parameters',[])
+                  and (harness_contract is None or {'tools','tool_choice'}<=set(e.get('supported_parameters',[])))]
         if not eligible:raise ValueError('No strict-schema endpoint for '+model)
+        output_tokens=diagnostic['max_output_tokens'] if diagnostic else 32768 if harness_contract else 16384
+        if diagnostic and output_tokens>32768:
+            if harness_contract:raise ValueError('Larger diagnostic output allowances currently require DSPy')
+            if any(type(e.get('max_completion_tokens')) is not int or e['max_completion_tokens']<output_tokens for e in eligible):
+                raise ValueError('Diagnostic output allowance exceeds the frozen endpoint capacity')
         context=min(e['context_length'] for e in eligible)
         provider=ProviderParameters(api_base='https://openrouter.ai/api/v1',tokenizer_id=tokenizer.id,
             tokenizer_sha256=tokenizer.implementation_sha256,declared_context_window_tokens=context,
-            tools=(),tool_choice='none',reasoning_effort='minimal' if model=='minimax/minimax-m3.1-flash' else 'none')
+            tools=TOOLS if harness_contract else (),tool_choice='auto' if harness_contract else 'none',
+            reasoning_effort=diagnostic['reasoning_effort'] if diagnostic else 'minimal' if model=='minimax/minimax-m3.1-flash' else 'none')
         parameters=store.put(provider)
         descriptor={'model':model,'provider':'openrouter','runtime_revision':sha(canonical(snapshot)),
             'snapshot':store.put(snapshot),'original_snapshot':store.put(original_snapshot),'provider_parameters':parameters}
         routes.append(ModelRoute(role=role,provider='openrouter',model=model,runtime_revision=descriptor['runtime_revision'],
             route_sha256=store.put(descriptor).sha256,supports_strict_json_schema=True,
             supports_images='image' in snapshot['architecture']['input_modalities'],context_window_tokens=context,
-            temperature=0,top_p=1,n=1,max_output_tokens=16384,request_timeout_seconds=120,provider_parameters=parameters))
+            temperature=None if diagnostic else 0,top_p=None if diagnostic else 1,n=None if diagnostic else 1,
+            max_output_tokens=output_tokens,
+            request_timeout_seconds=harness_contract['stage_timeout_seconds'] if harness_contract else 7200 if diagnostic else 120,provider_parameters=parameters))
     values={**runtime_descriptor(),'model_routes':routes,'execution_policy':store.put(execution_policy),
         'sealed_evaluation_timeout_seconds':sealed_evaluation_timeout_seconds,
         'source_token_budgets':SOURCE_TOKEN_BUDGETS,'structured_packet_tokens_per_shard':STRUCTURED_PACKET_TOKENS}

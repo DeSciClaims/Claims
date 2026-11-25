@@ -1,5 +1,6 @@
 """Bounded original-source scans; independent retrieval never becomes a score bit."""
 from concurrent.futures import ThreadPoolExecutor
+from .diagnostic_dispatch import worker_limit
 from threading import Lock
 from .contracts import (EvidenceBatchResponse,EvidenceSearchQuery,EvidenceSearchScan,
     EvidenceSearchReceipt,AssertionPacket,JudgeRunReceipt,FileRef)
@@ -108,6 +109,15 @@ def fit_lookup_request(ops, role, data):
 
 def prepare(ops,frame,shards):
     """Return complete assertion cases with bounded, independently retrieved evidence."""
+    if (getattr(ops,'harness',None) or {}).get('judge_source_corpus')=='all_supplied_docling_anchors_v1':
+        # File access replaces prompt packing, not the original source. Expose
+        # every independently captured supplied anchor to scientific judges.
+        ids=[a.anchor_id for a in frame.anchors];result=[]
+        for task,packet in shards:
+            packet=packet.model_copy(update={'evidence_anchor_ids':ids})
+            packet=packet.model_copy(update={'packet_id':'packet-'+sha(canonical(packet.model_dump(exclude={'packet_id'})))})
+            result.append((task,packet,evidence(frame,ids),None))
+        return result
     limit=SOURCE_TOKEN_BUDGETS[0]
     needed=[(task,packet) for task,packet in shards if source_size(frame,task.evidence_anchor_ids,ops.tokenizers)>limit]
     if not needed:return [(task,packet,evidence(frame,task.evidence_anchor_ids),None) for task,packet in shards]
@@ -147,7 +157,7 @@ def prepare(ops,frame,shards):
                 items.extend((role,child) for child in fit_lookup_request(ops,role,data))
     scans=[];nominees={key:set() for key in queries}
     try:
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=worker_limit(ops,nested=True)) as executor:
             for scan_ref,response in executor.map(scan,enumerate(items)):
                 scans.append(scan_ref)
                 for key,ids in response.witnesses.items():nominees[key].update(ids)

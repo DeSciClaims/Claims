@@ -24,6 +24,8 @@ ARCHIVE = {"TABLE_FIDELITY", "TABLE_INTERPRETATION", "TABLE_LINK_CONFORMANCE"}
 def validate_judgment(response, task, packet, anchors, resolve):
     if response.task_id != task.task_id or response.packet_id != packet.packet_id:
         raise ValueError("Wrong task/packet echo")
+    if response.outcome=='TARGET_DEFECT' and task.task_kind!='CONTENT':
+        raise ValueError('TARGET_DEFECT is reserved for a defective generated CONTENT card. Candidate errors require ASSESSED failures; missing source evidence requires NEED_EVIDENCE or SOURCE_UNRESOLVED.')
     for request in response.evidence_requests:
         if not set(request.anchor_ids)<=anchors:raise ValueError("Evidence request cites an unavailable anchor")
     if response.outcome != "ASSESSED":

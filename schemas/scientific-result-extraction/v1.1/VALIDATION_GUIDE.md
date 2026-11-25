@@ -1,3 +1,51 @@
+> **Owner-approved first-round amendment, 24 November 2026:** a round may explicitly
+> freeze `scientific_scoring.first_round_scoring.kind=claims_first_round_conservative_v1`,
+> bound to that exact round ID. In that round, 80% resolved evaluation weight
+> separately in applicable C/T/P components is advisory, never a score/ranking veto.
+> Every entrant receives the conservative lower-bound Q using the existing formula;
+> all unresolved scientific work retains its original hierarchical denominator
+> weight with zero credit. Confirmed G=0 remains zero; unknown G earns no
+> demonstrated credit and remains explicitly unknown. Scientific FAIL is resolved;
+> provider, invalid-response, timeout, evidence and other evaluator failures remain
+> unresolved, with their causes retained. Store component bounds/completion, stages,
+> logical operations and failed attempts. Incomplete strict receipts retain HOLD
+> and null strict Q; a separate hash-bound score receipt supplies the numeric
+> competition score and is replayed at ranking/publication. Do not exclude a paper
+> or remove a miner merely for falling below 80%. Apply the same policy and paper
+> denominator to baseline and challengers. Existing common-paper minima, team/copy
+> checks and winner/incumbent rules are unchanged. This overrides the strict
+> HOLD/no-score exclusion behavior below only for explicitly opted-in first-round
+> configurations. Earlier rounds and weights remain unchanged. Full descriptor:
+> [first-round policy](../../../validator/scientific_result_v1/FIRST_ROUND_SCORING.md).
+
+> **Local diagnostics only:** nullable sampling fields in `ModelRoute` are reserved for explicit proprietary-model comparison profiles. Competition routes still require temperature 0, top_p 1 and n 1, and the competition model allowlist is unchanged. These diagnostic runs are not competition eligible.
+
+> **Optional file-agent harness, 24 November 2026:** a new frozen execution policy
+> may select `judge_harness.mode=hermes-files`. Historical policies without that
+> descriptor continue to use DSPy. Profile 8 attaches mechanical inspection IDs only after verified complete file reads; raw scientific submissions and metadata receipts remain replayable. The file harness freezes the Hermes source and
+> dependency identity, three scoped file tools, 80 turns per operation, 32,768
+> completion tokens per model call and an operation deadline bounded by the frozen paper clock. Each
+> actual provider call is checked against its declared model context capacity.
+> Source/candidate files are not subject to the DSPy monolithic prompt caps; no
+> source or assertion is dropped. Matching inspects the complete candidate corpus
+> through files. Assertion audits use complete mandatory ownership groups, with one
+> original bucket bit. Context compaction uses the same frozen capacity and output
+> reservation as the native guard; no separate ten-minute operation cutoff applies.
+> Source targets may read original neighboring Docling text/OCR on
+> the same captured page as context, without changing the owned sampled regions.
+> Submission uses the native response structure, with strict validation against
+> the retained schema. A validated artifact terminates the loop; a missing artifact
+> permits one completion-feedback continuation in the same shared turn budget.
+> Profile 9 ends an attempt after three identical validation failures and uses the
+> existing bounded fresh-context controller retry, retaining every failed attempt.
+> Native model requests, usage, immutable input hashes, file-read ranges and final
+> responses are retained as chunked content-addressed evidence and replayed.
+> Model roles stay independent, provider pinning remains disabled, and source
+> review, sampling, gates, C/T/P/Q, correction limits and the paper deadline retain
+> their existing rules. A harness change requires a new policy/configuration;
+> earlier scores and requests remain bound to their original harness. This option
+> does not itself establish scientific accuracy or production qualification.
+
 > **Exact assertion rows and retained parser captures, 23 November 2026:**
 > packet transport `claims_property_columns_v7` stores assertion-wrapper keys once
 > per column template. Ordered row values, original literal properties, explicit
@@ -998,6 +1046,10 @@ def exact_int(value):
     if type(value) is not int:
         raise ValueError("an integer JSON token is required")
     return value
+
+
+def exact_optional_int(value):
+    return None if value is None else exact_int(value)
 
 
 def exact_bool(value):
@@ -2128,8 +2180,8 @@ class ProviderParameters(Closed):
     tokenizer_id: Id
     tokenizer_sha256: Sha256
     declared_context_window_tokens: Positive
-    tools: tuple[()]
-    tool_choice: Literal["none"]
+    tools: tuple[str, ...]
+    tool_choice: Literal["none", "auto", "required"]
     reasoning_effort: Id | None
 
 
@@ -2142,11 +2194,11 @@ class ModelRoute(Closed):
     supports_strict_json_schema: bool
     supports_images: bool
     context_window_tokens: Positive
-    temperature: Annotated[Literal[0], BeforeValidator(exact_int)]
-    top_p: Annotated[Literal[1], BeforeValidator(exact_int)]
-    n: Annotated[Literal[1], BeforeValidator(exact_int)]
-    max_output_tokens: Literal[16384]
-    request_timeout_seconds: Literal[120]
+    temperature: Annotated[Literal[0] | None, BeforeValidator(exact_optional_int)]
+    top_p: Annotated[Literal[1] | None, BeforeValidator(exact_optional_int)]
+    n: Annotated[Literal[1] | None, BeforeValidator(exact_optional_int)]
+    max_output_tokens: Literal[16384, 32768, 65536]
+    request_timeout_seconds: Literal[120, 600, 7200]
     provider_parameters: FileRef
 
 

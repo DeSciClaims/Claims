@@ -26,8 +26,11 @@ and alone adds the global exhaustive-search certificate before any omission cred
 
 Original context_headers identify relation endpoints, physical result owners and
 family scope. They are partial original-property views, not additional inspected
-blocks and not rewritten values. Their original_ref pointers may identify candidate
-representations; complete original blocks are retained and inspected separately.
+blocks and not rewritten values. A header's top-level original_ref is an object
+locator, not permission to return that whole object as a match. To cite content
+actually shown in a header, use the exact original_ref.pointer of its supplied
+property. Do not shorten that property pointer to the header's object locator.
+Complete original blocks are retained and inspected separately.
 Never fabricate a missing output pointer. Return only the supplied
 MatchResponse JSON contract: task_id, output_alias, state, inspected_component_ids,
 matches and explanation. state is MATCHED, ABSENT, AMBIGUOUS, or LOOKUP_UNRESOLVED. Each match
@@ -89,3 +92,10 @@ SOURCE_CONTEXT matches must cite original property pointers instead of full obje
 or closure roots. Use /value for an actual input quantity; units and necessary scope
 remain available. Use the exact context/notes/description/etc. property for a shared
 convention or condition. This does not authorize a new value from narrative context.
+If a relation references an object outside this batch, its endpoint ID and header
+locator do not make that complete object an inspected candidate here. Match only
+the supplied relation content or a specific supplied header property that encodes
+the requirement. When neither does, return [] for this batch; the controller also
+inspects the object's complete block separately. Scientific-result object roots
+are allowed only when supplied as components in this batch. SOURCE_CONTEXT still
+requires property pointers even when a complete component is supplied.

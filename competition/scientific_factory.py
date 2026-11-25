@@ -1,6 +1,7 @@
 """Built-in scientific round binding; private prepared sources never enter claim parsers."""
 import json
 import os
+import threading
 from pathlib import Path
 
 from validator.scientific_result_v1.source_tasks.contracts import (
@@ -16,6 +17,7 @@ from validator.scientific_result_v1.source_tasks.operations import Operations
 from validator.scientific_result_v1.source_tasks.remote import RemoteStore
 from validator.scientific_result_v1.source_tasks.runtime import SourceTaskRuntime
 from validator.scientific_result_v1.source_tasks.store import canonical, sha
+from validator.scientific_result_v1.source_tasks.failure_tolerance import policy as continuation_policy
 from validator.scientific_result_v1.source_tasks.tokenization import BudgetTokenizer
 
 from .scientific_policy import FrozenScientificEvaluationPolicy
@@ -23,6 +25,7 @@ from .scientific_pool import ScientificPoolService
 from .scientific_validation import TrustedScientificDeliveryValidator
 
 APPROVED_MODELS=frozenset({'deepseek/deepseek-v4-flash-0731','minimax/minimax-m3.1-flash','qwen/qwen3.8-flash','z-ai/glm-5.3-flash','moonshotai/kimi-k2.5'})
+_REQUEST_GATES = {}
 
 
 def _root():
@@ -51,6 +54,8 @@ def create_delivery_validator(backend,spec):
 
 def create_scientific_policy(row,backend,configuration):
     store=RemoteStore(_root(),backend);spec=configuration['scientific_scoring']
+    from .scientific_first_round import configured_policy
+    first_round_scoring=configured_policy(configuration,row['round_id'])
     settings=store.load(FileRef.model_validate(spec['settings'],strict=True),FrozenSettings)
     if spec.get('settings_sha256')!=sha(canonical(settings)):raise ValueError('Scientific settings binding differs')
     from validator.scientific_result_v1.source_tasks.identity import runtime_descriptor
@@ -74,15 +79,30 @@ def create_scientific_policy(row,backend,configuration):
         from validator.scientific_result_v1.source_tasks.qualification import (
             activation_failures,
         )
-        if not isinstance(spec.get('activation_receipt'),dict):raise ValueError('Production requires signed scientific qualification evidence')
-        activation=json.loads(store.read(FileRef.model_validate(spec['activation_receipt'],strict=True)))
-        from substrateinterface import Keypair
-        signer=spec['qualification_signer'];signed=activation['report']
-        if not Keypair(ss58_address=signer).verify(canonical(signed),bytes.fromhex(activation['signature_hex'])):raise ValueError('Scientific qualification signature invalid')
         if spec.get('scientific_accuracy_policy')!='unmeasured_without_truth_corpus':
             raise ValueError('Scientific policy must disclose the waived truth-corpus requirement and unmeasured accuracy')
-        failures=activation_failures(signed,truth_corpus_required=False)
-        if failures:raise ValueError('Scientific production qualification incomplete: '+', '.join(failures))
+        launch = spec.get('experimental_launch')
+        if launch is not None:
+            if first_round_scoring is None or row.get('incumbent_hotkey') is not None:
+                raise ValueError('Experimental launch requires the explicit first-round advisory policy and reference baseline')
+            from .scientific_launch import validate_launch
+            basis=json.loads(store.read(FileRef.model_validate(launch['basis_assessment'],strict=True)))
+            validate_launch(launch,row['round_id'],basis)
+        else:
+            if not isinstance(spec.get('activation_receipt'),dict):raise ValueError('Production requires signed scientific qualification evidence')
+            activation=json.loads(store.read(FileRef.model_validate(spec['activation_receipt'],strict=True)))
+            from substrateinterface import Keypair
+            signer=spec['qualification_signer'];signed=activation['report']
+            if not Keypair(ss58_address=signer).verify(canonical(signed),bytes.fromhex(activation['signature_hex'])):raise ValueError('Scientific qualification signature invalid')
+            failures=activation_failures(signed,truth_corpus_required=False)
+            if failures:raise ValueError('Scientific production qualification incomplete: '+', '.join(failures))
+    controls=spec.get('runtime_controls')
+    request_gate=None
+    if controls is not None:
+        from validator.scientific_result_v1.source_tasks.local_runtime_controls import validate
+        validate(controls)
+        if first_round_scoring is None:raise ValueError('Explicit runtime controls require advisory first-round scoring')
+        request_gate=_REQUEST_GATES.setdefault(row['configuration_sha256'],threading.BoundedSemaphore(controls['shared_max_llm_requests']))
     tokenizer=BudgetTokenizer();routes={r.role:r for r in settings.model_routes}
     params={role:store.load(route.provider_parameters,ProviderParameters) for role,route in routes.items()}
     preferences={}
@@ -130,8 +150,10 @@ def create_scientific_policy(row,backend,configuration):
             runtimes={role:BudgetedRuntime(runtime,budget) for role,runtime in runtimes.items()}
         return Operations(store=store,routes=routes,runtimes=runtimes,tokenizers={r:tokenizer for r in routes},
             trace_dir=_root()/'traces'/sha(canonical([round_id,stage,paper_id])),deadline=time.time()+settings.sealed_evaluation_timeout_seconds,policy_hash=policy_hash,
-            generation_timeout_seconds=settings.sealed_evaluation_timeout_seconds)
-    pool=ScientificPoolService(store,prepared,operations)
+            generation_timeout_seconds=settings.sealed_evaluation_timeout_seconds,
+            failure_tolerance_policy=continuation_policy('4/5') if first_round_scoring is not None else None,
+            diagnostic_runtime_controls=controls,gate=request_gate)
+    pool=ScientificPoolService(store,prepared,operations,first_round_scoring)
     return FrozenScientificEvaluationPolicy(row['round_id'],row['configuration_sha256'],configuration,pool,int(row.get('rules_revision',1)))
 
 

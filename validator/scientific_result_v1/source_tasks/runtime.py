@@ -69,14 +69,17 @@ class StrictAdapter(JSONStageAdapter):
         ]
 
 
-def provider_request(instructions, payload, route, *, reasoning_effort=None):
+def provider_request(instructions, payload, route, *, reasoning_effort=None,diagnostic_policy=None):
     """The actual DSPy adapter messages/schema, without credentials or a call.
 
     Keep this coupled to StrictAdapter.format/__call__: batching and dispatch
     must budget the same scientific text and provider schema, exactly once.
     Source-image pixels have a separate pinned accounting path in Operations.
     """
-    adapter = StrictAdapter(payload['stage_schema'])
+    if diagnostic_policy:
+        from .proprietary_diagnostic import compatible_adapter
+        adapter=compatible_adapter(payload['stage_schema'])
+    else:adapter = StrictAdapter(payload['stage_schema'])
     wire = {'model': route.model.removeprefix('openrouter/'), 'temperature': 0.0,
             'max_tokens': route.max_output_tokens,
             'messages': adapter.format(SimpleNamespace(__doc__=instructions), [],
@@ -86,6 +89,8 @@ def provider_request(instructions, payload, route, *, reasoning_effort=None):
             'provider': {'require_parameters': True, 'allow_fallbacks': True}}
     if reasoning_effort is not None:
         wire['reasoning'] = {'effort': reasoning_effort, 'exclude': True}
+    if diagnostic_policy:
+        for name in diagnostic_policy['omitted_parameters']:wire.pop(name,None)
     return wire
 
 

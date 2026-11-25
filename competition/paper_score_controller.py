@@ -191,7 +191,13 @@ def score_ready_paper(
             from .scientific_scoring import ScientificPaperEvaluation
             scientific = isinstance(evaluation, ScientificPaperEvaluation)
             common_exclusion=getattr(evaluation,'common_exclusion',None) if scientific else None
-            if scientific and evaluation.pipeline.state != "FROZEN" and common_exclusion is None:
+            first_round_score=getattr(evaluation,'first_round_score',None) if scientific else None
+            if first_round_score is not None:
+                from .scientific_first_round import configured_policy
+                if configured_policy(round_record.get('rules_public',{}).get('configuration',{}),round_id) is None:
+                    raise ValueError('First-round conservative scoring is not enabled for this round')
+                infrastructure_fault=False  # Individual worker faults remain visible below.
+            if scientific and evaluation.pipeline.state != "FROZEN" and common_exclusion is None and first_round_score is None:
                 return {"status": "waiting_for_scientific_review", "paper_id": paper_id,
                         "scientific_state": evaluation.pipeline.state,
                         "receipt_sha256": evaluation.receipt_sha256}
@@ -224,6 +230,7 @@ def score_ready_paper(
                           "sampled_receipt": evaluation.pipeline.model_dump(mode="json"),
                           "output_alias_by_hotkey": evaluation.output_alias_by_hotkey}
                 if common_exclusion is not None:silver['common_exclusion']=common_exclusion.model_dump(mode='json')
+                if first_round_score is not None:silver['first_round_score']=first_round_score.model_dump(mode='json')
             else:
                 silver = {
                     "silver_record": evaluation.pipeline.silver_record.model_dump(mode="json"),
@@ -263,6 +270,7 @@ def score_ready_paper(
                     "worker_status": outcomes[hotkey]["status"],
                     "total_tokens": outcomes[hotkey].get("prompt_and_completion_tokens"),
                     "inference_cost_usd": outcomes[hotkey].get("inference_cost_usd"),
+                    **((getattr(evaluation,'score_details_by_hotkey',None) or {}).get(hotkey,{}) if scientific_protocol else {}),
                     **({'evaluation_status':'COMMON_EXCLUDED','scientific_score':None} if scientific_protocol and infrastructure_fault else {}),
                 },
             }})

@@ -94,9 +94,14 @@ class DspyRuntime:
             json.dumps(record, indent=2), encoding="utf-8"
         )
         (output_dir / f"{call_id}.response.txt").write_text(text, encoding="utf-8")
+        (output_dir / f"{call_id}.response.json").write_text(
+            json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         if finish_reason == "length":
             raise TruncatedStageError(
-                f"{metadata['stage']}: provider truncated output at {self.max_tokens} tokens"
+                f"{metadata['stage']}: provider reported truncated output "
+                f"(finish_reason=length; requested_max_tokens={self.max_tokens}; "
+                f"reported_completion_tokens={usage.get('completion_tokens', 'unknown')})"
             )
 
     def effective_reasoning(self, stage: str, payload: dict) -> str:
@@ -123,6 +128,13 @@ class DspyRuntime:
         effective_reasoning = reasoning_effort or self.reasoning_effort
 
         class RecordedLM(dspy.LM):
+            def _check_truncation(self, results):
+                # _record_response durably records text, usage and finish_reason,
+                # then raises TruncatedStageError. DSPy's earlier warning assumes
+                # temperature exists, even for models that must omit it, and can
+                # otherwise discard the paid response before we retain it.
+                pass
+
             def forward(self, prompt=None, messages=None, **kwargs):
                 for attempt in range(runtime.transport_retries + 1):
                     started = time.monotonic()

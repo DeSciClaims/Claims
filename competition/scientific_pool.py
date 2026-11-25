@@ -22,6 +22,7 @@ class ScientificPoolService:
     store:object
     prepared_paper:object
     operations_for_paper:object
+    first_round_scoring:object=None
 
     def __call__(self,*,round_id,configuration_sha256,rules_revision,paper_id,stage,
                  artifacts_by_hotkey,baseline_hotkey,challenger_hotkeys,
@@ -90,6 +91,16 @@ class ScientificPoolService:
                 seen.add(digest)
                 refs.extend(self.store.load(reference(digest),SampledSilverReceipt).judge_runs)
             return refs
+        def partial(receipt, ref):
+            from .scientific_first_round import projection_key, retain_score_receipt, validate_policy
+            from .scientific_scoring import adapt_first_round_score
+            validate_policy(self.first_round_scoring, round_id)
+            digest=self.store.head(projection_key(ref.sha256))
+            if digest is None:raise ValueError('First-round receipt lacks retained completion evidence')
+            score_ref=retain_score_receipt(self.store,ref,reference(digest),self.first_round_scoring)
+            return adapt_first_round_score(receipt,ref,score_ref,scoring_policy=self.first_round_scoring,
+                store=self.store,hotkey_by_alias={v:k for k,v in aliases.items()},baseline_alias=plan.baseline_alias,
+                challenger_aliases=plan.challenger_aliases,usage=retained_usage(self.store,runs(receipt)))
         current=None
         head=self.store.head('paper:'+json.dumps([round_id,stage,paper_id]))
         if head is not None:
@@ -104,6 +115,7 @@ class ScientificPoolService:
                 from .scientific_lineage import compatible_plan
                 replay(self.store,ref)
                 compatible_plan(self.store,current,plan,prepared['precommitted_order'])
+                if self.first_round_scoring is not None:return partial(current,ref)
                 return adapt_scientific_receipt(current,ref,store=self.store,hotkey_by_alias={v:k for k,v in aliases.items()},
                     baseline_alias=plan.baseline_alias,challenger_aliases=plan.challenger_aliases,
                     usage=retained_usage(self.store,runs(current)))
@@ -131,6 +143,7 @@ class ScientificPoolService:
                 document_bindings=bindings,revision=revision,generation_authorization=authorization)
             if receipt.state!='HOLD' or getattr(ops,'pending_source_correction',None) is None:break
             current=receipt
+        if self.first_round_scoring is not None:return partial(receipt,ref)
         from validator.scientific_result_v1.source_tasks.revisions import terminal_exclusion
         from validator.scientific_result_v1.source_tasks.contracts import SourceGridManifest
         grid=self.store.load(plan.source_grid,SourceGridManifest)

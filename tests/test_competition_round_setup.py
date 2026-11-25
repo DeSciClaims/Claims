@@ -253,8 +253,15 @@ def test_pilot_setup_checks_real_judges_and_sealed_baseline_before_intake(
 
 
 @pytest.mark.parametrize("reject", [False, True])
-def test_scientific_setup_validates_scientific_runtime_before_opening_intake(tmp_path, monkeypatch, reject):
+@pytest.mark.parametrize("network", ["testnet", "mainnet"])
+def test_scientific_setup_validates_scientific_runtime_before_opening_intake(tmp_path, monkeypatch, reject, network):
     draft = _draft()
+    draft['network']=network
+    if network=='mainnet':
+        from competition.code_audit import SOURCE_AUDIT_POLICY
+        draft['policy_public'].update(code_audit=SOURCE_AUDIT_POLICY,winner_selection='silver_tiebreak',
+            evaluation={'schema_version':'claims_competition_evaluation_v1','mode':'production',
+                        'required_challengers':1,'stages':[{'name':'week_one','papers':320}]})
     draft["configuration"] = {
         "scientific_scoring": {"protocol_id": "claims-source-task-v1"},
         "worker_policy": {"output_schema": "scientific_result_v1.1"},
@@ -262,7 +269,7 @@ def test_scientific_setup_validates_scientific_runtime_before_opening_intake(tmp
     calls = []
     def scientific(row, backend, configuration):
         calls.append("scientific")
-        assert row["network"] == "testnet"
+        assert row["network"] == network
         assert row["deadline_at"] == draft["deadline_at"]
         assert row["incumbent_hotkey"] == draft.get("incumbent_hotkey")
         assert row["configuration_sha256"] == canonical_sha256(configuration)

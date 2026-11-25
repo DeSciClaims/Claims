@@ -1,5 +1,6 @@
 """Conservative, source-grounded identity adjudication for oversized C lookups."""
 from concurrent.futures import ThreadPoolExecutor
+from .diagnostic_dispatch import worker_limit
 from .contracts import MatchIdentityReceipt, IdentityReviewResponse, MatchResult, RequirementMatch
 from .store import canonical
 from .transport import judge_evidence, audit_evidence
@@ -116,7 +117,7 @@ def refine_identity(index, ops, task, match, frame):
         return child.request(role,'source_match_identity',request,IdentityReviewResponse,
             validate=lambda response:validate_review(response,task,index.alias,subset,request['required_owner_ids_by_requirement'],anchors,scientific&set(subset)))
     try:
-        with ThreadPoolExecutor(max_workers=4) as executor:results=list(executor.map(run,work))
+        with ThreadPoolExecutor(max_workers=worker_limit(ops,nested=True)) as executor:results=list(executor.map(run,work))
     finally:
         for _,child,_,_ in work:
             ops.used.extend(child.used);ops.run_refs.extend(child.run_refs)

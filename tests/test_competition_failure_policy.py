@@ -47,3 +47,18 @@ def test_unexcluded_baseline_infrastructure_fault_is_rejected():
             excluded_infrastructure_papers=set(), incumbent_hotkey="incumbent",
             backend=backend,
         )
+
+
+@pytest.mark.parametrize('gate,status,failures',[(None,'completed',0),(None,'infrastructure_fault',0),(0,'completed',1)])
+def test_first_round_uncertainty_is_scored_but_not_a_confirmed_incumbent_failure(gate,status,failures):
+    from competition.scientific_first_round import first_round_policy
+    backend=Backend({'paper':status})
+    backend.get_round=lambda _: {'rules_public':{'configuration':{'scientific_scoring':{
+        'first_round_scoring':first_round_policy('week')}}}}
+    backend.get_paper_evaluation=lambda *_: {'result_private':{'silver':{
+        'protocol_id':'claims-source-task-v1','first_round_score':{'sha256':'a'*64},
+        'output_alias_by_hotkey':{'incumbent':'a'},
+        'sampled_receipt':{'deterministic_gates':[{'output_alias':'a','gate_bit':gate}]}}}}
+    result=incumbent_failure_summary('week',stage='final',paper_ids=['paper'],
+        excluded_infrastructure_papers=set(),incumbent_hotkey='incumbent',backend=backend)
+    assert result.eligible_papers==1 and result.failed_papers==failures

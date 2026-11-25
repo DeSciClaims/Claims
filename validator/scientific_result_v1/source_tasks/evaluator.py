@@ -20,6 +20,7 @@ from .packages import Package, error
 from .packets import Index
 from .sampling import samples, audit_buckets, seed_commitment, selection_manifest, PROTOCOL
 from .source import validate_frame, selected_cards
+from .diagnostic_dispatch import worker_limit
 from .judging import assess
 from .scoring import score
 from .operations import Hold
@@ -168,6 +169,8 @@ class PaperEvaluator:
     ):
         """All arguments are trusted immutable artifacts; packages includes every scheduled role."""
         store = self.ops.store
+        tolerant=getattr(self.ops,'failure_tolerance_policy',None) is not None
+        from .failure_tolerance import stage_event, failure
         validate_frame(source_frame, source_packet)
         from .docling_frame import validate_docling_frame
         docling_evidence=validate_docling_frame(store,source_frame,source_packet)
@@ -256,7 +259,7 @@ class PaperEvaluator:
         tasks = []
         packets = []
         verdicts = []
-        gates = []
+        gates = {}
         vectors = []
         held = []
         allbuckets = []
@@ -265,21 +268,59 @@ class PaperEvaluator:
             # An unavailable original execution is a common uncertainty. Finish
             # the deterministic gate ledger without paying to judge competitors.
             held.extend(e for p in packages if p.state=='INFRASTRUCTURE_FAILURE' for e in p.errors)
+        from threading import Lock
+        tasks_lock=Lock();progress_lock=Lock()
+        table_count_locks={table.table_uid:Lock() for table in source_frame.tables}
+        controls=getattr(self.ops,"diagnostic_runtime_controls",None) or {}
+        package_workers=controls.get("max_submissions_per_paper",1) if tolerant else 1
+        progress_path=self.ops.trace_dir.parent/"output-progress.jsonl"
+        def progress(event,alias=None,**extra):
+            if package_workers==1:return
+            import json,time
+            with progress_lock,progress_path.open("a") as output:
+                output.write(json.dumps({"time":time.time(),"binding_sha256":sha(canonical(binding)),"event":event,"output_alias":alias,**extra})+"\n")
+        progress("PLAN",output_aliases=[p.output_alias for p in packages if p.output_alias in active])
         tasks_initialized=False
         def ensure_shared_tasks():
+            with tasks_lock:ensure_shared_tasks_locked()
+        def ensure_shared_tasks_locked():
             # G=0 needs no scientific judgment. The source-only task payload and
             # precommitted samples remain independent of submitted representations.
             nonlocal tasks_initialized
             if tasks_initialized:return
             tasks_initialized=True
             try:
-                for tileid in selected["content_prose"] + selected["content_table"]:
+                def build(tileid,local):
                     tile = tilemap[tileid]
                     evidence = evidence_for(
                         source_frame, tile.owned_anchor_ids + tile.context_anchor_ids
                     )
-                    tasks.extend(selected_cards(self.ops,tile,binding,evidence,
-                        expand=lambda current,requests,limit:expand_evidence(source_frame,current,requests,limit,tokenizers=self.ops.tokenizers)))
+                    if getattr(local,'harness',None):
+                        from .harness import same_page_context
+                        evidence=same_page_context(source_frame,evidence)
+                    try:
+                        result=selected_cards(local,tile,binding,evidence,
+                            expand=lambda current,requests,limit:expand_evidence(source_frame,current,requests,limit,tokenizers=local.tokenizers))
+                    except Exception as exc:
+                        if not tolerant:raise
+                        record=failure(local,exc,'TASK_BUILD');held.append(record)
+                        stage_event(self.ops,'SOURCE_TASK_BUILD',tileid,[record])
+                        return []
+                    if tolerant:stage_event(self.ops,'SOURCE_TASK_BUILD',tileid,card_count=len(result))
+                    return result
+                tileids=selected['content_prose']+selected['content_table']
+                if getattr(self.ops,'harness',None) or getattr(self.ops,'parallel_diagnostic',False):
+                    from concurrent.futures import ThreadPoolExecutor
+                    children=[self.ops.scoped() for _ in tileids]
+                    try:
+                        with ThreadPoolExecutor(max_workers=worker_limit(self.ops)) as executor:
+                            for cards in executor.map(lambda item:build(*item),zip(tileids,children)):tasks.extend(cards)
+                    finally:
+                        for local in children:
+                            self.ops.used.extend(local.used);self.ops.run_refs.extend(local.run_refs)
+                            self.ops.packet_refs.extend(local.packet_refs);self.ops.response_refs.update(local.response_refs)
+                else:
+                    for tileid in tileids:tasks.extend(build(tileid,self.ops))
                 for tileid in selected["archive"]:
                     tile = tilemap[tileid]
                     tasks.append(
@@ -324,7 +365,11 @@ class PaperEvaluator:
                 packet=index.packet(task,binding,match,package_hash,db,owned_refs=owned_refs,table_ranges=ranges)
                 from .sharding import partition
                 try:
-                    shards=partition(index,task,packet,tokenizers=local.tokenizers,owned_refs=owned_refs,table_ranges=ranges,source_frame=source_frame)
+                    if getattr(local,'harness',None) and task.task_kind=='OUTPUT_AUDIT':
+                        shards=partition(index,task,packet,tokenizers=local.tokenizers,owned_refs=owned_refs,
+                            table_ranges=ranges,source_frame=source_frame,force_audit_groups=True,unbounded_files=True)
+                    elif getattr(local,'harness',None):shards=[(task,packet)]
+                    else:shards=partition(index,task,packet,tokenizers=local.tokenizers,owned_refs=owned_refs,table_ranges=ranges,source_frame=source_frame)
                 except Hold as exc:
                     if task.task_kind!='CONTENT' or task.scope_kind!='SCIENTIFIC_RESULT' or exc.category!='EVALUATOR':raise
                     from .match_identity import refine_identity
@@ -344,34 +389,48 @@ class PaperEvaluator:
                         task_kind=child.task_kind,bit=int(verdict.state=='PASS'),verdict_sha256=verdict_ref.sha256))
             except Hold as exc:
                 errors.append(hold_record(exc,'VERIFICATION'))
-            return alias,packet_refs,verdict_refs,bits,errors,local,children
+            except Exception as exc:
+                if not tolerant:raise
+                errors.append(failure(local,exc,'VERIFICATION'))
+            return alias,packet_refs,verdict_refs,bits,errors,local,children,task
         by_alias=defaultdict(list)
+        case_executor=None
         def consume(work_items):
-            # Four distinct contexts at a time; every required shard runs even after a failure.
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                for alias,packet_refs,verdict_refs,bits,errors,local,children in executor.map(check,sorted(work_items,key=lambda x:(x[0].task_id,x[1]))):
-                    packets.extend(packet_refs+local.packet_refs);verdicts.extend(verdict_refs)
-                    by_alias[alias].extend(bits)
-                    for child in children:all_cards[child.task_id]=child
-                    held.extend(errors);self.ops.run_refs.extend(local.run_refs);self.ops.used.extend(local.used)
-        for package in packages:
+            ordered=sorted(work_items,key=lambda x:(x[0].task_id,x[1]))
+            if ordered:progress('CASES_PLANNED',ordered[0][1],count=len(ordered))
+            if case_executor is not None:
+                collect(case_executor.map(check,ordered))
+            else:
+                with ThreadPoolExecutor(max_workers=worker_limit(self.ops)) as executor:
+                    collect(executor.map(check,ordered))
+        def collect(results):
+            for alias,packet_refs,verdict_refs,bits,errors,local,children,task in results:
+                packets.extend(packet_refs+local.packet_refs);verdicts.extend(verdict_refs)
+                by_alias[alias].extend(bits)
+                if tolerant:
+                    if not bits and not errors:errors.append(failure(local,ValueError('No scientific task bits produced'),'VERIFICATION'))
+                    stage_event(self.ops,'SCIENTIFIC_CASE',task.task_id,errors,output_alias=alias,
+                        task_kind=task.task_kind,unit_id=task.source_bucket_id or task.tile_ids[0],
+                        bit=min((b.bit for b in bits),default=None))
+                for child in children:all_cards[child.task_id]=child
+                held.extend(errors);self.ops.run_refs.extend(local.run_refs);self.ops.used.extend(local.used)
+                progress('CASE_FINISHED',alias,task_id=task.task_id,task_kind=task.task_kind,status='UNRESOLVED' if errors else 'COMPLETED')
+        def evaluate_package(package,package_ops):
             if package.output_alias not in active:
-                continue
+                return
             alias = package.output_alias
             work_items=[]
             per_selected = {**selected, "output_audit": []}
             if package.state == "INFRASTRUCTURE_FAILURE":
-                gates.append(
-                    GateReceipt(
+                gates[alias] = GateReceipt(
                         output_alias=alias,
                         state="EVALUATOR_HOLD",
                         gate_bit=None,
                         errors=package.errors,
                     )
-                )
                 if source_ineligible:vectors.append(score(binding,alias,None,source_frame,per_selected,[]))
                 else:held.extend(package.errors)
-                continue
+                return
             if package.state == "PACKAGE_FAILURE":
                 gate = GateReceipt(
                     output_alias=alias,
@@ -379,9 +438,9 @@ class PaperEvaluator:
                     gate_bit=0,
                     errors=package.errors,
                 )
-                gates.append(gate)
+                gates[alias] = gate
                 vectors.append(score(binding, alias, 0, source_frame, per_selected, []))
-                continue
+                return
             with tempfile.TemporaryDirectory(prefix="claims-source-score-") as work:
                 root = Path(work)
                 (root / "output.json").write_bytes(store.read(package.extraction_json))
@@ -390,9 +449,9 @@ class PaperEvaluator:
                 # FileRef storage names are not delivered filenames: the package manifest retains exact name.
                 original = Package(root, alias, paper_id=source_packet.paper_id)
                 gate = original.gate
-                gates.append(gate)
+                gates[alias] = gate
                 if source_ineligible:
-                    vectors.append(score(binding,alias,gate.gate_bit,source_frame,per_selected,[]));continue
+                    vectors.append(score(binding,alias,gate.gate_bit,source_frame,per_selected,[]));return
                 if gate.gate_bit and len(original.payload["tables"]) < len(
                     source_frame.tables
                 ):
@@ -407,24 +466,28 @@ class PaperEvaluator:
                             )
                         ],
                     )
-                    gates[-1] = gate
+                    gates[alias] = gate
                 if gate.gate_bit == 0:
                     vectors.append(
                         score(binding, alias, 0, source_frame, per_selected, [])
                     )
-                    continue
-                if held:continue  # Recover the common uncertainty before spending on another entrant.
+                    return
+                if held and not tolerant:return  # Diagnostic continuation retains uncertainty without blocking unrelated work.
                 index = Index(original)
                 db = document_bindings.get(alias)
                 if db is None:
                     from .document_binding import resolve_documents
-                    try:db=resolve_documents(self.ops,index=index,source_packet=source_packet,source_frame=source_frame)
-                    except Hold as exc:
-                        held.append(hold_record(exc,'MECHANICAL'));continue
+                    try:db=resolve_documents(package_ops,index=index,source_packet=source_packet,source_frame=source_frame)
+                    except Exception as exc:
+                        if not tolerant and not isinstance(exc,Hold):raise
+                        record=failure(package_ops,exc,'MECHANICAL');held.append(record)
+                        if tolerant:stage_event(package_ops,'SOURCE_BINDING',alias,[record],output_alias=alias)
+                        return
+                if tolerant:stage_event(package_ops,'SOURCE_BINDING',alias,output_alias=alias)
                 if any(b.state=='VERIFIED_WRONG' for b in db):
                     gate=GateReceipt(output_alias=alias,state='PIPELINE_FAILURE',gate_bit=0,
                         errors=[error('REFERENCE_UNRESOLVED','Submitted source/version contradicts the trusted execution inputs')])
-                    gates[-1]=gate;vectors.append(score(binding,alias,0,source_frame,per_selected,[]));continue
+                    gates[alias]=gate;vectors.append(score(binding,alias,0,source_frame,per_selected,[]));return
                 defined_sources = {s["id"] for s in original.payload["sources"]}
                 if {b.source_id for b in db} != defined_sources or any(
                     b.state != "BOUND" for b in db
@@ -439,7 +502,7 @@ class PaperEvaluator:
                             output_refs=[],
                         )
                     )
-                    continue
+                    return
                 index.document_uid_by_source={b.source_id:b.document_uid for b in db if b.state=='BOUND'}
                 # Exhaustive required-table/source delivery, independent of sampled T fidelity.
                 supplied={d.document_uid for d in source_packet.documents if d.file is not None}
@@ -448,6 +511,7 @@ class PaperEvaluator:
                 if supplied-reviewed:delivery_errors.append(error("TABLE_PACKAGE_OR_COVERAGE","A supplied in-scope source was not reviewed"))
                 mapped=[]
                 table_uid_by_output={}
+                table_mapping_unresolved=False
                 for source_table in source_frame.tables:
                     table_anchors=list(dict.fromkeys(source_table.anchor_ids+source_table.header_anchor_ids+source_table.note_anchor_ids))
                     target=TaskCard(task_id="inventory-"+source_table.table_uid,task_kind="ARCHIVE",binding=binding,tile_ids=[t.tile_id for t in source_frame.tiles if t.table_uid==source_table.table_uid],
@@ -457,7 +521,7 @@ class PaperEvaluator:
                         evidence_anchor_ids=table_anchors,source_scope_note="Exhaustive source-table inventory mapping; do not score cell contents or scientific result omissions.")
                     try:
                         from .table_matching import resolve_table
-                        candidates=[resolve_table(index,self.ops,target,evidence_for(source_frame,table_anchors))]
+                        candidates=[resolve_table(index,package_ops,target,evidence_for(source_frame,table_anchors))]
                         if len(candidates[0])!=1:
                             delivery_errors.append(error("TABLE_PACKAGE_OR_COVERAGE","Required source table missing/duplicated: "+source_table.table_uid))
                         else:
@@ -469,28 +533,36 @@ class PaperEvaluator:
                                 source_header_texts=[a.exact_text for a in source_frame.anchors if a.anchor_id in source_table.header_anchor_ids])
                             if physical_rows is None:
                                 from .table_count_review import verify_source_count,FAILURE_PREFIX
-                                verify_source_count(self.ops,source_frame,source_table)
+                                with table_count_locks[source_table.table_uid]:
+                                    verify_source_count(package_ops,source_frame,source_table)
                                 delivery_errors.append(error("CSV_FORMAT_OR_DIMENSIONS",FAILURE_PREFIX+source_table.table_uid))
                             else:index.table_data_rows[output_table]=physical_rows
-                    except Hold as exc:
-                        held.append(hold_record(exc,"MATCHING"))
+                    except Exception as exc:
+                        if not tolerant and not isinstance(exc,Hold):raise
+                        record=failure(package_ops,exc,'MATCHING');held.append(record);table_mapping_unresolved=True
+                        if tolerant:stage_event(package_ops,'TABLE_BINDING',alias+':'+source_table.table_uid,[record],output_alias=alias)
+                    else:
+                        if tolerant:stage_event(package_ops,'TABLE_BINDING',alias+':'+source_table.table_uid,output_alias=alias)
                 if len(mapped)!=len(set(mapped)):
                     delivery_errors.append(error("TABLE_PACKAGE_OR_COVERAGE","Distinct required source tables mapped to one delivered table"))
                 if delivery_errors:
                     gate=GateReceipt(output_alias=alias,state="PIPELINE_FAILURE",gate_bit=0,errors=delivery_errors)
-                    gates[-1]=gate
-                    vectors.append(score(binding,alias,0,source_frame,per_selected,[]));continue
+                    gates[alias]=gate
+                    vectors.append(score(binding,alias,0,source_frame,per_selected,[]));return
                 index.table_uid_by_output=table_uid_by_output
                 ensure_shared_tasks()
-                if held:continue  # Unresolved common source targets cannot produce a scientific score.
-                own_tasks=list(tasks)
+                if held and not tolerant:return  # Strict guide receipts remain HOLD; diagnostics continue independent cases.
+                own_tasks=[t for t in tasks if not (tolerant and table_mapping_unresolved and t.task_kind=='ARCHIVE'
+                    and tilemap[t.tile_ids[0]].table_uid not in set(table_uid_by_output.values()))]
                 occupied = buckets(index, source_frame, db, table_uid_by_output)
                 allbuckets.extend(occupied)
                 chosen = audit_buckets([b.bucket_id for b in occupied], secret, scope)
                 per_selected["output_audit"] = chosen
-                selections.append(selection_manifest(store,source_frame.tiles,secret,scope,"output_audit",chosen,
-                                  alias=alias,population=[b.bucket_id for b in occupied]))
+                if not (tolerant and table_mapping_unresolved):
+                    selections.append(selection_manifest(store,source_frame.tiles,secret,scope,"output_audit",chosen,
+                                      alias=alias,population=[b.bucket_id for b in occupied]))
                 for bucket in occupied:
+                    if tolerant and table_mapping_unresolved:continue  # Unknown ownership is not a scientific P=1 or a valid sample.
                     if bucket.bucket_id not in chosen:
                         continue
                     tile_ids = [] if bucket.tile_id is None else [bucket.tile_id]
@@ -517,8 +589,34 @@ class PaperEvaluator:
                 for task in own_tasks:
                     all_cards[task.task_id]=task
                     work_items.append((task,alias,index,sha(canonical(package)),db,occupied,table_uid_by_output))
-                # Keep only one immutable package index resident; all cases still run.
+                # This immutable index stays private to its submission worker.
                 consume(work_items)
+        def execute_package(package):
+            if package.output_alias not in active:return
+            alias=package.output_alias
+            package_ops=self.ops.scoped() if package_workers>1 else self.ops
+            progress('PACKAGE_STARTED',alias)
+            try:
+                evaluate_package(package,package_ops)
+            except Exception as exc:
+                if not tolerant:raise
+                record=failure(package_ops,exc,'MECHANICAL');held.append(record)
+                gates.setdefault(alias,GateReceipt(output_alias=alias,state='EVALUATOR_HOLD',gate_bit=None,errors=[record]))
+                stage_event(self.ops,'PACKAGE_EVALUATION',alias,[record],output_alias=alias)
+            finally:
+                if package_ops is not self.ops:
+                    self.ops.run_refs.extend(package_ops.run_refs);self.ops.used.extend(package_ops.used)
+                    self.ops.packet_refs.extend(package_ops.packet_refs);self.ops.response_refs.update(package_ops.response_refs)
+                    self.ops.continuation_events.extend(package_ops.continuation_events)
+                progress('PACKAGE_FINISHED',alias,gate=gates[alias].gate_bit if alias in gates else None)
+        if package_workers>1:
+            with ThreadPoolExecutor(max_workers=worker_limit(self.ops)) as shared_cases:
+                case_executor=shared_cases
+                with ThreadPoolExecutor(max_workers=package_workers) as submissions:
+                    list(submissions.map(execute_package,packages))
+        else:
+            for package in packages:execute_package(package)
+        gates=[gates[p.output_alias] for p in packages if p.output_alias in active]
         for alias,per_selected in measured.items():
             vectors.append(score(binding,alias,1,source_frame,per_selected,by_alias[alias],hold=bool(held)))
         # Any common uncertainty nulls every score, including a gate-failed pipeline's provisional zero.
@@ -532,6 +630,13 @@ class PaperEvaluator:
             ]
         for name in ("content_prose","content_table","archive"):
             selections.append(selection_manifest(store,source_frame.tiles,secret,scope,name,selected[name]))
+        if package_workers>1:
+            # Completion order is operational, never part of the scientific
+            # receipt identity. Cached parallel replay stays byte-identical.
+            selections.sort(key=lambda s:(s.output_alias or '',s.stream))
+            allbuckets.sort(key=lambda b:(b.output_alias,b.bucket_id))
+            packets.sort(key=lambda r:r.sha256);verdicts.sort(key=lambda r:r.sha256)
+            vectors.sort(key=lambda v:v.output_alias);held.sort(key=canonical)
         manifest = SampleManifest(
             binding=binding,
             seed_commitment=commitment,
@@ -542,6 +647,10 @@ class PaperEvaluator:
             archive_available=any(t.numerical for t in source_frame.tables),
         )
         ineligible = not manifest.content_available and not manifest.archive_available
+        recorded_cards={**{t.task_id:t for t in tasks}, **all_cards}
+        ordered_cards=[recorded_cards[key] for key in sorted(recorded_cards)] if package_workers>1 else recorded_cards.values()
+        recorded_runs=list(dict.fromkeys(self.ops.run_refs))
+        if package_workers>1:recorded_runs.sort(key=lambda r:r.sha256)
         receipt = SampledSilverReceipt(
             binding=binding,
             state="HOLD" if held else "INELIGIBLE" if ineligible else "FROZEN",
@@ -550,9 +659,9 @@ class PaperEvaluator:
             comparison_plan=store.put(comparison_plan),
             input_packages=[store.put(p) for p in packages],
             sampling_manifest=store.put(manifest),
-            task_cards=[store.put(t) for t in {**{t.task_id:t for t in tasks}, **all_cards}.values()],
+            task_cards=[store.put(t) for t in ordered_cards],
             assertion_packets=packets,
-            judge_runs=list(dict.fromkeys(self.ops.run_refs)),
+            judge_runs=recorded_runs,
             deterministic_gates=gates,
             scientific_verdicts=verdicts,
             paper_scores=vectors,
@@ -560,6 +669,16 @@ class PaperEvaluator:
             hold_reasons=held,
         )
         ref = store.put(receipt)
+        if tolerant:
+            from .failure_tolerance import project
+            projection=project(receipt=receipt,frame=source_frame,manifest=manifest,events=self.ops.continuation_events,
+                               tolerance=self.ops.failure_tolerance_policy)
+            projection['strict_receipt']=ref.model_dump(mode='json')
+            projected=store.put(projection)
+            self.ops.failure_tolerance_projection=projected
+            projection_head='failure-tolerance:'+ref.sha256
+            previous=store.head(projection_head)
+            if previous is None:store.advance(projection_head,None,projected.sha256)
         proposal=getattr(self.ops,'pending_source_correction',None)
         if proposal is not None:
             proposal_key='source-correction-proposal:'+sha(canonical(binding))

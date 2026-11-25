@@ -96,7 +96,9 @@ class RecoveryBudget:
 
 class BudgetedRuntime:
     def __init__(self,runtime,budget):self.runtime=runtime;self.budget=budget;self.admission_deadline=None
-    def set_deadline(self,deadline):self.admission_deadline=deadline
+    def set_deadline(self,deadline):
+        self.admission_deadline=deadline
+        if callable(getattr(self.runtime,'set_deadline',None)):self.runtime.set_deadline(deadline)
     def __getattr__(self,name):return getattr(self.runtime,name)
     def scoped(self):
         runtime=replace(self.runtime,usage=[]) if is_dataclass(self.runtime) else copy.copy(self.runtime)

@@ -22,6 +22,8 @@ class ScientificPaperEvaluation:
     validation_protocol: str = PROTOCOL
     output_alias_by_hotkey: Mapping[str,str] | None = None
     common_exclusion: Any = None
+    first_round_score: Any = None
+    score_details_by_hotkey: Mapping[str, Any] | None = None
 
 
 def adapt_scientific_receipt(
@@ -118,6 +120,37 @@ def adapt_common_exclusion(receipt,receipt_ref,exclusion_ref,*,store,hotkey_by_a
         output_alias_by_hotkey={v:k for k,v in hotkey_by_alias.items()},common_exclusion=exclusion_ref)
 
 
+def adapt_first_round_score(receipt, receipt_ref, score_ref, *, scoring_policy,
+                           store, hotkey_by_alias, baseline_alias, challenger_aliases, usage=()):
+    from .scientific_first_round import verify_score_receipt, score_details, KIND
+    from validator.scientific_result_v1.source_tasks.contracts import FractionValue
+    if store.load(receipt_ref, SampledSilverReceipt) != receipt:
+        raise ValueError("Scientific receipt hash mismatch")
+    value = verify_score_receipt(store, score_ref, receipt_ref, scoring_policy)
+    expected = {baseline_alias, *challenger_aliases}
+    vectors = {s["output_alias"]: s for s in value["scores"]}
+    if (set(vectors) != expected or not expected <= hotkey_by_alias.keys()
+            or len(set(hotkey_by_alias.values())) != len(hotkey_by_alias)):
+        raise ValueError("Incomplete first-round score grid")
+    refs = {alias: store.put({"kind": KIND, "paper_id": receipt.binding.paper_id,
+            "score_receipt": score_ref.model_dump(mode="json"), **vector})
+            for alias, vector in vectors.items()}
+    scores = {hotkey_by_alias[alias]: float(FractionValue(**vector["score"]).fraction())
+              for alias, vector in vectors.items()}
+    pairs = []
+    for alias in challenger_aliases:
+        details = PairPublicDetails(protocol_id=PROTOCOL, silver_receipt_sha256=receipt_ref.sha256,
+            revision=receipt.binding.revision, evaluation_status="SCORED",
+            challenger_components=refs[alias], baseline_components=refs[baseline_alias], exclusion_receipt=None)
+        pairs.append(CompetitionPairRow(paper_id=receipt.binding.paper_id,
+            challenger_hotkey=hotkey_by_alias[alias], baseline_hotkey=hotkey_by_alias[baseline_alias],
+            challenger_score=scores[hotkey_by_alias[alias]], baseline_score=scores[hotkey_by_alias[baseline_alias]],
+            infrastructure_fault=False, details_public=details).model_dump(mode="json"))
+    return ScientificPaperEvaluation(receipt, receipt_ref.sha256, scores, tuple(pairs), tuple(usage),
+        output_alias_by_hotkey={v:k for k,v in hotkey_by_alias.items()}, first_round_score=score_ref,
+        score_details_by_hotkey={hotkey_by_alias[alias]: score_details(value, score_ref, alias) for alias in vectors})
+
+
 def scientific_copy_diagnostics(*,round_id,stage,entries,paper_ids,backend):
     """Equality is a diagnostic only; never inspect claims or veto similar science."""
     from .publication import canonical_sha256
@@ -134,8 +167,16 @@ def scientific_copy_diagnostics(*,round_id,stage,entries,paper_ids,backend):
             frozen=backend.get_paper_evaluation(round_id,stage,paper_id)
             silver=frozen['result_private']['silver']
             receipt=SampledSilverReceipt.model_validate_json(canonical(silver['sampled_receipt']),strict=True)
-            if (receipt.state!='FROZEN' and 'common_exclusion' not in silver) or sha(canonical(receipt))!=silver['receipt_sha256']:
+            if (receipt.state!='FROZEN' and 'common_exclusion' not in silver and 'first_round_score' not in silver) or sha(canonical(receipt))!=silver['receipt_sha256']:
                 raise ValueError('Scientific copy diagnostic has stale/corrupt receipt')
+            if 'first_round_score' in silver:
+                from .scientific_first_round import configured_policy, verify_score_receipt
+                from validator.scientific_result_v1.source_tasks.contracts import FileRef
+                record=backend.get_round(round_id)
+                policy=configured_policy(record['rules_public']['configuration'],round_id)
+                if policy is None:raise ValueError('First-round scoring is not enabled')
+                ref=store.put(receipt)
+                verify_score_receipt(store,FileRef.model_validate(silver['first_round_score'],strict=True),ref,policy)
             if (receipt.binding.round_id,receipt.binding.stage,receipt.binding.paper_id)!=(round_id,stage,paper_id):raise ValueError('Scientific copy scope mismatch')
             packages=[store.load(f,SubmittedPackage) for f in receipt.input_packages]
             if any(p.source_packet_sha256!=receipt.binding.source_packet_sha256 for p in packages):raise ValueError('Scientific pipelines did not share source packet')

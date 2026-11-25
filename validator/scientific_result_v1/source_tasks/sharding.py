@@ -32,13 +32,14 @@ def validate_child(child,parent):
         if not set(r.evidence_anchor_ids)<=set(original.evidence_anchor_ids):raise ValueError('Shard invented a requirement witness')
 
 
-def partition(index,task,packet,*,tokenizers,owned_refs=None,table_ranges=None,source_frame=None):
+def partition(index,task,packet,*,tokenizers,owned_refs=None,table_ranges=None,source_frame=None,
+              force_audit_groups=False,unbounded_files=False):
     def size(p):return max(f(canonical(judge_packet(p)).decode()) for f in tokenizers.values())
     output_fits=size(packet)<=STRUCTURED_PACKET_TOKENS
     from .evidence_batching import source_size
     from .budgets import SOURCE_TOKEN_BUDGETS
     source_fits=source_frame is None or source_size(source_frame,task.evidence_anchor_ids,tokenizers)<=SOURCE_TOKEN_BUDGETS[0]
-    if output_fits and source_fits:return [(task,packet)]
+    if output_fits and source_fits and not (force_audit_groups and task.task_kind=='OUTPUT_AUDIT'):return [(task,packet)]
     groups=[]
     if task.task_kind=='CONTENT' and task.scope_kind=='SOURCE_CONTEXT':
         # Source-only reviewers distinguish conventions/conditions from findings.
@@ -61,7 +62,7 @@ def partition(index,task,packet,*,tokenizers,owned_refs=None,table_ranges=None,s
     else:
         for table,(first,stop) in sorted((table_ranges or {}).items()):
             for row in range(first,stop):groups.append((task.requirements,None,{table:(row,row+1)},None))
-    if len(groups)<2 and output_fits:return [(task,packet)]  # Stream a genuinely joint source scope without cutting dependencies.
+    if len(groups)<2 and (output_fits or unbounded_files):return [(task,packet)]  # Never cut an atomic scientific dependency.
     if len(groups)<2:
         raise Hold('EVALUATOR',f'No complete independent partition fits the {STRUCTURED_PACKET_TOKENS}-token bound')
     shards=[]
@@ -98,7 +99,7 @@ def partition(index,task,packet,*,tokenizers,owned_refs=None,table_ranges=None,s
         validate_child(child,task)
         rendered=index.packet(child,child.binding,match,packet.submitted_package_sha256,packet.document_bindings,
             owned_refs=refs,table_ranges=ranges or table_ranges)
-        if size(rendered)>STRUCTURED_PACKET_TOKENS:
+        if not unbounded_files and size(rendered)>STRUCTURED_PACKET_TOKENS:
             raise Hold('EVALUATOR','A complete joint assertion group exceeds the shard bound')
         shards.append((child,rendered))
     return shards

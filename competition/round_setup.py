@@ -264,7 +264,8 @@ def prepare_pilot_round(
     draft = {**draft, "round_id": round_id_for_draft(draft)}
     spec = draft.get("configuration_spec")
     if draft.get("network") == "mainnet":
-        if spec is None:
+        scientific = draft.get('configuration', {}).get('scientific_scoring', {}).get('protocol_id') == 'claims-source-task-v1'
+        if spec is None and not scientific:
             raise ValueError("mainnet round needs a supplied configuration_spec")
         if not isinstance(draft.get("policy_public"), dict) or "evaluation" not in draft["policy_public"]:
             raise ValueError("mainnet round needs a supplied public evaluation plan")

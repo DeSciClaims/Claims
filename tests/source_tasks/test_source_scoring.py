@@ -191,10 +191,13 @@ def test_lossless_packet_index_and_gate_separate_from_science(generated):
         ("extra_csv_row_ambiguous_source", None),
         ("source_hold", None),
         ("invalid_judge_pointer", None),
+        ("tolerant_source_build", None),
+        ("tolerant_network", None),
+        ("tolerant_invalid_response", None),
     ],
 )
 def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
-    generated, tmp_path, variant, expected
+    generated, tmp_path, variant, expected, parallel=False, monkeypatch=None
 ):
     import time
     from validator.scientific_result_v1.source_tasks.contracts import (
@@ -444,6 +447,8 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
 
         def generate(self, *, instructions, payload, output_dir, stage):
             self.calls += 1
+            if variant=='tolerant_source_build' and 'source_card' in stage:
+                raise ConnectionError('Injected network failure during source-task construction')
             if 'source_table_count' in stage:
                 from validator.scientific_result_v1.source_tasks.transport import audit_evidence
                 evidence=audit_evidence(payload['authoritative_evidence'])
@@ -521,6 +526,9 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
                     explanation="Scripted complete fixture correspondence",
                 )
             task = payload["task"]
+            if variant in {'tolerant_network','tolerant_invalid_response'} and payload['packet']['output_alias']=='b' and task['task_kind']=='CONTENT' and task['requirements'][0]['requirement_id']=='marker0':
+                if variant=='tolerant_network':raise ConnectionError('Injected network failure')
+                return {'invalid_response':'wrong response contract'}
             if variant=="source_hold" and payload['packet']['output_alias']=='b':
                 return dict(task_id=task['task_id'],packet_id=payload['packet']['packet_id'],outcome='SOURCE_UNRESOLVED',checks=[],evidence_requests=[],target_issue=None,unresolved_reason='Scripted genuine source ambiguity',technical_error=None)
             dims = ARCHIVE if task["task_kind"] == "ARCHIVE" else SCIENCE
@@ -650,6 +658,8 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
             deadline=time.time() + 1800,
             policy_hash="1" * 64,
             offline=offline,
+            failure_tolerance_policy=__import__('validator.scientific_result_v1.source_tasks.failure_tolerance',fromlist=['policy']).policy() if variant.startswith('tolerant_') or parallel else None,
+            diagnostic_runtime_controls={'kind':'claims_local_diagnostic_runtime_controls_v1','shared_max_llm_requests':500,'max_provider_attempts':2,'max_submissions_per_paper':4} if parallel else None,
         )
 
     secret = b"q" * 32
@@ -664,7 +674,64 @@ def test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(
         policy_sha256="1" * 64,
         document_bindings=bindings,
     )
-    receipt, ref = PaperEvaluator(ops()).evaluate(**kwargs)
+    if parallel:
+        import threading
+        from validator.scientific_result_v1.source_tasks import evaluator as module
+        real_package=module.Package;barrier=threading.Barrier(2,timeout=10)
+        def overlapping_packages(*args,**kwargs):
+            barrier.wait()
+            return real_package(*args,**kwargs)
+        monkeypatch.setattr(module,'Package',overlapping_packages)
+    operation=ops()
+    receipt, ref = PaperEvaluator(operation).evaluate(**kwargs)
+    if variant.startswith('tolerant_'):
+        projection=json.loads(store.read(operation.failure_tolerance_projection))
+        values={s['output_alias']:s for s in projection['scores']}
+        assert values['b']['components']['T']['lower']==1
+        assert values['b']['components']['P']['lower']==1
+        assert values['b']['conservative_score']>0
+        assert any(e['status']=='UNRESOLVED' for e in projection['events'])
+        assert any(e['stage']=='SCIENTIFIC_CASE' and e['task_kind']=='OUTPUT_AUDIT' and e['status']=='COMPLETED' for e in projection['events'])
+        if variant=='tolerant_source_build':
+            assert values['b']['components']['C']['resolved_weight_fraction']==0
+            assert not values['b']['coverage_accepted']
+        else:
+            assert values['a']['conservative_score']==1
+            assert values['b']['components']['C']['resolved_weight_fraction']==.5
+            assert values['b']['coverage_accepted']
+        # First-round opt-in turns the retained lower bounds into ranking scores.
+        # An unmet 80% completion target must not discard either entrant.
+        from competition.scientific_first_round import first_round_policy, retain_score_receipt, verify_score_receipt
+        from competition.scientific_scoring import adapt_first_round_score
+        scoring_policy=first_round_policy('r1')
+        score_ref=retain_score_receipt(store,ref,operation.failure_tolerance_projection,scoring_policy)
+        result=adapt_first_round_score(receipt,ref,score_ref,scoring_policy=scoring_policy,store=store,
+            hotkey_by_alias={'a':'reference','b':'challenger'},baseline_alias='a',challenger_aliases=['b'])
+        assert result.scores_by_hotkey['challenger']==values['b']['conservative_score']>0
+        assert not result.score_details_by_hotkey['challenger']['coverage_target_met']
+        assert not result.pair_rows[0]['infrastructure_fault']
+        assert receipt.state=='HOLD' and all(v.score is None for v in receipt.paper_scores)
+        assert store.head('failure-tolerance:'+ref.sha256)==operation.failure_tolerance_projection.sha256
+        retained=verify_score_receipt(store,score_ref,ref,scoring_policy)
+        changed={**retained,'scores':[{**s,'score':{'numerator':1,'denominator':1}} for s in retained['scores']]}
+        with pytest.raises(ValueError,match='differs'):
+            verify_score_receipt(store,store.put(changed),ref,scoring_policy)
+        with pytest.raises(ValueError,match='scoped'):
+            verify_score_receipt(store,score_ref,ref,first_round_policy('other-round'))
+        from competition.scientific_lineage import verify_current_grid
+        class PartialBackend:
+            scientific_store=store
+            def get_round(self,_):return {'configuration_sha256':'1'*64,'rules_public':{
+                'policy':{'validation_protocol':PROTOCOL},'configuration':{'scientific_scoring':{'first_round_scoring':scoring_policy}}}}
+            def get_paper_evaluation(self,*_):return {'result_private':{'silver':{
+                'receipt_sha256':ref.sha256,'sampled_receipt':receipt.model_dump(mode='json'),
+                'output_alias_by_hotkey':{'reference':'a','challenger':'b'},'first_round_score':score_ref.model_dump(mode='json')}}}
+        plan_data={'comparison_plan':store.put(plan),'alias_by_hotkey':{'reference':'a','challenger':'b'},'precommitted_order':['P005']}
+        store.advance('scientific-plan:r1:final',None,store.put(plan_data).sha256)
+        assert len(verify_current_grid('r1','final',backend=PartialBackend(),pairs=result.pair_rows))==1
+        wrong=[{**r,'challenger_score':1.0} for r in result.pair_rows]
+        with pytest.raises(ValueError,match='differ'):
+            verify_current_grid('r1','final',backend=PartialBackend(),pairs=wrong)
     if expected is None:
         assert receipt.state=='HOLD'
         assert all(v.score is None for v in receipt.paper_scores)
@@ -850,6 +917,27 @@ def test_batch_absence_does_not_mean_global_omission(generated):
             assert prop['value_json']==index.doc.literal(prop['original_ref']['pointer'])
 
 
+@pytest.mark.parametrize('scope_kind',['SOURCE_CONTEXT','SCIENTIFIC_RESULT'])
+def test_match_header_locator_is_not_a_match_but_rendered_header_property_is(scope_kind):
+    import jsonschema
+    from validator.scientific_result_v1.source_tasks.response_schema import response_schema
+    from validator.scientific_result_v1.source_tasks.contracts import MatchResponse
+    root='/results/0/fields/0';value=root+'/value'
+    data={'task':{'task_id':'task','scope_kind':scope_kind},'output_alias':'a',
+          'required_requirement_ids':['estimate'],'inspection_component_ids':['/relationships/0'],
+          'components':{'/relationships/0':{'properties':[]}},
+          'context_headers':{'field':{'original_ref':{'kind':'json','output_alias':'a','pointer':root},
+            'properties':[{'name':'value','present':True,'value_json':'1.25',
+                           'original_ref':{'kind':'json','output_alias':'a','pointer':value}}]}}}
+    schema=response_schema(MatchResponse,data)
+    answer={'task_id':'task','output_alias':'a','state':'MATCHED','inspected_component_ids':['/relationships/0'],
+            'matches':{'estimate':[{'kind':'json','output_alias':'a','pointer':value}]},
+            'explanation':'The supplied original value property represents this estimate.'}
+    jsonschema.Draft202012Validator(schema).validate(answer)
+    answer['matches']['estimate'][0]['pointer']=root
+    with pytest.raises(jsonschema.ValidationError):jsonschema.Draft202012Validator(schema).validate(answer)
+
+
 def test_relation_only_match_renders_its_original_endpoints(generated):
     from validator.scientific_result_v1.source_tasks.contracts import (
         EvaluationBinding,TaskCard,MatchResult,SearchCoverage)
@@ -881,6 +969,43 @@ def packet_case(index, store, *, kind='CONTENT', refs=None, ranges=None):
         coverage=SearchCoverage(index_sha256=index.sha256,available_component_ids=manifest,inspected_component_ids=manifest,
             available_components=len(index.components),inspected_components=len(index.components),exhaustive_fallback_completed=True),explanation='Fixture correspondence')
     return task,index.packet(task,binding,match,'5'*64,[],table_ranges=ranges)
+
+
+def test_generated_judge_schema_accepts_exact_nested_rendered_witness_and_rejects_unseen_sibling(generated):
+    import jsonschema
+    from validator.scientific_result_v1.source_tasks.response_schema import response_schema,literal_property_pointers
+    from validator.scientific_result_v1.source_tasks.runtime import StrictAdapter
+    from validator.scientific_result_v1.source_tasks.contracts import JudgeResponse
+    from validator.scientific_result_v1.source_tasks.judging import ARCHIVE,validate_judgment
+    from validator.scientific_result_v1.source_tasks.transport import judge_packet
+    path,_,_=generated;index=Index(Package(path,'a'));store=Store(path.parent/'nested-judge-witness')
+    table=next(o for o in index.objects if o.kind=='TABLE')
+    task,packet=packet_case(index,store,kind='ARCHIVE',refs=[table.original_ref],ranges={table.object_id:(0,1)})
+    prop=next(p for o in packet.objects if o.object_id==table.object_id for p in o.properties if p.name=='columns')
+    nested=prop.original_ref.pointer+'/0'
+    assert nested in literal_property_pointers(prop.original_ref.pointer,prop.value_json)
+    data={'task':task.model_dump(mode='json'),'packet':judge_packet(packet),
+          'required_dimensions':sorted(ARCHIVE),'authoritative_evidence':{'anchors':[{'anchor_id':'source'}]}}
+    schema=response_schema(JudgeResponse,data)
+    checks={d:{'dimension':d,'status':'PASS','evidence_anchor_ids':['source'],'counterexamples':[]}for d in ARCHIVE}
+    checks['TABLE_FIDELITY'].update(status='FAIL',counterexamples=[{'code':'TABLE_HEADER','rule_ids':['V23'],
+        'description':'The indicated supplied column declaration is the table-header witness.',
+        'evidence_anchor_ids':['source'],'output_refs':[{'kind':'json','output_alias':'a','pointer':nested}],
+        'missing_requirement_id':None}])
+    answer={'task_id':task.task_id,'packet_id':packet.packet_id,'outcome':'ASSESSED','checks':checks,
+            'evidence_requests':[],'target_issue':None,'unresolved_reason':None,'technical_error':None}
+    jsonschema.Draft202012Validator(schema).validate(answer)
+    decoded=StrictAdapter(schema).parse(None,json.dumps(answer))
+    response=JudgeResponse.model_validate_json(json.dumps(decoded),strict=True)
+    validate_judgment(response,task,packet,{'source'},index.resolve)
+    answer['checks']['TABLE_FIDELITY']['counterexamples'][0]['output_refs'][0]['pointer']=prop.original_ref.pointer+'/99999'
+    with pytest.raises(jsonschema.ValidationError):jsonschema.Draft202012Validator(schema).validate(answer)
+
+
+def test_rendered_literal_witnesses_preserve_pointer_escaping_and_real_array_bounds():
+    from validator.scientific_result_v1.source_tasks.response_schema import literal_property_pointers
+    assert literal_property_pointers('/field/context','{"a/b":[{"x~y":1.2500}]}')=={
+        '/field/context','/field/context/a~1b','/field/context/a~1b/0','/field/context/a~1b/0/x~0y'}
 
 
 def test_shared_member_does_not_activate_every_consumer_closure(generated):
@@ -1395,3 +1520,8 @@ def test_assertion_wrapper_columns_preserve_every_original_and_reject_bad_rows(g
     earlier=copy.deepcopy(wire);_restore_assertion_rows(earlier);earlier['assertion_encoding']=V6
     for node in earlier['objects']+earlier['relations']+earlier['context_headers']:node.setdefault('property_ref_overrides',{})
     assert audit_packet(earlier)==packet
+
+
+@pytest.mark.parametrize('variant,expected', [('perfect',Fraction(1)),('wrong_value',Fraction(0)),('shared_storage',Fraction(1)),('tolerant_network',None),('tolerant_source_build',None)])
+def test_parallel_submissions_overlap_without_changing_scores_or_replay(generated,tmp_path,monkeypatch,variant,expected):
+    test_full_p005_pool_freezes_exact_scores_and_replays_without_provider(generated,tmp_path,variant,expected,parallel=True,monkeypatch=monkeypatch)

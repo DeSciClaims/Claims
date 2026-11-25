@@ -40,6 +40,10 @@ def exact_int(value):
     return value
 
 
+def exact_optional_int(value):
+    return None if value is None else exact_int(value)
+
+
 def exact_bool(value):
     if type(value) is not bool:
         raise ValueError("a Boolean JSON token is required")
@@ -1168,8 +1172,8 @@ class ProviderParameters(Closed):
     tokenizer_id: Id
     tokenizer_sha256: Sha256
     declared_context_window_tokens: Positive
-    tools: tuple[()]
-    tool_choice: Literal["none"]
+    tools: tuple[str, ...]
+    tool_choice: Literal["none", "auto", "required"]
     reasoning_effort: Id | None
 
 
@@ -1182,11 +1186,11 @@ class ModelRoute(Closed):
     supports_strict_json_schema: bool
     supports_images: bool
     context_window_tokens: Positive
-    temperature: Annotated[Literal[0], BeforeValidator(exact_int)]
-    top_p: Annotated[Literal[1], BeforeValidator(exact_int)]
-    n: Annotated[Literal[1], BeforeValidator(exact_int)]
-    max_output_tokens: Literal[16384]
-    request_timeout_seconds: Literal[120]
+    temperature: Annotated[Literal[0] | None, BeforeValidator(exact_optional_int)]
+    top_p: Annotated[Literal[1] | None, BeforeValidator(exact_optional_int)]
+    n: Annotated[Literal[1] | None, BeforeValidator(exact_optional_int)]
+    max_output_tokens: Literal[16384, 32768, 65536]
+    request_timeout_seconds: Literal[120, 600, 7200]
     provider_parameters: FileRef
 
 

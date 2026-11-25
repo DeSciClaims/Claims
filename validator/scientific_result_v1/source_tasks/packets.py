@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import math
+from .diagnostic_dispatch import worker_limit
 from collections import Counter
 from .contracts import (
     PropertyAssertion,
@@ -342,6 +343,7 @@ class Index:
         batches = [initial[i:i+32] for i in range(0,len(initial),32)] + [
             remaining[i : i + 32] for i in range(0, len(remaining), 32)
         ]
+        if getattr(ops,'harness',None):batches=[available] if available else []
         def scan(item):
             keys,local=item
 
@@ -390,14 +392,14 @@ class Index:
             )
             return response
         # Batches are independent THIS_BATCH_ONLY lookups. Keep deterministic
-        # batch-order aggregation, four request contexts per case, and the shared
-        # Operations gate (16 globally). Every original block is still inspected.
+        # batch-order aggregation and the shared request ceiling. Every original
+        # block is still inspected; parallelism does not change search coverage.
         parallel=hasattr(ops,'scoped')
         children=[ops.scoped() for _ in batches] if parallel else [ops]*len(batches)
         try:
             if parallel:
                 from concurrent.futures import ThreadPoolExecutor
-                with ThreadPoolExecutor(max_workers=4) as executor:
+                with ThreadPoolExecutor(max_workers=worker_limit(ops,nested=True)) as executor:
                     responses=list(executor.map(scan,zip(batches,children)))
             else:
                 responses=[scan(item) for item in zip(batches,children)]

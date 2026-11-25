@@ -170,6 +170,7 @@ class Operations:
         gate=None,
         offline=False,
         generation_timeout_seconds=1800,
+        harness=None,diagnostic_profiles=None,failure_tolerance_policy=None,diagnostic_runtime_controls=None,
     ):
         self.store = store
         self.routes = routes
@@ -181,8 +182,30 @@ class Operations:
             raise ValueError('Scientific deadline differs from an approved frozen policy')
         self.generation_timeout_seconds=generation_timeout_seconds
         self.policy_hash = policy_hash
-        self.gate = gate or GLOBAL_GATE
+        from .proprietary_diagnostic import parallelism
+        diagnostic_workers=parallelism(diagnostic_profiles or {})
+        self.parallel_diagnostic=diagnostic_workers is not None
+        self.max_workers=diagnostic_workers or 4
+        self.gate = gate or (threading.BoundedSemaphore(diagnostic_workers) if diagnostic_workers else GLOBAL_GATE)
+        self.failure_tolerance_policy=failure_tolerance_policy
+        self.diagnostic_runtime_controls=diagnostic_runtime_controls
+        self.max_provider_attempts=2
+        if diagnostic_runtime_controls is not None:
+            from .local_runtime_controls import validate
+            validate(diagnostic_runtime_controls)
+            if failure_tolerance_policy is None:
+                raise ValueError('Runtime amendments require a local failure-tolerance diagnostic')
+            self.max_provider_attempts=diagnostic_runtime_controls['max_provider_attempts']
+        self.continuation_events=[]
+        if failure_tolerance_policy is not None:
+            from .failure_tolerance import validate
+            validate(failure_tolerance_policy)
+            self.max_workers=failure_tolerance_policy['max_workers']
+            self.parallel_diagnostic=True
+            self.gate=gate or threading.BoundedSemaphore(self.max_workers)
         self.offline = offline
+        self.harness = harness
+        self.diagnostic_profiles=diagnostic_profiles or {}
         self.used = []
         self.response_refs = {}
         self.run_refs = []
@@ -227,7 +250,7 @@ class Operations:
         from .response_schema import response_schema, compact_schema
         schema = compact_schema(response_schema(response_type,data))
         route = self.routes[role]
-        return {
+        request = {
             "role": role,
             "operation": operation,
             "route": route.model_dump(mode="json"),
@@ -236,13 +259,23 @@ class Operations:
             "payload": data,
             "stage_schema": schema,
         }
+        if self.harness:request['harness']=self.harness
+        if role in self.diagnostic_profiles:request['diagnostic_model_policy']=self.diagnostic_profiles[role]
+        return request
 
     def request_tokens(self, request, *, feedback=None):
+        if self.harness:
+            from .file_judge import FILE_INSTRUCTIONS
+            # Source/candidate files are not pasted into the launch message.
+            # The worker checks every actual model request against its frozen
+            # context capacity and records native usage across all agent turns.
+            return self.tokenizers[request['role']](FILE_INSTRUCTIONS)
         from .runtime import provider_request, provider_input_tokens
         payload={**request['payload'],'stage_schema':request['stage_schema']}
         if feedback:payload['validation_feedback']=feedback
         wire=provider_request(request['instructions'],payload,self.routes[request['role']],
-            reasoning_effort=getattr(self.runtimes[request['role']],'reasoning_effort',None))
+            reasoning_effort=getattr(self.runtimes[request['role']],'reasoning_effort',None),
+            diagnostic_policy=self.diagnostic_profiles.get(request['role']))
         return provider_input_tokens(wire,self.tokenizers[request['role']])
 
     def request(
@@ -290,11 +323,11 @@ class Operations:
             raise ValueError("Invalid pinned tokenizer result")
         if count + image_tokens + route.max_output_tokens > route.context_window_tokens:
             raise Hold("EVALUATOR", "Route context window exceeded")
-        if source_tokens is not None and source_tokens + image_tokens > source_limit:
+        if not self.harness and source_tokens is not None and source_tokens + image_tokens > source_limit:
             raise Hold("SOURCE", "Source scope exceeds current evidence bound")
-        if packet_tokens is not None and packet_tokens > STRUCTURED_PACKET_TOKENS:
+        if not self.harness and packet_tokens is not None and packet_tokens > STRUCTURED_PACKET_TOKENS:
             raise Hold("EVALUATOR", "Complete joint packet exceeds shard bound")
-        for _ in range(2):
+        for _ in range(self.max_provider_attempts):
             self.recover_completions(key)
             try:
                 feedback=self.store.last_error(key)
@@ -303,9 +336,20 @@ class Operations:
                     if count+image_tokens+route.max_output_tokens>route.context_window_tokens:
                         raise Hold('EVALUATOR','Retry request context window exceeded')
                 attempt_request=self.store.put({**request,"validation_feedback":feedback}) if feedback else request_ref
-                ordinal, cached = self.store.reserve(key, attempt_request.sha256, timeout=120,
-                    allow_new=time.time()<self.deadline)
+                ordinal, cached = self.store.reserve(key, attempt_request.sha256,
+                    timeout=route.request_timeout_seconds+(30 if self.harness else 0),
+                    allow_new=time.time()<self.deadline,
+                    **({'max_attempts':self.max_provider_attempts} if self.diagnostic_runtime_controls is not None else {}))
             except (Pending, Exhausted) as exc:
+                # A no-retry continuation still carries the original failed
+                # attempts into its scientific evidence ledger.
+                if self.diagnostic_runtime_controls is not None:
+                    for attempt in (1,2):
+                        head=self.store.head('judge-run:'+key+':'+str(attempt))
+                        if head is not None:
+                            raw=self.store.get_blob(head)
+                            self.run_refs.append(FileRef(relative_path='blobs/'+head,sha256=head,byte_length=len(raw),media_type='application/octet-stream'))
+                            self.used.append(JudgeRunReceipt.model_validate_json(raw,strict=True).run_id)
                 raise Hold("EVALUATOR", str(exc),retryable=isinstance(exc,Pending)) from exc
             if cached is not None:
                 result = response_type.model_validate_json(
@@ -354,6 +398,7 @@ class Operations:
                         payload=payload,
                         output_dir=self.trace_dir / role,
                         stage="source-task-" + operation + "-" + key[:16],
+                        **({'request':request} if self.harness else {}),
                     )
                 raw = canonical(answer)
                 LiteralDocument(raw)
@@ -377,7 +422,7 @@ class Operations:
             if isinstance(failure, Hold):
                 raise failure
         raise Hold(
-            "MODEL", "Technical response failure after one identical-request retry"
+            "MODEL", "Technical response failure; owner disabled retries" if self.max_provider_attempts==1 else "Technical response failure after one identical-request retry"
         )
 
 
@@ -402,12 +447,14 @@ class Operations:
             input_tokens=last.get("prompt_tokens") or count,
             output_tokens=last.get("completion_tokens") or (self.tokenizers[role](self.store.read(response).decode()) if response else 0),
             elapsed_ms=int((time.monotonic()-started)*1000),
-            error=ErrorRecord(category="MODEL",code="RESPONSE_INVALID" if response else "PROVIDER_ERROR",stage="VERIFICATION",message=message[:2000],retryable=ordinal==1,output_refs=[]) if error else None)
+            error=ErrorRecord(category="MODEL",code="RESPONSE_INVALID" if response else "PROVIDER_ERROR",stage="VERIFICATION",message=message[:2000],retryable=ordinal<self.max_provider_attempts,output_refs=[]) if error else None)
         usage_record={'run_id':receipt.run_id,'model':self.routes[role].model,'role':role,
             'usage':last,'billing_available':last.get('cost') is not None,
             'provider_request_id':usage[-1].get('provider_request_id') if usage else None,
             'provider':usage[-1].get('provider') if usage else None,
             'tokens_observed':bool(last),'dispatch_outcome':'not_dispatched' if not dispatched else 'confirmed' if usage else 'unknown'}
+        if usage and usage[-1].get('file_agent_trace') is not None:
+            usage_record['file_agent_trace']=usage[-1]['file_agent_trace']
         completion={'key':key,'ordinal':ordinal,'receipt':receipt.model_dump(mode='json'),
             'usage':usage_record,'response':response.sha256 if response else None,
             'error':type(error).__name__+": "+message[:2000] if error else None}
@@ -456,7 +503,8 @@ class Operations:
                   for role,runtime in self.runtimes.items()}
         return Operations(store=self.store,routes=self.routes,runtimes=runtimes,tokenizers=self.tokenizers,
             trace_dir=self.trace_dir,deadline=self.deadline,policy_hash=self.policy_hash,gate=self.gate,offline=self.offline,
-            generation_timeout_seconds=self.generation_timeout_seconds)
+            generation_timeout_seconds=self.generation_timeout_seconds,harness=self.harness,diagnostic_profiles=self.diagnostic_profiles,
+            failure_tolerance_policy=self.failure_tolerance_policy,diagnostic_runtime_controls=self.diagnostic_runtime_controls)
 
 
 def retained_usage(store, run_refs):

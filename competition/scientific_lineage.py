@@ -61,7 +61,9 @@ def verify_current_grid(round_id,stage,*,backend,pairs,round_record=None):
     # Use that policy rather than assuming its local backend exposes get_round.
     record=backend.get_round(round_id) if round_record is None else round_record
     if not enabled(record):return []
-    from .scientific_scoring import adapt_scientific_receipt,adapt_common_exclusion
+    from .scientific_scoring import adapt_scientific_receipt,adapt_common_exclusion,adapt_first_round_score
+    from .scientific_first_round import configured_policy
+    first_round_policy=configured_policy(record.get('rules_public',{}).get('configuration',{}),round_id)
     evidence=[]
     with evidence_store(backend) as store:
         stage_head=store.head('scientific-plan:'+round_id+':'+stage)
@@ -78,7 +80,9 @@ def verify_current_grid(round_id,stage,*,backend,pairs,round_record=None):
                 raise ValueError('Scientific score projection is stale; current common revision must be published first')
             ref=reference(store,digest);receipt=replay(store,ref)
             excluded='common_exclusion' in silver
-            if (receipt.state!='FROZEN' and not excluded) or receipt.binding.policy_sha256!=record['configuration_sha256']:
+            partial='first_round_score' in silver
+            if partial and (first_round_policy is None or excluded):raise ValueError('Unauthorized first-round score projection')
+            if (receipt.state!='FROZEN' and not excluded and not partial) or receipt.binding.policy_sha256!=record['configuration_sha256']:
                 raise ValueError('Scientific paper is unresolved or uses a different policy')
             compatible_plan(store,receipt,current,plan_data['precommitted_order'],allow_excluded=excluded)
             if silver['sampled_receipt']!=receipt.model_dump(mode='json') or silver['output_alias_by_hotkey']!=aliases:
@@ -89,6 +93,10 @@ def verify_current_grid(round_id,stage,*,backend,pairs,round_record=None):
                 replacement=next((r for r in grid.replacements if r.excluded_paper_id==paper_id),None)
                 if replacement is not None and replacement.exclusion_receipt!=exclusion_ref:raise ValueError('Excluded paper has different replacement evidence')
                 expected=adapt_common_exclusion(receipt,ref,exclusion_ref,store=store,hotkey_by_alias=hotkeys,
+                    baseline_alias=current.baseline_alias,challenger_aliases=current.challenger_aliases)
+            elif partial:
+                expected=adapt_first_round_score(receipt,ref,FileRef.model_validate(silver['first_round_score'],strict=True),
+                    scoring_policy=first_round_policy,store=store,hotkey_by_alias=hotkeys,
                     baseline_alias=current.baseline_alias,challenger_aliases=current.challenger_aliases)
             else:
                 expected=adapt_scientific_receipt(receipt,ref,store=store,hotkey_by_alias=hotkeys,

@@ -8,7 +8,7 @@ from .store import sha,canonical,Conflict
 from .operations import Hold
 
 
-def prepare_paper(*,store,packet,parsed_directories,operations,stages,policy_sha256):
+def prepare_paper(*,store,packet,parsed_directories,operations,stages,policy_sha256,sampling_secrets=None):
     from .contracts import SourceFrame,FileRef
     import json
     old=store.head('prepared-source:'+packet.round_id+':'+packet.paper_id)
@@ -18,6 +18,7 @@ def prepare_paper(*,store,packet,parsed_directories,operations,stages,policy_sha
         for stage in stages:
             seed=saved['seeds_by_stage'][stage]
             secret=store.read(FileRef.model_validate(seed['secret'],strict=True))
+            if sampling_secrets is not None and sampling_secrets[stage]!=secret:raise ValueError('Requested comparison sampling seed changed')
             if seed['commitment']!=seed_commitment(secret,(PROTOCOL,packet.round_id,stage,packet.paper_id),sha(canonical(packet)),policy_sha256):raise ValueError('Prepared seed/policy binding changed')
         frame=store.load(FileRef.model_validate(saved['source_frame'],strict=True),SourceFrame);validate_frame(frame,packet)
         raw=store.get_blob(old)
@@ -31,7 +32,7 @@ def prepare_paper(*,store,packet,parsed_directories,operations,stages,policy_sha
         from .docling_frame import prepare_docling_frame
         frame=prepare_docling_frame(store,packet,parsed_directories,operations,policy_sha256)
         validate_frame(frame,packet)
-        return commit_prepared_source(store,packet,frame,operations,stages,policy_sha256)
+        return commit_prepared_source(store,packet,frame,operations,stages,policy_sha256,sampling_secrets=sampling_secrets)
     anchors=[];pages=[];parsers=[]
     for document in packet.documents:
         if document.file is None:
@@ -75,15 +76,16 @@ def prepare_paper(*,store,packet,parsed_directories,operations,stages,policy_sha
             continue
         inventories.append(inventory)
     frame=assemble_frame(preparation,inventories);validate_frame(frame,packet)
-    return commit_prepared_source(store,packet,frame,operations,stages,policy_sha256)
+    return commit_prepared_source(store,packet,frame,operations,stages,policy_sha256,sampling_secrets=sampling_secrets)
 
 
-def commit_prepared_source(store,packet,frame,operations,stages,policy_sha256):
+def commit_prepared_source(store,packet,frame,operations,stages,policy_sha256,sampling_secrets=None):
     """Commit one immutable source frame and its pre-execution sampling secrets."""
     seeds={}
     for stage in stages:
         scope=(PROTOCOL,packet.round_id,stage,packet.paper_id)
-        secret=secrets.token_bytes(32)
+        secret=sampling_secrets[stage] if sampling_secrets is not None else secrets.token_bytes(32)
+        if not isinstance(secret,bytes) or len(secret)!=32:raise ValueError('Sampling secret must be 32 bytes')
         seeds[stage]={'secret':store.put_named('private-seeds/'+sha(canonical(scope)),secret).model_dump(mode='json'),
                       'commitment':seed_commitment(secret,scope,sha(canonical(packet)),policy_sha256)}
     result={'source_packet':store.put(packet).model_dump(mode='json'),'source_frame':store.put(frame).model_dump(mode='json'),

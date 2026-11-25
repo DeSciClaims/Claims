@@ -50,6 +50,9 @@ def check_runs(store, receipt, cards, packets, verdicts, secret, scope):
             validate_error(run.error)
         if run.parsed_response:store.read(run.parsed_response)
         if run.raw_response:store.read(run.raw_response)
+        if request.get('harness'):
+            from .file_runtime import replay_run_trace
+            replay_run_trace(store,run,request)
         runs[run.run_id]=run; requests[run.run_id]=request
     accepted_batches={}
     generated_batches=[store.load(r.parsed_response,SourceTaskBatch) for rid,r in runs.items()

@@ -55,16 +55,24 @@ def incumbent_failure_summary(
             "timeout", "cap_exceeded", "security_violation", "infrastructure_fault",
         }:
             raise ValueError("incumbent failure audit has an unknown worker status")
-        if result["status"] == "infrastructure_fault":
+        frozen=backend.get_paper_evaluation(round_id,stage,paper_id) if hasattr(backend,'get_paper_evaluation') else None
+        silver=(frozen or {}).get('result_private',{}).get('silver') or {}
+        partial=False
+        if 'first_round_score' in silver:
+            from .scientific_first_round import configured_policy
+            record=backend.get_round(round_id)
+            partial=configured_policy(record.get('rules_public',{}).get('configuration',{}),round_id) is not None
+            if not partial:raise ValueError('Unauthorized first-round incumbent score')
+        if result["status"] == "infrastructure_fault" and not partial:
             raise ValueError("incumbent infrastructure fault was not excluded globally")
-        effective=result['status']
+        # Evaluation uncertainty must not trigger the confirmed-package-failure
+        # fallback rule. Its conservative zero remains in the score denominator.
+        effective='completed' if partial and result['status']=='infrastructure_fault' else result['status']
         if effective=='completed':
-            frozen=backend.get_paper_evaluation(round_id,stage,paper_id) if hasattr(backend,'get_paper_evaluation') else None
-            silver=(frozen or {}).get('result_private',{}).get('silver') or {}
             if silver.get('protocol_id')=='claims-source-task-v1':
                 alias=silver['output_alias_by_hotkey'][incumbent_hotkey]
                 gate=next(g['gate_bit'] for g in silver['sampled_receipt']['deterministic_gates'] if g['output_alias']==alias)
-                if gate is None:raise ValueError('Pending scientific gate cannot count as an eligible paper')
+                if gate is None and not partial:raise ValueError('Pending scientific gate cannot count as an eligible paper')
                 if gate==0:effective='invalid_output'
         eligible += 1
         failed += int(effective != "completed")

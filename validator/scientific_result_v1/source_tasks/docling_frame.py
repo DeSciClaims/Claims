@@ -442,6 +442,9 @@ def _validate_eligibility(store, config, draft, packet):
             raise ValueError('Docling eligibility request/policy binding changed')
         if request['operation']!='source_eligibility' or request['role']!=run.role:
             raise ValueError('Docling eligibility has a different operation/role')
+        if request.get('harness'):
+            from .file_runtime import replay_run_trace
+            replay_run_trace(store,run,request)
         if run.error or run.parsed_response is None:
             continue
         response=store.load(run.parsed_response,EligibilityResponse)

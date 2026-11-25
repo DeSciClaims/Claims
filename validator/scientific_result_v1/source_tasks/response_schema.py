@@ -5,6 +5,25 @@ import json
 from collections import Counter
 
 
+def literal_property_pointers(pointer,literal):
+    """Exact descendants of a fully rendered original JSON property.
+
+    The scientific verifier already permits these references. Enumerate only
+    real nodes from the shown literal, never inferred siblings or missing items.
+    """
+    from .literals import LiteralDocument
+    return {pointer+suffix for suffix in LiteralDocument(literal.encode('utf-8')).spans}
+
+
+def supplied_property_pointers(nodes):
+    pointers=set()
+    for node in nodes:
+        for prop in node.get('properties',[]):
+            if prop.get('present') and prop.get('original_ref'):
+                pointers.update(literal_property_pointers(prop['original_ref']['pointer'],prop['value_json']))
+    return pointers
+
+
 def compact_schema(schema):
     """Factor repeated large enum schemas; retain every original allowed value.
 
@@ -71,6 +90,15 @@ def response_schema(response_type,data):
         for key in ('analysis_scope','adjustment_scope'):
             requirement['properties'][key].pop('default',None)
             if key not in requirement['required']:requirement['required'].append(key)
+        # Source-card citations have always been checked against this exact
+        # supplied evidence scope. Expose it to generation, including corrected
+        # proposals, instead of allowing arbitrary strings until post-validation.
+        anchors=[a['anchor_id'] for a in data.get('authoritative_evidence',{}).get('anchors',[])]
+        if anchors:
+            for name in ('SourceRequirement','SourceTaskDraft','SourceReviewIssue'):
+                definition=defs.get(name,{})
+                citations=definition.get('properties',{}).get('evidence_anchor_ids')
+                if citations is not None:citations['items']['enum']=list(dict.fromkeys(anchors))
     # Make the existing canonical outcome contract visible to strict generation,
     # including nested corrected CARD_BATCH proposals. Otherwise a provider can
     # emit authoritative cards under NEED_EVIDENCE and fail only after billing.
@@ -153,14 +181,13 @@ def response_schema(response_type,data):
         if 'JsonRef' in defs and data.get('output_alias') is not None:defs['JsonRef']['properties']['output_alias']['const']=data['output_alias']
         if task.get('scope_kind')=='SOURCE_CONTEXT' and 'JsonRef' in defs:
             nodes=[*data.get('components',{}).values(),*data.get('context_headers',{}).values()]
-            pointers=sorted({p['original_ref']['pointer'] for node in nodes for p in node.get('properties',[]) if p.get('present') and p.get('original_ref')})
+            pointers=sorted(supplied_property_pointers(nodes))
             if pointers:defs['JsonRef']['properties']['pointer']['enum']=pointers
             else:
                 for specification in props['matches']['properties'].values():specification['maxItems']=0
         elif 'JsonRef' in defs:
             nodes=[*data.get('components',{}).values(),*data.get('context_headers',{}).values()]
-            pointers=set(data.get('components',{}))|{p['original_ref']['pointer'] for node in nodes
-                for p in node.get('properties',[]) if p.get('present') and p.get('original_ref')}
+            pointers=set(data.get('components',{}))|supplied_property_pointers(nodes)
             if pointers:defs['JsonRef']['properties']['pointer']['enum']=sorted(pointers)
         if data.get('scan_scope')=='TABLE_IDENTITY_ONLY':
             defs['JsonRef']['properties']['pointer']['enum']=sorted(data['components'])
@@ -169,9 +196,10 @@ def response_schema(response_type,data):
     from .transport import audit_packet
     case=audit_packet(packet)
     roots={o.original_ref.pointer for o in case.objects}|{e.original_ref.pointer for e in case.relations}
-    # A counterexample can cite a shown property root and describe its precise nested
-    # discrepancy. It never needs to invent a new pointer into an unseen value.
-    pointers=roots|{p.original_ref.pointer for o in [*case.objects,*case.relations,*case.context_headers] for p in o.properties if p.present}
+    # Match validate_judgment: a witness may cite a real descendant of an entire
+    # shown property literal, as well as the property/root itself.
+    nodes=[o.model_dump(mode='json') for o in [*case.objects,*case.relations,*case.context_headers]]
+    pointers=roots|supplied_property_pointers(nodes)
     if pointers:defs['JsonRef']['properties']['pointer']['enum']=sorted(pointers)
     defs['JsonRef']['properties']['output_alias']['const']=case.output_alias
     csv=defs.get('CsvRef')
@@ -223,6 +251,7 @@ def response_schema(response_type,data):
     base=copy.deepcopy(schema);base.pop('$defs',None)
     branches=[]
     for outcome in ('ASSESSED','NEED_EVIDENCE','TARGET_DEFECT','SOURCE_UNRESOLVED','TECHNICAL_FAILURE'):
+        if outcome=='TARGET_DEFECT' and task.get('task_kind')!='CONTENT':continue
         branch=copy.deepcopy(base);p=branch['properties'];p['outcome']={'type':'string','const':outcome}
         p['checks']=({'type':'object','properties':checks,'required':required,'additionalProperties':False} if outcome=='ASSESSED'
             else {'type':'object','properties':{},'additionalProperties':False})

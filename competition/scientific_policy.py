@@ -20,6 +20,8 @@ class FrozenScientificEvaluationPolicy:
 
     def verify(self):
         spec=self.configuration.get('scientific_scoring',{})
+        from .scientific_first_round import configured_policy
+        configured_policy(self.configuration,self.round_id)
         if canonical_sha256(self.configuration)!=self.configuration_sha256:raise ValueError('Scientific configuration hash differs')
         if spec.get('protocol_id')!=PROTOCOL or spec.get('schema_sha256')!=SCHEMA_HASH:raise ValueError('Scientific protocol/schema differs')
         if spec.get('source_scope_policy')!='supplied_sources_only':raise ValueError('Scientific source scope differs')

@@ -165,7 +165,9 @@ class Store:
                 c.execute("INSERT INTO generations VALUES (?,?,?,?)", (key, *row))
         return row[1], row[2]
 
-    def reserve(self, operation, request, *, now=None, timeout=120, allow_new=True):
+    def reserve(self, operation, request, *, now=None, timeout=120, allow_new=True, max_attempts=2):
+        if type(max_attempts) is not int or max_attempts not in {1, 2}:
+            raise ValueError('Invalid provider attempt limit')
         now = time.time() if now is None else now
         self.get_blob(request)
         with self.connection() as c:
@@ -179,6 +181,8 @@ class Store:
                     if request not in {row[1], rows[0][1]}:
                         raise Conflict("Successful operation request changed")
                     return None, row[3]
+            if rows and max_attempts == 1:
+                raise Exhausted('Previous attempt unresolved or failed; owner disabled retries')
             if not allow_new:
                 raise Exhausted('Unchanged scientific generation deadline elapsed')
             if rows and rows[-1][3] is None and rows[-1][4] is None:

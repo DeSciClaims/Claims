@@ -467,6 +467,27 @@ class SourceContextRequested(Exception):
 SOURCE_REQUIREMENT_POLICY = 'Preserve each coherent parent card and all its required scientific information. Within a card, use a distinct requirement for each independently reported condition-specific quantity or test. Do not bundle several independent times, groups or contrasts into one requirement merely because one sentence reports them together, including qualitative significance/null statements spanning independent comparisons. Keep interval endpoints in one interval requirement, and retain genuinely joint/multivariate findings as joint. Each independent effect/estimate and its uncertainty or p-value must be assignable to the same scientific review group. This changes requirement granularity within the parent card, not source facts or scoring weights. Independently review this equivalence against the source.'
 
 
+def validate_card_batch(batch, tile, anchor_ids, required_anchors=()):
+    """Shared controller and file-tool checks; feedback identifies the faulty card."""
+    if batch.tile_id != tile.tile_id:raise ValueError('Wrong selected source tile')
+    if batch.outcome != 'READY':return
+    if len({c.local_key for c in batch.cards}) != len(batch.cards):raise ValueError('Duplicate card key')
+    all_cited=set()
+    for card in batch.cards:
+        prefix='Source card '+card.local_key+': '
+        if card.task_kind != 'CONTENT':raise ValueError(prefix+'source-card requests accept CONTENT only')
+        keys=[r.requirement_id for r in card.requirements]
+        if len(keys) != len(set(keys)):raise ValueError(prefix+'duplicate source requirement identity')
+        cited=set(card.evidence_anchor_ids)
+        for requirement in card.requirements:cited.update(requirement.evidence_anchor_ids)
+        if not cited <= set(anchor_ids):raise ValueError(prefix+'unavailable source anchors '+repr(sorted(cited-set(anchor_ids))[:10]))
+        if not cited & set(tile.owned_anchor_ids):
+            raise ValueError(prefix+'must concern the original owned tile, not only expanded context')
+        all_cited.update(cited)
+    missing=set(required_anchors)-all_cited
+    if missing:raise ValueError('Source consolidation dropped original evidence anchors: '+repr(sorted(missing)))
+
+
 def selected_cards(ops, tile, binding, evidence, *, expand=None):
     """Build a source target, with up to two expansions of captured source context."""
     run_start=len(getattr(ops,'run_refs',[]))
@@ -487,17 +508,7 @@ def selected_cards(ops, tile, binding, evidence, *, expand=None):
             "authoritative_evidence":evidence}
         anchor_ids=[a['anchor_id'] for a in evidence['anchors']]
         def validate(batch):
-            if batch.tile_id!=tile.tile_id:raise ValueError('Wrong selected source tile')
-            if batch.outcome!='READY':return
-            if len({c.local_key for c in batch.cards})!=len(batch.cards):raise ValueError('Duplicate card key')
-            for card in batch.cards:
-                if card.task_kind!='CONTENT':raise ValueError('Source-card requests accept CONTENT only')
-                keys=[r.requirement_id for r in card.requirements]
-                if len(keys)!=len(set(keys)):raise ValueError('Duplicate source requirement identity')
-                cited=set(card.evidence_anchor_ids)
-                for requirement in card.requirements:cited.update(requirement.evidence_anchor_ids)
-                if not cited<=set(anchor_ids):raise ValueError('Source card cites an unavailable source anchor')
-                if not cited&set(tile.owned_anchor_ids):raise ValueError('A source card must concern the original owned tile, not only expanded context')
+            validate_card_batch(batch,tile,anchor_ids)
         batch=ops.request('SOURCE_READER','source_card',request,SourceTaskBatch,validate=validate,source_limit=limit)
         try:
             if batch.outcome=='NEED_EVIDENCE':raise SourceContextRequested(batch.evidence_requests)

@@ -47,6 +47,15 @@ V28–V30 rules and receive source-grounded review when applicable.
 
 ## Zero, pending review and corrections
 
+**First-round policy:** an explicitly opted-in round uses an **80% evaluation
+completion target as an advisory flag**, while every miner receives a conservative
+numeric ranking score even below it. Unknown checks retain their denominator
+weight and receive zero demonstrated credit. Scores, bounds, component completion
+and failures are retained separately; evaluator errors are not confirmed miner
+errors. See [First-round scoring](FIRST_ROUND_SCORING.md) for the formula, recorded
+metadata and round-bound activation. The strict behavior below remains the default
+for configurations without this first-round amendment.
+
 A mechanical failure gives the miner **G = 0 and Q = 0**. A schema-valid
 `review_required` closure with the required explanation does not automatically
 fail the entire package; its scientific meaning still needs review.
@@ -105,6 +114,8 @@ source preparation, deterministic sampling, original-byte package indexing,
 scientific review, exact scoring and provider-free replay. The competition adapter
 in [`competition/scientific_scoring.py`](../../competition/scientific_scoring.py)
 converts frozen scientific receipts into paper and baseline/challenger score rows.
+With the first-round policy it also converts separately verified conservative
+score receipts, preserving the original incomplete scientific receipts.
 The older diagnostic interface remains available for miner preflight.
 
 The default source reader and primary judge use Qwen3.8 Flash, the independent
@@ -328,6 +339,96 @@ The canonical source, scientific assertions, qualifications and scoring bits do
 not change. Source-card generation also exposes its existing outcome/card
 consistency requirements in the provider schema, including corrected proposals.
 
+### Selectable judge harness
+
+The default harness is `dspy`. A new policy can freeze `hermes-files` through
+`freeze_settings(..., harness="hermes-files", hermes_python=...)`. Runtime creation
+checks the selected model roles, tool contract, provider parameters and the actual
+Hermes source/dependency identity. Existing policies never switch automatically.
+Set `CLAIMS_SCIENTIFIC_HERMES_PYTHON` to the frozen interpreter when running a file
+policy; no shell, web, general file-write, memory or delegation tools are exposed.
+
+Both modes use the same sampling, mechanical checks, independent reviews, arbiter,
+C/T/P/Q calculation and correction/replay pipeline. File mode gives each operation
+fresh task/instruction/schema files and lossless source/candidate views. Matching
+can inspect the complete candidate corpus in one workspace, using a paginated
+combined component map. Full-read proofs count the exact original component spans
+in that map as well as individual files. Source-only target
+construction includes original neighboring Docling page text/OCR as context.
+Scientific judges receive the complete captured source corpus for supplied PDFs,
+including notes outside the sampled row block. Owned source regions and samples
+stay unchanged; other source text supplies witnesses, never additional targets. Omission credit still needs a
+complete candidate search. Search hits alone never establish absence.
+
+File mode uses 80 turns per operation, 32,768 output tokens per model call and the
+frozen two-hour paper clock as its deadline. Actual decoded model
+requests are checked against the frozen model context capacity. Large files do
+not consume context until read; no source text or scientific assertion is cut to
+fit a DSPy prompt-size bound. File-read coverage, original byte hashes, schema and
+scientific-contract checks remain mandatory. Hermes context compaction uses the same
+frozen route capacity and output-token reservation as the native request guard.
+Assertion audits use mandatory ownership groups; all groups must pass for the
+original bucket bit. Complete finding dependencies remain together. The submission tool exposes the response structure as native function arguments.
+Large identity lists remain in the schema file and are checked without repair.
+Validated artifact submission stops the conversation immediately. If a working turn
+ends without an artifact, one explicit completion-feedback turn can continue the
+same history and shared iteration budget. Plain prose is never a judgment.
+Profile 9 ends an attempt after three identical validation failures. The existing
+bounded controller retry starts a fresh context and retains the failed attempt;
+completed operations, the paper clock and scientific decisions are preserved.
+
+The submission tool returns concise errors with field paths and missing/unexpected
+IDs rather than echoing a long invalid array. Source-card ownership and preservation
+checks also run inside the agent's submission loop, using the same controller
+validators. The agent can correct a draft before the operation ends; no scientific
+value or citation is automatically repaired. In harness profile 8, fixed inspection
+ID lists are supplied by the controller after complete retained-file reads have
+been verified. The model supplies all scientific matches and witnesses. A retained
+raw submission and metadata receipt let replay reproduce this envelope; a supplied
+incorrect ID list is rejected rather than overwritten.
+
+Every native provider call, including auxiliary calls, must use that role's model
+and automatic provider routing. Native costs and tokens are retained separately
+from Hermes estimates. Unknown billing stays unknown. Workspaces and conversations
+are chunked into content-addressed evidence so replay does not depend on a local
+VM directory. Source eligibility, final judgments and routing are checked again
+without provider calls.
+
+For an existing Hermes installation, create an isolated interpreter using its
+installed dependencies and the validator's tokenizer, without changing that
+installation or downloading packages:
+
+```sh
+python scripts/setup_scientific_file_harness.py \
+  --hermes-python /path/to/hermes/venv/bin/python --output /path/to/new/runtime
+```
+
+Evaluate a trusted validator-owned saved-input bundle end to end:
+
+```sh
+python scripts/evaluate_scientific_saved_paper.py \
+  --bundle /path/to/trusted-paper-inputs.jsonl --output /path/to/new/evaluation \
+  --harness hermes-files --hermes-python /path/to/new/runtime/bin/python
+```
+
+Use `--model SOURCE_READER=minimax/minimax-m3.1-flash` to freeze an explicit
+approved model override. It requires that model's route snapshot in the trusted
+bundle. Judge independence is still enforced. Resuming with different model roles
+requires a new evaluation directory.
+
+Supply model credentials through the environment or `--env-file`. The driver only
+loads model keys, uses a fresh committed diagnostic seed, preserves the extraction
+JSON/CSVs, and performs fresh source eligibility and scientific review over the
+retained independently captured PDF/Docling evidence. It creates no backend ranking
+rows or weights. Reusing the output directory resumes only matching frozen inputs;
+a changed harness or bundle requires a new evaluation directory.
+
+`scripts/benchmark_scientific_file_judges.py` remains available for individual
+retained requests (`--cases`, `--output`, `--hermes-python`). Valid JSON, successful
+file reads or a single paper do not establish scientific accuracy or production
+qualification. Framework comparisons must also account for changed prompts,
+context availability and output caps.
+
 Transport v7 stores repeated assertion-wrapper keys in column templates. All
 original properties, explicit absence markers, relations and closure views stay
 unchanged; decoding reconstructs the exact rich packet. Scientific quantities
@@ -343,3 +444,98 @@ full original frame proof is replayed before reuse. Incompatible parser settings
 fall back to parsing the original supplied PDF; mismatched source/policy bindings
 are rejected. Only immutable bytes are shared from a read-only cache. New source
 eligibility decisions, tasks, scientific judgments and clocks remain independent.
+
+### Local proprietary-model comparisons
+
+`scripts/compare_scientific_proprietary_harnesses.py` replays retained failed
+source reviews through DSPy and Hermes using the same scientific inputs, model,
+reasoning setting and output allowance. This diagnostic is separate from the
+competition model allowlist. Proprietary routes require an explicit
+`local_proprietary_comparison_v1` execution policy containing an explicit v1,
+v2 or v3 diagnostic model profile; they cannot be activated by changing a
+production model name alone.
+
+OpenAI-compatible DSPy transport nests the original response under `result`,
+converts disjoint tagged unions into supported schema constructs, and validates
+the unwrapped response against the complete original contract. Array ordering and
+all scientific rules remain mandatory after generation. Unsupported sampling
+parameters are explicitly omitted and recorded in the diagnostic profile.
+
+A shared SQLite budget reserves the worst-case call cost before dispatch across
+both processes, settles provider-confirmed charges, and conservatively retains
+unknown charges. Route/model/price snapshots and actual requests are retained.
+The full-paper driver also accepts `--diagnostic-profiles` and
+`--sampling-secret-file` to compare the same supplied source and sampling secret.
+Generated source tasks can still differ, so full-paper Q scores alone do not
+measure harness accuracy. These diagnostics publish no competition scores or
+weights.
+
+The local comparison now defaults to **no spending cap**. Cost estimates,
+provider-confirmed charges and unknown charges remain in the same ledger. An
+explicit `--cap-usd` can enable a cap for a separately requested experiment;
+`--no-spend-cap` remains an explicit uncapped option. Removing a cap from an
+existing ledger preserves its history and records the change.
+
+Uncapped v2 profiles use one shared model-request slot across both harnesses.
+The specific OpenRouter 402 carrying `in_flight_budget_exhausted` and
+`openrouter_in_flight_budget` honors `Retry-After` and retries the same transport
+request inside the existing paper deadline. This does not consume a scientific
+review retry. Other billing errors remain errors. Hermes's idle watchdog uses the
+remaining operation timeout so intentional queueing/cooldown is not misclassified
+as a hung provider.
+
+OpenAI provider-schema compilation removes redundant common parents from complete
+outcome branches and prunes unreachable definitions. Large identity enumerations
+that exceed OpenAI's grammar limits are checked against the original full schema
+after generation. Every original field, reference restriction and scientific
+validation rule remains mandatory locally; the compiler does not repair model
+decisions or evidence.
+
+DSPy-only v2 diagnostics can explicitly freeze `max_output_tokens=65536` instead
+of 32768 through `proprietary_diagnostic.policy`. Freezing checks the saved strict
+endpoint output capacities before accepting the larger allowance. This does not
+change competition defaults or existing run settings. Run this diagnostic alone
+to avoid sharing its request queue with a Hermes comparison. DSPy's internal
+truncation warning is bypassed because it assumes a temperature parameter exists;
+the recorded runtime saves the actual response, usage and finish reason first,
+then rejects truncated output with `TruncatedStageError` and retains its billing.
+The error distinguishes the requested output allowance from reported actual token
+usage; a provider `length` response does not prove that the requested cap was used.
+The transport also removes a string regex when every member of a retained exact
+enum satisfies it. This is a logically redundant constraint, and the full original
+schema still validates the answer. Deferred identity enums retain their regex.
+
+For DSPy-only parallel diagnostics, freeze a v3 model profile with
+`policy(model, context_window_tokens=..., budget_database=...,
+unlimited=True, max_output_tokens=65536, max_in_flight=20)`. All four roles must
+share the same ledger and ceiling. Native API requests share up to twenty
+cross-process slots, and the Operations gate and outer scientific/source-task
+workers use the same ceiling. Nested searches keep smaller worker pools to avoid
+multiplying waiting threads; their requests still use the shared twenty slots.
+Scoped runtimes retain independent usage ledgers. Independent source batches can
+run concurrently, while a task's dependent review steps remain ordered.
+
+Exact transient OpenRouter 402 admission failures and HTTP 429 rate limits honor
+Retry-After with jitter. A backing-off request releases its slot. Generic billing
+failures are not retried. Existing v2 single-request profiles, completed evidence
+and production concurrency remain unchanged; stopped evaluations are not resumed
+by preparing a new profile.
+
+Local diagnostic routes also support `openai/gpt-6-luna`,
+`openai/gpt-5.6-luna`, `openai/gpt-5.4-mini` and `openai/gpt-6.1-terra`.
+V3 profiles can explicitly select low or medium reasoning. Availability, endpoint
+capabilities and prices must be snapshotted before a paid run. These candidates
+have not yet been qualified as scientific judges; keep three distinct judge model
+identities when benchmarking a cheaper source reader/primary and secondary.
+
+Generated matching/judge schemas enumerate the real descendants of fully shown
+original JSON literals as valid witnesses, matching the existing scientific
+verifier. A nested column or annotation is available only if its complete parent
+literal was rendered; unseen siblings and invented array indices remain invalid.
+Schema retry feedback reports bounded field paths and constraints instead of
+dumping the whole response before the actual error. Scientific judgments and
+references are never automatically repaired.
+Source-card drafts, requirements, and corrected proposals constrain citation
+strings to the actual supplied anchor IDs during generation as well as after it.
+Evidence requests may still seek additional captured context; citations cannot
+substitute a document/item ID for an available anchor ID.
