@@ -18,7 +18,7 @@ from .sample_release import PaperRecord, sample_receipt
 from .publication import canonical_sha256
 from .stage_controller import start_initial_stage
 from .smoke_profile import smoke_profile
-from .round_evaluation import round_evaluation, stages_for_round
+from .round_evaluation import round_evaluation, stages_for_round, staged_reference_launch
 
 
 def _review_links(linked_pairs: list[tuple[str, str, str]] | None) -> list[dict[str, str]]:
@@ -119,7 +119,7 @@ def reveal_selected_sample(
     round_record = backend.get_round(round_id)
     if round_record["status"] != "locked":
         raise ValueError("round must be locked before sample release")
-    week_one = round_record["incumbent_hotkey"] is None
+    week_one = round_record["incumbent_hotkey"] is None and not staged_reference_launch(round_record)
     if baseline["package_sha256"] != round_record["baseline_package_sha256"]:
         raise ValueError("baseline differs from frozen round")
     if round_record["incumbent_hotkey"] is not None and baseline["hotkey"] != round_record["incumbent_hotkey"]:

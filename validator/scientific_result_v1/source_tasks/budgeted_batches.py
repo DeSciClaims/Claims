@@ -207,6 +207,9 @@ class Coordinator:
                     self.retain(ops,saved)
                     raise Hold('MODEL', 'Retained budgeted case failure; owner disabled retries')
             result = response_type.model_validate(saved['result'], strict=True)
+            # Verdicts address this canonical child response by its own hash,
+            # independently of the containing native batch response.
+            ops.store.put(result)
             successful = [ops.store.load(FileRef.model_validate(ref, strict=True), JudgeRunReceipt)
                           for ref in saved['run_refs']]
             if not any(not run.error and run.role == role and run.parsed_response.sha256 == saved['batch_response_sha256']
@@ -269,6 +272,7 @@ class Coordinator:
         except Exception:
             return saved
         recovered={**saved,'result':result.model_dump(mode='json'),'error':None,
+            'canonical_result':ops.store.put(result).model_dump(mode='json'),
             'wire_recovery':dict(previous_receipt_sha256=previous,
                 decoder='canonical_lists_keyed_maps_and_case_scoped_source_aliases_v2',
                 source_aliases=ops.store.put(aliases).model_dump(mode='json'),provider_calls=0)}
@@ -337,6 +341,7 @@ class Coordinator:
                 output_alias=item['data'].get('output_alias') or item['data'].get('packet',{}).get('output_alias'),
                 batch_response_sha256=batch_ref.sha256 if batch_ref else None,
                 batch_payload=ops.store.put(data).model_dump(mode='json'),
+                canonical_result=ops.store.put(result).model_dump(mode='json') if result is not None else None,
                 source_aliases=ops.store.put(witness_aliases(data,item['key'])).model_dump(mode='json'),
                 result=result.model_dump(mode='json') if result else None,
                 error=type(failure).__name__ if failure else None,

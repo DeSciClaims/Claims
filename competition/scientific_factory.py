@@ -58,6 +58,15 @@ def create_scientific_policy(row,backend,configuration):
     first_round_scoring=configured_policy(configuration,row['round_id'])
     settings=store.load(FileRef.model_validate(spec['settings'],strict=True),FrozenSettings)
     if spec.get('settings_sha256')!=sha(canonical(settings)):raise ValueError('Scientific settings binding differs')
+    execution=json.loads(store.read(settings.execution_policy))
+    optimized=spec.get('optimized_validation')
+    if optimized is not None:
+        from validator.scientific_result_v1.source_tasks.budgeted_validation import profile
+        profile(optimized)
+        if first_round_scoring is None or spec.get('experimental_launch') is None:
+            raise ValueError('Optimized validation requires explicit experimental advisory activation')
+    if execution.get('budgeted_validation')!=optimized:
+        raise ValueError('Optimized validation differs from frozen execution policy')
     from validator.scientific_result_v1.source_tasks.identity import runtime_descriptor
     for field,expected in runtime_descriptor().items():
         if getattr(settings,field)!=expected:raise ValueError('Scientific runtime differs from frozen '+field)
@@ -102,7 +111,9 @@ def create_scientific_policy(row,backend,configuration):
         from validator.scientific_result_v1.source_tasks.local_runtime_controls import validate
         validate(controls)
         if first_round_scoring is None:raise ValueError('Explicit runtime controls require advisory first-round scoring')
-        request_gate=_REQUEST_GATES.setdefault(row['configuration_sha256'],threading.BoundedSemaphore(controls['shared_max_llm_requests']))
+        from .shared_request_gate import SharedRequestGate
+        request_gate=_REQUEST_GATES.setdefault((str(_root()),row['configuration_sha256']),
+            SharedRequestGate(_root()/'llm-request-slots',controls['shared_max_llm_requests']))
     tokenizer=BudgetTokenizer();routes={r.role:r for r in settings.model_routes}
     params={role:store.load(route.provider_parameters,ProviderParameters) for role,route in routes.items()}
     preferences={}
@@ -152,7 +163,7 @@ def create_scientific_policy(row,backend,configuration):
             trace_dir=_root()/'traces'/sha(canonical([round_id,stage,paper_id])),deadline=time.time()+settings.sealed_evaluation_timeout_seconds,policy_hash=policy_hash,
             generation_timeout_seconds=settings.sealed_evaluation_timeout_seconds,
             failure_tolerance_policy=continuation_policy('4/5') if first_round_scoring is not None else None,
-            diagnostic_runtime_controls=controls,gate=request_gate)
+            diagnostic_runtime_controls=controls,gate=request_gate,budgeted_profile=optimized)
     pool=ScientificPoolService(store,prepared,operations,first_round_scoring)
     return FrozenScientificEvaluationPolicy(row['round_id'],row['configuration_sha256'],configuration,pool,int(row.get('rules_revision',1)))
 
@@ -203,14 +214,15 @@ def create_source_preparer(row,backend,configuration,fetcher):
             if paper['stage']=='rerun':continue
             groups.setdefault(paper['paper_id'],[]).append(paper['stage'])
         prepared=[];holds=[]
-        for paper_id,stages in groups.items():
-            if pool.store.head('prepared-source:'+round_id+':'+paper_id) is not None:continue
+        def prepare_one(item):
+            paper_id,stages=item
+            if pool.store.head('prepared-source:'+round_id+':'+paper_id) is not None:return None
             meta=backend.get_scientific_source(round_id,paper_id)
             raw=fetcher.fetch(meta['source_url'],meta['source_sha256'])
             file=pool.store.put_existing_source(round_id,paper_id,raw)
             document=SourceDocument(document_uid='source-'+meta['source_sha256'],role='MAIN',title=paper_id,version=meta['source_sha256'],url=meta['source_url'] if not __import__('urllib.parse',fromlist=['urlsplit']).urlsplit(meta['source_url']).query else None,required=True,acquisition_status='SUPPLIED',availability='AVAILABLE',file=file)
             packet=SourcePacket(protocol_id='claims-source-task-v1',paper_id=paper_id,round_id=round_id,state='READY',documents=[document],errors=[])
-            parsed=_root()/'parsed'/meta['source_sha256'];parsed.mkdir(parents=True,exist_ok=True)
+            parsed=_root()/'parsed'/sha(canonical([round_id,paper_id,meta['source_sha256']]));parsed.mkdir(parents=True,exist_ok=True)
             ops=pool.operations_for_paper(round_id,stages[0],paper_id,row['configuration_sha256'])
             # Source preparation is measured separately from the immutable post-seal deadline.
             parser_options=configuration['scientific_scoring'].get('recovery',{}).get('source_parser',{})
@@ -220,8 +232,22 @@ def create_source_preparer(row,backend,configuration,fetcher):
             ops.deadline=source_deadline
             try:
                 prepare_paper(store=pool.store,packet=packet,parsed_directories={document.document_uid:parsed},operations=ops,stages=stages,policy_sha256=row['configuration_sha256'])
-                prepared.append(paper_id)
-            except Hold as exc:holds.append({'paper_id':paper_id,'category':exc.category,'reason':str(exc)})
+                return ('PREPARED',paper_id)
+            except Hold as exc:return ('HOLD',{'paper_id':paper_id,'category':exc.category,'reason':str(exc)})
+        from concurrent.futures import ThreadPoolExecutor,as_completed
+        from .execution_policy import execution_policy
+        executor=ThreadPoolExecutor(max_workers=execution_policy(row).bronze_max_workers)
+        futures=[executor.submit(prepare_one,item) for item in groups.items()]
+        try:
+            for future in as_completed(futures):
+                result=future.result()
+                if result is not None:
+                    (prepared if result[0]=='PREPARED' else holds).append(result[1])
+        except BaseException:
+            executor.shutdown(wait=True,cancel_futures=True)
+            raise
+        else:executor.shutdown(wait=True)
+        prepared.sort();holds.sort(key=lambda h:h['paper_id'])
         return {'status':'scientific_source_hold' if holds else 'scientific_sources_prepared','prepared_papers':prepared,'holds':holds}
     return prepare
 

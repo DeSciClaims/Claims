@@ -20,6 +20,18 @@ _VALID_SEQUENCES = {
 }
 
 
+def staged_reference_launch(record: Mapping[str, Any]) -> bool:
+    policy=((record.get('rules_public') or {}).get('policy') or {})
+    raw=policy.get('evaluation') or {}
+    if 'reference_baseline_stages' not in raw:return False
+    if (raw['reference_baseline_stages'] is not True or record.get('incumbent_hotkey') is not None
+        or policy.get('validation_protocol')!='claims-source-task-v1'
+        or policy.get('winner_selection')!='silver_tiebreak'
+        or policy.get('experimental_launch',{}).get('status')!='experimental'):
+        raise ValueError('Staged reference launch requires an explicit experimental scientific round')
+    return True
+
+
 @dataclass(frozen=True)
 class StageSettings:
     name: Stage
@@ -51,7 +63,8 @@ def round_evaluation(record: Mapping[str, Any]) -> RoundEvaluation | None:
         return None
     if (not isinstance(raw, dict)
         or set(raw) != ({"schema_version", "mode", "stages", "required_challengers"}
-                        | ({"gold_known_answers"} if "gold_known_answers" in raw else set()))
+                        | ({"gold_known_answers"} if "gold_known_answers" in raw else set())
+                        | ({"reference_baseline_stages"} if "reference_baseline_stages" in raw else set()))
         or ("gold_known_answers" not in raw and policy.get("winner_selection") != "silver_tiebreak")
         or raw["schema_version"] != SCHEMA_VERSION
         or raw["mode"] not in {"testnet_smoke", "production"}
@@ -95,10 +108,12 @@ def round_evaluation(record: Mapping[str, Any]) -> RoundEvaluation | None:
         if (next_name == "screen" and
             (stage.advance_top > 12 or stage.max_per_team > 2)):
             raise ValueError("screen advancement exceeds its entrant limits")
-    if (names == ("week_one",)) != (record.get("incumbent_hotkey") is None):
+    reference_staged=staged_reference_launch(record)
+    week_one=record.get('incumbent_hotkey') is None and not reference_staged
+    if (names == ("week_one",)) != week_one:
         raise ValueError("evaluation stages disagree with incumbent status")
     if raw["mode"] == "production":
-        expected = (("week_one",) if record.get("incumbent_hotkey") is None
+        expected = (("week_one",) if week_one
                     else ("prescreen", "screen", "final"))
         counts = {stage.name: stage.papers for stage in stages}
         if (names != expected
@@ -131,7 +146,7 @@ def stages_for_round(record: Mapping[str, Any], challenger_count: int) -> tuple[
         return ()
     if record.get("rules_public", {}).get("policy", {}).get("evaluation", {}).get("mode") == "production":
         selected = stage_plan(challenger_count=challenger_count,
-                              week_one=record.get("incumbent_hotkey") is None)
+                              week_one=record.get("incumbent_hotkey") is None and not staged_reference_launch(record))
         if any(stage not in {item.name for item in plan.stages} for stage in selected):
             raise ValueError("production evaluation plan omits a required stage")
         return selected

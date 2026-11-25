@@ -203,12 +203,15 @@ def test_scoped_source_aliases_recover_paid_judgment_without_a_model_retry(tmp_p
     ops.runtimes['PRIMARY']=Runtime()
     def validate(answer):assert answer.checks[0].evidence_anchor_ids==['original-a']
     result=ops.request('PRIMARY','primary_verify',data,JudgeResponse,validate=validate)
+    from validator.scientific_result_v1.source_tasks.store import sha,canonical
+    assert JudgeResponse.model_validate_json(store.get_blob(sha(canonical(result))))==result
     key=case_key(ops,'PRIMARY','primary_verify',data);head=store.head('budgeted-case:'+key)
     saved=json.loads(store.get_blob(head));saved.update(result=None,error='ValueError')
     broken=store.put(saved);store.advance('budgeted-case:'+key,head,broken.sha256)
     recovered=ops.request('PRIMARY','primary_verify',data,JudgeResponse,validate=validate)
     assert recovered==result and len(calls)==1
     receipt=json.loads(store.get_blob(store.head('budgeted-case:'+key)))
+    assert receipt['canonical_result']['sha256']==sha(canonical(recovered))
     assert receipt['wire_recovery']['provider_calls']==0
     assert receipt['wire_recovery']['previous_receipt_sha256']==broken.sha256
 

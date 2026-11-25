@@ -1,8 +1,13 @@
-# Budgeted validation experiment
+# Optimized DSPy validation
 
-This local DSPy mode tests whether validation can cost less than **$1 per paper
-across 20 submitted pipelines**. That is a target, not a measured guarantee.
-It does not change the open mainnet round or qualify an evaluator for production.
+This DSPy mode reduces repeated matching and evidence transport. The ten-paper
+fixed-check comparison recorded $26.23 in scientific validation, plus $1.15 in
+retained source preparation: approximately **$2.74 per paper across 20 pipelines**,
+before infrastructure and unknown billing. The $1 target has not been reached.
+
+The owner approved this mode for the experimental 25 November mainnet round.
+Its frozen configuration must explicitly bind the optimized profile and advisory
+scoring policy; strict production qualification is not asserted.
 
 The original ten-paper testnet rerun recorded $103.91: $88.63 in output matching,
 $9.90 in source retrieval and $4.57 in primary/secondary/arbitration judgments.
@@ -87,7 +92,9 @@ python scripts/evaluate_scientific_saved_paper.py \
 
 Only model API keys are read from the environment file. The diagnostic driver
 does not contact the competition backend or publish weights. The profile is frozen
-inside its execution policy. Production mode and Hermes mode reject this option.
+inside its execution policy. The diagnostic CLI rejects production mode and Hermes.
+The competition factory separately permits the frozen profile only for explicitly
+approved experimental advisory scoring.
 The strict receipt remains HOLD with `BUDGETED_DIAGNOSTIC_ONLY`; conservative
 diagnostic scores and unresolved checks are reported separately. Strict guide
 replay is not asserted for these experimental batch/retrieval receipts.
@@ -135,3 +142,22 @@ resolved. Historical preparation/gate cost is excluded from incremental billing;
 include that recorded cost separately when estimating a complete cold evaluation.
 No reused decision is presented as a new independent judgment or a free production
 preparation step. The original failures and scientific assertions stay unchanged.
+
+## Experimental mainnet activation, 25 November 2026
+
+The reference baseline remains unchanged. All active stages use scientific Q
+scoring and the existing code, team, advancement and tie rules; Jev is not used.
+The published plan is 20 prescreen / 120 screen / 500 final papers, advancing
+12 challengers (two per team), then three (one per team). Normal small-field
+stage skipping applies. At least 10 / 60 / 250 common usable papers are required.
+This 50% paper floor is separate from the advisory 80% C/T/P completion target.
+
+Runtime limits: 10 source preparation workers, 10 scoring papers, four miner
+outputs per paper and 20 root checks per output. A host-wide file-lock gate
+limits preparation and scoring together to 500 in-flight model requests.
+These are ceilings, not guaranteed utilization. Provider routing remains automatic,
+with one provider attempt per request. Completed case receipts are reusable.
+
+Miner execution limits remain $0.10, 2M tokens, one hour and 4GB per paper.
+The planning budget is $1,200. Model identities and the round's burn window
+remain unchanged. Rule amendments preserve intake, original history and baseline.
