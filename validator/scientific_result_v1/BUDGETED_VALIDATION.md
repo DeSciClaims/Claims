@@ -42,9 +42,14 @@ provider-default routing and durable billing journal. Completed per-case results
 retain their original batch response and run receipts; a completed case can resume
 without another paid call. Technical failures remain failures under the owner’s
 no-retry policy. A semantically invalid case does not discard its valid siblings.
-Version 5 uses a nested typed response schema: every batch item contains a normal
-JSON result object. This avoids malformed JSON inside model-authored strings and
-exposes scientific enum values and required fields to constrained generation.
+The current version uses a nested typed response contract: every batch item
+contains a normal JSON result object. This avoids malformed JSON inside
+model-authored strings. The Qwen primary route uses JSON-object mode with the
+complete canonical contract supplied once in model input, because Qwen rejected
+the nested provider-constrained schemas. DeepSeek and Kimi retain typed provider
+schemas, which passed their probes. Normal production requests keep
+their existing strict provider schema. Code still enforces the full canonical
+scientific contract independently for every experimental result.
 The transport reader validates each inner scientific result independently, so
 one invalid result does not discard valid siblings. Exact keyed maps
 use the same lossless conversion as the existing DSPy adapter. Missing decisions,
@@ -54,8 +59,7 @@ retained in an explicit recovery link.
 Complete JSON matching may echo the provided component-manifest hash instead of
 repeating its full ID list. The decoder expands only that exact, explicit hash
 reference to the supplied manifest; missing or incorrect certifications fail.
-The complete result contract is supplied once through the provider response
-schema, including all required fields and the exact scientific counterexample
+The complete result contract includes all required fields and the exact scientific counterexample
 code enum. Unsupported codes remain invalid; they are never guessed or renamed.
 A frozen 250 ms coalescing window allows ready cases to share a batch despite
 differences in local preparation time; it never waits for another case's verdict.

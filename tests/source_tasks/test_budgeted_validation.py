@@ -168,6 +168,26 @@ def test_pooling_keeps_independent_judges_and_original_evidence_scoped():
     assert batch['shared_source_anchors'][refs[0][0]]['exact_text']=='Reported mean 3.5000.'
 
 
+def test_portable_batch_preview_matches_actual_dspy_adapter_transport(tmp_path,monkeypatch):
+    from validator.scientific_result_v1.source_tasks.runtime import provider_request,source_adapter
+    from validator.scientific_result_v1.source_tasks.budgeted_batches import structured_response
+    from types import SimpleNamespace
+    _,_,ops=optimized(tmp_path,monkeypatch)
+    payload=pooled([dict(key='case',data=request('a','task'))])
+    payload['original_operation']='source_match';payload['case_instructions']='Match original information.'
+    payload['budgeted_response_format']='json_object'
+    prepared=ops.prepare_request('PRIMARY','budgeted_structured_batch',payload,structured_response(MatchResponse))
+    model_payload={**prepared['payload'],'stage_schema':prepared['stage_schema']}
+    preview=provider_request(prepared['instructions'],model_payload,ops.routes['PRIMARY'])
+    adapter=source_adapter(prepared['stage_schema'])
+    actual=adapter.format(SimpleNamespace(__doc__=prepared['instructions']),[],{'stage_request':model_payload})
+    assert preview['messages']==actual and preview['response_format']=={'type':'json_object'}
+    text=actual[1]['content']
+    assert text.count('"canonical_response_contract":')==1
+    assert 'UNSUPPORTED_EXTRA' not in text  # The matching contract, not the judging contract.
+    assert source_adapter(MatchResponse.model_json_schema()).response_format()['type']=='json_schema'
+
+
 def test_local_source_lookup_keeps_complete_small_scope_and_zero_llm_searches(generated,tmp_path,monkeypatch):
     from tests.source_tasks.test_evidence_batching import case
     index,store,ops,frame,task,packet=case(generated,tmp_path,monkeypatch)

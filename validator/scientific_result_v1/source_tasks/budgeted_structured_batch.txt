@@ -19,3 +19,12 @@ For indexed_source_lookup_diagnostic_v1, incomplete evidence retrieval cannot
 establish that an assertion is unsupported throughout the paper. Request further
 evidence or report SOURCE_UNRESOLVED when needed. A witnessed contradiction in
 the supplied source can establish a scientific failure.
+
+For MATCHING, return exactly one matches entry for EVERY required_requirement_id,
+including an explicit output_refs:[] when absent. ABSENT still requires these
+empty entries; never omit a requirement or return matches:[] when requirements
+were supplied. Echo the full inspection manifest or exact provided hash.
+For JUDGING, ASSESSED requires exactly one checks entry for EVERY required_dimension.
+Other outcomes require checks:[]. Fill inactive nullable fields with null and
+inactive lists with []; active outcome fields must be present. Every FAIL needs
+an original source/output witness; every PASS needs inspected source evidence.

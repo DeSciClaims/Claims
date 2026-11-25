@@ -8,8 +8,10 @@ from .store import canonical, sha
 from .operations import Hold
 
 PROFILE = {
-    'kind': 'claims_budgeted_validation_diagnostic_v5',
-    'canonical_contract_in_provider_schema': True,
+    'kind': 'claims_budgeted_validation_diagnostic_v8',
+    'canonical_contract_in_model_input': True,
+    'provider_response_formats': {'PRIMARY':'json_object','SECONDARY':'json_schema','ARBITER':'json_schema'},
+    'generation_only_conditionals': 'portable_flat_shape_v1',
     'wire_format': 'typed_json_items_v1',
     'coalescing_window_seconds': .25,
     'matching_representation': 'complete_original_json_when_fits_v1',

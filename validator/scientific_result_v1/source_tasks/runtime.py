@@ -69,6 +69,24 @@ class StrictAdapter(JSONStageAdapter):
         ]
 
 
+class BudgetedObjectAdapter(StrictAdapter):
+    """Experimental provider-portable JSON transport; scientific validation stays strict."""
+    def response_format(self):
+        return {'type':'json_object'}
+
+    def format(self,signature,demos,inputs):
+        messages=super().format(signature,demos,inputs)
+        contract={k:v for k,v in self.schema.items() if k!='x-claims-budgeted-json-object'}
+        text=json.dumps(dict(canonical_response_contract=contract,
+            request=json.loads(messages[1]['content'])),ensure_ascii=False,separators=(',',':'))
+        messages[1]['content']=text
+        return messages
+
+
+def source_adapter(schema):
+    return BudgetedObjectAdapter(schema) if schema.get('x-claims-budgeted-json-object') else StrictAdapter(schema)
+
+
 def provider_request(instructions, payload, route, *, reasoning_effort=None,diagnostic_policy=None):
     """The actual DSPy adapter messages/schema, without credentials or a call.
 
@@ -79,7 +97,7 @@ def provider_request(instructions, payload, route, *, reasoning_effort=None,diag
     if diagnostic_policy:
         from .proprietary_diagnostic import compatible_adapter
         adapter=compatible_adapter(payload['stage_schema'])
-    else:adapter = StrictAdapter(payload['stage_schema'])
+    else:adapter = source_adapter(payload['stage_schema'])
     wire = {'model': route.model.removeprefix('openrouter/'), 'temperature': 0.0,
             'max_tokens': route.max_output_tokens,
             'messages': adapter.format(SimpleNamespace(__doc__=instructions), [],
@@ -148,7 +166,7 @@ class SourceTaskRuntime(DspyRuntime):
         return preferences
 
     def create_adapter(self, schema):
-        return StrictAdapter(schema)
+        return source_adapter(schema)
 
     def _lm(self, **kwargs):
         preferences=self._provider_routing()
