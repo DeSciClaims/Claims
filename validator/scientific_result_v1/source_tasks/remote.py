@@ -153,9 +153,11 @@ class RemoteStore(Store):
             return self.generation(key,binding,activated_at=activated_at,timeout=timeout)
         return start,start+timeout
 
-    def reserve(self,operation,request,*,now=None,timeout=120,allow_new=True):
+    def reserve(self,operation,request,*,now=None,timeout=120,allow_new=True,max_attempts=2):
         import time
         from .store import Pending,Exhausted
+        if type(max_attempts) is not int or max_attempts not in {1,2}:
+            raise ValueError('Invalid provider attempt limit')
         now=time.time() if now is None else now
         key='model-operation:'+operation;head=self.head(key)
         state=json.loads(self.get_blob(head)) if head else {'attempts':[]}
@@ -164,6 +166,8 @@ class RemoteStore(Store):
             if item['response'] is not None and item['error'] is None:
                 if request not in {item['request'],attempts[0]['request']}:raise Conflict('Successful operation request changed')
                 return None,item['response']
+        if attempts and max_attempts==1:
+            raise Exhausted('Previous attempt unresolved or failed; owner disabled retries')
         if not allow_new:
             raise Exhausted('Unchanged scientific generation deadline elapsed')
         if attempts and attempts[-1]['response'] is None and attempts[-1]['error'] is None:

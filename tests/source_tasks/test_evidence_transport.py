@@ -63,3 +63,41 @@ def test_failed_upload_is_not_marked_confirmed(tmp_path,monkeypatch):
     monkeypatch.setattr(store,'_binary',upload)
     with pytest.raises(OSError):store.put_blob(sha(raw),raw)
     store.put_blob(sha(raw),raw);assert len(calls)==2
+
+
+@pytest.mark.parametrize('terminal_error',[None,'Provider unavailable'])
+def test_remote_no_retry_contract_retains_one_attempt(tmp_path,monkeypatch,terminal_error):
+    import json
+    from validator.scientific_result_v1.source_tasks.remote import RemoteStore
+    from validator.scientific_result_v1.source_tasks.store import Store,Exhausted
+    store=RemoteStore(tmp_path,SimpleNamespace())
+    monkeypatch.setattr(store,'put_blob',lambda digest,raw:Store.put_blob(store,digest,raw))
+    monkeypatch.setattr(store,'head',lambda key:Store.head(store,key))
+    monkeypatch.setattr(store,'advance',lambda key,parent,child:Store.advance(store,key,parent,child))
+    request=store.put({'request':'original'})
+    assert store.reserve('op',request.sha256,now=1,max_attempts=1)==(1,None)
+    if terminal_error:store.finish('op',1,error=terminal_error)
+    with pytest.raises(Exhausted,match='disabled retries'):
+        store.reserve('op',request.sha256,now=1000,max_attempts=1)
+    state=json.loads(store.get_blob(store.head('model-operation:op')))
+    assert len(state['attempts'])==1
+    if terminal_error is None:
+        response=store.put({'result':'completed'})
+        store.finish('op',1,response=response.sha256)
+        assert store.reserve('op',request.sha256,now=1001,max_attempts=1)==(None,response.sha256)
+
+
+def test_remote_legacy_retry_remains_bounded(tmp_path,monkeypatch):
+    from validator.scientific_result_v1.source_tasks.remote import RemoteStore
+    from validator.scientific_result_v1.source_tasks.store import Store,Pending,Exhausted
+    store=RemoteStore(tmp_path,SimpleNamespace())
+    monkeypatch.setattr(store,'put_blob',lambda digest,raw:Store.put_blob(store,digest,raw))
+    monkeypatch.setattr(store,'head',lambda key:Store.head(store,key))
+    monkeypatch.setattr(store,'advance',lambda key,parent,child:Store.advance(store,key,parent,child))
+    ref=store.put({'request':'original'})
+    assert store.reserve('op',ref.sha256,now=1,timeout=5)==(1,None)
+    with pytest.raises(Pending):store.reserve('op',ref.sha256,now=2)
+    store.finish('op',1,error='network')
+    assert store.reserve('op',ref.sha256,now=3)==(2,None)
+    store.finish('op',2,error='network')
+    with pytest.raises(Exhausted):store.reserve('op',ref.sha256,now=4)
