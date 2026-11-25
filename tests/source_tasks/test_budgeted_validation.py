@@ -157,6 +157,36 @@ def test_local_source_lookup_keeps_complete_small_scope_and_zero_llm_searches(ge
     assert not ops.used
 
 
+@pytest.mark.parametrize('complete,expected', [(False, 'HOLD'), (True, 'FAIL')])
+def test_partial_source_retrieval_cannot_be_used_as_proof_of_unsupported_output(
+        generated,tmp_path,monkeypatch,complete,expected):
+    from types import SimpleNamespace
+    from validator.scientific_result_v1.source_tasks import judging
+    path,_,_=generated;index=Index(Package(path,'a'));store,_,_=optimized(tmp_path,monkeypatch)
+    task,packet=packet_case(index,store,refs=[index.objects[0].original_ref])
+    # Ordinary scientific witness validation is covered by the scoring suite;
+    # exercise the additional retrieval-completeness protection independently.
+    monkeypatch.setattr(judging,'validate_judgment',lambda *args:None)
+    answer=JudgeResponse(task_id=task.task_id,packet_id=packet.packet_id,outcome='ASSESSED',
+        checks=[dict(dimension=d,status='FAIL',evidence_anchor_ids=['a'],counterexamples=[dict(
+            code='UNSUPPORTED_EXTRA',rule_ids=['V01'],description='No supporting source was retrieved.',
+            evidence_anchor_ids=['a'],output_refs=[index.objects[0].original_ref],missing_requirement_id=None)]) for d in sorted(judging.SCIENCE)],
+        evidence_requests=[],target_issue=None,unresolved_reason=None,technical_error=None)
+    calls=[]
+    def request(role,operation,data,response_type,*,validate,**kwargs):
+        calls.append(role);validate(answer);return answer
+    ops=SimpleNamespace(used=[],budgeted_profile=dict(PROFILE),request=request,
+                        tokenizers={r:lambda value:len(value)//4 for r in ['PRIMARY','SECONDARY']})
+    evidence={'anchors':[dict(anchor_id='a',document_uid='doc',source_sha256='1'*64,
+        locator=dict(kind='text',start=0,stop=11),exact_text='Source text',rendering=None)]}
+    verdict=judging.assess(ops,task=task,packet=packet,evidence=evidence,
+        source_lookup={'complete_for_scope':complete},secret=b'x'*32,scope=('p','r','s','paper'),resolve=index.resolve)
+    assert verdict.state==expected
+    assert calls==(['PRIMARY','SECONDARY'] if complete else ['PRIMARY'])
+    if not complete:
+        assert verdict.hold_reasons and not verdict.dimension_checks
+
+
 def test_mode_cannot_enable_without_diagnostic_or_with_unknown_profile(tmp_path,monkeypatch):
     _,_,ops=optimized(tmp_path,monkeypatch)
     kwargs=dict(store=ops.store,routes=ops.routes,runtimes=ops.runtimes,tokenizers=ops.tokenizers,
