@@ -106,7 +106,8 @@ def test_invalid_nested_judgment_keeps_its_valid_sibling(tmp_path,monkeypatch):
     ops.runtimes['PRIMARY']=Runtime()
     def call(task):
         return ops.scoped().request('PRIMARY','primary_verify',dict(task={'task_id':task},
-            packet={'output_alias':'a','packet_id':'packet-'+task},authoritative_evidence={'anchors':[]}),JudgeResponse)
+                packet={'output_alias':'a','packet_id':'packet-'+task},required_dimensions=['NUMERIC_FIDELITY'],
+                authoritative_evidence={'anchors':[]}),JudgeResponse)
     with ThreadPoolExecutor(max_workers=2) as pool:
         good=pool.submit(call,'good');bad=pool.submit(call,'bad')
         assert good.result().outcome=='SOURCE_UNRESOLVED'
@@ -136,7 +137,7 @@ def test_judges_and_miners_have_separate_batches_and_secondary_is_blind(tmp_path
     def call(item):
         role,alias,i=item
         data=dict(task={'task_id':str(i)},packet={'packet_id':'packet-'+str(i),'output_alias':alias,'objects':[]},
-                  authoritative_evidence={'anchors':[]})
+                  required_dimensions=['NUMERIC_FIDELITY'],authoritative_evidence={'anchors':[]})
         return ops.scoped().request(role,'primary_verify' if role=='PRIMARY' else 'secondary',data,JudgeResponse)
     jobs=[(role,alias,i) for role in ['PRIMARY','SECONDARY'] for alias in ['a','b'] for i in range(2)]
     with ThreadPoolExecutor(max_workers=8) as pool:results=list(pool.map(call,jobs))

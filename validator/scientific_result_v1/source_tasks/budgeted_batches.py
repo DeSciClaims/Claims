@@ -79,6 +79,48 @@ def result_json(record):
     return canonical(record.result).decode()
 
 
+def bound_response_schema(schema, data):
+    """Expose the existing per-case identity/vector constraints to generation."""
+    definitions=schema['$defs']
+    item=definitions[schema['properties']['items']['items']['$ref'].split('/')[-1]]
+    base=definitions[item['properties']['result']['$ref'].split('/')[-1]]
+    variants=[]
+    for case in data['cases']:
+        payload=case['payload'];variant=copy.deepcopy(item);result=copy.deepcopy(base)
+        variant['properties']['case_id']={'type':'string','const':case['case_id']}
+        props=result['properties'];props['task_id']={'type':'string','const':payload['task']['task_id']}
+        if data['original_operation']=='source_match':
+            props['output_alias']={'type':'string','const':payload['output_alias']}
+            required=payload['required_requirement_ids']
+            match=copy.deepcopy(definitions['RequirementMatch'])
+            match['properties']['requirement_id']={'type':'string','enum':required}
+            props['matches']={'type':'array','items':match,'minItems':len(required),'maxItems':len(required)}
+            if payload.get('scan_scope')=='COMPLETE_ORIGINAL_JSON':
+                # A model may declare an incomplete search instead. A decisive
+                # response still needs the explicit full inspection certificate.
+                cert=copy.deepcopy(definitions['InspectionManifest'])
+                cert['properties']['manifest_sha256']={'type':'string','const':payload['inspection_manifest_sha256']}
+                props['inspected_component_ids']['anyOf']=[cert,{'type':'array','items':{'type':'string'}}]
+        else:
+            props['packet_id']={'type':'string','const':payload['packet']['packet_id']}
+            alternatives=[]
+            for outcome in ('ASSESSED','NEED_EVIDENCE','TARGET_DEFECT','SOURCE_UNRESOLVED','TECHNICAL_FAILURE'):
+                branch=copy.deepcopy(result);p=branch['properties'];p['outcome']={'type':'string','const':outcome}
+                count=len(payload['required_dimensions']) if outcome=='ASSESSED' else 0
+                p['checks'].update(minItems=count,maxItems=count)
+                p['evidence_requests'].update(**({'minItems':1} if outcome=='NEED_EVIDENCE' else {'maxItems':0}))
+                for field,active in [('target_issue','TARGET_DEFECT'),('unresolved_reason','SOURCE_UNRESOLVED'),('technical_error','TECHNICAL_FAILURE')]:
+                    if outcome==active:
+                        choices=[v for v in p[field]['anyOf'] if v.get('type')!='null']
+                        p[field]=choices[0] if len(choices)==1 else {'anyOf':choices}
+                    else:p[field]={'type':'null','const':None}
+                alternatives.append(branch)
+            result={'anyOf':alternatives}
+        variant['properties']['result']=result;variants.append(variant)
+    schema['properties']['items'].update(items={'anyOf':variants},minItems=len(variants),maxItems=len(variants))
+    return schema
+
+
 SUPPORTED = {'source_match', 'primary_verify', 'secondary', 'arbitrate'}
 
 

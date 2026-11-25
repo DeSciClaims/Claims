@@ -75,6 +75,9 @@ def _nonnull(prop):
 
 def response_schema(response_type,data):
     schema=copy.deepcopy(response_type.model_json_schema())
+    if response_type.__module__.endswith('.budgeted_batches') and response_type.__name__ in {'MatchBatch','JudgeBatch'}:
+        from .budgeted_batches import bound_response_schema
+        return bound_response_schema(schema,data)
     props=schema.get('properties',{})
     nested=data.get('request',{})
     bindings={key:data.get(key,nested.get(key)) for key in ('request_id','proposal_kind','proposal_hash','tile_id','table_uid','chunk_id','output_alias')}
