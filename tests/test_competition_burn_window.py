@@ -41,11 +41,13 @@ def configured(tmp_path, **overrides):
     trigger = [signed]
     fetch[0] = signed
     def make(**more):
+        options = {**overrides, **more}
+        burn = options.pop('burn_window', policy())
         return WeeklyWeightHeartbeat(network='mainnet', netuid=111, backend_url='https://api.example',
             operator_hotkey=chain.operator, wallet=SimpleNamespace(hotkey=signer), subtensor=chain,
             cache_path=tmp_path/'receipt.json', submission_interval_seconds=21600,
-            now=lambda:clock[0], fetcher=lambda:fetch[0], burn_window=policy(),
-            burn_trigger_fetcher=lambda:trigger[0], **{**overrides, **more})
+            now=lambda:clock[0], fetcher=lambda:fetch[0], burn_window=burn,
+            burn_trigger_fetcher=lambda:trigger[0], **options)
     return signer, clock, chain, fetch, trigger, make
 
 
@@ -86,6 +88,26 @@ def test_full_window_starts_at_success_preserves_vacant_slot_and_restores_on_exp
     assert restored['weights'] == pytest.approx({0:BASE_BURN+.1*(1-BASE_BURN),
                                                 3:.7*(1-BASE_BURN),4:.2*(1-BASE_BURN)})
     assert make().step()['status'] == 'waiting_for_interval'
+
+
+def test_mainnet_keeps_current_signed_weights_until_exact_round_publishes(tmp_path):
+    signer, clock, chain, fetch, trigger, make = configured(tmp_path)
+    old_receipt = pool_receipt(signer, chain, round_id='previous-round', order=1_799_999_999)
+    fetch[0], trigger[0] = old_receipt, None
+    heartbeat = make(burn_window=policy(wait_for_trigger=False))
+    before = heartbeat.step()
+    assert before['status'] == 'submitted'
+    assert before['round_id'] == 'previous-round'
+    assert before['burn_window']['phase'] == 'waiting_for_signed_results'
+    assert before['weights'][3] == pytest.approx(.7*(1-BASE_BURN))
+    assert 'burn_window' not in json.loads((tmp_path/'receipt.json.state.json').read_text())
+    trigger[0] = pool_receipt(signer, chain)
+    clock[0] += timedelta(minutes=1); chain.block += 5
+    after = make(burn_window=policy(wait_for_trigger=False)).step()
+    assert after['status'] == 'submitted' and after['round_id'] == 'week2'
+    assert after['weights'][3] == pytest.approx(.7*.6212)
+    assert after['burn_window']['started_at'] == clock[0].isoformat()
+    assert after['burn_window']['expires_at'] == (clock[0]+timedelta(days=14)).isoformat()
 
 
 def test_failed_submission_does_not_start_or_consume_window(tmp_path):
