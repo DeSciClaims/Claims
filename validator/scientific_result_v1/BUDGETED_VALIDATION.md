@@ -51,6 +51,10 @@ retained in an explicit recovery link.
 Complete JSON matching may echo the provided component-manifest hash instead of
 repeating its full ID list. The decoder expands only that exact, explicit hash
 reference to the supplied manifest; missing or incorrect certifications fail.
+Version 4 includes the full canonical result contract once per batch, including
+all required fields and the exact scientific counterexample-code enum. The simple
+outer provider schema does not hide those inner constraints from the model.
+Unsupported codes remain invalid; they are never guessed or silently renamed.
 
 ## Run
 

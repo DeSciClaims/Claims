@@ -98,6 +98,10 @@ def test_judges_and_miners_have_separate_batches_and_secondary_is_blind(tmp_path
         def generate(self,*,payload,**kwargs):
             cases=payload['cases'];aliases={c['payload']['packet']['output_alias'] for c in cases}
             assert len(aliases)==1
+            contract=payload['canonical_result_contract']
+            assert 'UNSUPPORTED_EXTRA' in contract['$defs']['Counterexample']['properties']['code']['enum']
+            assert set(contract['required'])=={'task_id','packet_id','outcome','checks','evidence_requests',
+                'target_issue','unresolved_reason','technical_error'}
             if self.role=='SECONDARY':
                 assert all('primary' not in c['payload'] and 'secondary' not in c['payload'] for c in cases)
             calls.append((self.role,next(iter(aliases)),len(cases)))

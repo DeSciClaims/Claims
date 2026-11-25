@@ -191,7 +191,12 @@ class Coordinator:
         data = pooled(items)
         instructions = (ROOT / (operation + '.txt')).read_text()
         if operation == 'secondary': instructions += '\n' + (ROOT / 'primary_verify.txt').read_text()
-        data.update(original_operation=operation, case_instructions=instructions)
+        data.update(original_operation=operation, case_instructions=instructions,
+            canonical_result_contract=first['response_type'].model_json_schema(),
+            result_contract_instructions=('Each result_json must encode an object satisfying canonical_result_contract. '
+                'Use only the exact enum values it defines, especially Counterexample.code. '
+                'Return every required field and preserve the original task/packet IDs. '
+                'The outer items envelope is only transport; it does not replace this inner scientific contract.'))
         request = ops.prepare_request(role, 'budgeted_batch', data, response_type)
         size = ops.request_tokens(request)
         target = ops.routes[role].context_window_tokens-ops.routes[role].max_output_tokens
