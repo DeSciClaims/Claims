@@ -261,6 +261,12 @@ class Operations:
                        'Inside result_json, matches and checks are CANONICAL LISTS, not keyed wire objects. '
                        'The earlier keyed-object adapter rules do not apply inside these JSON strings. '
                        'Return every field of the canonical MatchResponse or JudgeResponse described above.')
+        if operation=='budgeted_structured_batch':
+            prompt += ('\nSTRUCTURED BATCH WIRE: items contains case_id and result. '
+                       'Each result is a typed JSON OBJECT, never a JSON string. '
+                       'Its matches and checks use CANONICAL LISTS, not keyed wire objects. '
+                       'The earlier top-level keyed-object adapter rules do not apply inside these results. '
+                       'Follow the complete provider schema, including exact enum values and required fields.')
         from .response_schema import response_schema, compact_schema
         schema = compact_schema(response_schema(response_type,data))
         route = self.routes[role]

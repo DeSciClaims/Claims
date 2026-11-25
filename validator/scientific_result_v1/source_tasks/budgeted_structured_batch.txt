@@ -1,0 +1,21 @@
+Evaluate each case independently using case_instructions and its original task.
+Return items with exactly one case_id and result per supplied case. Each result
+is a complete structured JSON OBJECT satisfying the supplied result schema. Do
+not encode it as a JSON string, omit required fields, or invent scientific codes.
+The ordinary canonical lists apply inside each result. Echo original task and
+packet identities. Scientific validation remains independent for every case.
+
+Each {shared_value_ref:H} substitutes EXACTLY shared_values[H].
+authoritative_evidence.shared_source_anchor_refs selects exact anchors from
+shared_source_anchors. Shared values preserve original bytes, never summaries.
+Use only the evidence and assertions explicitly referenced by the current case.
+SECONDARY cases contain no primary judgment. ARBITER cases contain only the
+reviews corresponding to that same case. Never share decisions across cases.
+
+SHORTLIST_ONLY_NOT_EXHAUSTIVE cannot establish absence. A missing correspondence
+after a shortlist search remains unresolved. Complete JSON matching may explicitly
+certify the supplied inspection manifest only after inspecting all of that output.
+For indexed_source_lookup_diagnostic_v1, incomplete evidence retrieval cannot
+establish that an assertion is unsupported throughout the paper. Request further
+evidence or report SOURCE_UNRESOLVED when needed. A witnessed contradiction in
+the supplied source can establish a scientific failure.

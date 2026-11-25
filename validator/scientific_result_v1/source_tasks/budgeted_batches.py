@@ -4,8 +4,9 @@ from collections import defaultdict
 from threading import Lock, Thread
 import copy
 import time
+from typing import Any
 
-from .contracts import Closed, Id, MatchResponse, JudgeResponse, FileRef, JudgeRunReceipt
+from .contracts import Closed, Id, Sha256, MatchResponse, JudgeResponse, FileRef, JudgeRunReceipt
 from .store import canonical, sha
 from .operations import Hold
 
@@ -17,6 +18,65 @@ class BatchItem(Closed):
 
 class BatchResponse(Closed):
     items: list[BatchItem]
+
+
+class InspectionManifest(Closed):
+    manifest_sha256: Sha256
+
+
+class StructuredMatch(MatchResponse):
+    inspected_component_ids: list[Id] | InspectionManifest
+
+
+class MatchItem(Closed):
+    case_id: Id
+    result: StructuredMatch
+
+
+class JudgeItem(Closed):
+    case_id: Id
+    result: JudgeResponse
+
+
+class MatchBatchSchema(Closed):
+    items: list[MatchItem]
+
+
+class JudgeBatchSchema(Closed):
+    items: list[JudgeItem]
+
+
+class StructuredItem(Closed):
+    case_id: Id
+    result: dict[str, Any]
+
+
+class MatchBatch(Closed):
+    items: list[StructuredItem]
+
+    @classmethod
+    def model_json_schema(cls, *args, **kwargs):
+        return MatchBatchSchema.model_json_schema(*args, **kwargs)
+
+
+class JudgeBatch(Closed):
+    items: list[StructuredItem]
+
+    @classmethod
+    def model_json_schema(cls, *args, **kwargs):
+        return JudgeBatchSchema.model_json_schema(*args, **kwargs)
+
+
+def structured_response(response_type):
+    if response_type is MatchResponse:return MatchBatch
+    if response_type is JudgeResponse:return JudgeBatch
+    raise ValueError('Unsupported structured batch result contract')
+
+
+def result_json(record):
+    # Programmatic serialization of a typed object, never model-authored JSON
+    # hidden inside a string. Keep legacy receipt readers available separately.
+    return canonical(record.result).decode()
 
 
 SUPPORTED = {'source_match', 'primary_verify', 'secondary', 'arbitrate'}
@@ -118,7 +178,7 @@ class Coordinator:
             self.pending[group].append(item)
             if group not in self.running:
                 self.running.add(group)
-                Thread(target=self.flush, args=(group,), daemon=True).start()
+                Thread(target=self.flush, args=(group,ops.budgeted_profile['coalescing_window_seconds']), daemon=True).start()
         try:
             result, saved = item['future'].result(timeout=max(.01, ops.deadline-time.time()))
         except TimeoutError as exc:
@@ -146,7 +206,8 @@ class Coordinator:
             return saved
         try:
             import json
-            answer=BatchResponse.model_validate_json(ops.store.get_blob(saved['batch_response_sha256']),strict=True)
+            answer=structured_response(response_type).model_validate_json(
+                ops.store.get_blob(saved['batch_response_sha256']),strict=True)
             runs=[ops.store.load(FileRef.model_validate(ref,strict=True),JudgeRunReceipt) for ref in saved['run_refs']]
             if not any(not run.error and run.role==saved['role'] and run.parsed_response is not None
                        and run.parsed_response.sha256==saved['batch_response_sha256'] for run in runs):return saved
@@ -154,7 +215,7 @@ class Coordinator:
             expected={case['case_id'] for case in payload['cases']}
             ids=[record.case_id for record in answer.items]
             if len(ids)!=len(set(ids)) or not set(ids)<=expected or ids.count(key)!=1:return saved
-            result=decode_result(next(r.result_json for r in answer.items if r.case_id==key),response_type,data)
+            result=decode_result(next(result_json(r) for r in answer.items if r.case_id==key),response_type,data)
             if validate:validate(result)
         except Exception:
             return saved
@@ -163,9 +224,9 @@ class Coordinator:
         ref=ops.store.put(recovered);ops.store.advance('budgeted-case:'+key,previous,ref.sha256)
         return recovered
 
-    def flush(self, group):
+    def flush(self, group, window):
         while True:
-            time.sleep(.04)  # Coalesce already-ready work; no dependency waits inside a batch.
+            time.sleep(window)  # Coalesce ready work across CPU preparation; never await case dependencies.
             with self.lock:
                 if not self.pending[group]:
                     self.running.remove(group); del self.pending[group]; return
@@ -187,17 +248,12 @@ class Coordinator:
     def dispatch(self, items):
         from .operations import Operations, ROOT
         first = items[0]; ops = first['ops'].scoped(); role = first['role']; operation = first['operation']
-        response_type = BatchResponse
+        response_type = structured_response(first['response_type'])
         data = pooled(items)
         instructions = (ROOT / (operation + '.txt')).read_text()
         if operation == 'secondary': instructions += '\n' + (ROOT / 'primary_verify.txt').read_text()
-        data.update(original_operation=operation, case_instructions=instructions,
-            canonical_result_contract=first['response_type'].model_json_schema(),
-            result_contract_instructions=('Each result_json must encode an object satisfying canonical_result_contract. '
-                'Use only the exact enum values it defines, especially Counterexample.code. '
-                'Return every required field and preserve the original task/packet IDs. '
-                'The outer items envelope is only transport; it does not replace this inner scientific contract.'))
-        request = ops.prepare_request(role, 'budgeted_batch', data, response_type)
+        data.update(original_operation=operation, case_instructions=instructions)
+        request = ops.prepare_request(role, 'budgeted_structured_batch', data, response_type)
         size = ops.request_tokens(request)
         target = ops.routes[role].context_window_tokens-ops.routes[role].max_output_tokens
         if len(items) > 1 and (size > target or size + ops.routes[role].max_output_tokens > ops.routes[role].context_window_tokens):
@@ -206,13 +262,13 @@ class Coordinator:
         results = {}; batch_ref = None; error = None
         try:
             # Use the ordinary DSPy runtime, provider usage journal and durable request cache.
-            answer = Operations.request(ops, role, 'budgeted_batch', data, response_type)
+            answer = Operations.request(ops, role, 'budgeted_structured_batch', data, response_type)
             batch_ref = ops.store.put(answer)
             allowed = {item['key'] for item in items}
             for record in answer.items:
                 if record.case_id not in allowed or record.case_id in results:
                     raise ValueError('Unknown or duplicate batched case identity')
-                results[record.case_id] = record.result_json
+                results[record.case_id] = result_json(record)
         except Exception as exc:
             error = exc
         for item in items:
@@ -224,7 +280,8 @@ class Coordinator:
                     if item['validate']: item['validate'](result)
                 except Exception as exc: failure = exc
             saved = dict(kind='budgeted_case_receipt_v1', case_id=item['key'],
-                operation=operation,role=role,output_alias=item['data'].get('output_alias') or item['data'].get('packet',{}).get('output_alias'),
+                operation=operation,role=role,wire_format=ops.budgeted_profile['wire_format'],
+                output_alias=item['data'].get('output_alias') or item['data'].get('packet',{}).get('output_alias'),
                 batch_response_sha256=batch_ref.sha256 if batch_ref else None,
                 batch_payload=ops.store.put(data).model_dump(mode='json'),
                 result=result.model_dump(mode='json') if result else None,

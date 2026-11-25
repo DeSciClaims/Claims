@@ -42,8 +42,11 @@ provider-default routing and durable billing journal. Completed per-case results
 retain their original batch response and run receipts; a completed case can resume
 without another paid call. Technical failures remain failures under the owner’s
 no-retry policy. A semantically invalid case does not discard its valid siblings.
-The simple outer schema carries each complete canonical response in a JSON string;
-code strictly parses and validates every response independently. Exact keyed maps
+Version 5 uses a nested typed response schema: every batch item contains a normal
+JSON result object. This avoids malformed JSON inside model-authored strings and
+exposes scientific enum values and required fields to constrained generation.
+The transport reader validates each inner scientific result independently, so
+one invalid result does not discard valid siblings. Exact keyed maps
 use the same lossless conversion as the existing DSPy adapter. Missing decisions,
 duplicate keys and trailing text are rejected. A decoder correction can recover
 a previously paid response without another provider call; its earlier receipt is
@@ -51,10 +54,11 @@ retained in an explicit recovery link.
 Complete JSON matching may echo the provided component-manifest hash instead of
 repeating its full ID list. The decoder expands only that exact, explicit hash
 reference to the supplied manifest; missing or incorrect certifications fail.
-Version 4 includes the full canonical result contract once per batch, including
-all required fields and the exact scientific counterexample-code enum. The simple
-outer provider schema does not hide those inner constraints from the model.
-Unsupported codes remain invalid; they are never guessed or silently renamed.
+The complete result contract is supplied once through the provider response
+schema, including all required fields and the exact scientific counterexample
+code enum. Unsupported codes remain invalid; they are never guessed or renamed.
+A frozen 250 ms coalescing window allows ready cases to share a batch despite
+differences in local preparation time; it never waits for another case's verdict.
 
 ## Run
 

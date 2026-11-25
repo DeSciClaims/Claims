@@ -18,7 +18,7 @@ from validator.scientific_result_v1.source_tasks.packets import Index
 
 
 def wire(case,result):
-    return dict(case_id=case['case_id'],result_json=json.dumps(result))
+    return dict(case_id=case['case_id'],result=result)
 
 
 def optimized(tmp_path,monkeypatch):
@@ -91,6 +91,28 @@ def test_failed_provider_batch_is_retained_without_repeat_dispatch(tmp_path,monk
     assert len(calls)==1
 
 
+def test_invalid_nested_judgment_keeps_its_valid_sibling(tmp_path,monkeypatch):
+    _,_,ops=optimized(tmp_path,monkeypatch)
+    class Runtime:
+        def generate(self,*,payload,**kwargs):
+            items=[]
+            for case in payload['cases']:
+                task=case['payload']['task']['task_id']
+                items.append(wire(case,dict(task_id=task,packet_id='packet-'+task,
+                    outcome='ASSESSED' if task=='bad' else 'SOURCE_UNRESOLVED',checks=[],
+                    evidence_requests=[],target_issue=None,
+                    unresolved_reason=None if task=='bad' else 'Source ambiguity',technical_error=None)))
+            return {'items':items}
+    ops.runtimes['PRIMARY']=Runtime()
+    def call(task):
+        return ops.scoped().request('PRIMARY','primary_verify',dict(task={'task_id':task},
+            packet={'output_alias':'a','packet_id':'packet-'+task},authoritative_evidence={'anchors':[]}),JudgeResponse)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        good=pool.submit(call,'good');bad=pool.submit(call,'bad')
+        assert good.result().outcome=='SOURCE_UNRESOLVED'
+        with pytest.raises(ValueError,match='only ASSESSED'):bad.result()
+
+
 def test_judges_and_miners_have_separate_batches_and_secondary_is_blind(tmp_path,monkeypatch):
     _,_,ops=optimized(tmp_path,monkeypatch);calls=[]
     class Runtime:
@@ -98,8 +120,9 @@ def test_judges_and_miners_have_separate_batches_and_secondary_is_blind(tmp_path
         def generate(self,*,payload,**kwargs):
             cases=payload['cases'];aliases={c['payload']['packet']['output_alias'] for c in cases}
             assert len(aliases)==1
-            contract=payload['canonical_result_contract']
-            assert 'UNSUPPORTED_EXTRA' in contract['$defs']['Counterexample']['properties']['code']['enum']
+            contract=payload['stage_schema']
+            assert 'UNSUPPORTED_EXTRA' in json.dumps(contract)
+            contract=JudgeResponse.model_json_schema()
             assert set(contract['required'])=={'task_id','packet_id','outcome','checks','evidence_requests',
                 'target_issue','unresolved_reason','technical_error'}
             if self.role=='SECONDARY':
