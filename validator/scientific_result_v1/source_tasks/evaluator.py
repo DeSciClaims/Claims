@@ -262,6 +262,10 @@ class PaperEvaluator:
         gates = {}
         vectors = []
         held = []
+        if getattr(self.ops,'budgeted_profile',None) is not None:
+            held.append(ErrorRecord(category='EVALUATOR',code='BUDGETED_DIAGNOSTIC_ONLY',stage='VERIFICATION',
+                message='Experimental indexed retrieval and batched judgments are not qualified guide validation',
+                retryable=False,output_refs=[]))
         allbuckets = []
         selections = []
         if any(p.state=='INFRASTRUCTURE_FAILURE' for p in packages):

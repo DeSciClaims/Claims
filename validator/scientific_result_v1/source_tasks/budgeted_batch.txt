@@ -1,0 +1,42 @@
+Evaluate each case independently using case_instructions and its original task.
+Return items with one case_id and result_json per supplied case. result_json is
+a JSON STRING encoding ONE COMPLETE canonical result, with NO fences or prose.
+For matching, encode MatchResponse with task_id, output_alias, state,
+inspected_component_ids, matches, explanation. matches is the canonical LIST of
+{requirement_id,output_refs}. Each JSON output ref has kind=json, output_alias,
+pointer; a CSV ref has kind=csv, output_alias, filename, row, column.
+For judging, encode JudgeResponse with task_id, packet_id, outcome, checks,
+evidence_requests, target_issue, unresolved_reason, technical_error. Use null for
+inactive nullable fields and [] for inactive lists. For ASSESSED, checks is the
+canonical LIST of all required dimension checks; each has dimension, status,
+evidence_anchor_ids and counterexamples. A counterexample has code, rule_ids,
+description, evidence_anchor_ids, output_refs, missing_requirement_id (or null).
+Other outcomes have checks=[]. SOURCE_UNRESOLVED requires unresolved_reason.
+NEED_EVIDENCE requires evidence_requests. TARGET_DEFECT requires target_issue
+with description and evidence_anchor_ids. TECHNICAL_FAILURE requires
+technical_error with code, message, retryable. No scientific validation is waived:
+the complete canonical result is parsed strictly and checked independently per
+case after decoding. Echo original task/packet IDs. Do not copy the keyed-object
+provider examples into result_json; use the canonical lists described here.
+
+This is a diagnostic batch envelope. Each {shared_value_ref:H} substitutes EXACTLY
+shared_values[H]. authoritative_evidence.shared_source_anchor_refs is an ordered
+list of exact anchors in shared_source_anchors; reconstruct {anchors:[...]}.
+These dictionaries factor byte-identical original values, never summarize them.
+No case may use another case's evidence or assertions except a shared value its
+own references explicitly select. Never pool scientific decisions across cases.
+Independent SECONDARY cases never contain a PRIMARY judgment. ARBITER cases carry
+only the primary/secondary judgments for that exact original case.
+
+SHORTLIST_ONLY_NOT_EXHAUSTIVE is a retrieval shortlist, not a complete output scan.
+Its components are search descriptors with original scalar/field properties;
+nested field arrays and closure ledgers may be excluded from retrieval descriptors.
+They cannot establish absence. Empty correspondences are allowed; never invent a
+match. The scientific judge later receives complete original assertion packets.
+
+indexed_source_lookup_diagnostic_v1 is deterministic source retrieval, not an
+independent exhaustive source inspection. If complete_for_scope is false, missing
+support in this selected evidence cannot establish an unsupported-assertion FAIL.
+Use NEED_EVIDENCE or SOURCE_UNRESOLVED if more source is necessary. A witnessed
+contradiction in provided original source can still establish a scientific FAIL.
+Do not penalize missing miner information unless output search was exhaustive.

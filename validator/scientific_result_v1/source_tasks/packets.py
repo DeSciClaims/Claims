@@ -330,6 +330,9 @@ class Index:
         return headers
 
     def match(self, task, ops, *, evidence=None, role="PRIMARY"):
+        if getattr(ops,'budgeted_profile',None) is not None and task.task_kind=='CONTENT':
+            from .budgeted_validation import match
+            return match(self,task,ops,evidence or {},role)
         available = sorted(self.components, key=lambda s: s.encode())
         original_properties={p.original_ref.pointer for o in [*self.objects,*self.relations] for p in o.properties if p.present}
         inspected = []

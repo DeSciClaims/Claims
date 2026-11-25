@@ -97,7 +97,12 @@ def assess(ops, *, task, packet, evidence, secret, scope, resolve, expand=None, 
                   "required_dimensions":sorted(ARCHIVE if task.task_kind=="ARCHIVE" else SCIENCE)}
             if source_lookup is not None:data['source_lookup']=source_lookup
             packet_hash=sha(canonical(packet));fingerprint=sha(canonical(data))
-            def validate(response):validate_judgment(response,task,packet,anchors,resolve)
+            def validate(response):
+                validate_judgment(response,task,packet,anchors,resolve)
+                if (getattr(ops,'budgeted_profile',None) is not None and source_lookup
+                    and not source_lookup['complete_for_scope'] and response.outcome=='ASSESSED'
+                    and any(c.code=='UNSUPPORTED_EXTRA' for check in response.checks for c in check.counterexamples)):
+                    raise Hold('EVALUATOR','Indexed source retrieval cannot prove lack of support from the complete source')
             def call(role,operation,request):
                 response=ops.request(role,operation,request,JudgeResponse,validate=validate,
                     packet_tokens=ops.tokenizers[role](canonical(data["packet"]).decode()),

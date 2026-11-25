@@ -56,7 +56,14 @@ def main(argv=None, *, request_gate=None):
     p.add_argument('--minimum-resolved-fraction',default='1/2')
     p.add_argument('--diagnostic-workers',type=int,default=20)
     p.add_argument('--runtime-controls',type=Path,help='Owner-amended local diagnostic dispatch controls; requests and scientific policy stay bound')
+    p.add_argument('--budgeted-validation',action='store_true',help='Local indexed retrieval and batched DSPy experiment; never competition qualified')
     args=p.parse_args(argv)
+    budgeted=None
+    if args.budgeted_validation:
+        if not args.failure_tolerance or args.harness!='dspy':
+            raise ValueError('Budgeted validation requires an explicit DSPy failure-tolerance diagnostic')
+        from validator.scientific_result_v1.source_tasks.budgeted_validation import PROFILE
+        budgeted=dict(PROFILE)
     controls=None
     if args.runtime_controls:
         if not args.failure_tolerance:raise ValueError('Runtime controls require an explicit local failure-tolerance diagnostic')
@@ -100,6 +107,7 @@ def main(argv=None, *, request_gate=None):
             raise ValueError('Resume inputs or harness changed; use a new diagnostic directory')
         settings=store.load(FileRef.model_validate(saved['settings'],strict=True),FrozenSettings)
         execution=json.loads(store.read(settings.execution_policy))
+        if execution.get('budgeted_validation')!=budgeted:raise ValueError('Resume budgeted validation profile changed')
         if execution.get('failure_tolerance_diagnostic')!=tolerance:raise ValueError('Resume failure-tolerance policy changed')
         if {r.role:r.model for r in settings.model_routes} != models:
             raise ValueError('Resume model roles changed; use a new diagnostic directory')
@@ -108,6 +116,7 @@ def main(argv=None, *, request_gate=None):
         execution={'mode':'local_proprietary_comparison_v1' if profiles else 'failure_tolerance_diagnostic' if tolerance else 'saved_paper_local_diagnostic',
                    'scientific_accuracy_policy':'unmeasured_without_truth_corpus'}
         if tolerance:execution['failure_tolerance_diagnostic']=tolerance
+        if budgeted:execution['budgeted_validation']=budgeted
         settings,ref=freeze_settings(store,route_snapshots=header['snapshots'],models=models,diagnostic_profiles=profiles,
             harness=args.harness,hermes_python=args.hermes_python,sealed_evaluation_timeout_seconds=7200,
             execution_policy=execution)

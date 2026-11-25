@@ -109,6 +109,9 @@ def fit_lookup_request(ops, role, data):
 
 def prepare(ops,frame,shards):
     """Return complete assertion cases with bounded, independently retrieved evidence."""
+    if getattr(ops,'budgeted_profile',None) is not None:
+        from .budgeted_validation import prepare as indexed_prepare
+        return indexed_prepare(ops,frame,shards)
     if (getattr(ops,'harness',None) or {}).get('judge_source_corpus')=='all_supplied_docling_anchors_v1':
         # File access replaces prompt packing, not the original source. Expose
         # every independently captured supplied anchor to scientific judges.

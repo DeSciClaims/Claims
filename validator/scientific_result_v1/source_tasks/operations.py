@@ -171,6 +171,7 @@ class Operations:
         offline=False,
         generation_timeout_seconds=1800,
         harness=None,diagnostic_profiles=None,failure_tolerance_policy=None,diagnostic_runtime_controls=None,
+        budgeted_profile=None,budgeted_context=None,
     ):
         self.store = store
         self.routes = routes
@@ -205,6 +206,14 @@ class Operations:
             self.gate=gate or threading.BoundedSemaphore(self.max_workers)
         self.offline = offline
         self.harness = harness
+        self.budgeted_profile = budgeted_profile
+        self.budgeted_context = budgeted_context
+        if budgeted_profile is not None:
+            from .budgeted_validation import profile, Context
+            profile(budgeted_profile)
+            if failure_tolerance_policy is None or harness is not None:
+                raise ValueError('Budgeted validation is restricted to an explicit local DSPy diagnostic')
+            self.budgeted_context = budgeted_context or Context()
         self.diagnostic_profiles=diagnostic_profiles or {}
         self.used = []
         self.response_refs = {}
@@ -247,6 +256,11 @@ class Operations:
             prompt += "\n" + (ROOT / "primary_verify.txt").read_text()
         prompt += "\nSCHEMA RULES:\n" + json.dumps(json.loads((ROOT/"extraction_schema.json").read_text())["x-validation_checks"], ensure_ascii=False)
         prompt += "\nSTRICT OUTPUT: Return exactly one JSON object matching stage_schema. No Markdown fences, prose, partial objects or ellipses, including after validation_feedback. Echo all supplied binding/inspection IDs exactly; do not shorten lists. A retry must produce the complete corrected response."
+        if operation=='budgeted_batch':
+            prompt += ('\nBATCH WIRE EXCEPTION: items contains case_id and result_json. '
+                       'Inside result_json, matches and checks are CANONICAL LISTS, not keyed wire objects. '
+                       'The earlier keyed-object adapter rules do not apply inside these JSON strings. '
+                       'Return every field of the canonical MatchResponse or JudgeResponse described above.')
         from .response_schema import response_schema, compact_schema
         schema = compact_schema(response_schema(response_type,data))
         route = self.routes[role]
@@ -290,6 +304,10 @@ class Operations:
         packet_tokens=None,
         source_limit=SOURCE_TOKEN_BUDGETS[0],
     ):
+        if self.budgeted_profile is not None:
+            from .budgeted_batches import SUPPORTED
+            if operation in SUPPORTED:
+                return self.budgeted_context.batches.submit(self,role,operation,data,response_type,validate)
         request=self.prepare_request(role,operation,data,response_type)
         data=request['payload'];prompt=request['instructions'];schema=request['stage_schema']
         route=self.routes[role]
@@ -504,7 +522,8 @@ class Operations:
         return Operations(store=self.store,routes=self.routes,runtimes=runtimes,tokenizers=self.tokenizers,
             trace_dir=self.trace_dir,deadline=self.deadline,policy_hash=self.policy_hash,gate=self.gate,offline=self.offline,
             generation_timeout_seconds=self.generation_timeout_seconds,harness=self.harness,diagnostic_profiles=self.diagnostic_profiles,
-            failure_tolerance_policy=self.failure_tolerance_policy,diagnostic_runtime_controls=self.diagnostic_runtime_controls)
+            failure_tolerance_policy=self.failure_tolerance_policy,diagnostic_runtime_controls=self.diagnostic_runtime_controls,
+            budgeted_profile=self.budgeted_profile,budgeted_context=self.budgeted_context)
 
 
 def retained_usage(store, run_refs):

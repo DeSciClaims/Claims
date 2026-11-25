@@ -30,6 +30,12 @@ def make_operations(*,store,settings,policy_sha256,trace_dir,deadline=None,offli
     from .harness import validate_harness,hermes_identity,TOOLS
     execution=json.loads(store.read(settings.execution_policy))
     tolerance=execution.get('failure_tolerance_diagnostic')
+    budgeted=execution.get('budgeted_validation')
+    if budgeted is not None:
+        from .budgeted_validation import profile
+        profile(budgeted)
+        if tolerance is None or execution.get('mode')!='failure_tolerance_diagnostic':
+            raise ValueError('Budgeted validation requires an explicit local failure-tolerance diagnostic')
     if diagnostic_runtime_controls is not None and (tolerance is None or execution.get('mode')!='failure_tolerance_diagnostic'):
         raise ValueError('Runtime controls require a local failure-tolerance diagnostic')
     if tolerance is not None and execution.get('mode')!='failure_tolerance_diagnostic':
@@ -72,4 +78,5 @@ def make_operations(*,store,settings,policy_sha256,trace_dir,deadline=None,offli
     return Operations(store=store,routes=routes,runtimes=runtimes,tokenizers={role:tokenizer for role in routes},
         trace_dir=trace_dir,deadline=deadline or time.time()+settings.sealed_evaluation_timeout_seconds,policy_hash=policy_sha256,offline=offline,
         generation_timeout_seconds=settings.sealed_evaluation_timeout_seconds,harness=harness,diagnostic_profiles=diagnostic_profiles,
-        failure_tolerance_policy=tolerance,gate=request_gate,diagnostic_runtime_controls=diagnostic_runtime_controls)
+        failure_tolerance_policy=tolerance,gate=request_gate,diagnostic_runtime_controls=diagnostic_runtime_controls,
+        budgeted_profile=budgeted)
