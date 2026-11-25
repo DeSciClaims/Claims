@@ -26,6 +26,12 @@ def decode_result(raw, response_type, data):
     """Decode the existing keyed wire forms without repairing scientific content."""
     from .literals import LiteralDocument
     parsed=LiteralDocument(raw.encode()).value
+    if response_type is MatchResponse and isinstance(parsed.get('inspected_component_ids'),dict):
+        declared=parsed['inspected_component_ids']
+        if (data.get('scan_scope')!='COMPLETE_ORIGINAL_JSON' or set(declared)!={'manifest_sha256'}
+            or declared['manifest_sha256']!=data['inspection_manifest_sha256']):
+            raise ValueError('Full inspection requires the exact explicitly certified component manifest')
+        parsed={**parsed,'inspected_component_ids':data['inspection_component_ids']}
     if response_type is MatchResponse and isinstance(parsed.get('matches'),dict):
         expected=data['required_requirement_ids'];matches=parsed['matches']
         if set(matches)!=set(expected) or any(not isinstance(v,list) for v in matches.values()):
@@ -63,6 +69,8 @@ def pooled(items):
             data['authoritative_evidence'] = {'shared_source_anchor_refs': ids}
         if isinstance(data.get('components'), dict):
             data['components'] = {key: shared(value) for key, value in data['components'].items()}
+        for name in ('original_extraction_json','computed_closure_views','inspection_component_ids'):
+            if name in data:data[name]=shared(data[name])
         if isinstance(data.get('packet'), dict):
             for name in ('objects', 'relations', 'context_headers', 'closures', 'csv_blocks', 'document_bindings'):
                 if name in data['packet']:
@@ -128,7 +136,8 @@ class Coordinator:
     def retain(ops, saved):
         ops.run_refs.extend(FileRef.model_validate(ref, strict=True) for ref in saved['run_refs'])
         ops.used.extend(saved['run_ids'])
-        ops.packet_refs.append(ops.store.put(saved))
+        # Derived batch receipts have their own durable budgeted-case heads.
+        # They are not AssertionPacket objects and must not enter that ledger.
 
     @staticmethod
     def recover_wire(ops,key,previous,saved,response_type,data,validate):
@@ -185,7 +194,7 @@ class Coordinator:
         data.update(original_operation=operation, case_instructions=instructions)
         request = ops.prepare_request(role, 'budgeted_batch', data, response_type)
         size = ops.request_tokens(request)
-        target = ops.budgeted_profile['batch_input_target_tokens']
+        target = ops.routes[role].context_window_tokens-ops.routes[role].max_output_tokens
         if len(items) > 1 and (size > target or size + ops.routes[role].max_output_tokens > ops.routes[role].context_window_tokens):
             middle = len(items)//2
             self.dispatch(items[:middle]); self.dispatch(items[middle:]); return

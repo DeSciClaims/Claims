@@ -16,6 +16,12 @@ checks remained unresolved, so lower cost alone does not establish improvement.
    for each source finding. Later scientific packets retain full original values,
    relationships, closures and context. A shortlist miss remains unresolved;
    it never establishes an omission by itself.
+   Version 3 instead sends the **complete original extraction JSON** plus its
+   computed closure views when they fit the model context. This is usually much
+   smaller than repeated object/property wrappers. The index supplies navigation
+   hints; it never restricts that complete scan. Several authored source findings
+   share one complete JSON document per batch. Only a complete scan can certify
+   absence. Large outputs fall back to the explicitly incomplete shortlist.
 2. Batch ready matching requests for the same miner and role. Repeated original
    source anchors and candidate values are transmitted once per batch, using
    explicit references to exact shared values.
@@ -27,6 +33,9 @@ checks remained unresolved, so lower cost alone does not establish improvement.
 4. Batch ready scientific checks for the same miner, operation and judge role.
    Every case keeps its own verdict, dimensions and original pointers. Secondary
    review remains blind; arbitration sees only the corresponding case's reviews.
+   Complete independent shards within a root case can run in parallel too.
+   Batch planning uses the actual model context minus its output reserve;
+   every individual scientific case retains its existing source/packet bounds.
 
 All paid requests still use the existing DSPy runtime, approved model routes,
 provider-default routing and durable billing journal. Completed per-case results
@@ -39,6 +48,9 @@ use the same lossless conversion as the existing DSPy adapter. Missing decisions
 duplicate keys and trailing text are rejected. A decoder correction can recover
 a previously paid response without another provider call; its earlier receipt is
 retained in an explicit recovery link.
+Complete JSON matching may echo the provided component-manifest hash instead of
+repeating its full ID list. The decoder expands only that exact, explicit hash
+reference to the supplied manifest; missing or incorrect certifications fail.
 
 ## Run
 

@@ -28,7 +28,6 @@ from validator.scientific_result_v1.source_tasks.packets import Index
 from validator.scientific_result_v1.source_tasks.evaluator import evidence_for,expand_evidence
 from validator.scientific_result_v1.source_tasks.evidence_batching import prepare
 from validator.scientific_result_v1.source_tasks.sharding import partition
-from validator.scientific_result_v1.source_tasks.judging import assess
 from validator.scientific_result_v1.source_tasks.operations import retained_usage,Hold
 
 
@@ -139,11 +138,12 @@ def main(argv=None,*,request_gate=None):
                     existing=packets[alias].get(task.task_id)
                     if existing is None:raise Hold('EVALUATOR','Original source-to-table correspondence is unresolved')
                     shards=[(task,existing)]
-                for child,packet,evidence,lookup in prepare(local,frame,shards):
-                    verdict=assess(local,task=child,packet=packet,evidence=evidence,source_lookup=lookup,
-                        secret=bytes.fromhex(manifest.revealed_seed_hex),
-                        scope=(task.binding.protocol_id,task.binding.round_id,task.binding.stage,task.binding.paper_id),
-                        resolve=index.resolve,expand=lambda current,requests,limit:expand_evidence(frame,current,requests,limit,tokenizers=local.tokenizers))
+                from validator.scientific_result_v1.source_tasks.budgeted_validation import assess_shards
+                for child,packet,verdict in assess_shards(local,prepare(local,frame,shards),
+                    secret=bytes.fromhex(manifest.revealed_seed_hex),
+                    scope=(task.binding.protocol_id,task.binding.round_id,task.binding.stage,task.binding.paper_id),
+                    resolve=index.resolve,expand=lambda child_ops,current,requests,limit:
+                        expand_evidence(frame,current,requests,limit,tokenizers=child_ops.tokenizers)):
                     verdicts.append(store.put(verdict).model_dump(mode='json'))
                     if verdict.state=='HOLD':errors.extend(verdict.hold_reasons)
                     else:bits.append(int(verdict.state=='PASS'))

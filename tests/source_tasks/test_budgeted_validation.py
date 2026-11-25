@@ -50,7 +50,8 @@ def test_multiple_findings_share_one_paid_batch_and_completed_items_resume(tmp_p
     def call(data):return ops.scoped().request('PRIMARY','source_match',data,MatchResponse)
     with ThreadPoolExecutor(max_workers=4) as pool:results=list(pool.map(call,inputs))
     assert len(calls)==1 and len(results)==4
-    assert len(calls[0]['shared_source_anchors'])==1 and len(calls[0]['shared_values'])==1
+    assert len(calls[0]['shared_source_anchors'])==1
+    assert list(calls[0]['shared_values'].values()).count({'literal':'3.5000'})==1
     assert [r.task_id for r in results]==['task-'+str(i) for i in range(4)]
     assert [call(data) for data in inputs]==results
     assert len(calls)==1
@@ -175,6 +176,34 @@ def test_keyed_wire_decoding_is_lossless_and_never_supplies_a_missing_decision()
     with pytest.raises(ValueError):decode_result(duplicate,MatchResponse,data)
 
 
+def test_complete_json_requires_explicit_exact_inspection_manifest(generated,tmp_path,monkeypatch):
+    from types import SimpleNamespace
+    from validator.scientific_result_v1.source_tasks.store import canonical,sha
+    path,_,_=generated;index=Index(Package(path,'a'));store,_,_=optimized(tmp_path,monkeypatch)
+    task,_=packet_case(index,store,refs=[index.objects[0].original_ref])
+    class Runtime:
+        budgeted_profile=PROFILE
+        routes={'PRIMARY':SimpleNamespace(context_window_tokens=1000000,max_output_tokens=16384)}
+        tokenizers={'PRIMARY':lambda s:len(s.split())}
+        def request(self,role,operation,data,response_type,*,validate):
+            assert data['scan_scope']=='COMPLETE_ORIGINAL_JSON'
+            assert data['original_extraction_json'].encode()==index.doc.raw
+            assert 'authoritative_evidence' not in data
+            raw=dict(task_id=task.task_id,output_alias='a',state='ABSENT',
+                inspected_component_ids={'manifest_sha256':data['inspection_manifest_sha256']},
+                matches={r.requirement_id:[] for r in task.requirements},explanation='Full original JSON inspected')
+            result=decode_result(json.dumps(raw),MatchResponse,data);validate(result);return result
+    fake=Runtime();fake.store=store
+    result=match(index,task,fake,{'anchors':[]},'PRIMARY')
+    assert result.state=='ABSENT' and result.coverage.exhaustive_fallback_completed
+    assert result.coverage.inspected_components==len(index.components)
+    data=dict(scan_scope='COMPLETE_ORIGINAL_JSON',inspection_component_ids=['/results/0'],
+              inspection_manifest_sha256=sha(canonical(['/results/0'])),required_requirement_ids=['r'])
+    raw=dict(task_id='t',output_alias='a',state='ABSENT',inspected_component_ids={'manifest_sha256':'0'*64},
+             matches={'r':[]},explanation='Invalid inspection claim')
+    with pytest.raises(ValueError,match='exact explicitly certified'):decode_result(json.dumps(raw),MatchResponse,data)
+
+
 def test_decoder_correction_recovers_paid_response_without_another_provider_call(tmp_path,monkeypatch):
     store,_,ops=optimized(tmp_path,monkeypatch);calls=[]
     class Runtime:
@@ -211,3 +240,23 @@ def test_ready_batches_for_same_miner_dispatch_concurrently(tmp_path,monkeypatch
     def call(i):return ops.scoped().request('PRIMARY','source_match',request('a',str(i)),MatchResponse)
     with ThreadPoolExecutor(max_workers=8) as pool:results=list(pool.map(call,range(8)))
     assert len(results)==8 and len(calls)==2
+
+
+def test_complete_independent_shards_run_together_and_keep_original_packets(generated,tmp_path,monkeypatch):
+    from threading import Event,Lock
+    from types import SimpleNamespace
+    from validator.scientific_result_v1.source_tasks.budgeted_validation import assess_shards
+    path,_,_=generated;index=Index(Package(path,'a'));store,_,ops=optimized(tmp_path,monkeypatch)
+    task,packet=packet_case(index,store,refs=[index.objects[0].original_ref])
+    both=Event();guard=Lock();seen=[]
+    def scripted(local,*,task,packet,**kwargs):
+        with guard:
+            seen.append((task.task_id,packet.packet_id))
+            if len(seen)==2:both.set()
+        assert both.wait(2)
+        return SimpleNamespace(state='PASS' if task.task_id.endswith('one') else 'HOLD')
+    monkeypatch.setattr('validator.scientific_result_v1.source_tasks.judging.assess',scripted)
+    entries=[(task.model_copy(update={'task_id':suffix}),packet,{'anchors':[]},None) for suffix in ['one','two']]
+    results=assess_shards(ops,entries,secret=b'x'*32,scope=('test',),resolve=index.resolve,expand=lambda *a:None)
+    assert [r[2].state for r in results]==['PASS','HOLD']
+    assert all(r[1]==packet for r in results) and len(ops.packet_refs)==2

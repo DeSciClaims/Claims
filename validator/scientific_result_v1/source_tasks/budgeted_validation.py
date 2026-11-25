@@ -8,12 +8,13 @@ from .store import canonical, sha
 from .operations import Hold
 
 PROFILE = {
-    'kind': 'claims_budgeted_validation_diagnostic_v2',
+    'kind': 'claims_budgeted_validation_diagnostic_v3',
     'wire_format': 'canonical_json_items_v1',
+    'matching_representation': 'complete_original_json_when_fits_v1',
     'candidate_components': 96,
     'matching_batch_size': 4,
     'judging_batch_size': 3,
-    'batch_input_target_tokens': 48000,
+    'batch_input_target_tokens': 'model_context_minus_output_reserve',
     'source_candidate_anchors': 12,
     'absence_policy': 'unresolved_without_exhaustive_search',
     'competition_eligible': False,
@@ -76,6 +77,32 @@ def match(index, task, ops, evidence, role):
             for key,header in index.match_context(keys).items()}, inspection_component_ids=keys,
         required_requirement_ids=[r.requirement_id for r in task.requirements],
         components=catalog, authoritative_evidence=evidence)
+    available = sorted(index.components, key=lambda s: s.encode())
+    complete = False
+    if hasattr(ops,'routes') and hasattr(ops,'tokenizers'):
+        # Retrieval compares the authored requirements with the original output.
+        # Raw source evidence belongs to the later independent scientific check.
+        # Sending the complete original JSON is usually substantially smaller
+        # than repeating property wrappers and provenance in descriptor batches.
+        full = dict(task=task.model_dump(mode='json'),output_alias=index.alias,
+            scan_scope='COMPLETE_ORIGINAL_JSON',original_extraction_json=index.doc.raw.decode(),
+            computed_closure_views=[c.model_dump(mode='json') for c in index.closures],
+            inspection_component_ids=available,inspection_manifest_sha256=sha(canonical(available)),
+            required_requirement_ids=data['required_requirement_ids'],candidate_hints=keys,
+            retrieval_instructions=('Inspect the COMPLETE original extraction JSON and computed closure views. '
+                'The candidate hints only order the search; they never restrict it. Compare every authored '
+                'requirement, including its qualifications, with the original submitted information. '
+                'This is correspondence, not a source-truth judgment: the scientific judge separately '
+                'checks the original paper. Do not require omitted raw source evidence in this retrieval step. '
+                'To certify full inspection, inspected_component_ids may be the exact full ID list OR '
+                'the object {"manifest_sha256": inspection_manifest_sha256}. Only certify that manifest '
+                'after inspecting the complete original JSON and closure views; otherwise return '
+                'LOOKUP_UNRESOLVED. Never invent a match. Absence may be stated only after the complete search.'))
+        route=ops.routes[role]
+        # Conservative planning overhead; dispatch still counts the actual DSPy
+        # request/schema and rejects anything outside the frozen model capacity.
+        if ops.tokenizers[role](canonical(full).decode())+16384+route.max_output_tokens<=route.context_window_tokens:
+            data=full;keys=available;complete=True
     original_properties={p.original_ref.pointer for o in [*index.objects,*index.relations]
                          for p in o.properties if p.present}
 
@@ -101,15 +128,15 @@ def match(index, task, ops, evidence, role):
     response = ops.request(role, 'source_match', data, MatchResponse, validate=validate)
     candidates = list({canonical(r): r for m in response.matches for r in m.output_refs}.values())
     # A shortlist cannot certify absence, even if the model calls it ABSENT.
-    if response.state == 'LOOKUP_UNRESOLVED' or any(not m.output_refs for m in response.matches):
+    if response.state == 'LOOKUP_UNRESOLVED' or (not complete and any(not m.output_refs for m in response.matches)):
         raise Hold('EVALUATOR', 'Indexed retrieval did not resolve every requirement; no exhaustive omission claim')
-    available = sorted(index.components, key=lambda s: s.encode())
     return MatchResult(task_id=task.task_id, output_alias=index.alias,
-        state='MATCHED' if candidates else 'LOOKUP_UNRESOLVED', matches=response.matches,
+        state=('AMBIGUOUS' if response.state=='AMBIGUOUS' else 'MATCHED') if candidates else 'ABSENT' if complete else 'LOOKUP_UNRESOLVED', matches=response.matches,
         candidate_refs=candidates, coverage=SearchCoverage(index_sha256=index.sha256,
             available_component_ids=ops.store.put(available), inspected_component_ids=ops.store.put(keys),
-            available_components=len(available), inspected_components=len(keys), exhaustive_fallback_completed=False),
-        explanation='Experimental indexed shortlist. Original candidates are verified scientifically; omissions remain unresolved.')
+            available_components=len(available), inspected_components=len(keys), exhaustive_fallback_completed=complete),
+        explanation=('Complete original JSON and computed closures inspected against the authored requirements.' if complete
+            else 'Experimental indexed shortlist. Original candidates are verified scientifically; omissions remain unresolved.'))
 
 
 def terms(text):
@@ -195,3 +222,26 @@ def prepare(ops, frame, shards):
         packet = packet.model_copy(update={'packet_id': 'packet-' + sha(canonical(packet.model_dump(exclude={'packet_id'})))})
         result.append((task, packet, evidence(frame, ids), summary))
     return result
+
+
+def assess_shards(ops, entries, *, secret, scope, resolve, expand):
+    """Independent complete child cases become ready together for judge batching."""
+    from concurrent.futures import ThreadPoolExecutor
+    from .judging import assess
+    def run(entry):
+        task,packet,evidence,lookup=entry;local=ops.scoped()
+        try:
+            local.packet_refs.append(local.store.put(packet))
+            verdict=assess(local,task=task,packet=packet,evidence=evidence,source_lookup=lookup,
+                secret=secret,scope=scope,resolve=resolve,
+                expand=lambda current,requests,limit:expand(local,current,requests,limit))
+            return task,packet,verdict
+        finally:
+            # One child owns each native call context; billing stays in the
+            # durable journal even if its scientific case cannot finish.
+            with ops.budgeted_context.lock:
+                ops.run_refs.extend(local.run_refs);ops.used.extend(local.used)
+                ops.packet_refs.extend(local.packet_refs);ops.response_refs.update(local.response_refs)
+    entries=list(entries)
+    if len(entries)<2:return [run(entry) for entry in entries]
+    with ThreadPoolExecutor(max_workers=min(4,len(entries))) as pool:return list(pool.map(run,entries))

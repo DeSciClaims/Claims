@@ -382,9 +382,15 @@ class PaperEvaluator:
                     shards=partition(index,task,packet,tokenizers=local.tokenizers,source_frame=source_frame)
                 children.extend(child for child,_ in shards if child!=task)
                 from .evidence_batching import prepare
-                for child,rendered,source_evidence,lookup in prepare(local,source_frame,shards):
+                prepared=prepare(local,source_frame,shards)
+                if getattr(local,'budgeted_profile',None) is not None:
+                    from .budgeted_validation import assess_shards
+                    assessed=assess_shards(local,prepared,secret=secret,scope=scope,resolve=index.resolve,
+                        expand=lambda child_ops,current,requests,limit:expand_evidence(source_frame,current,requests,limit,tokenizers=child_ops.tokenizers))
+                else:assessed=None
+                for ordinal,(child,rendered,source_evidence,lookup) in enumerate(prepared):
                     packet_refs.append(store.put(rendered))
-                    verdict=assess(local,task=child,packet=rendered,evidence=source_evidence,source_lookup=lookup,
+                    verdict=assessed[ordinal][2] if assessed is not None else assess(local,task=child,packet=rendered,evidence=source_evidence,source_lookup=lookup,
                         secret=secret,scope=scope,resolve=index.resolve,
                         expand=lambda current,requests,limit:expand_evidence(source_frame,current,requests,limit,tokenizers=local.tokenizers))
                     verdict_ref=store.put(verdict);verdict_refs.append(verdict_ref)
