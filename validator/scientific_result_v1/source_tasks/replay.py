@@ -41,9 +41,12 @@ def replay(store,ref):
     for p in packages:
         if (p.round_id,p.paper_id,p.source_packet_sha256)!=(receipt.binding.round_id,receipt.binding.paper_id,receipt.binding.source_packet_sha256):
             raise ValueError('Submitted package scope changed')
-    from .errors import validate_error
+    from .errors import validate_error, BUDGETED_HOLD_CODE
     for error in [*receipt.hold_reasons,*(e for g in receipt.deterministic_gates for e in g.errors),*(e for p in packages for e in p.errors)]:
         validate_error(error)
+    experimental_hold = any(error.code == BUDGETED_HOLD_CODE for error in receipt.hold_reasons)
+    if experimental_hold and receipt.state != 'HOLD':
+        raise ValueError('Experimental budgeted receipts must remain HOLD')
     pool=sha(canonical(sorted((p.model_dump(mode='json') for p in packages),key=lambda p:p['output_alias'])))
     if pool!=receipt.binding.input_pool_sha256:raise ValueError('Original package pool changed')
     for f in [receipt.source_frame,receipt.source_packet,receipt.comparison_plan,receipt.sampling_manifest,*receipt.input_packages,*receipt.task_cards,*receipt.assertion_packets,*receipt.judge_runs,*receipt.scientific_verdicts]:store.read(f)
@@ -69,12 +72,19 @@ def replay(store,ref):
         card=store.load(r,TaskCard)
         if card.binding!=receipt.binding or card.task_id in cards:raise ValueError('Task identity mismatch')
         cards[card.task_id]=card
-    packets={}
+    packets={};packet_refs={}
     for r in receipt.assertion_packets:
         case=store.load(r,AssertionPacket)
         if case.binding!=receipt.binding or case.task_card_sha256!=sha(canonical(cards[case.task_id])):raise ValueError('Assertion packet binding mismatch')
-        if r.sha256 in packets:raise ValueError('Duplicate packet')
+        if r.sha256 in packets:
+            # Experimental recovery can retain the same immutable packet more
+            # than once. Replay its content once, preserving the original ledger
+            # and the separate case/verdict checks that prevent duplicate credit.
+            if experimental_hold and packet_refs[r.sha256] == r:
+                continue
+            raise ValueError('Duplicate packet')
         packets[r.sha256]=case
+        packet_refs[r.sha256]=r
     verdicts={}
     for r in receipt.scientific_verdicts:
         verdict=store.load(r,ScientificVerdict);case=packets[verdict.packet_sha256]

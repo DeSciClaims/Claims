@@ -6,10 +6,13 @@ CODES={
  'MODEL':{'PROVIDER_ERROR','PROVIDER_TIMEOUT','RESPONSE_INVALID','RESPONSE_TRUNCATED'}}
 STAGES={'CONFIGURATION','SOURCE_PREPARATION','EXECUTION','PACKAGE_COLLECTION','MECHANICAL','INDEXING','SAMPLING','TASK_BUILD','MATCHING','RENDERING','VERIFICATION','SILVER','SCORING','EXCLUSION','FALLBACK','PUBLICATION','REPLAY'}
 WORKER_CODES={'build_failed':'PACKAGE_BUILD_FAILED','package_failed':'PACKAGE_MISSING','invalid_output':'PACKAGE_SCHEMA','timeout':'PACKAGE_TIMEOUT','cap_exceeded':'PACKAGE_RESOURCE_LIMIT','security_violation':'PACKAGE_SECURITY'}
+BUDGETED_HOLD_CODE = 'BUDGETED_DIAGNOSTIC_ONLY'
+CODES['EVALUATOR'].add(BUDGETED_HOLD_CODE)
 
 
 def validate_error(error):
-    if error.category not in CODES or error.code not in CODES[error.category] or error.stage not in STAGES:
+    if (error.category not in CODES or error.code not in CODES[error.category] or error.stage not in STAGES
+        or error.code == BUDGETED_HOLD_CODE and error.stage != 'VERIFICATION'):
         raise ValueError('Unregistered transport error disposition: '+error.category+'/'+error.code+'/'+error.stage)
 
 

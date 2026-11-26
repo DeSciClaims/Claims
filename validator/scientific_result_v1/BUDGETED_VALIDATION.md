@@ -99,6 +99,14 @@ The strict receipt remains HOLD with `BUDGETED_DIAGNOSTIC_ONLY`; conservative
 diagnostic scores and unresolved checks are reported separately. Strict guide
 replay is not asserted for these experimental batch/retrieval receipts.
 
+Provider-free receipt replay recognizes this experimental HOLD marker. Identical
+packet references retained during recovery are verified once without rewriting
+the original receipt or adding scientific task credit. Conflicting references
+still fail, and the experimental marker cannot appear on a strict FROZEN receipt.
+Competition ranking additionally requires the round-bound advisory policy and
+replays its separate conservative score receipt; recognizing the marker does
+not qualify the experimental profile as strict guide validation.
+
 ## Compare
 
 An offline pass can measure recovery of the old matcher's candidates on exactly
