@@ -12,7 +12,7 @@ from .packages import Package
 from .judging import validate_judgment
 
 
-def replay(store,ref):
+def replay(store,ref,*,error_registry=None):
     receipt=store.load(ref,SampledSilverReceipt)
     packet=store.load(receipt.source_packet,SourcePacket)
     source=store.load(receipt.source_frame,SourceFrame)
@@ -41,7 +41,11 @@ def replay(store,ref):
     for p in packages:
         if (p.round_id,p.paper_id,p.source_packet_sha256)!=(receipt.binding.round_id,receipt.binding.paper_id,receipt.binding.source_packet_sha256):
             raise ValueError('Submitted package scope changed')
-    from .errors import validate_error, BUDGETED_HOLD_CODE
+    if error_registry is None:
+        from .errors import validate_error, BUDGETED_HOLD_CODE
+    else:
+        validate_error = error_registry.validate_error
+        BUDGETED_HOLD_CODE = error_registry.BUDGETED_HOLD_CODE
     for error in [*receipt.hold_reasons,*(e for g in receipt.deterministic_gates for e in g.errors),*(e for p in packages for e in p.errors)]:
         validate_error(error)
     experimental_hold = any(error.code == BUDGETED_HOLD_CODE for error in receipt.hold_reasons)

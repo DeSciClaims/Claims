@@ -107,6 +107,12 @@ Competition ranking additionally requires the round-bound advisory policy and
 replays its separate conservative score receipt; recognizing the marker does
 not qualify the experimental profile as strict guide validation.
 
+For a round already bound to an older generating implementation,
+`scripts/scientific_replay_reader.py` loads a separately hash-attested reader.
+The frozen generator and its implementation digest remain unchanged. This reader
+requires the current round's explicit experimental advisory policy and matching
+policy hash, and delegates non-experimental receipts to the original verifier.
+
 ## Compare
 
 An offline pass can measure recovery of the old matcher's candidates on exactly
