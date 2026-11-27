@@ -66,3 +66,26 @@ all-entrant pair disposition and receipt/clock hashes. It preserves completed
 scientific receipts and uses the original ranking, team and tie rules. It also
 omits unexecuted jobs from code-runtime and blocked-egress audits; actual worker
 executions retain their existing security checks.
+
+## Preserving a seed across an implementation-only repair
+
+A prepared paper can retain its original sampling commitment when an explicitly
+approved implementation repair changes the policy fingerprint without changing
+scientific settings. `claims_seed_policy_continuation_v1` binds the original and
+current policies, preparation, source frame, seed hash and sealed output pool.
+The original seed bytes and commitment remain unchanged. Models, prompts,
+parser, sampling, weights, limits and all other policy fields must match; only
+the recorded factory and implementation identities may differ.
+
+The backend validates this record before accepting its immutable authorization
+head. Evaluation, receipt replay and independent publication all verify the same
+contract. Authenticated evaluation exports include the authorization and its
+policy evidence without exposing the preparation's private seed blob. Existing
+judging clocks and completed scores are retained.
+
+For a frozen runtime, `scripts/scientific_seed_continuation_reader.py` installs
+separately hash-attested evaluator/replay copies only for the approved paper
+and policy. Other papers use the original evaluator. Final receipt verification
+can run in bounded parallel batches; every original verification still runs and
+any failure propagates. Installing the adapter leaves the frozen generator
+files and their runtime descriptor unchanged.

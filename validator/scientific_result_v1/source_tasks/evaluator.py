@@ -214,11 +214,10 @@ class PaperEvaluator:
             comparison_plan.stage,
             source_packet.paper_id,
         )
-        if (
-            seed_commitment(secret, scope, sha(canonical(source_packet)), policy_sha256)
-            != commitment
-        ):
-            raise ValueError("Seed commitment mismatch")
+        from .seed_continuation import verify as verify_seed_commitment
+        verify_seed_commitment(store,scope=scope,source_packet_sha256=sha(canonical(source_packet)),
+            source_frame_sha256=sha(canonical(source_frame)),current_policy_sha256=policy_sha256,
+            input_pool_sha256=pool,secret=secret,original_commitment=commitment)
         binding = EvaluationBinding(
             protocol_id=PROTOCOL,
             paper_id=source_packet.paper_id,

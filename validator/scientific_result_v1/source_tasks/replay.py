@@ -66,7 +66,10 @@ def replay(store,ref,*,error_registry=None):
     if manifest.binding!=receipt.binding:raise ValueError('Sample binding mismatch')
     secret=bytes.fromhex(manifest.revealed_seed_hex)
     scope=(PROTOCOL,receipt.binding.round_id,receipt.binding.stage,receipt.binding.paper_id)
-    if seed_commitment(secret,scope,receipt.binding.source_packet_sha256,receipt.binding.policy_sha256)!=manifest.seed_commitment:raise ValueError('Invalid revealed paper secret')
+    from .seed_continuation import verify as verify_seed_commitment
+    verify_seed_commitment(store,scope=scope,source_packet_sha256=receipt.binding.source_packet_sha256,
+        source_frame_sha256=receipt.binding.source_frame_sha256,current_policy_sha256=receipt.binding.policy_sha256,
+        input_pool_sha256=pool,secret=secret,original_commitment=manifest.seed_commitment)
     selected=samples(source.tiles,secret,scope)
     streams={'CONTENT_PROSE':'content_prose','CONTENT_TABLE':'content_table','ARCHIVE':'archive'}
     for selection in manifest.selections:
