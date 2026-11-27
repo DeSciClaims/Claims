@@ -36,3 +36,33 @@ SIGTERM/SIGINT stop new submissions and drain current work. Give the systemd uni
 at least the frozen preparation deadline plus transport time before forced kill.
 The package worker and scientific controller are separate services and remain up.
 The previous preparation unit should be retained for rollback.
+
+## Terminal preparation exclusions
+
+A source that cannot finish preparation before its original two-hour deadline
+can receive an operator-reviewed `claims_source_preparation_exclusion_v1` record.
+It binds the frozen PDF hash, configuration, expired clock, failure diagnostics
+and actor. The database refuses exclusions after successful preparation, a score,
+an evaluation, or attempted package execution. Existing prepared/scored papers
+are preserved. The scheduler skips these terminal dispositions.
+
+Every entrant, including the baseline, receives the same unmeasured disposition.
+Queued jobs close as **not executed**; future-stage jobs are prevented from
+running. There is no scientific Q, mechanical failure or worker execution receipt
+for an excluded paper. Infrastructure-marked compatibility pair rows close the
+original grid but contribute nothing to any entrant's average. Excluded papers
+remain in the original planned sample when calculating the stage's eligibility
+minimum. The approved mainnet minima remain 10/20, 60/120 and 250/500.
+
+The API exposes separate prepared, excluded, executed and scored counts. The
+authenticated round evaluation archive retains the exclusion records, original
+clock, and explicitly referenced source-review diagnostics. Late preparation is
+rejected rather than silently changing the common comparison.
+
+For an already frozen generator, install the separately hash-attested
+`scripts/scientific_preparation_exclusion_reader.py` adapter alongside its existing
+replay reader. It verifies the named experimental round/configuration, exact
+all-entrant pair disposition and receipt/clock hashes. It preserves completed
+scientific receipts and uses the original ranking, team and tie rules. It also
+omits unexecuted jobs from code-runtime and blocked-egress audits; actual worker
+executions retain their existing security checks.

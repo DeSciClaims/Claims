@@ -52,6 +52,10 @@ def prepare_round(row, backend, fetcher, *, stop=None, completed=None):
     pool=create_scientific_policy(row,backend,row['rules_public']['configuration']).evaluate_pool
     store=pool.store;rid=row['round_id'];configuration=row['rules_public']['configuration']
     root=Path(os.environ['CLAIMS_SCIENTIFIC_EVIDENCE_ROOT'])
+    # An owner-recorded terminal disposition is not a new preparation attempt.
+    exclusions=(backend._request('GET','/internal/competition/scientific/preparation-exclusions/'+rid)
+        if callable(getattr(backend,'_request',None)) else [])
+    excluded={(r['stage'],r['paper_id']) for r in exclusions}
 
     def prepare_one(item):
         paper_id,stages=item
@@ -79,7 +83,8 @@ def prepare_round(row, backend, fetcher, *, stop=None, completed=None):
         return {'status':'prepared','paper_id':paper_id,'stages':stages}
 
     counts={'prepared':0,'reused':0,'held':0,'errors':0}
-    jobs=iter(ordered_jobs(backend,row))
+    jobs=iter((pid,stages) for pid,stages in ordered_jobs(backend,row)
+        if not all((stage,pid) in excluded for stage in stages))
     limit=execution_policy(row).bronze_max_workers
     with ThreadPoolExecutor(max_workers=limit) as executor:
         running={};exhausted=False
