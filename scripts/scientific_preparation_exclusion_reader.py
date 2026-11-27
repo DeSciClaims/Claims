@@ -63,7 +63,10 @@ def install(*,round_id,configuration_sha256):
         record=authorized(backend,rid,record)
         if record is None:return {}
         rows={e['paper_id']:e for e in _get(backend,rid) if e['stage']==stage}
-        sample={p['paper_id']:p for p in backend.list_sample(rid) if p['stage']==stage}
+        # Worker audits filter unexecuted papers; exclusion provenance must still
+        # verify against the complete, frozen source sample.
+        source_backend=backend.backend if isinstance(backend,AuditView) else backend
+        sample={p['paper_id']:p for p in source_backend.list_sample(rid) if p['stage']==stage}
         with scientific_lineage.evidence_store(backend) as store:
             for pid,row in rows.items():
                 if pid not in sample or sample[pid]['source_sha256']!=row['source_sha256']:
