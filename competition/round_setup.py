@@ -15,7 +15,7 @@ from .controller_inputs import build_provisional_evaluation_policy
 from .code_audit import validated_audit_policy
 from .provisional_judges import validate_provisional_judge_routes
 from .publication import canonical_sha256
-from .round_schedule import schedule_for_round, validate_dispute_window
+from .round_schedule import schedule_for_round, validate_dispute_window, publication_when_ready_policy
 from .smoke_profile import smoke_profile
 from .round_evaluation import round_evaluation
 from .review_policy import review_policy
@@ -95,6 +95,7 @@ def prepare_round(
     public_policy = draft.get("policy_public", {})
     if not isinstance(public_policy, dict):
         raise ValueError("public weekly policy is malformed")
+    public_policy = publication_when_ready_policy(public_policy, deadline)
     schedule_record = {"network": network, "deadline_at": deadline.isoformat(),
                        "rules_public": {"policy": public_policy}}
     schedule = schedule_for_round(schedule_record)

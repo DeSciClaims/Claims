@@ -43,3 +43,34 @@ def test_custom_schedule_works_on_mainnet_and_rejects_reordered_gates():
     record["rules_public"]["policy"]["schedule"]["publish_at"] = "2026-11-04T10:59:00+00:00"
     with pytest.raises(ValueError, match="out of order"):
         schedule_for_round(record)
+
+
+def test_new_scientific_rounds_publish_after_checks_without_old_weekly_delay():
+    from copy import deepcopy
+    from competition.round_schedule import publication_when_ready_policy
+    record = _pilot()
+    policy = record['rules_public']['policy']
+    policy.update(validation_protocol='claims-source-task-v1', winner_selection='silver_tiebreak')
+    policy['schedule'].pop('gold_close_at')
+    policy['schedule']['publish_at'] = '2026-11-07T16:00:00+00:00'
+    policy['schedule']['production_activate_at'] = '2026-11-11T09:00:00+00:00'
+    before = deepcopy(policy)
+    deadline = datetime.fromisoformat(record['deadline_at'])
+    result = publication_when_ready_policy(policy, deadline)
+    assert policy == before
+    assert result['schedule']['publish_at'] == '2026-11-04T10:20:01+00:00'
+    assert result['schedule']['production_activate_at'] == before['schedule']['production_activate_at']
+    record['rules_public']['policy'] = result
+    validate_dispute_window(record, schedule_for_round(record))
+    assert publication_when_ready_policy(result, deadline) == result
+
+
+def test_existing_frozen_schedule_and_legacy_review_are_not_reinterpreted():
+    from competition.round_schedule import publication_when_ready_policy
+    record = _pilot(); policy = record['rules_public']['policy']
+    before = schedule_for_round(record)
+    assert publication_when_ready_policy(policy, before.deadline) == policy
+    assert schedule_for_round(record) == before
+    policy['validation_protocol'] = 'claims-source-task-v1'
+    with pytest.raises(ValueError, match='without miner review'):
+        publication_when_ready_policy(policy, before.deadline)

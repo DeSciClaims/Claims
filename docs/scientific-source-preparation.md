@@ -89,3 +89,18 @@ and policy. Other papers use the original evaluator. Final receipt verification
 can run in bounded parallel batches; every original verification still runs and
 any failure propagates. Installing the adapter leaves the frozen generator
 files and their runtime descriptor unchanged.
+
+## Publication after evaluation
+
+New scientific rounds created through `prepare_round` publish as soon as final
+scoring, integrity checks, winner selection and the duplicate-dispute window are
+complete. Their creation-time `publish_at` is the earliest instant after that
+window, rather than the old weekly review delay. Existing frozen schedules are
+not reinterpreted, and production activation remains a separate scheduled gate.
+
+For an existing completed round, the backend operator command
+`scripts/amend_publication_time.py` previews an owner-only publication amendment.
+It can advance only `policy.schedule.publish_at`, after the dispute window has
+closed. It retains the scientific configuration hash, source commitments, jobs,
+scores and stage receipts, and records the prior/new rules in append-only audit
+history. The controller still runs every final publication check.

@@ -84,3 +84,24 @@ def validate_dispute_window(
           or verdict != opened
           or closed != schedule.deadline + timedelta(days=1, hours=3)):
         raise ValueError("duplicate verdict and dispute window must be Tuesday 09:00–15:00 UTC")
+
+
+def publication_when_ready_policy(policy: dict, deadline: datetime) -> dict:
+    """New scientific rounds have no idle publication delay after disputes close.
+
+    This is a creation-time default, never a reinterpretation of frozen rules.
+    Evaluation, final audits and winner-selection checks remain mandatory.
+    """
+    from copy import deepcopy
+    if policy.get("validation_protocol") != "claims-source-task-v1":
+        return policy
+    if policy.get("winner_selection") != "silver_tiebreak":
+        raise ValueError("Scientific immediate publication requires source-task scoring without miner review")
+    schedule = policy.get("schedule")
+    if not isinstance(schedule, dict) or schedule.get("mode") != "custom":
+        raise ValueError("Scientific publication requires an explicit custom schedule")
+    closes = _utc(policy["duplicate_dispute_window"]["closes_at"], "duplicate dispute closing")
+    earliest = max(deadline, closes) + timedelta(seconds=1)
+    after = deepcopy(policy)
+    after["schedule"]["publish_at"] = earliest.isoformat()
+    return after
