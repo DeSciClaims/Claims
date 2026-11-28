@@ -156,13 +156,11 @@ def scientific_copy_diagnostics(*,round_id,stage,entries,paper_ids,backend):
     from .publication import canonical_sha256
     from validator.scientific_result_v1.source_tasks.contracts import SubmittedPackage
     from validator.scientific_result_v1.source_tasks.store import sha,canonical
-    import tempfile
-    from validator.scientific_result_v1.source_tasks.remote import RemoteStore
+    from .scientific_lineage import evidence_store
     baseline=next(e for e in entries if e['role'] in {'incumbent','reference'})
     challengers=[e for e in entries if e['role']=='challenger']
     evidence=[]
-    with tempfile.TemporaryDirectory(prefix='claims-scientific-copy-') as work:
-        store=RemoteStore(work,backend)
+    with evidence_store(backend) as store:
         for paper_id in paper_ids:
             frozen=backend.get_paper_evaluation(round_id,stage,paper_id)
             silver=frozen['result_private']['silver']
@@ -175,7 +173,8 @@ def scientific_copy_diagnostics(*,round_id,stage,entries,paper_ids,backend):
                 record=backend.get_round(round_id)
                 policy=configured_policy(record['rules_public']['configuration'],round_id)
                 if policy is None:raise ValueError('First-round scoring is not enabled')
-                ref=store.put(receipt)
+                ref=FileRef(relative_path='blobs/'+silver['receipt_sha256'],sha256=silver['receipt_sha256'],
+                    byte_length=len(canonical(receipt)),media_type='application/octet-stream')
                 verify_score_receipt(store,FileRef.model_validate(silver['first_round_score'],strict=True),ref,policy)
             if (receipt.binding.round_id,receipt.binding.stage,receipt.binding.paper_id)!=(round_id,stage,paper_id):raise ValueError('Scientific copy scope mismatch')
             packages=[store.load(f,SubmittedPackage) for f in receipt.input_packages]

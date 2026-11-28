@@ -3,12 +3,12 @@ import hashlib,importlib.util,json,sys
 from pathlib import Path
 
 def install(*,directory,manifest,round_id,configuration_sha256,review_sha256):
-    from competition import code_audit,pilot_controller_factory,scientific_lineage
+    from competition import code_audit,pilot_controller_factory,scientific_lineage,scientific_scoring
     from validator.scientific_result_v1.source_tasks.contracts import SampledSilverReceipt
     from validator.scientific_result_v1.source_tasks.store import canonical,sha
     directory=Path(directory);files=json.loads(Path(manifest).read_text())
     loaded={}
-    for filename,name in [('setup_timeout_review.py','setup_timeout_review'),('setup_code_audit.py','approved_setup_code_audit')]:
+    for filename,name in [('setup_timeout_review.py','setup_timeout_review'),('setup_code_audit.py','approved_setup_code_audit'),('setup_scientific_scoring.py','approved_setup_scientific_scoring')]:
         path=directory/filename
         if sha(path.read_bytes())!=files[filename]:raise ValueError('Setup audit reader file hash changed')
         spec=importlib.util.spec_from_file_location('competition.'+name,path)
@@ -45,6 +45,15 @@ def install(*,directory,manifest,round_id,configuration_sha256,review_sha256):
             return scientific_lineage.verify_current_grid(rid,stage,**args)
         return loaded['setup_code_audit.py'].collect_final_code_evidence(rid,backend=ExecutedView(),
             scientific_lineage_verifier=verify,**kw)
+    def copy_diagnostics(**kwargs):
+        rid=kwargs['round_id'];record=kwargs['backend'].get_round(rid)
+        ref=record.get('rules_public',{}).get('policy',{}).get('setup_timeout_review')
+        if rid!=round_id or record['configuration_sha256']!=configuration_sha256 or ref is None or ref['sha256']!=review_sha256:
+            raise ValueError('Copy diagnostic cache requires the approved current round')
+        excluded={v['paper_id'] for v in proof['scientific_lineage'] if 'preparation_exclusion_sha256' in v}
+        kwargs['paper_ids']=[pid for pid in kwargs['paper_ids'] if pid not in excluded]
+        return loaded['setup_scientific_scoring.py'].scientific_copy_diagnostics(**kwargs)
+    scientific_scoring.scientific_copy_diagnostics=copy_diagnostics
     code_audit.collect_final_code_evidence=audit
     pilot_controller_factory.collect_final_code_evidence=audit
     scientific_lineage.replay=cached_replay
