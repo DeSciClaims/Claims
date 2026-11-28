@@ -104,3 +104,27 @@ It can advance only `policy.schedule.publish_at`, after the dispute window has
 closed. It retains the scientific configuration hash, source commitments, jobs,
 scores and stage receipts, and records the prior/new rules in append-only audit
 history. The controller still runs every final publication check.
+
+## Setup timeouts and whole-entry build eligibility
+
+A worker setup timeout is an infrastructure outcome, distinct from an installer
+that exits with a package/dependency error. New worker code reports an expired
+venv/install phase as `infrastructure_fault` with `setup_timeout:<phase>` detail.
+A genuine nonzero installer exit remains `build_failed`.
+
+Historical jobs keep their original statuses and paper scores. An owner may
+approve a `claims_setup_timeout_review_v1` record in the public rules, bound to
+exact job IDs, package hashes, original results and hash-checked installation
+logs. It requires an offline wheel install that reached package installation,
+consumed the original ten-minute setup budget and timed out before miner
+execution, without a reported pip error. Only these reviewed failures are removed
+from the whole-entry build-failure count. The package must also have successful
+runs and a valid source fingerprint. Genuine build failures, evaluation-context
+checks, security checks and all existing ranking/baseline/team rules remain.
+
+The review, original statuses and logs remain in authenticated evaluation
+exports. A separately attested frozen-runtime reader can reuse a completed
+native scientific-audit checkpoint, authorized by that same review. It continues
+to verify live paper heads, current comparison plans and exact score projections;
+a changed immutable receipt falls back to full native verification. It never
+reruns miner extraction, awards missing scientific credit or changes paper scores.

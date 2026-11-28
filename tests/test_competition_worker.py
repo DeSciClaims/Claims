@@ -135,7 +135,7 @@ def test_venv_and_install_share_one_build_budget(
         wheelhouse=wheelhouse, inference_base_url="https://gateway/v1",
         paper_key="scoped-key", install_timeout_seconds=600,
     )
-    assert result.status == "build_failed"
+    assert result.status == ("infrastructure_fault" if expected_install_budget is None else "build_failed")
     assert calls == ([("venv", 600)] if expected_install_budget is None else
                      [("venv", 600), ("install", expected_install_budget)])
     if expected_install_budget is None:
@@ -156,3 +156,20 @@ def test_scientific_worker_transports_full_json_csv_envelope(tmp_path):
         wheelhouse=wheels,inference_base_url='http://gateway/v1',paper_key='test-key')
     assert result.status=='completed',(tmp_path/'log.txt').read_text()
     assert json.loads((tmp_path/'result.json').read_text())==packed
+
+
+@pytest.mark.parametrize('phase',['venv','install'])
+def test_setup_process_timeout_is_infrastructure_and_never_executes_miner(tmp_path,monkeypatch,phase):
+    package=tmp_path/'miner-1-py3-none-any.whl';package.write_bytes(b'wheel')
+    request=tmp_path/'request.json';request.write_text('{}')
+    wheelhouse=tmp_path/'wheelhouse';wheelhouse.mkdir();calls=[]
+    def run(command,**kw):
+        calls.append(kw['label'])
+        assert kw['label']!='execute'
+        return (None,600) if kw['label']==phase else (0,1)
+    monkeypatch.setattr(worker,'_phase',run)
+    result=run_one_paper(package_path=package,entrypoint='miner:main',request_path=request,
+        output_path=tmp_path/'output.json',work_dir=tmp_path/'work',log_path=tmp_path/'log',
+        wheelhouse=wheelhouse,inference_base_url='https://gateway/v1',paper_key='key')
+    assert result.status=='infrastructure_fault' and result.detail=='setup_timeout:'+phase
+    assert calls==(['venv'] if phase=='venv' else ['venv','install'])

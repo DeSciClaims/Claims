@@ -219,7 +219,7 @@ def collect_final_code_evidence(
         from .scientific_lineage import verify_current_grid
         verifier=scientific_lineage_verifier or verify_current_grid
         lineage=verifier(round_id,stage,backend=backend,pairs=backend.list_stage_pairs(round_id,stage))
-    return {
+    evidence = {
         "schema_version": "claims_source_code_audit_v1" if scientific else AUDIT_SCHEMA,
         **({'scientific_lineage':lineage} if scientific else {}),
         "round_id": round_id,
@@ -227,6 +227,16 @@ def collect_final_code_evidence(
         "sample_sha256": canonical_sha256(sample),
         "packages": packages,
     }
+    if scientific:
+        record=backend.get_round(round_id)
+        review=record.get('rules_public',{}).get('policy',{}).get('setup_timeout_review')
+        if review is not None:
+            from .scientific_lineage import evidence_store
+            from .setup_timeout_review import apply
+            with evidence_store(backend) as store:
+                evidence=apply(evidence,store=store,ref=review,record=record,
+                    jobs=[job for items in jobs_by_hotkey.values() for job in items])
+    return evidence
 
 
 def audit_file_prefix(round_id,revision,evidence):

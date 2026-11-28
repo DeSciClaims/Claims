@@ -154,20 +154,20 @@ def run_one_paper(
             timeout_seconds=install_timeout_seconds, label="venv",
         )
         if code != 0:
-            return WorkerResult("build_failed", output_path, log_path, time.monotonic() - started, "venv creation failed")
+            return WorkerResult("infrastructure_fault" if code is None else "build_failed", output_path, log_path, time.monotonic() - started, "setup_timeout:venv" if code is None else "venv creation failed")
         python = venv_dir / "bin" / "python"
         remaining_install = install_deadline - time.monotonic()
         if remaining_install <= 0:
             log.write(b"\n[install] shared build budget exhausted\n")
-            return WorkerResult("build_failed", output_path, log_path,
-                                time.monotonic() - started, "package install timed out")
+            return WorkerResult("infrastructure_fault", output_path, log_path,
+                                time.monotonic() - started, "setup_timeout:install_budget")
         code, _ = _phase(
             [str(python), "-m", "pip", "install", "--no-index", "--find-links", str(wheelhouse), str(package_path)],
             cwd=work_dir, env=environment, log=log,
             timeout_seconds=remaining_install, label="install",
         )
         if code != 0:
-            return WorkerResult("build_failed", output_path, log_path, time.monotonic() - started, "package install failed")
+            return WorkerResult("infrastructure_fault" if code is None else "build_failed", output_path, log_path, time.monotonic() - started, "setup_timeout:install" if code is None else "package install failed")
         module, function = entrypoint.split(":", 1)
         script = (
             "import importlib,sys; "
