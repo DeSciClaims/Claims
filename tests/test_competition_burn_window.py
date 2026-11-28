@@ -75,6 +75,11 @@ def test_full_window_starts_at_success_preserves_vacant_slot_and_restores_on_exp
     start = clock[0]
     assert first['burn_window']['started_at'] == start.isoformat()
     assert first['burn_window']['expires_at'] == (start+timedelta(days=14)).isoformat()
+    snapshot = json.loads((tmp_path/'receipt.json.state.json').read_text())['submitted_weights']
+    assert {r['uid']: r['weight'] for r in snapshot['weights']} == first['weights']
+    assert snapshot['submitted_at'] == first['accepted_at']
+    assert snapshot['weights'][0]['is_burn'] is True
+    assert snapshot['weights'][1]['hotkey'] == chain.miner
     assert make().step()['status'] == 'waiting_for_interval'
     # Refresh just before expiry, then expiry must bypass the six-hour interval.
     clock[0] = start + timedelta(days=14, seconds=-1);chain.block += 1000
@@ -87,6 +92,8 @@ def test_full_window_starts_at_success_preserves_vacant_slot_and_restores_on_exp
     assert restored['burn_window']['phase'] == 'expired'
     assert restored['weights'] == pytest.approx({0:BASE_BURN+.1*(1-BASE_BURN),
                                                 3:.7*(1-BASE_BURN),4:.2*(1-BASE_BURN)})
+    snapshot = json.loads((tmp_path/'receipt.json.state.json').read_text())['submitted_weights']
+    assert {r['uid']: r['weight'] for r in snapshot['weights']} == restored['weights']
     assert make().step()['status'] == 'waiting_for_interval'
 
 

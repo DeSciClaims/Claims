@@ -542,6 +542,17 @@ class WeeklyWeightHeartbeat:
         else:
             result["legacy_receipt_sha256"] = allocation_id
 
+        submitted_weights = None
+        if kind == 'competition':
+            submitted_weights = {
+                'round_id': bundle['round_id'],
+                'publication_sha256': receipt['bundle_sha256'],
+                'weights': [{'uid': target, 'weight': share,
+                             'hotkey': None if target == 0 else hotkeys[target],
+                             'is_burn': target == 0}
+                            for target, share in sorted(weights_by_uid.items())],
+            }
+
         pending = state.get("pending")
         if pending:
             if (not isinstance(pending, dict)
@@ -561,6 +572,9 @@ class WeeklyWeightHeartbeat:
                              last_submitted_at=accepted_at.isoformat(),
                              allocation_id=pending["allocation_id"],
                              allocation_kind=pending["allocation_kind"])
+                if pending.get('submitted_weights'):
+                    state['submitted_weights'] = {**pending['submitted_weights'],
+                        'submitted_at': accepted_at.isoformat(), 'submitted_block': chain_last_update}
                 state.pop("pending")
                 if pending.get('starts_burn_window'):
                     state['burn_window'] = self.burn_window.start(state['burn_window'], accepted_at)
@@ -623,6 +637,8 @@ class WeeklyWeightHeartbeat:
         state["pending"] = {"before_block": chain_last_update, "attempt_block": block,
                             "attempt_at": now.isoformat(), "allocation_id": allocation_id,
                             "allocation_kind": kind}
+        if submitted_weights is not None:
+            state['pending']['submitted_weights'] = submitted_weights
         if window is not None and window['phase'] == 'awaiting_first_submission':
             state['pending']['starts_burn_window'] = True
         self._save_state(state)
@@ -656,6 +672,9 @@ class WeeklyWeightHeartbeat:
         state.pop("pending")
         state.update(last_submitted_block=accepted_block, last_submitted_at=accepted_at.isoformat(),
                      allocation_id=allocation_id, allocation_kind=kind)
+        if submitted_weights is not None:
+            state['submitted_weights'] = {**submitted_weights,
+                'submitted_at': accepted_at.isoformat(), 'submitted_block': accepted_block}
         data = getattr(response, "data", None)
         if isinstance(data, dict):
             state["commit_metadata"] = {key: data[key] for key in ("reveal_round", "extrinsic_hash")

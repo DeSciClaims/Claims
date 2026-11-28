@@ -10,4 +10,16 @@ For each new signed weekly competition result, production, runner-up 1 and runne
 
 The validator's first carry-forward transaction under this policy was accepted at block **9,486,540**. Its encrypted weight commitment takes effect when the chain reveals it. Previously accepted weights and historical result receipts are unchanged.
 
+The dashboard reads submitted shares from the backend rather than assuming the
+signed default burn. After an accepted competition submission, the heartbeat
+saves its exact UID, hotkey and weight rows in `submitted_weights` in its state.
+`python -m neurons.competition_weight_reporter --state-path <state.json>
+--backend-url <api>` uploads that snapshot using the existing
+`CLAIMS_COMPETITION_CONTROLLER_TOKEN`. Run the reporter periodically; it reads
+local state and makes no chain calls or weight submissions. The authenticated
+`POST /internal/competition/rounds/{round_id}/submitted-weights` endpoint retains
+the newest accepted allocation. The score-summary response exposes it separately
+from the immutable signed publication. Changes and burn-window expiry therefore
+update the same table when the heartbeat next submits the changed allocation.
+
 The proposed change to subnet emission shares requires a separate owner multisig action. If the miner share becomes 33%, allocating 12.4242% of that share to miners is approximately 4.1% of the subnet's pre-burn emission. Actual earnings also depend on the chain's burn adjustment to subnet emissions and other validators' weights; this calculation is not a payment guarantee.
